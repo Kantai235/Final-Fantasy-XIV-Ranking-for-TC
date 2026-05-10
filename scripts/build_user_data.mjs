@@ -720,8 +720,41 @@ async function loadEncounters() {
 async function loadRankingForEncounter(encounter) {
   const sourcePath = path.join(sourceRankingsDir, `${encounter.key}.json`);
   const publicPath = path.join(publicRankingsDir, `${encounter.key}.json`);
-  const ranking = await readJson(existsSync(sourcePath) ? sourcePath : publicPath, null);
-  return ranking && typeof ranking === "object" ? ranking : null;
+  const rankingPath = existsSync(sourcePath) ? sourcePath : publicPath;
+  const ranking = await readJson(rankingPath, null);
+  if (!ranking || typeof ranking !== "object") {
+    return null;
+  }
+
+  const shardReports = await loadRankingReportShards(ranking);
+  if (Object.keys(shardReports).length > 0) {
+    ranking.reports = {
+      ...(ranking.reports && typeof ranking.reports === "object" ? ranking.reports : {}),
+      ...shardReports,
+    };
+  }
+
+  return ranking;
+}
+
+async function loadRankingReportShards(ranking) {
+  const shardPaths = Array.isArray(ranking.report_shards) ? ranking.report_shards : [];
+  const reports = {};
+
+  for (const shardPath of shardPaths) {
+    if (typeof shardPath !== "string" || !shardPath) {
+      continue;
+    }
+
+    const resolvedShardPath = path.resolve(rootDir, shardPath);
+    assertInside(sourceRankingsDir, resolvedShardPath);
+    const shardReports = await readJson(resolvedShardPath, {});
+    if (shardReports && typeof shardReports === "object" && !Array.isArray(shardReports)) {
+      Object.assign(reports, shardReports);
+    }
+  }
+
+  return reports;
 }
 
 function getOrCreateUser(usersByName, characterName) {
