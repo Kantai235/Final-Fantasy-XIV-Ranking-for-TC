@@ -393,6 +393,24 @@ def 讀取_json(路徑: Path, 預設值: Any) -> Any:
         raise RuntimeError(f"無法解析 JSON 檔案：{路徑}") from 錯誤
 
 
+def 是_windows檔案鎖定錯誤(錯誤: OSError) -> bool:
+    return isinstance(錯誤, PermissionError) or getattr(錯誤, "winerror", None) in {5, 32}
+
+
+def 就地覆寫檔案(來源路徑: Path, 目標路徑: Path) -> None:
+    with 來源路徑.open("rb") as 來源檔案:
+        with 目標路徑.open("r+b") as 目標檔案:
+            目標檔案.seek(0)
+            while True:
+                區塊 = 來源檔案.read(1024 * 1024)
+                if not 區塊:
+                    break
+                目標檔案.write(區塊)
+            目標檔案.truncate()
+            目標檔案.flush()
+            os.fsync(目標檔案.fileno())
+
+
 def 寫入_json(路徑: Path, 內容: Any, *, 緊湊格式: bool = False) -> None:
     路徑.parent.mkdir(parents=True, exist_ok=True)
     暫存路徑 = 路徑.with_name(f".{路徑.name}.{os.getpid()}.{time.time_ns()}.tmp")
@@ -410,16 +428,22 @@ def 寫入_json(路徑: Path, 內容: Any, *, 緊湊格式: bool = False) -> Non
             try:
                 os.replace(暫存路徑, 路徑)
                 return
-            except PermissionError as 錯誤:
-                最後錯誤 = 錯誤
             except OSError as 錯誤:
-                if getattr(錯誤, "winerror", None) not in {5, 32}:
+                if not 是_windows檔案鎖定錯誤(錯誤):
                     raise
                 最後錯誤 = 錯誤
 
             等待秒數 = json寫入重試等待秒數 * 第幾次
             print(f"JSON 檔案暫時被鎖定，{等待秒數:.1f} 秒後重試寫入：{路徑}", file=sys.stderr)
             time.sleep(等待秒數)
+
+        if os.name == "nt" and 路徑.exists() and 最後錯誤 is not None:
+            try:
+                就地覆寫檔案(暫存路徑, 路徑)
+                print(f"JSON 檔案無法原子替換，已改用就地覆寫：{路徑}", file=sys.stderr)
+                return
+            except OSError as 錯誤:
+                最後錯誤 = 錯誤
 
         raise RuntimeError(f"無法寫入 JSON 檔案：{路徑}，請確認檔案未被其他程式鎖定。") from 最後錯誤
     finally:
