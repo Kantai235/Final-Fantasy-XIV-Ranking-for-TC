@@ -2406,8 +2406,8 @@ const 顯示結束排名 = computed(() => {
   return Math.min(當頁起始索引.value + 當頁排行列.value.length, 過濾後排行列.value.length);
 });
 
-function 排行列顯示排名(列, index) {
-  return 列.原始排名 ?? 列.職業排名 ?? 當頁起始索引.value + index + 1;
+function 排行列顯示排名(index) {
+  return 當頁起始索引.value + index + 1;
 }
 
 function 前往頁碼(頁碼) {
@@ -3123,8 +3123,8 @@ onMounted(() => {
           </thead>
           <tbody>
             <tr v-for="(列, index) in 當頁排行列" :key="列.id">
-              <td class="排名" :class="排名色彩類別(排行列顯示排名(列, index))">
-                {{ 格式化排名(排行列顯示排名(列, index)) }}
+              <td class="排名" :class="排名色彩類別(排行列顯示排名(index))">
+                {{ 格式化排名(排行列顯示排名(index)) }}
               </td>
               <td>
                 <button class="文字連結" type="button" @click="開啟個人成績單(列)">
