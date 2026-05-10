@@ -76,6 +76,9 @@ jobs:
           FFLOGS_CLIENT_CREDENTIALS_JSON: ${{ secrets.FFLOGS_CLIENT_CREDENTIALS_JSON }}
         run: python scripts/backfill_missing_fflogs_data.py --limit 500
 
+      - name: Split complete ranking data for Git
+        run: python scripts/fetch_fflogs.py --split-rankings
+
       - name: 產生個人成績單資料
         run: node scripts/build_user_data.mjs
 

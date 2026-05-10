@@ -693,6 +693,21 @@ def 排行榜檔案路徑(副本設定: dict[str, Any], public: bool = False) ->
     return 根目錄 / "data" / "rankings" / f"{副本設定['key']}.json"
 
 
+def 排行榜報告分片目錄路徑(副本設定: dict[str, Any]) -> Path:
+    return 專案根目錄 / "data" / "rankings" / f"{副本設定['key']}.reports"
+
+
+def 確認路徑在目錄內(根目錄: Path, 目標路徑: Path) -> None:
+    已解析根目錄 = 根目錄.resolve()
+    已解析目標路徑 = 目標路徑.resolve()
+    if 已解析目標路徑 != 已解析根目錄 and 已解析根目錄 not in 已解析目標路徑.parents:
+        raise RuntimeError(f"拒絕存取目錄外路徑：{目標路徑}")
+
+
+def 專案相對路徑(路徑: Path) -> str:
+    return 路徑.relative_to(專案根目錄).as_posix()
+
+
 def 讀取副本設定清單() -> list[dict[str, Any]]:
     設定清單 = 讀取_json(副本設定檔路徑, [])
     if not isinstance(設定清單, list):
@@ -723,6 +738,30 @@ def 讀取副本設定清單() -> list[dict[str, Any]]:
         raise RuntimeError("沒有任何已啟用且設定完整的副本。")
 
     return 啟用清單
+
+
+def 讀取全部有效副本設定清單() -> list[dict[str, Any]]:
+    設定清單 = 讀取_json(副本設定檔路徑, [])
+    if not isinstance(設定清單, list):
+        raise RuntimeError(f"副本設定檔格式錯誤：{副本設定檔路徑}")
+
+    副本清單: list[dict[str, Any]] = []
+    for 原始副本 in 設定清單:
+        if not isinstance(原始副本, dict):
+            continue
+
+        if not 原始副本.get("key") or not 原始副本.get("name"):
+            continue
+        if 原始副本.get("zone_id") is None or 原始副本.get("encounter_id") is None or 原始副本.get("difficulty") is None:
+            continue
+
+        副本 = dict(原始副本)
+        副本["zone_id"] = int(副本["zone_id"])
+        副本["encounter_id"] = int(副本["encounter_id"])
+        副本["difficulty"] = int(副本["difficulty"])
+        副本清單.append(副本)
+
+    return 副本清單
 
 
 def 寫入公開副本清單(副本清單: list[dict[str, Any]]) -> None:
@@ -1706,9 +1745,85 @@ def 成績是否優先(候選: dict[str, Any], 目前最佳: dict[str, Any] | No
     return (候選.get("adps") or 候選.get("dps") or 0) > (目前最佳.get("adps") or 目前最佳.get("dps") or 0)
 
 
+def 標準化排行榜條目(條目: dict[str, Any]) -> dict[str, Any] | None:
+    if not isinstance(條目, dict):
+        return None
+
+    成績 = dict(條目)
+    名稱 = 成績.get("character_name")
+    伺服器 = 成績.get("server")
+    職業 = 成績.get("job")
+    dps = 成績.get("dps")
+    if not 名稱 or 伺服器 not in 繁中服伺服器名稱 or 職業 not in 有效職業名稱 or dps is None:
+        return None
+
+    角色鍵值 = 成績.get("character_key") or f"{名稱}@{伺服器}:{職業}"
+    成績["character_key"] = 角色鍵值
+
+    if not 成績.get("id"):
+        成績["id"] = 建立_sha256(
+            {
+                "character": 角色鍵值,
+                "active_time_ms": 成績.get("active_time_ms"),
+                "rdps": 成績.get("rdps"),
+                "adps": 成績.get("adps"),
+                "dps": dps,
+                "total_damage": 成績.get("total_damage"),
+                "damage_time_ms": 成績.get("damage_time_ms"),
+                "report_code": 成績.get("report_code"),
+                "fight_id": 成績.get("fight_id"),
+            }
+        )
+
+    來源報告 = 成績.get("source_reports")
+    if isinstance(來源報告, list):
+        成績["source_reports"] = list(dict.fromkeys(str(報告代碼) for 報告代碼 in 來源報告 if 報告代碼))
+    elif 成績.get("report_code"):
+        成績["source_reports"] = [str(成績["report_code"])]
+    else:
+        成績["source_reports"] = []
+
+    重複數量 = 轉_int_or_none(成績.get("duplicate_count"))
+    成績["duplicate_count"] = max(重複數量 or 1, len(成績["source_reports"]) or 1)
+    return 成績
+
+
+def 登記排行榜條目(
+    成績: dict[str, Any],
+    精確成績索引: dict[str, dict[str, Any]],
+    最佳成績索引: dict[str, dict[str, Any]],
+) -> None:
+    標準成績 = 標準化排行榜條目(成績)
+    if not 標準成績:
+        return
+
+    精確成績鍵值 = 標準成績["id"]
+    既有成績 = 精確成績索引.get(精確成績鍵值)
+    if 既有成績:
+        既有來源報告 = 既有成績.setdefault("source_reports", [])
+        for 報告代碼 in 標準成績.get("source_reports") or []:
+            if 報告代碼 not in 既有來源報告:
+                既有來源報告.append(報告代碼)
+        既有成績["duplicate_count"] = max(
+            轉_int_or_none(既有成績.get("duplicate_count")) or 1,
+            len(既有來源報告) or 1,
+        )
+        標準成績 = 既有成績
+    else:
+        精確成績索引[精確成績鍵值] = 標準成績
+
+    角色鍵值 = 標準成績["character_key"]
+    if 成績是否優先(標準成績, 最佳成績索引.get(角色鍵值)):
+        最佳成績索引[角色鍵值] = 標準成績
+
+
 def 建立排行榜條目(排行榜: dict[str, Any]) -> list[dict[str, Any]]:
     精確成績索引: dict[str, dict[str, Any]] = {}
     最佳成績索引: dict[str, dict[str, Any]] = {}
+
+    for 條目 in 排行榜.get("ranking_entries") or []:
+        if isinstance(條目, dict):
+            登記排行榜條目(條目, 精確成績索引, 最佳成績索引)
 
     for 報告代碼, 報告 in (排行榜.get("reports") or {}).items():
         if not isinstance(報告, dict):
@@ -1745,13 +1860,6 @@ def 建立排行榜條目(排行榜: dict[str, Any]) -> list[dict[str, Any]]:
                         "damage_time_ms": 戰鬥.get("damage_time_ms"),
                     }
                 )
-                既有成績 = 精確成績索引.get(精確成績鍵值)
-                if 既有成績:
-                    if 報告代碼 not in 既有成績["source_reports"]:
-                        既有成績["source_reports"].append(報告代碼)
-                        既有成績["duplicate_count"] = len(既有成績["source_reports"])
-                    continue
-
                 成績 = {
                     "id": 精確成績鍵值,
                     "character_key": 角色鍵值,
@@ -1781,10 +1889,7 @@ def 建立排行榜條目(排行榜: dict[str, Any]) -> list[dict[str, Any]]:
                     "source_reports": [報告代碼],
                     "duplicate_count": 1,
                 }
-                精確成績索引[精確成績鍵值] = 成績
-
-                if 成績是否優先(成績, 最佳成績索引.get(角色鍵值)):
-                    最佳成績索引[角色鍵值] = 成績
+                登記排行榜條目(成績, 精確成績索引, 最佳成績索引)
 
     排行榜條目 = sorted(
         最佳成績索引.values(),
@@ -1816,6 +1921,113 @@ def 建立公開排行榜(排行榜: dict[str, Any]) -> dict[str, Any]:
             if isinstance(條目, dict)
         ],
     }
+
+
+排行榜報告分片目標大小 = 45 * 1024 * 1024
+
+
+def 建立排行榜基礎儲存內容(副本設定: dict[str, Any], 排行榜: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "schema_version": 排行榜.get("schema_version", 1),
+        "encounter": 排行榜.get("encounter") or 建立副本摘要(副本設定),
+        "updated_at": 排行榜.get("updated_at"),
+        "updated_at_iso": 排行榜.get("updated_at_iso"),
+        "ranking_entries": 建立排行榜條目(排行榜),
+    }
+
+
+def 讀取排行榜報告分片(排行榜: dict[str, Any]) -> dict[str, Any]:
+    報告索引: dict[str, Any] = {}
+    分片清單 = 排行榜.get("report_shards")
+    if not isinstance(分片清單, list):
+        return 報告索引
+
+    for 分片路徑文字 in 分片清單:
+        if not isinstance(分片路徑文字, str) or not 分片路徑文字:
+            continue
+
+        分片路徑 = 專案根目錄 / 分片路徑文字
+        確認路徑在目錄內(專案根目錄 / "data" / "rankings", 分片路徑)
+        分片內容 = 讀取_json(分片路徑, {})
+        if isinstance(分片內容, dict):
+            報告索引.update(分片內容)
+
+    return 報告索引
+
+
+def 讀取排行榜檔案(副本設定: dict[str, Any]) -> dict[str, Any]:
+    排行榜 = 正規化排行榜(讀取_json(排行榜檔案路徑(副本設定), {}), 副本設定)
+    if isinstance(排行榜.get("reports"), dict):
+        return 排行榜
+
+    分片報告索引 = 讀取排行榜報告分片(排行榜)
+    if 分片報告索引:
+        排行榜["reports"] = 分片報告索引
+    return 排行榜
+
+
+def 清除舊排行榜報告分片(副本設定: dict[str, Any]) -> None:
+    分片目錄 = 排行榜報告分片目錄路徑(副本設定)
+    確認路徑在目錄內(專案根目錄 / "data" / "rankings", 分片目錄)
+    if not 分片目錄.exists():
+        return
+
+    for 舊分片 in 分片目錄.glob("*.json"):
+        確認路徑在目錄內(分片目錄, 舊分片)
+        舊分片.unlink()
+
+    try:
+        分片目錄.rmdir()
+    except OSError:
+        pass
+
+
+def 寫入排行榜報告分片(副本設定: dict[str, Any], 報告索引: dict[str, Any]) -> list[str]:
+    清除舊排行榜報告分片(副本設定)
+    if not 報告索引:
+        return []
+
+    分片目錄 = 排行榜報告分片目錄路徑(副本設定)
+    確認路徑在目錄內(專案根目錄 / "data" / "rankings", 分片目錄)
+    分片目錄.mkdir(parents=True, exist_ok=True)
+
+    分片路徑清單: list[str] = []
+    目前分片: dict[str, Any] = {}
+    目前大小 = 2
+    分片序號 = 0
+
+    def 寫出目前分片() -> None:
+        nonlocal 分片序號, 目前分片, 目前大小
+        if not 目前分片:
+            return
+
+        分片路徑 = 分片目錄 / f"{分片序號:03d}.json"
+        寫入_json(分片路徑, 目前分片, 緊湊格式=True)
+        分片路徑清單.append(專案相對路徑(分片路徑))
+        分片序號 += 1
+        目前分片 = {}
+        目前大小 = 2
+
+    for 原始報告代碼, 報告 in sorted(報告索引.items(), key=lambda 項目: str(項目[0])):
+        報告代碼 = str(原始報告代碼)
+        if not isinstance(報告, dict):
+            continue
+
+        報告文字 = json.dumps(報告, ensure_ascii=False, separators=(",", ":"))
+        項目大小 = (
+            len(json.dumps(報告代碼, ensure_ascii=False).encode("utf-8"))
+            + 1
+            + len(報告文字.encode("utf-8"))
+            + 1
+        )
+        if 目前分片 and 目前大小 + 項目大小 > 排行榜報告分片目標大小:
+            寫出目前分片()
+
+        目前分片[報告代碼] = 報告
+        目前大小 += 項目大小
+
+    寫出目前分片()
+    return 分片路徑清單
 
 
 def 建立報告成績(
@@ -1957,8 +2169,12 @@ def 建立副本摘要(副本設定: dict[str, Any]) -> dict[str, Any]:
 
 
 def 正規化排行榜(原始內容: Any, 副本設定: dict[str, Any]) -> dict[str, Any]:
-    if isinstance(原始內容, dict) and isinstance(原始內容.get("reports"), dict):
-        return 原始內容
+    if isinstance(原始內容, dict):
+        if isinstance(原始內容.get("reports"), dict) or isinstance(原始內容.get("ranking_entries"), list):
+            排行榜 = dict(原始內容)
+            排行榜.setdefault("schema_version", 1)
+            排行榜.setdefault("encounter", 建立副本摘要(副本設定))
+            return 排行榜
 
     報告索引: dict[str, Any] = {}
     if isinstance(原始內容, list):
@@ -1995,12 +2211,18 @@ def 套用成績到排行榜(排行榜: dict[str, Any], 新成績列表: list[di
 def 寫入排行榜檔案(副本設定: dict[str, Any], 排行榜: dict[str, Any]) -> None:
     排行榜["schema_version"] = 1
     排行榜["encounter"] = 建立副本摘要(副本設定)
-    排行榜["ranking_entries"] = 建立排行榜條目(排行榜)
     排行榜["updated_at"] = 現在毫秒()
     排行榜["updated_at_iso"] = 毫秒轉_iso(排行榜["updated_at"])
+    儲存內容 = 建立排行榜基礎儲存內容(副本設定, 排行榜)
+    報告索引 = 排行榜.get("reports") if isinstance(排行榜.get("reports"), dict) else {}
+    分片路徑清單 = 寫入排行榜報告分片(副本設定, 報告索引)
+    if 分片路徑清單:
+        儲存內容["report_shards"] = 分片路徑清單
+    else:
+        儲存內容["reports"] = {}
 
-    寫入_json(排行榜檔案路徑(副本設定), 排行榜, 緊湊格式=True)
-    寫入_json(排行榜檔案路徑(副本設定, public=True), 建立公開排行榜(排行榜), 緊湊格式=True)
+    寫入_json(排行榜檔案路徑(副本設定), 儲存內容, 緊湊格式=True)
+    寫入_json(排行榜檔案路徑(副本設定, public=True), 建立公開排行榜(儲存內容), 緊湊格式=True)
 
 
 def 重建公開排行榜檔案() -> None:
@@ -2008,17 +2230,40 @@ def 重建公開排行榜檔案() -> None:
     寫入公開副本清單(副本清單)
 
     for 副本設定 in 副本清單:
-        排行榜 = 正規化排行榜(讀取_json(排行榜檔案路徑(副本設定), {}), 副本設定)
-        if not isinstance(排行榜.get("ranking_entries"), list):
-            排行榜["ranking_entries"] = 建立排行榜條目(排行榜)
+        排行榜 = 讀取排行榜檔案(副本設定)
         排行榜.setdefault("schema_version", 1)
         排行榜.setdefault("encounter", 建立副本摘要(副本設定))
-        寫入_json(排行榜檔案路徑(副本設定, public=True), 建立公開排行榜(排行榜), 緊湊格式=True)
+        儲存內容 = 建立排行榜基礎儲存內容(副本設定, 排行榜)
+        寫入_json(排行榜檔案路徑(副本設定, public=True), 建立公開排行榜(儲存內容), 緊湊格式=True)
         print(f"已重建公開排行榜：{副本設定['key']}")
 
 
+def 分割排行榜儲存檔案() -> None:
+    啟用副本清單 = 讀取副本設定清單()
+    寫入公開副本清單(啟用副本清單)
+
+    for 副本設定 in 讀取全部有效副本設定清單():
+        路徑 = 排行榜檔案路徑(副本設定)
+        if not 路徑.exists():
+            continue
+
+        排行榜 = 讀取排行榜檔案(副本設定)
+        排行榜.setdefault("schema_version", 1)
+        排行榜.setdefault("encounter", 建立副本摘要(副本設定))
+        儲存內容 = 建立排行榜基礎儲存內容(副本設定, 排行榜)
+        報告索引 = 排行榜.get("reports") if isinstance(排行榜.get("reports"), dict) else {}
+        分片路徑清單 = 寫入排行榜報告分片(副本設定, 報告索引)
+        if 分片路徑清單:
+            儲存內容["report_shards"] = 分片路徑清單
+        else:
+            儲存內容["reports"] = {}
+        寫入_json(路徑, 儲存內容, 緊湊格式=True)
+        寫入_json(排行榜檔案路徑(副本設定, public=True), 建立公開排行榜(儲存內容), 緊湊格式=True)
+        print(f"已分割完整排行榜儲存檔案：{副本設定['key']}")
+
+
 def 合併寫入排行榜(副本設定: dict[str, Any], 新成績列表: list[dict[str, Any]]) -> int:
-    排行榜 = 正規化排行榜(讀取_json(排行榜檔案路徑(副本設定), {}), 副本設定)
+    排行榜 = 讀取排行榜檔案(副本設定)
     新增或更新數量 = 套用成績到排行榜(排行榜, 新成績列表)
     寫入排行榜檔案(副本設定, 排行榜)
     return 新增或更新數量
@@ -2037,7 +2282,7 @@ def 讀取已處理報告代碼(狀態: dict[str, Any], 副本設定: dict[str, 
     if isinstance(已檢查報告, dict):
         已處理.update(str(代碼) for 代碼 in 已檢查報告.keys())
 
-    排行榜 = 讀取_json(排行榜檔案路徑(副本設定), {})
+    排行榜 = 讀取排行榜檔案(副本設定)
     報告索引 = 排行榜.get("reports") if isinstance(排行榜, dict) else {}
     if isinstance(報告索引, dict):
         已處理.update(str(代碼) for 代碼 in 報告索引.keys())
@@ -2175,7 +2420,7 @@ def main() -> int:
             "副本設定": 副本設定,
             "已處理報告代碼": 讀取已處理報告代碼(狀態, 副本設定),
             "本輪已嘗試報告代碼": set(),
-            "排行榜": 正規化排行榜(讀取_json(排行榜檔案路徑(副本設定), {}), 副本設定),
+            "排行榜": 讀取排行榜檔案(副本設定),
             "待寫入成績清單": [],
             "待標記已儲存報告": [],
             "scan_start_at": None,
@@ -2619,6 +2864,9 @@ if __name__ == "__main__":
     try:
         if sys.argv[1:] == ["--rebuild-public"]:
             重建公開排行榜檔案()
+            raise SystemExit(0)
+        if sys.argv[1:] == ["--split-rankings"]:
+            分割排行榜儲存檔案()
             raise SystemExit(0)
         raise SystemExit(main())
     except Exception as 錯誤:

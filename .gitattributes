@@ -1,2 +1,6 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Ranking data is generated and can be very large.
+data/rankings/*.json -diff
+data/rankings/*.reports/*.json -diff

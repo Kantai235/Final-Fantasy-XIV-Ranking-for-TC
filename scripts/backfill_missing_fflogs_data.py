@@ -17,6 +17,7 @@ import fetch_fflogs as fflogs  # noqa: E402
 read_json = getattr(fflogs, "\u8b80\u53d6_json")
 ranking_path = getattr(fflogs, "\u6392\u884c\u699c\u6a94\u6848\u8def\u5f91")
 normalize_ranking = getattr(fflogs, "\u6b63\u898f\u5316\u6392\u884c\u699c")
+load_ranking_file = getattr(fflogs, "\u8b80\u53d6\u6392\u884c\u699c\u6a94\u6848")
 build_report_score = getattr(fflogs, "\u5efa\u7acb\u5831\u544a\u6210\u7e3e")
 apply_scores_to_ranking = getattr(fflogs, "\u5957\u7528\u6210\u7e3e\u5230\u6392\u884c\u699c")
 write_ranking_file = getattr(fflogs, "\u5beb\u5165\u6392\u884c\u699c\u6a94\u6848")
@@ -134,7 +135,7 @@ def scan_candidates(encounters: dict[str, dict[str, Any]]) -> dict[str, Backfill
         if not path.exists():
             continue
 
-        ranking = normalize_ranking(read_json(path, {}), encounter)
+        ranking = load_ranking_file(encounter)
         reports = ranking.get("reports") if isinstance(ranking, dict) else {}
         if not isinstance(reports, dict):
             continue
@@ -253,7 +254,7 @@ def main() -> int:
             continue
 
         encounter = encounters[key]
-        ranking = normalize_ranking(read_json(ranking_path(encounter), {}), encounter)
+        ranking = load_ranking_file(encounter)
         changed = apply_scores_to_ranking(ranking, scores)
         write_ranking_file(encounter, ranking)
         updated_entries += changed
