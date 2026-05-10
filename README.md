@@ -211,7 +211,7 @@ npm run build:user-data
 
 ## 自動更新
 
-`.github/workflows/update_rankings.yml` 會每小時執行一次，也支援手動觸發。
+`.github/workflows/update_rankings.yml` 會在每小時第 17 分與第 47 分左右執行一次，也支援手動觸發。排程會以 GitHub 預設分支上的最新版 workflow 與設定檔執行；本機尚未 commit / push 的 `config/encounters.json` 變更不會被自動更新流程使用。
 
 工作流程會：
 
