@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "build:public-rankings": "python scripts/fetch_fflogs.py --rebuild-public",
+    "backfill:fflogs": "python scripts/backfill_missing_fflogs_data.py --limit 500",
     "build:user-data": "node scripts/build_user_data.mjs",
     "dev": "vite --host 127.0.0.1",
     "sync:data": "node scripts/sync_upstream_data.mjs",
