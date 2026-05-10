@@ -1,6 +1,9 @@
 name: 更新排行榜資料
 
 on:
+  push:
+    branches:
+      - main
   schedule:
     - cron: "0 * * * *"
   workflow_dispatch:
@@ -12,7 +15,7 @@ permissions:
 
 concurrency:
   group: update-rankings-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'push' }}
 
 jobs:
   update-rankings:
@@ -28,6 +31,11 @@ jobs:
         with:
           ref: ${{ github.ref_name }}
           fetch-depth: 0
+
+      - name: 同步最新分支狀態
+        run: |
+          git fetch origin "${{ github.ref_name }}"
+          git reset --hard "origin/${{ github.ref_name }}"
 
       - name: 設定 Python 環境
         uses: actions/setup-python@v5
