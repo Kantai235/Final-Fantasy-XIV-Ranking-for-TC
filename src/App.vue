@@ -23,6 +23,9 @@ const 使用者索引 = ref(null);
 const 使用者資料 = ref(null);
 const 使用者搜尋關鍵字 = ref("");
 const 使用者伺服器篩選 = ref("");
+const 使用者職業類型篩選 = ref("");
+const 使用者職業篩選 = ref("");
+const 使用者職業選單開啟 = ref(false);
 const 使用者讀取中 = ref(false);
 const 使用者錯誤訊息 = ref("");
 const 比較角色左輸入 = ref("");
@@ -31,6 +34,7 @@ const 比較角色左資料 = ref(null);
 const 比較角色右資料 = ref(null);
 const 比較角色左伺服器 = ref("");
 const 比較角色右伺服器 = ref("");
+const 比較職能篩選 = ref("role:tank");
 const 比較讀取中 = ref(false);
 const 比較錯誤訊息 = ref("");
 const 全服統計資料 = ref(null);
@@ -41,6 +45,7 @@ const 統計副本選單開啟 = ref(false);
 const 統計伺服器篩選 = ref("");
 const 統計職業範圍 = ref("all");
 const 伺服器拆分模式 = ref("none");
+const 統計傷害指標 = ref("rdps");
 const 職業分析職業 = ref("");
 const 職業分析職業類型 = ref("");
 const 職業分析選單開啟 = ref(false);
@@ -64,6 +69,12 @@ const 排序選項 = [
   { value: "adps", label: "aDPS 高到低" },
   { value: "clearTime", label: "通關時間短到長" },
   { value: "recordedAt", label: "紀錄時間新到舊" },
+];
+
+const 傷害比較指標選項 = [
+  { value: "rdps", label: "rDPS" },
+  { value: "adps", label: "aDPS" },
+  { value: "dps", label: "DPS" },
 ];
 
 const 副本分類順序 = ["零式", "極", "幻", "絕"];
@@ -230,6 +241,30 @@ const 職業Icon檔名 = {
   BlueMage: "BlueMage.png",
 };
 
+const 職業比較色彩 = {
+  Paladin: "#6aa8ff",
+  Warrior: "#b46bff",
+  DarkKnight: "#8d75ff",
+  Gunbreaker: "#4fc1a6",
+  WhiteMage: "#72d56f",
+  Scholar: "#5f9dff",
+  Astrologian: "#d49bff",
+  Sage: "#66d5dc",
+  Monk: "#d49a32",
+  Dragoon: "#6686ff",
+  Ninja: "#c73d8f",
+  Samurai: "#d96d22",
+  Reaper: "#9b5a93",
+  Viper: "#35a545",
+  Bard: "#9abf66",
+  Machinist: "#57c8be",
+  Dancer: "#e5a2a5",
+  BlackMage: "#a477d8",
+  Summoner: "#3ba88d",
+  RedMage: "#e67070",
+  Pictomancer: "#eb80c9",
+};
+
 const 職業類型Icon檔名 = {
   "role:tank": "RoleTank.png",
   "role:healer": "RoleHealer.png",
@@ -237,6 +272,9 @@ const 職業類型Icon檔名 = {
   "role:physical_ranged": "RolePhysicalRanged.png",
   "role:magical_ranged": "RoleMagicalRanged.png",
 };
+
+const 比較職能設定 = 職業群組設定.map((群組) => ({ ...群組, 圖示代碼: 群組.代碼 }));
+const 比較職能索引 = new Map(比較職能設定.map((職能) => [職能.代碼, 職能]));
 
 function 顯示職業名稱(職業代碼) {
   return 職業繁中名稱[職業代碼] || 職業代碼 || "-";
@@ -268,12 +306,30 @@ function 職業代碼色彩(職業代碼) {
   return 職業群組設定.find((群組) => 群組.職業.includes(職業代碼))?.色彩 || "";
 }
 
+function 職業比較圖色彩(職業代碼) {
+  return 職業比較色彩[職業代碼] || "var(--重點色)";
+}
+
 function 職業類型色彩(類型代碼) {
   return 職業群組設定.find((群組) => 群組.代碼 === 類型代碼)?.色彩 || "";
 }
 
+function 職業類型排序值(類型代碼) {
+  const 索引 = 職業群組設定.findIndex((群組) => 群組.代碼 === 類型代碼);
+  return 索引 >= 0 ? 索引 : Number.MAX_SAFE_INTEGER;
+}
+
 function 職業所屬類型(職業代碼) {
   return 職業群組設定.find((群組) => 群組.職業.includes(職業代碼)) || null;
+}
+
+function 取得比較職能(職業代碼) {
+  const 詳細類型 = 職業所屬類型(職業代碼);
+  if (!詳細類型) {
+    return null;
+  }
+
+  return 比較職能索引.get(詳細類型.代碼) || null;
 }
 
 function 目前職業主色() {
@@ -323,6 +379,7 @@ function 切換職業選單() {
   副本選單開啟.value = false;
   統計副本選單開啟.value = false;
   職業分析選單開啟.value = false;
+  使用者職業選單開啟.value = false;
   職業選單開啟.value = !職業選單開啟.value;
 }
 
@@ -332,8 +389,39 @@ function 處理職業選單失焦(event) {
   }
 }
 
+function 清除使用者職業篩選() {
+  使用者職業類型篩選.value = "";
+  使用者職業篩選.value = "";
+  使用者職業選單開啟.value = false;
+}
+
+function 選擇使用者職業類型(類型代碼) {
+  使用者職業類型篩選.value = 類型代碼;
+  使用者職業篩選.value = "";
+}
+
+function 選擇使用者職業(職業代碼) {
+  使用者職業篩選.value = 使用者職業篩選.value === 職業代碼 ? "" : 職業代碼;
+  使用者職業選單開啟.value = false;
+}
+
+function 切換使用者職業選單() {
+  副本選單開啟.value = false;
+  統計副本選單開啟.value = false;
+  職業選單開啟.value = false;
+  職業分析選單開啟.value = false;
+  使用者職業選單開啟.value = !使用者職業選單開啟.value;
+}
+
+function 處理使用者職業選單失焦(event) {
+  if (!event.currentTarget.contains(event.relatedTarget)) {
+    使用者職業選單開啟.value = false;
+  }
+}
+
 function 切換副本選單() {
   職業選單開啟.value = false;
+  使用者職業選單開啟.value = false;
   統計副本選單開啟.value = false;
   職業分析選單開啟.value = false;
   副本選單開啟.value = !副本選單開啟.value;
@@ -357,6 +445,7 @@ function 處理副本選單失焦(event) {
 function 切換統計副本選單() {
   副本選單開啟.value = false;
   職業選單開啟.value = false;
+  使用者職業選單開啟.value = false;
   職業分析選單開啟.value = false;
   統計副本選單開啟.value = !統計副本選單開啟.value;
 }
@@ -376,6 +465,7 @@ function 切換職業分析選單() {
   副本選單開啟.value = false;
   統計副本選單開啟.value = false;
   職業選單開啟.value = false;
+  使用者職業選單開啟.value = false;
   職業分析選單開啟.value = !職業分析選單開啟.value;
 }
 
@@ -822,6 +912,123 @@ const 目前統計來源 = computed(() => {
   return 目前統計副本.value || 全服統計資料.value || null;
 });
 
+const 傷害比較指標標籤 = computed(() => {
+  return 傷害比較指標選項.find((選項) => 選項.value === 統計傷害指標.value)?.label || "rDPS";
+});
+
+const 職業傷害比較資料來源 = computed(() => {
+  const 伺服器 = 統計伺服器篩選.value;
+
+  if (目前統計副本.value) {
+    if (伺服器) {
+      return (目前統計副本.value.server_stats || []).find((項目) => 項目.server === 伺服器)?.damage_stats || [];
+    }
+    return 目前統計副本.value.damage_stats || [];
+  }
+
+  if (伺服器) {
+    return (全服統計資料.value?.savage_server_damage_stats || []).find((項目) => 項目.server === 伺服器)?.damage_stats || [];
+  }
+
+  return 全服統計資料.value?.savage_damage_stats || [];
+});
+
+const 職業傷害比較條件文字 = computed(() => {
+  const 範圍 = 目前統計副本.value ? 統計範圍文字.value : "零式 M1S-M4S";
+  return `${範圍}・${統計伺服器文字.value}`;
+});
+
+const 職業傷害比較基礎列 = computed(() => {
+  const 指標 = 統計傷害指標.value;
+
+  return 職業傷害比較資料來源.value
+    .map((項目) => {
+      const 指標統計 = 項目.metrics?.[指標];
+      if (!指標統計?.count) {
+        return null;
+      }
+
+      const 最小值 = 轉為數字(指標統計.min);
+      const 第一四分位 = 轉為數字(指標統計.q1);
+      const 中位數 = 轉為數字(指標統計.median);
+      const 第三四分位 = 轉為數字(指標統計.q3);
+      const 最大值 = 轉為數字(指標統計.max);
+      const 平均值 = 轉為數字(指標統計.average);
+      if ([最小值, 第一四分位, 中位數, 第三四分位, 最大值].some((數值) => 數值 === null)) {
+        return null;
+      }
+
+      return {
+        job: 項目.job,
+        role: 項目.role,
+        role_name: 項目.role_name,
+        count: 指標統計.count,
+        min: 最小值,
+        q1: 第一四分位,
+        median: 中位數,
+        q3: 第三四分位,
+        max: 最大值,
+        average: 平均值 ?? 中位數,
+        色彩: 職業比較圖色彩(項目.job),
+      };
+    })
+    .filter(Boolean)
+    .sort((前一個, 後一個) => 後一個.median - 前一個.median || 後一個.max - 前一個.max || 前一個.job.localeCompare(後一個.job));
+});
+
+const 職業傷害比較值域 = computed(() => {
+  const 數值列表 = 職業傷害比較基礎列.value.flatMap((列) => [列.min, 列.q1, 列.median, 列.q3, 列.max]);
+  if (數值列表.length === 0) {
+    return {
+      min: 0,
+      max: 1,
+      ticks: [],
+    };
+  }
+
+  const 原始最小值 = Math.min(...數值列表);
+  const 原始最大值 = Math.max(...數值列表);
+  const 差距 = Math.max(原始最大值 - 原始最小值, 原始最大值 * 0.08, 1);
+  const min = Math.max(0, Math.floor((原始最小值 - 差距 * 0.08) / 500) * 500);
+  const max = Math.ceil((原始最大值 + 差距 * 0.08) / 500) * 500 || 1;
+  const tickCount = 5;
+  const ticks = Array.from({ length: tickCount }, (_, 索引) => min + ((max - min) * 索引) / (tickCount - 1));
+
+  return {
+    min,
+    max: max <= min ? min + 1 : max,
+    ticks,
+  };
+});
+
+function 職業傷害位置(數值) {
+  const { min, max } = 職業傷害比較值域.value;
+  const 比例 = ((數值 - min) / (max - min)) * 100;
+  return `${Math.min(100, Math.max(0, 比例))}%`;
+}
+
+const 職業傷害比較刻度 = computed(() => {
+  return 職業傷害比較值域.value.ticks.map((數值) => ({
+    數值,
+    位置: 職業傷害位置(數值),
+  }));
+});
+
+const 職業傷害比較列 = computed(() => {
+  return 職業傷害比較基礎列.value.map((列) => ({
+    ...列,
+    樣式: {
+      "--職業比較色": 列.色彩,
+      "--最小值": 職業傷害位置(列.min),
+      "--第一四分位": 職業傷害位置(列.q1),
+      "--中位數": 職業傷害位置(列.median),
+      "--第三四分位": 職業傷害位置(列.q3),
+      "--最大值": 職業傷害位置(列.max),
+      "--平均值": 職業傷害位置(列.average),
+    },
+  }));
+});
+
 function 職業範圍類型(範圍) {
   if (!範圍 || 範圍 === "all") {
     return "all";
@@ -934,6 +1141,7 @@ const 統計詞彙說明 = {
   通關紀錄: "套用職業範圍時，以符合職業條件的通關紀錄計算。",
   範圍佔比: "套用伺服器或職業範圍後，副本通關概覽會改以目前篩選範圍作為分母。",
   零式進度漏斗: "以目前伺服器與職業範圍計算各零式層數的公開通關規模；套用單一職業時，代表該職業留下的通關紀錄。",
+  全職業輸出比較: "以公開成績統計每個職業的傷害分布；全部副本時固定使用 M1S、M2S、M3S、M4S。",
   Active: "有效輸出時間比例。數值越高，代表角色在戰鬥中維持輸出或行動的時間越完整。",
   DPS: "原始每秒傷害，包含自身傷害以及吃到外部增益後造成的傷害。",
   rDPS: "團隊貢獻 DPS。公式：DPS - 他人團輔 + 自體團輔，用來衡量你實際為團隊帶來的傷害。",
@@ -1451,7 +1659,7 @@ const 更新時間文字 = computed(() => {
 
   if (頁面模式.value === "compare") {
     const 更新時間 = 使用者索引.value?.rankings_updated_at_iso || 比較角色左資料.value?.generated_at_iso || 比較角色右資料.value?.generated_at_iso;
-    return 更新時間 ? `資料更新時間 ${格式化紀錄時間(更新時間)}` : "角色比較資料";
+    return 更新時間 ? `資料更新時間 ${格式化紀錄時間(更新時間)}` : "玩家比較資料";
   }
 
   if (頁面模式.value === "jobs") {
@@ -1478,7 +1686,7 @@ const 頁面副標 = computed(() => {
   }
 
   if (頁面模式.value === "compare") {
-    return "Final Fantasy XIV 繁中服・角色比較";
+    return "Final Fantasy XIV 繁中服・玩家比較";
   }
 
   if (頁面模式.value === "jobs") {
@@ -1505,7 +1713,7 @@ const 頁面標題 = computed(() => {
     if (角色比較已完成.value) {
       return `${比較角色左.value.character_name} vs ${比較角色右.value.character_name}`;
     }
-    return "角色比較";
+    return "玩家比較";
   }
 
   if (頁面模式.value === "jobs") {
@@ -1565,12 +1773,12 @@ const 比較角色右搜尋建議 = computed(() => {
   return 建立使用者搜尋建議列表(比較角色右輸入.value);
 });
 
-function 取得使用者副本成績(資料, 伺服器 = "") {
+function 取得使用者副本成績(資料, 伺服器 = "", 成績篩選 = () => true) {
   const 副本列表 = Array.isArray(資料?.encounters) ? 資料.encounters : [];
 
   return 副本列表
     .map((副本) => {
-      const 公開成績 = (副本.public_entries || []).filter((成績) => !伺服器 || 成績.server === 伺服器);
+      const 公開成績 = (副本.public_entries || []).filter((成績) => (!伺服器 || 成績.server === 伺服器) && 成績篩選(成績));
       if (公開成績.length === 0) {
         return null;
       }
@@ -1585,8 +1793,77 @@ function 取得使用者副本成績(資料, 伺服器 = "") {
     .filter(Boolean);
 }
 
-const 使用者副本成績 = computed(() => {
+const 使用者完整副本成績 = computed(() => {
   return 取得使用者副本成績(使用者資料.value, 使用者伺服器篩選.value);
+});
+
+const 使用者可用職業列表 = computed(() => {
+  const 職業集合 = new Set(
+    使用者完整副本成績.value
+      .flatMap((副本) =>副本.public_entries || [])
+      .map((成績) => 成績.job)
+      .filter(Boolean),
+  );
+
+  return Array.from(職業集合).sort((前一個, 後一個) => {
+    const 類型差 = 職業類型排序值(職業所屬類型(前一個)?.代碼) - 職業類型排序值(職業所屬類型(後一個)?.代碼);
+    return 類型差 || 顯示職業名稱(前一個).localeCompare(顯示職業名稱(後一個), "zh-Hant-TW");
+  });
+});
+
+const 使用者職業類型選項 = computed(() => {
+  return 職業群組設定.filter((群組) => 使用者可用職業列表.value.some((職業) => 群組.職業.includes(職業)));
+});
+
+const 使用者職業選項 = computed(() => {
+  return 使用者可用職業列表.value
+    .filter((職業) => !使用者職業類型篩選.value || 職業所屬類型(職業)?.代碼 === 使用者職業類型篩選.value)
+    .map((職業) => ({
+      代碼: 職業,
+      名稱: 顯示職業名稱(職業),
+      job: 職業,
+      job_name: 顯示職業名稱(職業),
+      role: 職業所屬類型(職業)?.代碼 || "",
+      色彩: 職業代碼色彩(職業),
+    }));
+});
+
+const 目前使用者職業類型 = computed(() => {
+  return 職業群組設定.find((群組) => 群組.代碼 === 使用者職業類型篩選.value) || null;
+});
+
+const 使用者職業選單文字 = computed(() => {
+  if (使用者職業篩選.value) {
+    return 目前使用者職業類型.value
+      ? `${目前使用者職業類型.value.名稱} / ${顯示職業名稱(使用者職業篩選.value)}`
+      : 顯示職業名稱(使用者職業篩選.value);
+  }
+
+  return 目前使用者職業類型.value?.名稱 || "全部職業";
+});
+
+const 使用者職業選單Icon路徑 = computed(() => {
+  if (使用者職業篩選.value) {
+    return 職業Icon路徑(使用者職業篩選.value);
+  }
+
+  if (使用者職業類型篩選.value) {
+    return 職業類型Icon路徑(使用者職業類型篩選.value);
+  }
+
+  return "";
+});
+
+function 符合使用者職業篩選(成績) {
+  if (使用者職業類型篩選.value && 職業所屬類型(成績.job)?.代碼 !== 使用者職業類型篩選.value) {
+    return false;
+  }
+
+  return !使用者職業篩選.value || 成績.job === 使用者職業篩選.value;
+}
+
+const 使用者副本成績 = computed(() => {
+  return 取得使用者副本成績(使用者資料.value, 使用者伺服器篩選.value, 符合使用者職業篩選);
 });
 
 function 建立使用者統計(副本成績) {
@@ -1614,57 +1891,79 @@ const 使用者統計 = computed(() => {
   return 建立使用者統計(使用者副本成績.value);
 });
 
+function 建立使用者成績趨勢項(副本, 職能, 成績列表) {
+  const 數值列表 = 成績列表.map((成績) => 轉為數字(成績.rdps) || 0);
+  const 最低 = Math.min(...數值列表);
+  const 最高 = Math.max(...數值列表);
+  const 第一筆 = 成績列表[0];
+  const 最新 = 成績列表.at(-1);
+  const 最佳 = 成績列表.reduce((目前最佳, 成績) => (使用者成績是否較佳(成績, 目前最佳) ? 成績 : 目前最佳), null);
+  const 點列表 = 成績列表.map((成績, index) => {
+    const rdps = 轉為數字(成績.rdps) || 0;
+    const x = 成績列表.length === 1 ? 50 : (index / (成績列表.length - 1)) * 100;
+    const y = 最高 === 最低 ? 26 : 42 - ((rdps - 最低) / (最高 - 最低)) * 32;
+    return {
+      id: 成績.id,
+      job: 成績.job,
+      rdps,
+      recorded_at_iso: 成績.recorded_at_iso,
+      x: Number(x.toFixed(2)),
+      y: Number(y.toFixed(2)),
+    };
+  });
+  const 折線路徑 = 點列表.length > 1 ? 點列表.map((點, index) => `${index === 0 ? "M" : "L"} ${點.x} ${點.y}`).join(" ") : "";
+  const 填色路徑 = 點列表.length > 1 ? `${折線路徑} L ${點列表.at(-1).x} 46 L ${點列表[0].x} 46 Z` : "";
+
+  return {
+    key: `${副本.encounter_key}::${職能.代碼}`,
+    encounter_key: 副本.encounter_key,
+    encounter_name: 副本.encounter_name,
+    encounter_category: 副本.encounter_category,
+    職能,
+    最新,
+    最佳,
+    變化: (轉為數字(最新?.rdps) || 0) - (轉為數字(第一筆?.rdps) || 0),
+    最低,
+    最高,
+    折線路徑,
+    填色路徑,
+    點列表,
+  };
+}
+
 const 使用者成績趨勢 = computed(() => {
   return 使用者副本成績.value
-    .map((副本) => {
-      const 成績列表 = (副本.public_entries || [])
-        .filter((成績) => 轉為數字(成績.rdps) !== null)
-        .sort((前一個, 後一個) => {
+    .flatMap((副本) => {
+      const 職能成績索引 = new Map();
+      for (const 成績 of 副本.public_entries || []) {
+        const 職能 = 職業所屬類型(成績.job);
+        if (!職能 || 轉為數字(成績.rdps) === null) {
+          continue;
+        }
+
+        if (!職能成績索引.has(職能.代碼)) {
+          職能成績索引.set(職能.代碼, {
+            職能,
+            成績列表: [],
+          });
+        }
+        職能成績索引.get(職能.代碼).成績列表.push(成績);
+      }
+
+      return Array.from(職能成績索引.values()).map(({ 職能, 成績列表 }) => {
+        const 排序後成績 = 成績列表.sort((前一個, 後一個) => {
           const 時間差 = new Date(前一個.recorded_at_iso || 0).getTime() - new Date(後一個.recorded_at_iso || 0).getTime();
           return 時間差 || (前一個.rdps ?? 0) - (後一個.rdps ?? 0);
         });
 
-      if (成績列表.length === 0) {
-        return null;
-      }
-
-      const 數值列表 = 成績列表.map((成績) => 轉為數字(成績.rdps) || 0);
-      const 最低 = Math.min(...數值列表);
-      const 最高 = Math.max(...數值列表);
-      const 第一筆 = 成績列表[0];
-      const 最新 = 成績列表.at(-1);
-      const 最佳 = 成績列表.reduce((目前最佳, 成績) => (使用者成績是否較佳(成績, 目前最佳) ? 成績 : 目前最佳), null);
-      const 點列表 = 成績列表.map((成績, index) => {
-        const rdps = 轉為數字(成績.rdps) || 0;
-        const x = 成績列表.length === 1 ? 50 : (index / (成績列表.length - 1)) * 100;
-        const y = 最高 === 最低 ? 26 : 42 - ((rdps - 最低) / (最高 - 最低)) * 32;
-        return {
-          id: 成績.id,
-          rdps,
-          recorded_at_iso: 成績.recorded_at_iso,
-          x: Number(x.toFixed(2)),
-          y: Number(y.toFixed(2)),
-        };
+        return 建立使用者成績趨勢項(副本, 職能, 排序後成績);
       });
-      const 折線路徑 = 點列表.length > 1 ? 點列表.map((點, index) => `${index === 0 ? "M" : "L"} ${點.x} ${點.y}`).join(" ") : "";
-      const 填色路徑 =
-        點列表.length > 1 ? `${折線路徑} L ${點列表.at(-1).x} 46 L ${點列表[0].x} 46 Z` : "";
-
-      return {
-        encounter_key: 副本.encounter_key,
-        encounter_name: 副本.encounter_name,
-        encounter_category: 副本.encounter_category,
-        最新,
-        最佳,
-        變化: (轉為數字(最新?.rdps) || 0) - (轉為數字(第一筆?.rdps) || 0),
-        最低,
-        最高,
-        折線路徑,
-        填色路徑,
-        點列表,
-      };
     })
-    .filter(Boolean);
+    .sort((前一個, 後一個) => {
+      const 副本順序差 = 取得副本排序值(前一個.encounter_key) - 取得副本排序值(後一個.encounter_key);
+      const 職能順序差 = 職業類型排序值(前一個.職能?.代碼) - 職業類型排序值(後一個.職能?.代碼);
+      return 副本順序差 || 職能順序差 || 前一個.encounter_name.localeCompare(後一個.encounter_name, "zh-Hant-TW");
+    });
 });
 
 function 建立比較角色項目(資料, 伺服器 = "") {
@@ -1685,10 +1984,37 @@ const 比較角色左 = computed(() => 建立比較角色項目(比較角色左�
 const 比較角色右 = computed(() => 建立比較角色項目(比較角色右資料.value, 比較角色右伺服器.value));
 
 const 角色比較已完成 = computed(() => Boolean(比較角色左.value && 比較角色右.value));
+const 目前比較職能 = computed(() => 比較職能索引.get(比較職能篩選.value) || 比較職能設定[0]);
 
 function 取得副本排序值(副本鍵值) {
   const 清單索引 = 副本清單.value.findIndex((副本) => 副本.key === 副本鍵值);
   return 清單索引 >= 0 ? 清單索引 : Number.MAX_SAFE_INTEGER;
+}
+
+function 建立比較副本職能索引(副本成績列表, 職能代碼) {
+  const 索引 = new Map();
+
+  for (const 副本 of 副本成績列表) {
+    const 公開成績 = Array.isArray(副本.public_entries) ? 副本.public_entries : [];
+    for (const 成績 of 公開成績) {
+      const 職能 = 取得比較職能(成績.job);
+      if (!職能 || 職能.代碼 !== 職能代碼) {
+        continue;
+      }
+
+      const 鍵值 = 副本.encounter_key;
+      const 目前 = 索引.get(鍵值);
+      if (!目前 || 使用者成績是否較佳(成績, 目前.best_entry)) {
+        索引.set(鍵值, {
+          ...副本,
+          best_entry: 成績,
+          comparison_role: 職能,
+        });
+      }
+    }
+  }
+
+  return 索引;
 }
 
 const 角色比較列 = computed(() => {
@@ -1696,8 +2022,9 @@ const 角色比較列 = computed(() => {
     return [];
   }
 
-  const 左副本 = new Map(比較角色左.value.副本成績.map((副本) => [副本.encounter_key, 副本]));
-  const 右副本 = new Map(比較角色右.value.副本成績.map((副本) => [副本.encounter_key, 副本]));
+  const 職能 = 目前比較職能.value;
+  const 左副本 = 建立比較副本職能索引(比較角色左.value.副本成績, 職能?.代碼);
+  const 右副本 = 建立比較副本職能索引(比較角色右.value.副本成績, 職能?.代碼);
   const 副本鍵值列表 = Array.from(new Set([...左副本.keys(), ...右副本.keys()]));
 
   return 副本鍵值列表
@@ -1711,9 +2038,11 @@ const 角色比較列 = computed(() => {
       const 差異 = 左Rdps !== null && 右Rdps !== null ? 左Rdps - 右Rdps : null;
 
       return {
+        key: `${副本鍵值}::${職能?.代碼 || "role"}`,
         encounter_key: 副本鍵值,
         encounter_name: 左?.encounter_name || 右?.encounter_name || 副本鍵值,
         encounter_category: 左?.encounter_category || 右?.encounter_category || "",
+        職能,
         左,
         右,
         差異,
@@ -2168,7 +2497,7 @@ async function 載入使用者成績(角色名稱, 伺服器 = "", 選項 = {}) 
 async function 載入比較角色資料(輸入文字) {
   const 查詢 = 解析使用者搜尋輸入(輸入文字);
   if (!查詢.角色名稱) {
-    throw new Error("請輸入兩個角色名稱");
+    throw new Error("請輸入兩個玩家名稱");
   }
 
   await 讀取使用者索引();
@@ -2197,7 +2526,7 @@ async function 提交角色比較() {
   const 左輸入 = 比較角色左輸入.value.trim();
   const 右輸入 = 比較角色右輸入.value.trim();
   if (!左輸入 || !右輸入) {
-    比較錯誤訊息.value = "請輸入兩個角色名稱";
+    比較錯誤訊息.value = "請輸入兩個玩家名稱";
     return;
   }
 
@@ -2215,7 +2544,7 @@ async function 提交角色比較() {
   } catch (錯誤) {
     比較角色左資料.value = null;
     比較角色右資料.value = null;
-    比較錯誤訊息.value = 錯誤 instanceof Error ? 錯誤.message : "無法讀取角色比較資料";
+    比較錯誤訊息.value = 錯誤 instanceof Error ? 錯誤.message : "無法讀取玩家比較資料";
   } finally {
     比較讀取中.value = false;
   }
@@ -2313,6 +2642,18 @@ watch(使用者伺服器篩選, (伺服器) => {
   }
 });
 
+watch([使用者資料, 使用者伺服器篩選, 使用者職業類型選項], () => {
+  if (使用者職業類型篩選.value && !使用者職業類型選項.value.some((職能) => 職能.代碼 === 使用者職業類型篩選.value)) {
+    使用者職業類型篩選.value = "";
+  }
+});
+
+watch([使用者職業類型篩選, 使用者職業選項], () => {
+  if (使用者職業篩選.value && !使用者職業選項.value.some((職業) => 職業.job === 使用者職業篩選.value)) {
+    使用者職業篩選.value = "";
+  }
+});
+
 watch([統計副本鍵值, 全服統計資料], () => {
   if (統計伺服器篩選.value && !統計伺服器選項.value.includes(統計伺服器篩選.value)) {
     統計伺服器篩選.value = "";
@@ -2372,7 +2713,7 @@ onMounted(() => {
       <button type="button" :class="{ 作用中: 頁面模式 === 'ranking' }" @click="切換到排行榜">排行榜</button>
       <button type="button" :class="{ 作用中: 頁面模式 === 'stats' }" @click="切換到全服統計">全服統計</button>
       <button type="button" :class="{ 作用中: 頁面模式 === 'user' }" @click="切換到個人成績單">個人成績單</button>
-      <button type="button" :class="{ 作用中: 頁面模式 === 'compare' }" @click="切換到角色比較">角色比較</button>
+      <button type="button" :class="{ 作用中: 頁面模式 === 'compare' }" @click="切換到角色比較">玩家比較</button>
       <button type="button" :class="{ 作用中: 頁面模式 === 'jobs' }" @click="切換到職業分析">職業分析</button>
       <button type="button" :class="{ 作用中: 頁面模式 === 'activity' }" @click="切換到近期動態">近期動態</button>
     </nav>
@@ -2758,6 +3099,78 @@ onMounted(() => {
                   <span v-else>較上一層 {{ 格式化帶號整數(項目.較上一層差異) }}・{{ 格式化百分比(項目.上一層比例) }}</span>
                 </div>
               </article>
+            </div>
+          </section>
+
+          <section v-if="職業傷害比較列.length > 0" class="統計面板 統計面板寬 職業傷害比較面板" aria-label="全職業輸出比較">
+            <header class="統計面板標題 職業傷害比較標題">
+              <h2 class="說明標籤">
+                <span>全職業輸出比較</span>
+                <span class="說明提示">
+                  <button class="說明提示按鈕" type="button" aria-label="全職業輸出比較說明">?</button>
+                  <span class="說明提示內容" role="tooltip">{{ 統計說明文字("全職業輸出比較") }}</span>
+                </span>
+              </h2>
+              <div class="傷害指標切換" role="tablist" aria-label="傷害指標">
+                <button
+                  v-for="選項 in 傷害比較指標選項"
+                  :key="選項.value"
+                  type="button"
+                  :class="{ 作用中: 統計傷害指標 === 選項.value }"
+                  :aria-selected="統計傷害指標 === 選項.value"
+                  role="tab"
+                  @click="統計傷害指標 = 選項.value"
+                >
+                  {{ 選項.label }}
+                </button>
+              </div>
+            </header>
+            <div class="職業傷害比較說明列">
+              <span>{{ 職業傷害比較條件文字 }}</span>
+              <strong>Rank by {{ 傷害比較指標標籤 }}</strong>
+            </div>
+            <div class="職業傷害比較圖">
+              <div class="職業傷害比較刻度列" aria-hidden="true">
+                <span></span>
+                <div class="職業傷害比較刻度軌">
+                  <span v-for="刻度 in 職業傷害比較刻度" :key="刻度.數值" class="職業傷害比較刻度" :style="{ left: 刻度.位置 }">
+                    {{ 格式化傷害數值(刻度.數值) }}
+                  </span>
+                </div>
+                <span></span>
+              </div>
+              <div class="職業傷害比較列表">
+                <article
+                  v-for="列 in 職業傷害比較列"
+                  :key="列.job"
+                  class="職業傷害比較列"
+                  :style="列.樣式"
+                  :title="`${顯示職業名稱(列.job)} ${傷害比較指標標籤}：中位 ${格式化傷害數值(列.median)}，最高 ${格式化傷害數值(列.max)}`"
+                >
+                  <div class="職業傷害比較職業">
+                    <img
+                      v-if="職業Icon路徑(列.job)"
+                      class="職業圖示"
+                      :src="職業Icon路徑(列.job)"
+                      alt=""
+                      loading="lazy"
+                      @error="隱藏載入失敗圖片"
+                    />
+                    <span>{{ 顯示職業名稱(列.job) }}</span>
+                  </div>
+                  <div class="職業傷害比較軌道" aria-hidden="true">
+                    <span class="職業傷害比較鬚線"></span>
+                    <span class="職業傷害比較盒"></span>
+                    <span class="職業傷害比較中位線"></span>
+                    <span class="職業傷害比較平均點"></span>
+                    <span class="職業傷害比較最高點"></span>
+                  </div>
+                  <div class="職業傷害比較數值">
+                    <strong>{{ 格式化傷害數值(列.median) }}</strong>
+                    <span>{{ 格式化整數(列.count) }} 筆・最高 {{ 格式化傷害數值(列.max) }}</span>
+                  </div>
+                </article>
+              </div>
             </div>
           </section>
 
@@ -3218,7 +3631,7 @@ onMounted(() => {
     </template>
     <template v-else-if="頁面模式 === 'user'">
       <section class="使用者搜尋區" aria-label="個人成績單查詢">
-        <form class="使用者搜尋表單" @submit.prevent="提交使用者搜尋">
+        <form class="使用者搜尋表單 個人成績搜尋表單" @submit.prevent="提交使用者搜尋">
           <label class="欄位 使用者搜尋欄位">
             <span>角色 / 伺服器</span>
             <input
@@ -3234,6 +3647,87 @@ onMounted(() => {
             </datalist>
           </label>
 
+          <div class="欄位 職業選單欄位" @focusout="處理使用者職業選單失焦">
+            <span>職業</span>
+            <div class="職業選單">
+              <button
+                class="職業選單按鈕"
+                type="button"
+                :disabled="!使用者資料 || 使用者職業類型選項.length === 0"
+                :aria-expanded="使用者職業選單開啟"
+                aria-haspopup="true"
+                @click="切換使用者職業選單"
+              >
+                <span class="職業選單目前值">
+                  <img
+                    v-if="使用者職業選單Icon路徑"
+                    class="職業圖示"
+                    :src="使用者職業選單Icon路徑"
+                    alt=""
+                    loading="lazy"
+                    @error="隱藏載入失敗圖片"
+                  />
+                  <span>{{ 使用者職業選單文字 }}</span>
+                </span>
+                <span class="選單箭頭">▾</span>
+              </button>
+
+              <div v-if="使用者職業選單開啟" class="職業選單面板">
+                <div class="職業選單分類欄" role="menu" aria-label="職業類型">
+                  <button
+                    class="職業選單項"
+                    type="button"
+                    :class="{ 已選取: !使用者職業類型篩選 && !使用者職業篩選 }"
+                    @click="清除使用者職業篩選"
+                  >
+                    全部職業
+                  </button>
+                  <button
+                    v-for="類型 in 使用者職業類型選項"
+                    :key="類型.代碼"
+                    class="職業選單項"
+                    type="button"
+                    :class="[職業色彩類別(類型.色彩), { 已選取: 使用者職業類型篩選 === 類型.代碼 }]"
+                    @click="選擇使用者職業類型(類型.代碼)"
+                  >
+                    <img
+                      v-if="職業類型Icon路徑(類型.代碼)"
+                      class="職業圖示"
+                      :src="職業類型Icon路徑(類型.代碼)"
+                      alt=""
+                      loading="lazy"
+                      @error="隱藏載入失敗圖片"
+                    />
+                    <span>{{ 類型.名稱 }}</span>
+                  </button>
+                </div>
+
+                <div class="職業選單職業欄" role="menu" aria-label="職業">
+                  <template v-if="使用者職業類型篩選 && 使用者職業選項.length > 0">
+                    <button
+                      v-for="職業 in 使用者職業選項"
+                      :key="職業.代碼"
+                      class="職業選單項"
+                      type="button"
+                      :class="[職業色彩類別(職業.色彩), { 已選取: 使用者職業篩選 === 職業.代碼 }]"
+                      @click="選擇使用者職業(職業.代碼)"
+                    >
+                      <img
+                        v-if="職業Icon路徑(職業.代碼)"
+                        class="職業圖示"
+                        :src="職業Icon路徑(職業.代碼)"
+                        alt=""
+                        loading="lazy"
+                        @error="隱藏載入失敗圖片"
+                      />
+                      <span>{{ 職業.名稱 }}</span>
+                    </button>
+                  </template>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <button type="submit">查詢</button>
         </form>
       </section>
@@ -3242,7 +3736,7 @@ onMounted(() => {
         <div v-if="使用者讀取中" class="狀態列">讀取個人成績單中</div>
         <div v-else-if="使用者錯誤訊息" class="狀態列 錯誤">{{ 使用者錯誤訊息 }}</div>
         <div v-else-if="!使用者資料" class="狀態列">輸入角色名稱後即可查看個人成績單</div>
-        <div v-else-if="使用者副本成績.length === 0" class="狀態列">目前沒有符合伺服器的公開成績</div>
+        <div v-else-if="使用者副本成績.length === 0" class="狀態列">目前沒有符合篩選條件的公開成績</div>
 
         <template v-else>
           <section class="個人成績概要" aria-label="個人成績概要">
@@ -3283,12 +3777,23 @@ onMounted(() => {
               <span>公開 rDPS 歷史</span>
             </header>
             <div class="成績趨勢列表">
-              <article v-for="趨勢 in 使用者成績趨勢" :key="趨勢.encounter_key" class="趨勢項">
+              <article v-for="趨勢 in 使用者成績趨勢" :key="趨勢.key" class="趨勢項">
                 <header class="趨勢項標題">
-                  <span>
+                  <div class="趨勢標題文字">
                     <small>{{ 趨勢.encounter_category || "副本" }}</small>
                     <strong>{{ 趨勢.encounter_name }}</strong>
-                  </span>
+                    <span class="職業標籤 趨勢職能標籤" :class="職業色彩類別(趨勢.職能?.色彩)">
+                      <img
+                        v-if="職業類型Icon路徑(趨勢.職能?.代碼)"
+                        class="職業圖示 職業標籤圖示"
+                        :src="職業類型Icon路徑(趨勢.職能?.代碼)"
+                        alt=""
+                        loading="lazy"
+                        @error="隱藏載入失敗圖片"
+                      />
+                      <span>{{ 趨勢.職能?.名稱 || "職能" }}</span>
+                    </span>
+                  </div>
                   <em :class="{ 上升: 趨勢.變化 > 0, 下降: 趨勢.變化 < 0 }">{{ 格式化帶號整數(趨勢.變化) }}</em>
                 </header>
                 <div class="趨勢摘要">
@@ -3310,7 +3815,7 @@ onMounted(() => {
                       :key="點.id"
                       class="趨勢點"
                       :style="趨勢點樣式(點)"
-                      :title="`${格式化紀錄時間(點.recorded_at_iso)}・rDPS ${格式化傷害數值(點.rdps)}`"
+                      :title="`${格式化紀錄時間(點.recorded_at_iso)}・${顯示職業名稱(點.job)}・rDPS ${格式化傷害數值(點.rdps)}`"
                     ></span>
                   </span>
                   <div class="趨勢刻度" aria-hidden="true">
@@ -3587,15 +4092,41 @@ onMounted(() => {
       </section>
     </template>
     <template v-else-if="頁面模式 === 'compare'">
-      <section class="使用者搜尋區" aria-label="角色比較查詢">
+      <section class="使用者搜尋區" aria-label="玩家比較查詢">
         <form class="使用者搜尋表單 比較搜尋表單" @submit.prevent="提交角色比較">
+          <fieldset class="比較職能選擇">
+            <legend>比較職能</legend>
+            <div class="比較職能按鈕列" role="radiogroup" aria-label="比較職能">
+              <button
+                v-for="職能 in 比較職能設定"
+                :key="職能.代碼"
+                type="button"
+                class="比較職能按鈕"
+                :class="[職業色彩類別(職能.色彩), { 作用中: 比較職能篩選 === 職能.代碼 }]"
+                role="radio"
+                :aria-checked="比較職能篩選 === 職能.代碼"
+                @click="比較職能篩選 = 職能.代碼"
+              >
+                <img
+                  v-if="職業類型Icon路徑(職能.圖示代碼)"
+                  class="職業圖示 職業標籤圖示"
+                  :src="職業類型Icon路徑(職能.圖示代碼)"
+                  alt=""
+                  loading="lazy"
+                  @error="隱藏載入失敗圖片"
+                />
+                <span>{{ 職能.名稱 }}</span>
+              </button>
+            </div>
+          </fieldset>
+
           <label class="欄位 使用者搜尋欄位">
-            <span>角色 A</span>
+            <span>玩家 A</span>
             <input
               v-model="比較角色左輸入"
               type="search"
               list="比較角色左搜尋建議"
-              placeholder="輸入角色名稱，或選擇「角色 @ 伺服器」"
+              placeholder="輸入玩家名稱，或選擇「玩家 @ 伺服器」"
             />
             <datalist id="比較角色左搜尋建議">
               <option v-for="建議 in 比較角色左搜尋建議" :key="`${建議.character_name}@${建議.server}`" :value="建議.value">
@@ -3605,12 +4136,12 @@ onMounted(() => {
           </label>
 
           <label class="欄位 使用者搜尋欄位">
-            <span>角色 B</span>
+            <span>玩家 B</span>
             <input
               v-model="比較角色右輸入"
               type="search"
               list="比較角色右搜尋建議"
-              placeholder="輸入角色名稱，或選擇「角色 @ 伺服器」"
+              placeholder="輸入玩家名稱，或選擇「玩家 @ 伺服器」"
             />
             <datalist id="比較角色右搜尋建議">
               <option v-for="建議 in 比較角色右搜尋建議" :key="`${建議.character_name}@${建議.server}`" :value="建議.value">
@@ -3624,15 +4155,15 @@ onMounted(() => {
       </section>
 
       <section class="角色比較區" aria-live="polite">
-        <div v-if="比較讀取中" class="狀態列">讀取角色比較資料中</div>
+        <div v-if="比較讀取中" class="狀態列">讀取玩家比較資料中</div>
         <div v-else-if="比較錯誤訊息" class="狀態列 錯誤">{{ 比較錯誤訊息 }}</div>
-        <div v-else-if="!角色比較已完成" class="狀態列">輸入兩個角色後即可比較公開成績</div>
+        <div v-else-if="!角色比較已完成" class="狀態列">輸入兩個玩家後即可比較公開成績</div>
 
         <template v-else>
-          <section class="角色比較概要" aria-label="角色比較概要">
+          <section class="角色比較概要" aria-label="玩家比較概要">
             <article class="比較角色卡">
               <header>
-                <span>角色 A</span>
+                <span>玩家 A</span>
                 <strong>{{ 比較角色左.character_name }}</strong>
                 <em>{{ 比較角色左.server }}</em>
               </header>
@@ -3646,7 +4177,7 @@ onMounted(() => {
 
             <article class="比較角色卡">
               <header>
-                <span>角色 B</span>
+                <span>玩家 B</span>
                 <strong>{{ 比較角色右.character_name }}</strong>
                 <em>{{ 比較角色右.server }}</em>
               </header>
@@ -3661,7 +4192,7 @@ onMounted(() => {
 
           <section class="統計面板 統計面板寬" aria-label="副本成績比較">
             <header class="統計面板標題">
-              <h2>副本成績比較</h2>
+              <h2>{{ 目前比較職能?.名稱 || "職能" }}成績比較</h2>
               <span>{{ 比較角色左.character_name }}・{{ 比較角色右.character_name }}</span>
             </header>
             <div class="統計表格外框">
@@ -3675,7 +4206,7 @@ onMounted(() => {
                   </tr>
                 </thead>
                 <tbody>
-                  <tr v-for="列 in 角色比較列" :key="列.encounter_key">
+                  <tr v-for="列 in 角色比較列" :key="列.key">
                     <td>
                       <span class="比較副本">
                         <small>{{ 列.encounter_category || "副本" }}</small>
@@ -3725,7 +4256,7 @@ onMounted(() => {
                     </td>
                   </tr>
                   <tr v-if="角色比較列.length === 0">
-                    <td colspan="4" class="統計空列">兩個角色目前沒有可比較的共同資料</td>
+                    <td colspan="4" class="統計空列">{{ `兩個玩家目前沒有可比較的${目前比較職能?.名稱 || "職能"}共同資料` }}</td>
                   </tr>
                 </tbody>
               </table>
@@ -4275,11 +4806,73 @@ button:disabled {
   gap: 16px;
 }
 
+.個人成績搜尋表單 {
+  grid-template-columns: minmax(260px, 1.35fr) minmax(220px, 0.9fr) auto;
+}
+
 .比較搜尋表單 {
   grid-template-columns: minmax(220px, 1fr) minmax(220px, 1fr) auto;
 }
 
-.使用者搜尋欄位 input {
+.比較職能選擇 {
+  grid-column: 1 / -1;
+  min-width: 0;
+  border: 0;
+  margin: 0;
+  padding: 0;
+}
+
+.比較職能選擇 legend {
+  margin-bottom: 8px;
+  color: var(--次要文字);
+  font-size: 0.9rem;
+  font-weight: 650;
+}
+
+.比較職能按鈕列 {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.比較職能按鈕 {
+  min-width: 0;
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border-color: var(--邊框色);
+  color: var(--次要文字);
+  background: var(--表面背景柔和);
+  white-space: nowrap;
+}
+
+.比較職能按鈕:hover:not(:disabled),
+.比較職能按鈕.作用中 {
+  color: var(--職業重點文字);
+}
+
+.比較職能按鈕.防護色:hover:not(:disabled),
+.比較職能按鈕.防護色.作用中 {
+  border-color: var(--防護色);
+  background: var(--防護色);
+}
+
+.比較職能按鈕.治療色:hover:not(:disabled),
+.比較職能按鈕.治療色.作用中 {
+  border-color: var(--治療色);
+  background: var(--治療色);
+}
+
+.比較職能按鈕.輸出色:hover:not(:disabled),
+.比較職能按鈕.輸出色.作用中 {
+  border-color: var(--輸出色);
+  background: var(--輸出色);
+}
+
+.使用者搜尋欄位 input,
+.使用者搜尋欄位 select {
   min-width: 0;
 }
 
@@ -4524,6 +5117,243 @@ button:disabled {
   height: 100%;
   border-radius: inherit;
   background: linear-gradient(90deg, var(--重點色), var(--防護色));
+}
+
+.職業傷害比較標題 {
+  align-items: center;
+}
+
+.傷害指標切換 {
+  flex: 0 0 auto;
+  display: inline-grid;
+  grid-template-columns: repeat(3, minmax(64px, 1fr));
+  overflow: hidden;
+  border: 1px solid var(--邊框柔和色);
+  border-radius: 8px;
+  background: var(--輸入背景);
+}
+
+.傷害指標切換 button {
+  min-height: 34px;
+  border: 0;
+  border-right: 1px solid var(--邊框柔和色);
+  border-radius: 0;
+  padding: 0 12px;
+  color: var(--次要文字);
+  background: transparent;
+  font-size: 0.82rem;
+  font-weight: 820;
+}
+
+.傷害指標切換 button:last-child {
+  border-right: 0;
+}
+
+.傷害指標切換 button:hover:not(:disabled),
+.傷害指標切換 button.作用中 {
+  color: var(--重點文字);
+  background: var(--重點色);
+}
+
+.職業傷害比較說明列 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  border-bottom: 1px solid var(--邊框柔和色);
+  padding: 10px 14px;
+  color: var(--次要文字);
+  background: var(--表面背景柔和);
+  font-size: 0.82rem;
+  font-weight: 720;
+}
+
+.職業傷害比較說明列 span,
+.職業傷害比較說明列 strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.職業傷害比較說明列 strong {
+  flex: 0 0 auto;
+  color: var(--主要文字);
+  font-weight: 850;
+}
+
+.職業傷害比較圖 {
+  overflow-x: auto;
+  padding: 12px 14px 14px;
+  background: var(--表面背景);
+}
+
+.職業傷害比較刻度列,
+.職業傷害比較列 {
+  min-width: 900px;
+  display: grid;
+  grid-template-columns: minmax(150px, 0.32fr) minmax(540px, 1fr) minmax(170px, 0.34fr);
+  align-items: center;
+  gap: 12px;
+}
+
+.職業傷害比較刻度列 {
+  min-height: 28px;
+  margin-bottom: 4px;
+  color: var(--靜音文字);
+  font-size: 0.72rem;
+  font-weight: 720;
+  font-variant-numeric: tabular-nums;
+}
+
+.職業傷害比較刻度軌 {
+  position: relative;
+  height: 100%;
+  border-bottom: 1px solid var(--邊框柔和色);
+}
+
+.職業傷害比較刻度 {
+  position: absolute;
+  bottom: 6px;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+.職業傷害比較列表 {
+  display: grid;
+  gap: 2px;
+}
+
+.職業傷害比較列 {
+  min-height: 30px;
+}
+
+.職業傷害比較職業 {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--主要文字);
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.職業傷害比較職業 span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.職業傷害比較軌道 {
+  position: relative;
+  height: 22px;
+  border-radius: 6px;
+  background:
+    linear-gradient(90deg, transparent calc(100% - 1px), var(--邊框柔和色) 100%) 0 0 / 20% 100%,
+    var(--表面背景柔和);
+}
+
+.職業傷害比較鬚線,
+.職業傷害比較盒,
+.職業傷害比較中位線,
+.職業傷害比較平均點,
+.職業傷害比較最高點 {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.職業傷害比較鬚線 {
+  left: var(--最小值);
+  width: max(1px, calc(var(--最大值) - var(--最小值)));
+  height: 2px;
+  background: color-mix(in srgb, var(--職業比較色) 72%, transparent);
+}
+
+.職業傷害比較鬚線::before,
+.職業傷害比較鬚線::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  width: 2px;
+  height: 10px;
+  transform: translateY(-50%);
+  border-radius: 999px;
+  background: var(--職業比較色);
+}
+
+.職業傷害比較鬚線::before {
+  left: 0;
+}
+
+.職業傷害比較鬚線::after {
+  right: 0;
+}
+
+.職業傷害比較盒 {
+  left: var(--第一四分位);
+  width: max(3px, calc(var(--第三四分位) - var(--第一四分位)));
+  height: 14px;
+  border-radius: 5px;
+  background: var(--職業比較色);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--職業比較色) 74%, var(--表面背景));
+}
+
+.職業傷害比較中位線 {
+  left: var(--中位數);
+  width: 2px;
+  height: 18px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--主要文字) 55%, var(--職業比較色));
+}
+
+.職業傷害比較平均點,
+.職業傷害比較最高點 {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+}
+
+.職業傷害比較平均點 {
+  left: var(--平均值);
+  border: 2px solid var(--職業比較色);
+  background: var(--表面背景);
+}
+
+.職業傷害比較最高點 {
+  left: var(--最大值);
+  background: var(--職業比較色);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--職業比較色) 18%, transparent);
+}
+
+.職業傷害比較數值 {
+  min-width: 0;
+  display: grid;
+  justify-items: end;
+  gap: 1px;
+  font-variant-numeric: tabular-nums;
+}
+
+.職業傷害比較數值 strong,
+.職業傷害比較數值 span {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.職業傷害比較數值 strong {
+  color: var(--主要文字);
+  font-size: 0.84rem;
+  font-weight: 850;
+}
+
+.職業傷害比較數值 span {
+  color: var(--次要文字);
+  font-size: 0.68rem;
+  font-weight: 720;
 }
 
 .分布列表 {
@@ -5160,7 +5990,7 @@ button:disabled {
   gap: 12px;
 }
 
-.趨勢項標題 span {
+.趨勢標題文字 {
   min-width: 0;
   display: grid;
   gap: 3px;
@@ -5179,6 +6009,13 @@ button:disabled {
   color: var(--主要文字);
   font-size: 0.94rem;
   font-weight: 820;
+}
+
+.趨勢職能標籤 {
+  justify-self: start;
+  min-height: 24px;
+  margin-top: 2px;
+  font-size: 0.78rem;
 }
 
 .趨勢項標題 em {
@@ -6126,6 +6963,29 @@ td a:hover {
   .統計面板標題 {
     display: grid;
     gap: 4px;
+  }
+
+  .職業傷害比較說明列 {
+    display: grid;
+    gap: 4px;
+  }
+
+  .職業傷害比較說明列 strong {
+    justify-self: start;
+  }
+
+  .傷害指標切換 {
+    width: 100%;
+  }
+
+  .職業傷害比較圖 {
+    padding: 10px;
+  }
+
+  .職業傷害比較刻度列,
+  .職業傷害比較列 {
+    min-width: 820px;
+    grid-template-columns: 138px minmax(480px, 1fr) 156px;
   }
 
   .隊友關係版面 {

@@ -12,6 +12,8 @@ const configEncountersPath = path.join(rootDir, "config", "encounters.json");
 const publicDataDir = path.join(rootDir, "public", "data");
 const outputDir = path.join(rootDir, "public", "data", "users");
 const globalStatsPath = path.join(publicDataDir, "global_stats.json");
+const savageDamageComparisonEncounterKeys = ["savage_m1s", "savage_m2s", "savage_m3s", "savage_m4s"];
+const savageDamageComparisonEncounterKeySet = new Set(savageDamageComparisonEncounterKeys);
 
 const jobRoleGroups = [
   {
@@ -178,6 +180,129 @@ function toPercent(count, total) {
   return total > 0 ? Number(((count / total) * 100).toFixed(2)) : 0;
 }
 
+function roundDamageStat(value) {
+  return value === null ? null : Number(value.toFixed(2));
+}
+
+function percentile(sortedValues, percentileValue) {
+  if (sortedValues.length === 0) {
+    return null;
+  }
+  if (sortedValues.length === 1) {
+    return sortedValues[0];
+  }
+
+  const index = (sortedValues.length - 1) * percentileValue;
+  const lowerIndex = Math.floor(index);
+  const upperIndex = Math.ceil(index);
+  if (lowerIndex === upperIndex) {
+    return sortedValues[lowerIndex];
+  }
+
+  const weight = index - lowerIndex;
+  return sortedValues[lowerIndex] * (1 - weight) + sortedValues[upperIndex] * weight;
+}
+
+function buildDamageMetricStats(values) {
+  const sortedValues = values
+    .map(toNumber)
+    .filter((value) => value !== null && value > 0)
+    .sort((left, right) => left - right);
+
+  if (sortedValues.length === 0) {
+    return null;
+  }
+
+  const total = sortedValues.reduce((sum, value) => sum + value, 0);
+  return {
+    count: sortedValues.length,
+    min: roundDamageStat(sortedValues[0]),
+    q1: roundDamageStat(percentile(sortedValues, 0.25)),
+    median: roundDamageStat(percentile(sortedValues, 0.5)),
+    q3: roundDamageStat(percentile(sortedValues, 0.75)),
+    max: roundDamageStat(sortedValues.at(-1)),
+    average: roundDamageStat(total / sortedValues.length),
+  };
+}
+
+function buildJobDamageStats(entries) {
+  const groupedByJob = new Map();
+
+  for (const entry of entries || []) {
+    if (!entry?.job) {
+      continue;
+    }
+
+    if (!groupedByJob.has(entry.job)) {
+      groupedByJob.set(entry.job, {
+        dps: [],
+        rdps: [],
+        adps: [],
+        entry_count: 0,
+      });
+    }
+
+    const bucket = groupedByJob.get(entry.job);
+    bucket.entry_count += 1;
+    bucket.dps.push(entry.dps);
+    bucket.rdps.push(entry.rdps ?? entry.dps);
+    bucket.adps.push(entry.adps);
+  }
+
+  return Array.from(groupedByJob.entries())
+    .map(([job, bucket]) => ({
+      job,
+      ...getJobRole(job),
+      entry_count: bucket.entry_count,
+      metrics: {
+        dps: buildDamageMetricStats(bucket.dps),
+        rdps: buildDamageMetricStats(bucket.rdps),
+        adps: buildDamageMetricStats(bucket.adps),
+      },
+    }))
+    .filter((item) => item.metrics.dps || item.metrics.rdps || item.metrics.adps)
+    .sort((left, right) => {
+      const leftScore = left.metrics.rdps?.median ?? left.metrics.dps?.median ?? 0;
+      const rightScore = right.metrics.rdps?.median ?? right.metrics.dps?.median ?? 0;
+      return rightScore - leftScore || compareByLocale(left.job, right.job);
+    });
+}
+
+function buildServerDamageStats(entries) {
+  const groupedByServer = new Map();
+
+  for (const entry of entries || []) {
+    const server = entry?.server;
+    if (!server) {
+      continue;
+    }
+
+    if (!groupedByServer.has(server)) {
+      groupedByServer.set(server, []);
+    }
+    groupedByServer.get(server).push(entry);
+  }
+
+  return Array.from(groupedByServer.entries())
+    .map(([server, serverEntries]) => ({
+      server,
+      entry_count: serverEntries.length,
+      damage_stats: buildJobDamageStats(serverEntries),
+    }))
+    .sort((left, right) => compareByLocale(left.server, right.server));
+}
+
+function attachDamageStatsToServers(serverStats, entries) {
+  const damageStatsByServer = new Map(buildServerDamageStats(entries).map((item) => [item.server, item]));
+  return (serverStats || []).map((serverStatsItem) => {
+    const damageStats = damageStatsByServer.get(serverStatsItem.server);
+    return {
+      ...serverStatsItem,
+      damage_stats: damageStats?.damage_stats || [],
+    };
+  });
+}
+
 function getJobRole(job) {
   return (
     jobRoleByJob.get(job) || {
@@ -322,6 +447,8 @@ function collectEncounterStats(encounter, entries, updatedAtIso) {
     encounter_category: encounter.category || null,
     updated_at_iso: updatedAtIso || null,
     ...distribution,
+    server_stats: attachDamageStatsToServers(distribution.server_stats, entries),
+    damage_stats: buildJobDamageStats(entries),
     clear_share_percent: 0,
     top_server: distribution.server_stats[0] || null,
     top_job: distribution.job_stats[0] || null,
@@ -797,6 +924,7 @@ async function main() {
 
   const latestRankingUpdatedAt = Array.from(updatedAtIsoByEncounter.values()).sort().at(-1) || null;
   const globalDistribution = collectScopeDistribution(allEntries, (entry) => entry.encounter_key);
+  const savageDamageComparisonEntries = allEntries.filter((entry) => savageDamageComparisonEncounterKeySet.has(entry.encounter_key));
   const totalEncounterClearCount = globalDistribution.character_count;
   const totalJobClearCount = globalDistribution.job_record_count;
   const normalizedEncounterStats = encounterStats.map((encounter) => ({
@@ -822,9 +950,13 @@ async function main() {
     total_job_clear_count: totalJobClearCount,
     total_entry_count: globalDistribution.entry_count,
     encounter_count: normalizedEncounterStats.length,
-    server_stats: globalDistribution.server_stats,
+    server_stats: attachDamageStatsToServers(globalDistribution.server_stats, allEntries),
     role_stats: globalDistribution.role_stats,
     job_stats: globalDistribution.job_stats,
+    damage_stats: buildJobDamageStats(allEntries),
+    savage_damage_comparison_encounter_keys: savageDamageComparisonEncounterKeys,
+    savage_damage_stats: buildJobDamageStats(savageDamageComparisonEntries),
+    savage_server_damage_stats: buildServerDamageStats(savageDamageComparisonEntries),
     encounters: normalizedEncounterStats,
   });
 
