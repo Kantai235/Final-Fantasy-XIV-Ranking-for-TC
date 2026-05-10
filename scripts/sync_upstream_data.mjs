@@ -468,10 +468,27 @@ function statusScore(status) {
   return scores[status] || 0;
 }
 
+function isCounterKey(key) {
+  return (
+    key.endsWith("_count") ||
+    key.endsWith("_reports") ||
+    key === "reports_found" ||
+    key === "reports_selected" ||
+    key === "reports_skipped_known" ||
+    key === "reports_deferred" ||
+    key.endsWith("_reports_found") ||
+    key.endsWith("_reports_selected") ||
+    key.endsWith("_reports_skipped_known") ||
+    key.endsWith("_reports_deferred") ||
+    key === "duplicate_count" ||
+    key === "rank"
+  );
+}
+
 function resolveScalar(base, local, remote, pathParts, issues) {
   const key = pathParts.at(-1) || "";
   if (typeof local === "number" && typeof remote === "number") {
-    if (isTimestampKey(pathParts) || key.endsWith("_count") || key === "duplicate_count" || key === "rank") {
+    if (isTimestampKey(pathParts) || isCounterKey(key)) {
       return Math.max(local, remote);
     }
   }
@@ -1120,7 +1137,11 @@ async function reapplyDirtySourceChanges(dirtyPlan) {
 
 function runNpmScript(scriptName) {
   console.log(`Running npm run ${scriptName}...`);
-  run(process.platform === "win32" ? "npm.cmd" : "npm", ["run", scriptName]);
+  if (process.platform === "win32") {
+    run("cmd.exe", ["/d", "/s", "/c", "npm", "run", scriptName]);
+    return;
+  }
+  run("npm", ["run", scriptName]);
 }
 
 function printStatusSummary() {
