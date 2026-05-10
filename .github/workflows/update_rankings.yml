@@ -74,7 +74,7 @@ jobs:
           FFLOGS_CLIENT_IDS: ${{ secrets.FFLOGS_CLIENT_IDS }}
           FFLOGS_CLIENT_SECRETS: ${{ secrets.FFLOGS_CLIENT_SECRETS }}
           FFLOGS_CLIENT_CREDENTIALS_JSON: ${{ secrets.FFLOGS_CLIENT_CREDENTIALS_JSON }}
-        run: python scripts/backfill_missing_fflogs_data.py --limit 500
+        run: python scripts/backfill_missing_fflogs_data.py --limit 250
 
       - name: Split complete ranking data for Git
         run: python scripts/fetch_fflogs.py --split-rankings
