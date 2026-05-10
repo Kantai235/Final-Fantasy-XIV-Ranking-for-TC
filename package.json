@@ -1,0 +1,21 @@
+{
+  "name": "ffxiv-tc-rankings",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:public-rankings": "python scripts/fetch_fflogs.py --rebuild-public",
+    "build:user-data": "node scripts/build_user_data.mjs",
+    "dev": "vite --host 127.0.0.1",
+    "prebuild": "npm run build:public-rankings && npm run build:user-data",
+    "build": "vite build",
+    "preview": "vite preview --host 127.0.0.1"
+  },
+  "dependencies": {
+    "vue": "^3.5.13"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.2.4",
+    "vite": "^6.3.5"
+  }
+}

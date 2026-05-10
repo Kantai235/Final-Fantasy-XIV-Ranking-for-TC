@@ -1,0 +1,132 @@
+[
+  {
+    "key": "savage_m1s",
+    "name": "零式 M1S / 黑貓",
+    "category": "零式",
+    "zone_id": 62,
+    "encounter_id": 93,
+    "difficulty": 101,
+    "enabled": true,
+    "scan_start_date": "2026-02-01"
+  },
+  {
+    "key": "savage_m2s",
+    "name": "零式 M2S / 蜂蜂小甜心",
+    "category": "零式",
+    "zone_id": 62,
+    "encounter_id": 94,
+    "difficulty": 101,
+    "enabled": true,
+    "scan_start_date": "2026-02-01"
+  },
+  {
+    "key": "savage_m3s",
+    "name": "零式 M3S / 野蠻炸彈",
+    "category": "零式",
+    "zone_id": 62,
+    "encounter_id": 95,
+    "difficulty": 101,
+    "enabled": true,
+    "scan_start_date": "2026-02-01"
+  },
+  {
+    "key": "savage_m4s",
+    "name": "零式 M4S / 狡雷",
+    "category": "零式",
+    "zone_id": 62,
+    "encounter_id": 96,
+    "difficulty": 101,
+    "enabled": true,
+    "scan_start_date": "2026-02-01"
+  },
+  {
+    "key": "extreme_valigarmanda",
+    "name": "極 豔翼蛇鳥",
+    "category": "極",
+    "zone_id": 58,
+    "encounter_id": 1071,
+    "difficulty": 100,
+    "enabled": true,
+    "scan_start_date": "2025-11-27"
+  },
+  {
+    "key": "extreme_zoraal_ja",
+    "name": "極 佐拉加",
+    "category": "極",
+    "zone_id": 58,
+    "encounter_id": 1072,
+    "difficulty": 100,
+    "enabled": true,
+    "scan_start_date": "2025-11-27"
+  },
+  {
+    "key": "extreme_queen_eternal",
+    "name": "極 永恆女王",
+    "category": "極",
+    "zone_id": 58,
+    "encounter_id": 1078,
+    "difficulty": 100,
+    "enabled": true,
+    "scan_start_date": "2026-04-21"
+  },
+  {
+    "key": "unreal_byakko",
+    "name": "幻 白虎",
+    "category": "幻",
+    "zone_id": 64,
+    "encounter_id": 3009,
+    "difficulty": 100,
+    "enabled": true,
+    "scan_start_date": "2026-04-21"
+  },
+  {
+    "key": "ultimate_bahamut",
+    "name": "絕 巴哈姆特",
+    "category": "絕",
+    "zone_id": 59,
+    "encounter_id": 1073,
+    "difficulty": 100,
+    "enabled": true,
+    "scan_start_date": "2025-11-27"
+  },
+  {
+    "key": "ultimate_ultima_weapon",
+    "name": "絕 究極神兵",
+    "category": "絕",
+    "zone_id": 59,
+    "encounter_id": 1074,
+    "difficulty": 100,
+    "enabled": true,
+    "scan_start_date": "2025-11-27"
+  },
+  {
+    "key": "ultimate_alexander",
+    "name": "絕 亞歷山大",
+    "category": "絕",
+    "zone_id": 59,
+    "encounter_id": 1075,
+    "difficulty": 100,
+    "enabled": true,
+    "scan_start_date": "2025-11-27"
+  },
+  {
+    "key": "ultimate_dragonsong",
+    "name": "絕 幻想龍詩",
+    "category": "絕",
+    "zone_id": 59,
+    "encounter_id": 1076,
+    "difficulty": 100,
+    "enabled": true,
+    "scan_start_date": "2025-11-27"
+  },
+  {
+    "key": "ultimate_omega",
+    "name": "絕 歐米茄",
+    "category": "絕",
+    "zone_id": 59,
+    "encounter_id": 1077,
+    "difficulty": 100,
+    "enabled": true,
+    "scan_start_date": "2025-11-27"
+  }
+]

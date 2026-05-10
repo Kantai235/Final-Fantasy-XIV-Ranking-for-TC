@@ -1,0 +1,4 @@
+{
+  "base_path": "./",
+  "allowed_hosts": ["ranking.init.engineer"]
+}
