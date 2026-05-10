@@ -1278,6 +1278,7 @@ const 統計詞彙說明 = {
   伺服器佔比: "在目前副本與職業範圍下，各伺服器佔全部符合條件紀錄的比例。",
   職業佔比: "在目前副本與伺服器範圍下，各職業或職業類型佔全部符合條件紀錄的比例。",
   隊友關係: "依公開通關同場資料整理常同場隊友、職能組成與副本聚集；不等同實際固定隊名單。",
+  同場副本聚集: "把此角色與隊友一起出現在同一筆公開通關紀錄的資料依副本彙整；場數是同場通關次數，隊友數是曾在該副本同場的不同角色數，用來看同場關係主要集中在哪些副本。",
   伺服器生態比較: "以各伺服器內部的職能通關紀錄比例呈現，顏色越深代表該職能在該伺服器占比越高。",
   通關紀錄: "套用職業範圍時，以符合職業條件的通關紀錄計算。",
   範圍佔比: "套用伺服器或職業範圍後，副本通關概覽會改以目前篩選範圍作為分母。",
@@ -4183,8 +4184,14 @@ onMounted(() => {
 
             <div v-if="隊友副本交集.length > 0" class="隊友副本區">
               <header class="隊友副本標題">
-                <h3>同場副本聚集</h3>
-                <span>以所有隊友的副本交集彙整</span>
+                <h3 class="說明標籤">
+                  <span>同場副本聚集</span>
+                  <span class="說明提示">
+                    <button class="說明提示按鈕" type="button" aria-label="同場副本聚集說明">?</button>
+                    <span class="說明提示內容" role="tooltip">{{ 統計說明文字("同場副本聚集") }}</span>
+                  </span>
+                </h3>
+                <span>顯示同場紀錄主要集中在哪些副本</span>
               </header>
               <div class="隊友副本交集">
                 <article v-for="副本 in 隊友副本交集" :key="副本.encounter_key" class="隊友副本項">
@@ -4272,6 +4279,7 @@ onMounted(() => {
                     <tr>
                       <th scope="col">紀錄時間</th>
                       <th scope="col">職業</th>
+                      <th scope="col" class="歷史報告欄位">報告</th>
                       <th scope="col" class="數字">
                         <span class="表頭說明標籤">
                           <span>Active</span>
@@ -4309,7 +4317,6 @@ onMounted(() => {
                         </span>
                       </th>
                       <th scope="col" class="數字">通關時間</th>
-                      <th scope="col">報告</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -4328,15 +4335,15 @@ onMounted(() => {
                           <span>{{ 顯示職業名稱(成績.job) }}</span>
                         </span>
                       </td>
+                      <td class="歷史報告欄位">
+                        <a v-if="成績.report_url" :href="成績.report_url" target="_blank" rel="noreferrer">FFLogs</a>
+                        <span v-else>-</span>
+                      </td>
                       <td class="數字">{{ 格式化Active(成績.active_percent) }}</td>
                       <td class="數字">{{ 格式化傷害數值(成績.dps) }}</td>
                       <td class="數字">{{ 格式化傷害數值(成績.rdps) }}</td>
                       <td class="數字">{{ 格式化傷害數值(成績.adps) }}</td>
                       <td class="數字">{{ 格式化通關時間(成績.clear_time_seconds) }}</td>
-                      <td>
-                        <a v-if="成績.report_url" :href="成績.report_url" target="_blank" rel="noreferrer">FFLogs</a>
-                        <span v-else>-</span>
-                      </td>
                     </tr>
                   </tbody>
                 </table>
@@ -6613,12 +6620,32 @@ th .說明提示內容 {
   font-variant-numeric: tabular-nums;
 }
 
-.隊友關係區,
+.隊友關係區 {
+  position: relative;
+  z-index: 2;
+  overflow: hidden;
+  border: 1px solid var(--邊框色);
+  border-radius: 8px;
+  background: var(--表面背景);
+}
+
 .常見隊友區 {
   overflow: hidden;
   border: 1px solid var(--邊框色);
   border-radius: 8px;
   background: var(--表面背景);
+}
+
+.隊友關係標題 .說明提示內容,
+.隊友副本標題 .說明提示內容 {
+  top: calc(100% + 8px);
+  bottom: auto;
+  left: 0;
+  transform: none;
+  color: var(--主要文字);
+  font-size: 0.78rem;
+  font-weight: 650;
+  line-height: 1.45;
 }
 
 .隊友關係標題,
@@ -6871,7 +6898,7 @@ th .說明提示內容 {
   font-weight: 820;
 }
 
-.隊友副本標題 span {
+.隊友副本標題 > span {
   color: var(--次要文字);
   font-size: 0.8rem;
   font-weight: 720;
@@ -6955,6 +6982,10 @@ th .說明提示內容 {
 }
 
 .個人成績列 {
+  --個人成績欄位: minmax(170px, 1.45fr) minmax(104px, 0.72fr) minmax(76px, 0.48fr)
+    minmax(82px, 0.52fr) minmax(82px, 0.52fr) minmax(82px, 0.52fr) minmax(82px, 0.52fr)
+    minmax(82px, 0.52fr);
+  --個人成績欄距: 12px;
   overflow: visible;
   border: 1px solid var(--邊框色);
   border-radius: 8px;
@@ -6968,11 +6999,9 @@ th .說明提示內容 {
 .成績列摘要 {
   min-height: 64px;
   display: grid;
-  grid-template-columns:
-    minmax(170px, 1.45fr) minmax(104px, 0.72fr) minmax(76px, 0.48fr) minmax(76px, 0.48fr)
-    minmax(82px, 0.52fr) minmax(82px, 0.52fr) minmax(82px, 0.52fr) auto;
+  grid-template-columns: var(--個人成績欄位);
   align-items: center;
-  gap: 12px;
+  gap: var(--個人成績欄距);
   padding: 9px 14px;
   color: var(--次要文字);
   cursor: pointer;
@@ -6997,6 +7026,11 @@ th .說明提示內容 {
   min-width: 0;
   display: grid;
   gap: 3px;
+}
+
+.成績列數值 {
+  justify-items: end;
+  text-align: right;
 }
 
 .成績列副本 small,
@@ -7057,18 +7091,58 @@ th .說明提示內容 {
 }
 
 .歷史表格外框 {
-  overflow-x: auto;
+  overflow: visible;
   border-top: 1px solid var(--邊框柔和色);
   padding-top: 2px;
 }
 
 .歷史表格 {
-  min-width: 980px;
+  width: 100%;
+  min-width: 0;
+  display: block;
+}
+
+.歷史表格 thead,
+.歷史表格 tbody {
+  display: block;
+}
+
+.歷史表格 tr {
+  width: 100%;
+  display: grid;
+  grid-template-columns: var(--個人成績欄位);
+  align-items: center;
+  column-gap: var(--個人成績欄距);
+  padding: 0 14px;
+}
+
+.歷史表格 thead tr {
+  background: var(--表頭背景);
+}
+
+.歷史表格 tbody tr {
+  border-bottom: 1px solid var(--邊框柔和色);
+}
+
+.歷史表格 tbody tr:last-child {
+  border-bottom: 0;
 }
 
 .歷史表格 th,
 .歷史表格 td {
-  padding: 11px 14px;
+  min-width: 0;
+  border-bottom: 0;
+  padding: 11px 0;
+  background: transparent;
+}
+
+.歷史表格 td {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.歷史表格 .歷史報告欄位 {
+  text-align: right;
 }
 
 .分頁資訊列 {
