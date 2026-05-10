@@ -130,6 +130,22 @@ npm run build:user-data
 npm run build
 ```
 
+## 同步 GitHub Actions 與本機資料
+
+如果 GitHub Actions 和本機爬蟲同時產生新資料，先用 dry-run 檢查：
+
+```bash
+npm run sync:data -- --dry-run
+```
+
+確認沒有 `REMOVAL` 或 `CONFLICT` 後，再同步遠端並自動合併來源資料：
+
+```bash
+npm run sync:data
+```
+
+這個工具會保護 append-only 資料：`data/state.json` 的 report 狀態、`data/rankings/*.json` 的 reports，以及 `config/encounters.json` 的 encounter key。如果任一邊刪除了既有資料，工具會停止並列出需要人工確認的項目。合併成功後會重建 `public/data` 產物；若只想合併來源資料，可以加上 `--no-rebuild`。
+
 預覽建置結果：
 
 ```bash
