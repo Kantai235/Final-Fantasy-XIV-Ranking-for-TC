@@ -136,9 +136,16 @@ def 布林設定(名稱: str) -> bool:
     "dps",
     "rdps",
     "adps",
+    "ndps",
+    "total_damage",
     "active_time_ms",
     "active_percent",
+    "clear_time_ms",
     "clear_time_seconds",
+    "damage_downtime_ms",
+    "damage_downtime_seconds",
+    "damage_time_ms",
+    "damage_time_seconds",
     "recorded_at_iso",
     "report_start_time_iso",
     "report_code",
@@ -267,10 +274,14 @@ query ReportMasterData($code: String!) {
       code
       masterData {
         actors(type: "Player") {
+          gameID
+          icon
           id
           name
+          petOwner
           server
           subType
+          type
         }
       }
     }
@@ -287,9 +298,84 @@ query ReportFightList($code: String!, $encounterID: Int!, $difficulty: Int!) {
       title
       startTime
       endTime
+      exportedSegments
+      revision
+      segments
+      visibility
+      archiveStatus {
+        isArchived
+        isAccessible
+        archiveDate
+      }
       region {
         id
         name
+        compactName
+        slug
+      }
+      zone {
+        id
+        name
+        frozen
+      }
+      guild {
+        id
+        name
+        type
+        competitionMode
+        stealthMode
+        server {
+          ...ServerFields
+        }
+      }
+      guildTag {
+        id
+        name
+      }
+      owner {
+        id
+        name
+      }
+      rankedCharacters {
+        id
+        canonicalID
+        lodestoneID
+        name
+        hidden
+        claimed
+        server {
+          ...ServerFields
+        }
+      }
+      masterData {
+        logVersion
+        gameVersion
+        lang
+        abilities {
+          gameID
+          icon
+          name
+          type
+        }
+        actors {
+          gameID
+          icon
+          id
+          name
+          petOwner
+          server
+          subType
+          type
+        }
+      }
+      phases {
+        encounterID
+        separatesWipes
+        phases {
+          id
+          name
+          isIntermission
+        }
       }
       fights(encounterID: $encounterID, difficulty: $difficulty, killType: Kills) {
         id
@@ -298,11 +384,114 @@ query ReportFightList($code: String!, $encounterID: Int!, $difficulty: Int!) {
         startTime
         endTime
         combatTime
+        originalEncounterID
+        fightPercentage
         difficulty
+        kill
+        completeRaid
+        inProgress
+        hasEcho
+        lastPhase
+        lastPhaseAsAbsoluteIndex
+        lastPhaseIsIntermission
+        size
+        standardComposition
+        wipeCalledTime
+        friendlyPlayers
+        enemyPlayers
+        boundingBox {
+          minX
+          maxX
+          minY
+          maxY
+        }
+        dungeonPulls {
+          id
+          encounterID
+          name
+          startTime
+          endTime
+          kill
+          x
+          y
+          boundingBox {
+            minX
+            maxX
+            minY
+            maxY
+          }
+          maps {
+            id
+          }
+          enemyNPCs {
+            id
+            gameID
+            minimumInstanceID
+            maximumInstanceID
+            minimumInstanceGroupID
+            maximumInstanceGroupID
+          }
+        }
+        enemyNPCs {
+          gameID
+          id
+          instanceCount
+          groupCount
+          petOwner
+        }
+        enemyPets {
+          gameID
+          id
+          instanceCount
+          groupCount
+          petOwner
+        }
+        friendlyNPCs {
+          gameID
+          id
+          instanceCount
+          groupCount
+          petOwner
+        }
+        friendlyPets {
+          gameID
+          id
+          instanceCount
+          groupCount
+          petOwner
+        }
+        gameZone {
+          id
+          name
+        }
+        maps {
+          id
+        }
+        phaseTransitions {
+          id
+          startTime
+        }
         averageItemLevel
         bossPercentage
       }
     }
+  }
+}
+
+fragment ServerFields on Server {
+  id
+  name
+  normalizedName
+  slug
+  region {
+    id
+    name
+    compactName
+    slug
+  }
+  subregion {
+    id
+    name
   }
 }
 """
@@ -1287,17 +1476,61 @@ def 取得玩家明細資料(原始成績: dict[str, Any]) -> dict[str, Any]:
     return 明細資料 if isinstance(明細資料, dict) else {}
 
 
-def 取得傷害統計列(原始成績: dict[str, Any]) -> list[dict[str, Any]]:
+def 取得傷害統計資料(原始成績: dict[str, Any]) -> dict[str, Any]:
     damage_done = 原始成績.get("damage_done")
     if not isinstance(damage_done, dict):
-        return []
+        return {}
 
     資料 = damage_done.get("data")
     if not isinstance(資料, dict):
-        return []
+        return {}
+
+    return 資料
+
+
+def 取得傷害統計列(原始成績: dict[str, Any]) -> list[dict[str, Any]]:
+    資料 = 取得傷害統計資料(原始成績)
 
     entries = 資料.get("entries")
     return [entry for entry in entries if isinstance(entry, dict)] if isinstance(entries, list) else []
+
+
+def 整理毫秒數值(數值: float | None) -> int | float | None:
+    if 數值 is None:
+        return None
+    return int(數值) if float(數值).is_integer() else round(數值, 3)
+
+
+def 毫秒轉秒數(數值: float | int | None) -> float | None:
+    if 數值 is None:
+        return None
+    return round(float(數值) / 1000, 3)
+
+
+def 建立傷害表格摘要(原始成績: dict[str, Any]) -> dict[str, Any]:
+    資料 = 取得傷害統計資料(原始成績)
+    return {鍵: 值 for 鍵, 值 in 資料.items() if 鍵 != "entries"}
+
+
+def 計算傷害時間資訊(原始成績: dict[str, Any], 戰鬥時間毫秒: float | None) -> dict[str, int | float | None]:
+    傷害資料 = 取得傷害統計資料(原始成績)
+    表格總時間毫秒 = 轉_float(傷害資料.get("totalTime"))
+    表格戰鬥時間毫秒 = 轉_float(傷害資料.get("combatTime"))
+    停手時間毫秒 = 轉_float(傷害資料.get("damageDowntime"))
+    分母基準毫秒 = 表格戰鬥時間毫秒 if 表格戰鬥時間毫秒 is not None else 戰鬥時間毫秒
+
+    傷害計算時間毫秒 = None
+    if 分母基準毫秒 is not None:
+        傷害計算時間毫秒 = 分母基準毫秒 - (停手時間毫秒 or 0)
+        if 傷害計算時間毫秒 <= 0:
+            傷害計算時間毫秒 = 分母基準毫秒
+
+    return {
+        "fflogs_total_time_ms": 整理毫秒數值(表格總時間毫秒),
+        "fflogs_combat_time_ms": 整理毫秒數值(表格戰鬥時間毫秒),
+        "damage_downtime_ms": 整理毫秒數值(停手時間毫秒),
+        "damage_time_ms": 整理毫秒數值(傷害計算時間毫秒),
+    }
 
 
 def 建立玩家索引(
@@ -1449,6 +1682,8 @@ def 建立戰鬥簽章(戰鬥: dict[str, Any]) -> str:
             "encounter_id": 戰鬥.get("encounter_id"),
             "difficulty": 戰鬥.get("difficulty"),
             "clear_time_ms": 戰鬥.get("clear_time_ms"),
+            "damage_downtime_ms": 戰鬥.get("damage_downtime_ms"),
+            "damage_time_ms": 戰鬥.get("damage_time_ms"),
             "players": 玩家簽章,
         }
     )
@@ -1507,6 +1742,7 @@ def 建立排行榜條目(排行榜: dict[str, Any]) -> list[dict[str, Any]]:
                         "adps": 玩家.get("adps"),
                         "dps": dps,
                         "total_damage": 玩家.get("total_damage"),
+                        "damage_time_ms": 戰鬥.get("damage_time_ms"),
                     }
                 )
                 既有成績 = 精確成績索引.get(精確成績鍵值)
@@ -1531,6 +1767,10 @@ def 建立排行榜條目(排行榜: dict[str, Any]) -> list[dict[str, Any]]:
                     "active_percent": 計算_active_percent(玩家.get("active_time_ms"), 戰鬥.get("clear_time_ms")),
                     "clear_time_ms": 戰鬥.get("clear_time_ms"),
                     "clear_time_seconds": 戰鬥.get("clear_time_seconds"),
+                    "damage_downtime_ms": 戰鬥.get("damage_downtime_ms"),
+                    "damage_downtime_seconds": 戰鬥.get("damage_downtime_seconds"),
+                    "damage_time_ms": 戰鬥.get("damage_time_ms"),
+                    "damage_time_seconds": 戰鬥.get("damage_time_seconds"),
                     "recorded_at": 戰鬥.get("recorded_at"),
                     "recorded_at_iso": 戰鬥.get("recorded_at_iso"),
                     "report_code": 報告代碼,
@@ -1609,13 +1849,28 @@ def 建立報告成績(
                 戰鬥時間毫秒 = 戰鬥結束 - 戰鬥開始
 
         原始成績 = 查詢玩家成績(session, 認證池, 副本設定, 報告代碼, 戰鬥_id)
+        傷害時間資訊 = 計算傷害時間資訊(原始成績, 戰鬥時間毫秒)
+        傷害計算時間毫秒 = 轉_float(傷害時間資訊.get("damage_time_ms")) or 戰鬥時間毫秒
         紀錄時間戳記 = 相對戰鬥時間轉實際時間(報告起始時間戳記, 戰鬥.get("startTime"))
         整理後戰鬥列表.append(
             {
                 "fight_id": 戰鬥_id,
                 "encounter_id": 戰鬥.get("encounterID"),
+                "original_encounter_id": 戰鬥.get("originalEncounterID"),
                 "name": 戰鬥.get("name"),
                 "difficulty": 戰鬥.get("difficulty"),
+                "kill": 戰鬥.get("kill"),
+                "complete_raid": 戰鬥.get("completeRaid"),
+                "in_progress": 戰鬥.get("inProgress"),
+                "has_echo": 戰鬥.get("hasEcho"),
+                "last_phase": 戰鬥.get("lastPhase"),
+                "last_phase_as_absolute_index": 戰鬥.get("lastPhaseAsAbsoluteIndex"),
+                "last_phase_is_intermission": 戰鬥.get("lastPhaseIsIntermission"),
+                "size": 戰鬥.get("size"),
+                "standard_composition": 戰鬥.get("standardComposition"),
+                "wipe_called_time": 戰鬥.get("wipeCalledTime"),
+                "friendly_players": 戰鬥.get("friendlyPlayers"),
+                "enemy_players": 戰鬥.get("enemyPlayers"),
                 "start_time": 戰鬥.get("startTime"),
                 "start_time_iso": 毫秒轉_iso(戰鬥.get("startTime")),
                 "end_time": 戰鬥.get("endTime"),
@@ -1624,9 +1879,25 @@ def 建立報告成績(
                 "recorded_at_iso": 毫秒轉_iso(紀錄時間戳記),
                 "clear_time_ms": int(戰鬥時間毫秒) if 戰鬥時間毫秒 is not None else None,
                 "clear_time_seconds": round(戰鬥時間毫秒 / 1000, 3) if 戰鬥時間毫秒 is not None else None,
+                "fflogs_total_time_ms": 傷害時間資訊.get("fflogs_total_time_ms"),
+                "fflogs_total_time_seconds": 毫秒轉秒數(傷害時間資訊.get("fflogs_total_time_ms")),
+                "fflogs_combat_time_ms": 傷害時間資訊.get("fflogs_combat_time_ms"),
+                "fflogs_combat_time_seconds": 毫秒轉秒數(傷害時間資訊.get("fflogs_combat_time_ms")),
+                "damage_downtime_ms": 傷害時間資訊.get("damage_downtime_ms"),
+                "damage_downtime_seconds": 毫秒轉秒數(傷害時間資訊.get("damage_downtime_ms")),
+                "damage_time_ms": 傷害時間資訊.get("damage_time_ms"),
+                "damage_time_seconds": 毫秒轉秒數(傷害時間資訊.get("damage_time_ms")),
+                "fight_percentage": 戰鬥.get("fightPercentage"),
                 "average_item_level": 戰鬥.get("averageItemLevel"),
                 "boss_percentage": 戰鬥.get("bossPercentage"),
-                "players": 從原始成績整理玩家_dps(原始成績, 戰鬥時間毫秒),
+                "damage_done_summary": 建立傷害表格摘要(原始成績),
+                "fflogs_raw": {
+                    "fight": 戰鬥,
+                    "player_details": 原始成績.get("player_details"),
+                    "damage_done": 原始成績.get("damage_done"),
+                    "rankings": 原始成績.get("rankings"),
+                },
+                "players": 從原始成績整理玩家_dps(原始成績, 傷害計算時間毫秒),
             }
         )
 
@@ -1634,14 +1905,29 @@ def 建立報告成績(
         return None
 
     區域 = 報告.get("region") or 淺層報告.get("region") or {}
+    報告原始資料 = {鍵: 值 for 鍵, 值 in 報告.items() if 鍵 != "fights"}
     return {
         "report_code": 報告代碼,
         "title": 報告.get("title") or 淺層報告.get("title"),
         "url": f"https://www.fflogs.com/reports/{報告代碼}",
+        "revision": 報告.get("revision"),
+        "segments": 報告.get("segments"),
+        "exported_segments": 報告.get("exportedSegments"),
+        "visibility": 報告.get("visibility"),
+        "archive_status": 報告.get("archiveStatus"),
         "region": {
             "id": 區域.get("id"),
             "name": 區域.get("name"),
+            "compact_name": 區域.get("compactName"),
+            "slug": 區域.get("slug"),
         },
+        "zone": 報告.get("zone"),
+        "guild": 報告.get("guild"),
+        "guild_tag": 報告.get("guildTag"),
+        "owner": 報告.get("owner"),
+        "ranked_characters": 報告.get("rankedCharacters"),
+        "master_data": 報告.get("masterData"),
+        "phases": 報告.get("phases"),
         "report_start_time": 報告起始時間戳記,
         "report_start_time_iso": 毫秒轉_iso(報告起始時間戳記),
         "report_end_time": 報告.get("endTime") or 淺層報告.get("endTime"),
@@ -1651,6 +1937,9 @@ def 建立報告成績(
         ),
         "matched_players": 繁中服玩家,
         "fights": 整理後戰鬥列表,
+        "fflogs_raw": {
+            "report": 報告原始資料,
+        },
         "fetched_at": 現在毫秒(),
         "fetched_at_iso": 毫秒轉_iso(現在毫秒()),
     }

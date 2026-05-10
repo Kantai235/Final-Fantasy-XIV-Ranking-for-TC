@@ -532,6 +532,11 @@ function makePublicEntry({ encounter, report, reportCode, fight, player, fightPl
 
   const clearTimeMs = toNumber(fight.clear_time_ms);
   const clearTimeSeconds = toNumber(fight.clear_time_seconds) ?? (clearTimeMs === null ? null : clearTimeMs / 1000);
+  const damageDowntimeMs = toNumber(fight.damage_downtime_ms);
+  const damageTimeMs = toNumber(fight.damage_time_ms);
+  const damageDowntimeSeconds =
+    toNumber(fight.damage_downtime_seconds) ?? (damageDowntimeMs === null ? null : damageDowntimeMs / 1000);
+  const damageTimeSeconds = toNumber(fight.damage_time_seconds) ?? (damageTimeMs === null ? null : damageTimeMs / 1000);
   const activePercent =
     toNumber(player.active_percent) ?? calculateActivePercent(player.active_time_ms, clearTimeMs, clearTimeSeconds);
   const signature = {
@@ -547,6 +552,7 @@ function makePublicEntry({ encounter, report, reportCode, fight, player, fightPl
     adps: toNumber(player.adps),
     dps: toNumber(player.dps),
     total_damage: toNumber(player.total_damage),
+    damage_time_ms: damageTimeMs,
   };
 
   return {
@@ -566,6 +572,10 @@ function makePublicEntry({ encounter, report, reportCode, fight, player, fightPl
     active_percent: activePercent,
     clear_time_ms: clearTimeMs,
     clear_time_seconds: clearTimeSeconds,
+    damage_downtime_ms: damageDowntimeMs,
+    damage_downtime_seconds: damageDowntimeSeconds,
+    damage_time_ms: damageTimeMs,
+    damage_time_seconds: damageTimeSeconds,
     recorded_at: toNumber(fight.recorded_at),
     recorded_at_iso: fight.recorded_at_iso || report.report_start_time_iso || null,
     report_code: reportCode,
@@ -622,6 +632,7 @@ function collectEntriesFromReports({ ranking, encounter }) {
           adps: entry.adps,
           dps: entry.dps,
           total_damage: entry.total_damage,
+          damage_time_ms: entry.damage_time_ms,
         });
         const existing = entriesByExactKey.get(exactKey);
         if (existing) {
@@ -679,6 +690,10 @@ function collectEntriesFromRankingEntries({ ranking, encounter }) {
         active_percent: toNumber(entry.active_percent),
         clear_time_ms: toNumber(entry.clear_time_ms),
         clear_time_seconds: toNumber(entry.clear_time_seconds),
+        damage_downtime_ms: toNumber(entry.damage_downtime_ms),
+        damage_downtime_seconds: toNumber(entry.damage_downtime_seconds),
+        damage_time_ms: toNumber(entry.damage_time_ms),
+        damage_time_seconds: toNumber(entry.damage_time_seconds),
         recorded_at: toNumber(entry.recorded_at),
         recorded_at_iso: entry.recorded_at_iso || entry.report_start_time_iso || null,
         report_code: entry.report_code,
