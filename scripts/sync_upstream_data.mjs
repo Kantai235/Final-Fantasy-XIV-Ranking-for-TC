@@ -476,6 +476,8 @@ function isCounterKey(key) {
     key === "reports_selected" ||
     key === "reports_skipped_known" ||
     key === "reports_deferred" ||
+    key === "reports_saved" ||
+    key === "rankings_inserted_or_updated" ||
     key.endsWith("_reports_found") ||
     key.endsWith("_reports_selected") ||
     key.endsWith("_reports_skipped_known") ||
@@ -1177,7 +1179,7 @@ async function main() {
   }
   if (dirtyOutsideManaged.length) {
     const dirtyOutsidePaths = new Set(dirtyOutsideManaged.map((entry) => entry.path));
-    const upstreamDirtyOverlap = getChangedFiles(localHead, upstreamRef).filter((filePath) => dirtyOutsidePaths.has(filePath));
+    const upstreamDirtyOverlap = getChangedFiles(mergeBase, upstreamRef).filter((filePath) => dirtyOutsidePaths.has(filePath));
     if (upstreamDirtyOverlap.length) {
       throw new ToolError(
         "Dirty non-data files overlap with upstream changes.",
