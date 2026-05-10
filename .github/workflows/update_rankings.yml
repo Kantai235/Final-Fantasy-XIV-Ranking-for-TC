@@ -11,7 +11,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: pages
+  group: update-rankings-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -25,6 +25,9 @@ jobs:
     steps:
       - name: Checkout 儲存庫程式碼
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
 
       - name: 設定 Python 環境
         uses: actions/setup-python@v5
@@ -74,7 +77,17 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add data public/data/encounters.json public/data/global_stats.json
           git commit -m "chore: 自動更新排行榜資料"
-          git push origin HEAD:${{ github.ref_name }}
+          for attempt in 1 2 3; do
+            git fetch origin "${{ github.ref_name }}"
+            git rebase "origin/${{ github.ref_name }}"
+            if git push origin "HEAD:${{ github.ref_name }}"; then
+              exit 0
+            fi
+            echo "Push was rejected, retrying after syncing remote branch..."
+            sleep $((attempt * 5))
+          done
+          echo "Unable to push ranking data after syncing remote branch."
+          exit 1
 
       - name: 設定 GitHub Pages
         uses: actions/configure-pages@v5
