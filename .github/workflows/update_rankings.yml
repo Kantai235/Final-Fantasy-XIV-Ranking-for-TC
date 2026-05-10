@@ -70,6 +70,38 @@ jobs:
       - name: 產生個人成績單資料
         run: node scripts/build_user_data.mjs
 
+      - name: 寫入更新執行戳記
+        run: |
+          node <<'NODE'
+          const fs = require("node:fs");
+
+          let globalStats = null;
+          try {
+            globalStats = JSON.parse(fs.readFileSync("public/data/global_stats.json", "utf8"));
+          } catch {
+            globalStats = null;
+          }
+
+          const runId = process.env.GITHUB_RUN_ID || null;
+          const repository = process.env.GITHUB_REPOSITORY || null;
+          const status = {
+            schema_version: 1,
+            updated_at_iso: new Date().toISOString(),
+            event: process.env.GITHUB_EVENT_NAME || null,
+            branch: process.env.GITHUB_REF_NAME || null,
+            head_sha: process.env.GITHUB_SHA || null,
+            run_id: runId,
+            run_attempt: Number(process.env.GITHUB_RUN_ATTEMPT || 0) || null,
+            run_url: repository && runId ? `https://github.com/${repository}/actions/runs/${runId}` : null,
+            rankings_updated_at_iso: globalStats?.rankings_updated_at_iso ?? null,
+            total_character_count: globalStats?.total_character_count ?? null,
+            total_entry_count: globalStats?.total_entry_count ?? null,
+          };
+
+          fs.mkdirSync("data", { recursive: true });
+          fs.writeFileSync("data/update_status.json", `${JSON.stringify(status, null, 2)}\n`, "utf8");
+          NODE
+
       - name: 檢查排行榜資料是否有變動
         id: data-changes
         run: |
