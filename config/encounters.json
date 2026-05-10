@@ -76,7 +76,7 @@
     "zone_id": 64,
     "encounter_id": 3009,
     "difficulty": 100,
-    "enabled": false,
+    "enabled": true,
     "scan_start_date": "2026-04-21"
   },
   {
