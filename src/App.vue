@@ -47,6 +47,8 @@ const 統計伺服器篩選 = ref("");
 const 統計職業範圍 = ref("all");
 const 伺服器拆分模式 = ref("none");
 const 統計傷害指標 = ref("rdps");
+const 職業傷害提示鎖定職業 = ref("");
+const 職業傷害提示互動職業 = ref("");
 const 職業分析職業 = ref("");
 const 職業分析職業類型 = ref("");
 const 職業分析選單開啟 = ref(false);
@@ -1031,6 +1033,10 @@ const 傷害比較指標標籤 = computed(() => {
   return 傷害比較指標選項.find((選項) => 選項.value === 統計傷害指標.value)?.label || "rDPS";
 });
 
+const 職業傷害提示作用職業 = computed(() => {
+  return 職業傷害提示互動職業.value || 職業傷害提示鎖定職業.value;
+});
+
 const 職業傷害比較資料來源 = computed(() => {
   const 伺服器 = 統計伺服器篩選.value;
 
@@ -1143,6 +1149,26 @@ const 職業傷害比較列 = computed(() => {
     },
   }));
 });
+
+function 職業傷害提示文字(列) {
+  return `${顯示職業名稱(列.job)} ${傷害比較指標標籤.value}：最小 ${格式化傷害數值(列.min)}，中位數 ${格式化傷害數值(列.median)}，平均 ${格式化傷害數值(列.average)}，最大 ${格式化傷害數值(列.max)}，樣本 ${格式化整數(列.count)} 筆`;
+}
+
+function 顯示職業傷害提示(職業代碼) {
+  職業傷害提示互動職業.value = 職業代碼;
+}
+
+function 隱藏職業傷害提示(職業代碼) {
+  if (職業傷害提示互動職業.value === 職業代碼) {
+    職業傷害提示互動職業.value = "";
+  }
+}
+
+function 切換職業傷害提示(職業代碼) {
+  const 已鎖定 = 職業傷害提示鎖定職業.value === 職業代碼;
+  職業傷害提示鎖定職業.value = 已鎖定 ? "" : 職業代碼;
+  職業傷害提示互動職業.value = 已鎖定 ? "" : 職業代碼;
+}
 
 function 職業範圍類型(範圍) {
   if (!範圍 || 範圍 === "all") {
@@ -3345,8 +3371,18 @@ onMounted(() => {
                   v-for="列 in 職業傷害比較列"
                   :key="列.job"
                   class="職業傷害比較列"
+                  :class="{ 顯示提示: 職業傷害提示作用職業 === 列.job }"
                   :style="列.樣式"
-                  :title="`${顯示職業名稱(列.job)} ${傷害比較指標標籤}：中位 ${格式化傷害數值(列.median)}，最高 ${格式化傷害數值(列.max)}`"
+                  tabindex="0"
+                  :aria-label="職業傷害提示文字(列)"
+                  :title="職業傷害提示文字(列)"
+                  @mouseenter="顯示職業傷害提示(列.job)"
+                  @mouseleave="隱藏職業傷害提示(列.job)"
+                  @focus="顯示職業傷害提示(列.job)"
+                  @blur="隱藏職業傷害提示(列.job)"
+                  @click="切換職業傷害提示(列.job)"
+                  @keydown.enter.prevent="切換職業傷害提示(列.job)"
+                  @keydown.space.prevent="切換職業傷害提示(列.job)"
                 >
                   <div class="職業傷害比較職業">
                     <img
@@ -3365,6 +3401,24 @@ onMounted(() => {
                     <span class="職業傷害比較中位線"></span>
                     <span class="職業傷害比較平均點"></span>
                     <span class="職業傷害比較最高點"></span>
+                    <span class="職業傷害比較提示" aria-hidden="true">
+                      <span>
+                        <em>最小</em>
+                        <strong>{{ 格式化傷害數值(列.min) }}</strong>
+                      </span>
+                      <span>
+                        <em>中位</em>
+                        <strong>{{ 格式化傷害數值(列.median) }}</strong>
+                      </span>
+                      <span>
+                        <em>平均</em>
+                        <strong>{{ 格式化傷害數值(列.average) }}</strong>
+                      </span>
+                      <span>
+                        <em>最大</em>
+                        <strong>{{ 格式化傷害數值(列.max) }}</strong>
+                      </span>
+                    </span>
                   </div>
                   <div class="職業傷害比較數值">
                     <strong>{{ 格式化傷害數值(列.median) }}</strong>
@@ -5425,6 +5479,20 @@ button:disabled {
 
 .職業傷害比較列 {
   min-height: 30px;
+  position: relative;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color 0.16s ease;
+}
+
+.職業傷害比較列:hover,
+.職業傷害比較列.顯示提示 {
+  background: var(--表面背景柔和);
+}
+
+.職業傷害比較列:focus {
+  outline: 3px solid var(--焦點陰影);
+  outline-offset: 2px;
 }
 
 .職業傷害比較職業 {
@@ -5448,6 +5516,7 @@ button:disabled {
   position: relative;
   height: 22px;
   border-radius: 6px;
+  overflow: visible;
   background:
     linear-gradient(90deg, transparent calc(100% - 1px), var(--邊框柔和色) 100%) 0 0 / 20% 100%,
     var(--表面背景柔和);
@@ -5524,6 +5593,79 @@ button:disabled {
   left: var(--最大值);
   background: var(--職業比較色);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--職業比較色) 18%, transparent);
+}
+
+.職業傷害比較提示 {
+  position: absolute;
+  z-index: 30;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  width: min(420px, calc(100% - 18px));
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  transform: translate(-50%, 4px);
+  border: 1px solid var(--邊框色);
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: var(--主要文字);
+  background: var(--表面背景);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.28);
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity 0.16s ease,
+    transform 0.16s ease,
+    visibility 0.16s ease;
+}
+
+.職業傷害比較提示::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -5px;
+  width: 10px;
+  height: 10px;
+  transform: translateX(-50%) rotate(45deg);
+  border-right: 1px solid var(--邊框色);
+  border-bottom: 1px solid var(--邊框色);
+  background: var(--表面背景);
+}
+
+.職業傷害比較提示 span {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.職業傷害比較提示 em {
+  color: var(--次要文字);
+  font-size: 0.68rem;
+  font-style: normal;
+  font-weight: 760;
+  line-height: 1.1;
+}
+
+.職業傷害比較提示 strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--主要文字);
+  font-size: 0.78rem;
+  font-weight: 850;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.職業傷害比較列:hover .職業傷害比較提示,
+.職業傷害比較列:focus .職業傷害比較提示,
+.職業傷害比較列.顯示提示 .職業傷害比較提示 {
+  transform: translate(-50%, 0);
+  opacity: 1;
+  visibility: visible;
 }
 
 .職業傷害比較數值 {
