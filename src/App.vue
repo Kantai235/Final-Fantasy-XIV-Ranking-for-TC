@@ -14,6 +14,7 @@ const 職業選單開啟 = ref(false);
 const 主色模式 = ref("default");
 const 搜尋關鍵字 = ref("");
 const 排序欄位 = ref("rdps");
+const 排序方向 = ref("desc");
 const 目前頁碼 = ref(1);
 const 每頁筆數 = 100;
 const 主題模式 = ref("dark");
@@ -61,15 +62,6 @@ const 目前副本 = computed(() => {
 const 資料網址 = computed(() => {
   return `${import.meta.env.BASE_URL}${目前副本.value?.data_path || "data/rankings/savage_m1s.json"}`;
 });
-
-const 排序選項 = [
-  { value: "active", label: "Active 高到低" },
-  { value: "dps", label: "DPS 高到低" },
-  { value: "rdps", label: "rDPS 高到低" },
-  { value: "adps", label: "aDPS 高到低" },
-  { value: "clearTime", label: "通關時間短到長" },
-  { value: "recordedAt", label: "紀錄時間新到舊" },
-];
 
 const 傷害比較指標選項 = [
   { value: "rdps", label: "rDPS" },
@@ -562,13 +554,22 @@ function 格式化通關時間(秒數) {
   return `${分鐘}:${String(秒).padStart(2, "0")}`;
 }
 
-function 格式化紀錄時間(iso時間) {
+function 解析紀錄日期(iso時間) {
   if (!iso時間) {
-    return "-";
+    return null;
   }
 
   const 日期 = new Date(iso時間);
   if (Number.isNaN(日期.getTime())) {
+    return null;
+  }
+
+  return 日期;
+}
+
+function 格式化紀錄時間(iso時間) {
+  const 日期 = 解析紀錄日期(iso時間);
+  if (!日期) {
     return "-";
   }
 
@@ -577,6 +578,35 @@ function 格式化紀錄時間(iso時間) {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).format(日期);
+}
+
+function 格式化紀錄日期(iso時間) {
+  const 日期 = 解析紀錄日期(iso時間);
+  if (!日期) {
+    return "-";
+  }
+
+  return new Intl.DateTimeFormat("zh-TW", {
+    timeZone: "Asia/Taipei",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(日期);
+}
+
+function 格式化紀錄時刻(iso時間) {
+  const 日期 = 解析紀錄日期(iso時間);
+  if (!日期) {
+    return "";
+  }
+
+  return new Intl.DateTimeFormat("zh-TW", {
+    timeZone: "Asia/Taipei",
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
@@ -628,37 +658,122 @@ function 計算Active百分比(activeTimeMs, 通關秒數) {
   return Number(((activeTime / (通關秒數 * 1000)) * 100).toFixed(2));
 }
 
+const 排序欄位標籤 = {
+  rank: "排名",
+  active: "Active",
+  dps: "DPS",
+  rdps: "rDPS",
+  adps: "aDPS",
+  clearTime: "通關時間",
+  recordedAt: "紀錄時間",
+};
+
+const 排序預設方向 = {
+  rank: "asc",
+  active: "desc",
+  dps: "desc",
+  rdps: "desc",
+  adps: "desc",
+  clearTime: "asc",
+  recordedAt: "desc",
+};
+
+function 排序欄位預設方向(欄位) {
+  return 排序預設方向[欄位] || "desc";
+}
+
+function 排序方向文字(欄位, 方向 = 排序方向.value) {
+  if (欄位 === "clearTime") {
+    return 方向 === "asc" ? "短到長" : "長到短";
+  }
+  if (欄位 === "recordedAt") {
+    return 方向 === "asc" ? "舊到新" : "新到舊";
+  }
+  return 方向 === "asc" ? "低到高" : "高到低";
+}
+
+function 下一個排序方向(欄位) {
+  if (排序欄位.value !== 欄位) {
+    return 排序欄位預設方向(欄位);
+  }
+  return 排序方向.value === "asc" ? "desc" : "asc";
+}
+
+function 切換排序(欄位) {
+  if (排序欄位.value === 欄位) {
+    排序方向.value = 下一個排序方向(欄位);
+    return;
+  }
+
+  排序欄位.value = 欄位;
+  排序方向.value = 排序欄位預設方向(欄位);
+}
+
+function 是否目前排序(欄位) {
+  return 排序欄位.value === 欄位;
+}
+
+function 排序方向圖示(欄位) {
+  if (!是否目前排序(欄位)) {
+    return "";
+  }
+  return 排序方向.value === "asc" ? "▲" : "▼";
+}
+
+function 排序ARIA(欄位) {
+  if (!是否目前排序(欄位)) {
+    return "none";
+  }
+  return 排序方向.value === "asc" ? "ascending" : "descending";
+}
+
+function 排序按鈕標籤(欄位) {
+  const 標籤 = 排序欄位標籤[欄位] || 欄位;
+  const 下一方向 = 下一個排序方向(欄位);
+  return `以${標籤}${排序方向文字(欄位, 下一方向)}排序`;
+}
+
 function 排序數值(列, 欄位) {
+  if (欄位 === "rank") {
+    return 列.原始排名 ?? 列.職業排名 ?? null;
+  }
   if (欄位 === "active") {
-    return 列.active ?? -Infinity;
+    return 列.active ?? null;
   }
   if (欄位 === "dps") {
-    return 列.dps ?? -Infinity;
+    return 列.dps ?? null;
   }
   if (欄位 === "rdps") {
-    return 列.rdps ?? 列.dps ?? -Infinity;
+    return 列.rdps ?? 列.dps ?? null;
   }
   if (欄位 === "adps") {
-    return 列.adps ?? -Infinity;
+    return 列.adps ?? null;
   }
   if (欄位 === "clearTime") {
-    return 列.通關秒數 ?? Infinity;
+    return 列.通關秒數 ?? null;
   }
   if (欄位 === "recordedAt") {
     const 時間 = new Date(列.紀錄時間).getTime();
-    return Number.isNaN(時間) ? -Infinity : 時間;
+    return Number.isNaN(時間) ? null : 時間;
   }
 
-  return 列.rdps ?? 列.dps ?? -Infinity;
+  return 列.rdps ?? 列.dps ?? null;
 }
 
 function 比較排行列(前一筆, 後一筆) {
   const 欄位 = 排序欄位.value;
   const 前值 = 排序數值(前一筆, 欄位);
   const 後值 = 排序數值(後一筆, 欄位);
+  const 前值缺失 = 前值 === null || Number.isNaN(前值);
+  const 後值缺失 = 後值 === null || Number.isNaN(後值);
 
-  if (前值 !== 後值) {
-    return 欄位 === "clearTime" ? 前值 - 後值 : 後值 - 前值;
+  if (前值缺失 || 後值缺失) {
+    if (前值缺失 !== 後值缺失) {
+      return 前值缺失 ? 1 : -1;
+    }
+  } else if (前值 !== 後值) {
+    const 排序係數 = 排序方向.value === "asc" ? 1 : -1;
+    return (前值 - 後值) * 排序係數;
   }
 
   const 前rDPS = 前一筆.rdps ?? 前一筆.dps ?? 0;
@@ -2291,6 +2406,10 @@ const 顯示結束排名 = computed(() => {
   return Math.min(當頁起始索引.value + 當頁排行列.value.length, 過濾後排行列.value.length);
 });
 
+function 排行列顯示排名(列, index) {
+  return 列.原始排名 ?? 列.職業排名 ?? 當頁起始索引.value + index + 1;
+}
+
 function 前往頁碼(頁碼) {
   const 目標頁碼 = Number(頁碼);
   if (!Number.isFinite(目標頁碼)) {
@@ -2617,7 +2736,7 @@ watch(職業類型篩選, () => {
   職業篩選.value = "";
 });
 
-watch([伺服器篩選, 職業類型篩選, 職業篩選, 搜尋關鍵字, 排序欄位], () => {
+watch([伺服器篩選, 職業類型篩選, 職業篩選, 搜尋關鍵字, 排序欄位, 排序方向], () => {
   目前頁碼.value = 1;
 });
 
@@ -2753,15 +2872,6 @@ onMounted(() => {
       </div>
 
       <label class="欄位">
-        <span>排序</span>
-        <select v-model="排序欄位">
-          <option v-for="選項 in 排序選項" :key="選項.value" :value="選項.value">
-            {{ 選項.label }}
-          </option>
-        </select>
-      </label>
-
-      <label class="欄位">
         <span>伺服器</span>
         <select v-model="伺服器篩選">
           <option value="">全部伺服器</option>
@@ -2883,57 +2993,138 @@ onMounted(() => {
           </div>
         </div>
 
-        <table>
+        <table class="排行榜表格">
+          <colgroup>
+            <col class="排名欄" />
+            <col class="角色欄" />
+            <col class="伺服器欄" />
+            <col class="職業欄" />
+            <col class="active欄" />
+            <col class="傷害欄" />
+            <col class="傷害欄" />
+            <col class="傷害欄" />
+            <col class="通關時間欄" />
+            <col class="紀錄時間欄" />
+          </colgroup>
           <thead>
             <tr>
-              <th scope="col">排名</th>
+              <th scope="col" :aria-sort="排序ARIA('rank')">
+                <button
+                  class="表頭排序按鈕"
+                  type="button"
+                  :class="{ 作用中: 是否目前排序('rank') }"
+                  :aria-label="排序按鈕標籤('rank')"
+                  @click="切換排序('rank')"
+                >
+                  <span>排名</span>
+                  <span v-if="是否目前排序('rank')" class="排序箭頭" aria-hidden="true">{{ 排序方向圖示("rank") }}</span>
+                </button>
+              </th>
               <th scope="col">角色名稱</th>
               <th scope="col">伺服器</th>
               <th scope="col">職業</th>
-              <th scope="col" class="數字">
+              <th scope="col" class="數字" :aria-sort="排序ARIA('active')">
                 <span class="表頭說明標籤">
-                  <span>Active</span>
+                  <button
+                    class="表頭排序按鈕"
+                    type="button"
+                    :class="{ 作用中: 是否目前排序('active') }"
+                    :aria-label="排序按鈕標籤('active')"
+                    @click="切換排序('active')"
+                  >
+                    <span>Active</span>
+                    <span v-if="是否目前排序('active')" class="排序箭頭" aria-hidden="true">{{ 排序方向圖示("active") }}</span>
+                  </button>
                   <span class="說明提示">
                     <button class="說明提示按鈕" type="button" aria-label="Active 說明">?</button>
                     <span class="說明提示內容" role="tooltip">{{ 統計說明文字("Active") }}</span>
                   </span>
                 </span>
               </th>
-              <th scope="col" class="數字">
+              <th scope="col" class="數字" :aria-sort="排序ARIA('dps')">
                 <span class="表頭說明標籤">
-                  <span>DPS</span>
+                  <button
+                    class="表頭排序按鈕"
+                    type="button"
+                    :class="{ 作用中: 是否目前排序('dps') }"
+                    :aria-label="排序按鈕標籤('dps')"
+                    @click="切換排序('dps')"
+                  >
+                    <span>DPS</span>
+                    <span v-if="是否目前排序('dps')" class="排序箭頭" aria-hidden="true">{{ 排序方向圖示("dps") }}</span>
+                  </button>
                   <span class="說明提示">
                     <button class="說明提示按鈕" type="button" aria-label="DPS 說明">?</button>
                     <span class="說明提示內容" role="tooltip">{{ 統計說明文字("DPS") }}</span>
                   </span>
                 </span>
               </th>
-              <th scope="col" class="數字">
+              <th scope="col" class="數字" :aria-sort="排序ARIA('rdps')">
                 <span class="表頭說明標籤">
-                  <span>rDPS</span>
+                  <button
+                    class="表頭排序按鈕"
+                    type="button"
+                    :class="{ 作用中: 是否目前排序('rdps') }"
+                    :aria-label="排序按鈕標籤('rdps')"
+                    @click="切換排序('rdps')"
+                  >
+                    <span>rDPS</span>
+                    <span v-if="是否目前排序('rdps')" class="排序箭頭" aria-hidden="true">{{ 排序方向圖示("rdps") }}</span>
+                  </button>
                   <span class="說明提示">
                     <button class="說明提示按鈕" type="button" aria-label="rDPS 說明">?</button>
                     <span class="說明提示內容" role="tooltip">{{ 統計說明文字("rDPS") }}</span>
                   </span>
                 </span>
               </th>
-              <th scope="col" class="數字">
+              <th scope="col" class="數字" :aria-sort="排序ARIA('adps')">
                 <span class="表頭說明標籤">
-                  <span>aDPS</span>
+                  <button
+                    class="表頭排序按鈕"
+                    type="button"
+                    :class="{ 作用中: 是否目前排序('adps') }"
+                    :aria-label="排序按鈕標籤('adps')"
+                    @click="切換排序('adps')"
+                  >
+                    <span>aDPS</span>
+                    <span v-if="是否目前排序('adps')" class="排序箭頭" aria-hidden="true">{{ 排序方向圖示("adps") }}</span>
+                  </button>
                   <span class="說明提示">
                     <button class="說明提示按鈕" type="button" aria-label="aDPS 說明">?</button>
                     <span class="說明提示內容" role="tooltip">{{ 統計說明文字("aDPS") }}</span>
                   </span>
                 </span>
               </th>
-              <th scope="col" class="數字">通關時間</th>
-              <th scope="col">紀錄時間</th>
+              <th scope="col" class="數字" :aria-sort="排序ARIA('clearTime')">
+                <button
+                  class="表頭排序按鈕"
+                  type="button"
+                  :class="{ 作用中: 是否目前排序('clearTime') }"
+                  :aria-label="排序按鈕標籤('clearTime')"
+                  @click="切換排序('clearTime')"
+                >
+                  <span>通關時間</span>
+                  <span v-if="是否目前排序('clearTime')" class="排序箭頭" aria-hidden="true">{{ 排序方向圖示("clearTime") }}</span>
+                </button>
+              </th>
+              <th scope="col" :aria-sort="排序ARIA('recordedAt')">
+                <button
+                  class="表頭排序按鈕"
+                  type="button"
+                  :class="{ 作用中: 是否目前排序('recordedAt') }"
+                  :aria-label="排序按鈕標籤('recordedAt')"
+                  @click="切換排序('recordedAt')"
+                >
+                  <span>紀錄時間</span>
+                  <span v-if="是否目前排序('recordedAt')" class="排序箭頭" aria-hidden="true">{{ 排序方向圖示("recordedAt") }}</span>
+                </button>
+              </th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="(列, index) in 當頁排行列" :key="列.id">
-              <td class="排名" :class="排名色彩類別(當頁起始索引 + index + 1)">
-                #{{ 當頁起始索引 + index + 1 }}
+              <td class="排名" :class="排名色彩類別(排行列顯示排名(列, index))">
+                {{ 格式化排名(排行列顯示排名(列, index)) }}
               </td>
               <td>
                 <button class="文字連結" type="button" @click="開啟個人成績單(列)">
@@ -2960,7 +3151,17 @@ onMounted(() => {
               <td class="數字">{{ 格式化傷害數值(列.rdps) }}</td>
               <td class="數字">{{ 格式化傷害數值(列.adps) }}</td>
               <td class="數字">{{ 格式化通關時間(列.通關秒數) }}</td>
-              <td>{{ 格式化紀錄時間(列.紀錄時間) }}</td>
+              <td>
+                <time
+                  class="緊湊紀錄時間"
+                  :datetime="列.紀錄時間 || undefined"
+                  :title="格式化紀錄時間(列.紀錄時間)"
+                  :aria-label="`紀錄時間 ${格式化紀錄時間(列.紀錄時間)}`"
+                >
+                  <span>{{ 格式化紀錄日期(列.紀錄時間) }}</span>
+                  <span>{{ 格式化紀錄時刻(列.紀錄時間) }}</span>
+                </time>
+              </td>
             </tr>
           </tbody>
         </table>
@@ -4453,9 +4654,7 @@ h1 {
 
 .工具列 {
   display: grid;
-  grid-template-columns:
-    minmax(210px, 1.2fr) minmax(155px, 0.95fr) minmax(145px, 0.9fr) minmax(170px, 1fr)
-    minmax(220px, 1.25fr);
+  grid-template-columns: minmax(210px, 1.25fr) minmax(145px, 0.85fr) minmax(170px, 1fr) minmax(220px, 1.25fr);
   gap: 16px;
   margin-bottom: 18px;
 }
@@ -6147,6 +6346,37 @@ button:disabled {
   justify-content: flex-end;
 }
 
+.表頭排序按鈕 {
+  min-height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border: 0;
+  border-radius: 6px;
+  padding: 2px 4px;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  font-weight: inherit;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.表頭排序按鈕:hover:not(:disabled),
+.表頭排序按鈕:focus,
+.表頭排序按鈕.作用中 {
+  color: var(--重點文字);
+  background: var(--重點色);
+}
+
+.排序箭頭 {
+  flex: 0 0 auto;
+  color: currentColor;
+  font-size: 0.7rem;
+  line-height: 1;
+}
+
 .說明提示 {
   position: relative;
   display: inline-flex;
@@ -6756,12 +6986,97 @@ table {
   border-collapse: collapse;
 }
 
+.排行榜表格 {
+  min-width: 980px;
+  table-layout: fixed;
+}
+
+.排行榜表格 .排名欄 {
+  width: 5.8%;
+}
+
+.排行榜表格 .角色欄 {
+  width: 19%;
+}
+
+.排行榜表格 .伺服器欄 {
+  width: 9%;
+}
+
+.排行榜表格 .職業欄 {
+  width: 12%;
+}
+
+.排行榜表格 .active欄 {
+  width: 8.4%;
+}
+
+.排行榜表格 .傷害欄 {
+  width: 8.4%;
+}
+
+.排行榜表格 .通關時間欄 {
+  width: 9%;
+}
+
+.排行榜表格 .紀錄時間欄 {
+  width: 9.8%;
+}
+
 th,
 td {
   border-bottom: 1px solid var(--邊框柔和色);
   padding: 14px 16px;
   text-align: left;
   white-space: nowrap;
+}
+
+.排行榜表格 th,
+.排行榜表格 td {
+  padding: 12px 8px;
+}
+
+.排行榜表格 td {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.排行榜表格 td:nth-child(2) .文字連結 {
+  max-width: calc(100% - 48px);
+  display: inline-block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+}
+
+.排行榜表格 .職業標籤 {
+  max-width: 100%;
+}
+
+.排行榜表格 .職業標籤 span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.緊湊紀錄時間 {
+  display: inline-grid;
+  gap: 2px;
+  color: var(--主要文字);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+
+.緊湊紀錄時間 span:first-child {
+  font-size: 0.78rem;
+  font-weight: 720;
+}
+
+.緊湊紀錄時間 span:last-child {
+  color: var(--次要文字);
+  font-size: 0.72rem;
+  font-weight: 680;
 }
 
 th {

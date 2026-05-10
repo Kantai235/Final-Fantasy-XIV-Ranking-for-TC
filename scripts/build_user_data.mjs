@@ -14,6 +14,7 @@ const outputDir = path.join(rootDir, "public", "data", "users");
 const globalStatsPath = path.join(publicDataDir, "global_stats.json");
 const savageDamageComparisonEncounterKeys = ["savage_m1s", "savage_m2s", "savage_m3s", "savage_m4s"];
 const savageDamageComparisonEncounterKeySet = new Set(savageDamageComparisonEncounterKeys);
+const minimumDamageActivePercent = 50;
 
 const jobRoleGroups = [
   {
@@ -225,11 +226,23 @@ function buildDamageMetricStats(values) {
   };
 }
 
+function getDamageActivePercent(entry) {
+  const activePercent = toNumber(entry?.active_percent);
+  if (activePercent !== null) {
+    return activePercent;
+  }
+  return calculateActivePercent(entry?.active_time_ms, entry?.clear_time_ms, entry?.clear_time_seconds);
+}
+
+function isDamageComparisonEntry(entry) {
+  return getDamageActivePercent(entry) >= minimumDamageActivePercent;
+}
+
 function buildJobDamageStats(entries) {
   const groupedByJob = new Map();
 
   for (const entry of entries || []) {
-    if (!entry?.job) {
+    if (!entry?.job || !isDamageComparisonEntry(entry)) {
       continue;
     }
 
@@ -273,7 +286,7 @@ function buildServerDamageStats(entries) {
 
   for (const entry of entries || []) {
     const server = entry?.server;
-    if (!server) {
+    if (!server || !isDamageComparisonEntry(entry)) {
       continue;
     }
 
