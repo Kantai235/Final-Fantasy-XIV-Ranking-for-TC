@@ -33,7 +33,13 @@ Final Fantasy XIV 繁中服排行榜是一個以 FFLogs 公開資料為來源的
 ```text
 .
 ├── src/
-│   ├── App.vue                # 主要前端介面
+│   ├── App.vue                # 前端殼層，負責組裝頁首、頁籤與各頁元件
+│   ├── components/            # 跨頁共用元件
+│   ├── composables/           # 前端狀態、篩選、排序與資料讀取邏輯
+│   ├── domain/                # FFXIV 職業、職能等領域設定
+│   ├── pages/                 # 依頁面切分的主要呈現元件
+│   ├── styles/                # 全站樣式
+│   ├── utils/                 # 格式化、靜態資料 URL 與 fetch 工具
 │   └── main.js                # Vue 入口
 ├── scripts/
 │   ├── fetch_fflogs.py        # 抓取並整理 FFLogs 排行榜資料
@@ -175,7 +181,8 @@ python scripts/fetch_fflogs.py
    - 產生 `public/data/global_stats.json`。
 
 3. `npm run build`
-   - 先自動執行 `build:user-data`。
+   - 先自動執行 `build:public-rankings`，確保 `public/data/rankings/*.json` 與目前原始排行榜資料同步。
+   - 接著自動執行 `build:user-data`。
    - 再由 Vite 建置靜態網站到 `dist/`。
 
 ## 設定副本
@@ -216,10 +223,13 @@ npm run build:user-data
 工作流程會：
 
 1. 安裝 Python 與 Node.js。
-2. 安裝 Python 依賴。
+2. 安裝 Python 與 Node.js 依賴。
 3. 使用 GitHub Secrets 中的 FFLogs 憑證執行抓取腳本。
-4. 產生個人成績單與全服統計資料。
-5. 若 `data` 或 `public/data` 有變更，提交並推送更新。
+4. 執行 `scripts/backfill_missing_fflogs_data.py --limit 250` 補齊缺漏的 FFLogs 戰鬥資料。
+5. 執行 `python scripts/fetch_fflogs.py --split-rankings`，將完整排行榜資料拆分成適合 Git 追蹤的檔案。
+6. 產生個人成績單、全服統計資料與 `data/update_status.json`。
+7. 若 `data` 或 `public/data` 有變更，提交並推送更新。
+8. 執行 `npm run build` 建置 `dist/`，並部署到 GitHub Pages。
 
 需要在 GitHub Repository Secrets 設定至少一組：
 

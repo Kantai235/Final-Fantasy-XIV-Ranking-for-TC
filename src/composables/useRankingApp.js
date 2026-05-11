@@ -1,0 +1,2731 @@
+import { computed, inject, onMounted, ref, watch } from "vue";
+import {
+  比較職能設定,
+  比較職能索引,
+  取得比較職能,
+  職業Icon路徑,
+  職業代碼色彩,
+  職業所屬類型,
+  職業比較圖色彩,
+  職業群組設定,
+  職業群組索引,
+  職業繁中名稱,
+  職業色彩類別,
+  職業類型Icon路徑,
+  職業類型排序值,
+  職業類型色彩,
+  顯示職業名稱,
+} from "../domain/jobs";
+import { 讀取Json } from "../utils/fetchJson";
+import {
+  解析紀錄日期,
+  格式化Active,
+  格式化傷害數值,
+  格式化前段百分位,
+  格式化帶號整數,
+  格式化排名,
+  格式化整數,
+  格式化百分比,
+  格式化紀錄日期,
+  格式化紀錄時刻,
+  格式化紀錄時間,
+  格式化通關時間,
+  計算Active百分比,
+  轉為數字,
+} from "../utils/formatters";
+import {
+  全服統計網址,
+  副本清單網址,
+  使用者索引網址,
+  建立公開資料網址,
+  建立使用者預設資料網址,
+} from "../utils/publicData";
+import { 排名色彩類別, 比例條樣式, 熱力格樣式, 趨勢點樣式, 隱藏載入失敗圖片 } from "../utils/viewHelpers";
+import { useTheme } from "./useTheme";
+
+export const rankingAppKey = Symbol("ranking-app-context");
+
+export function injectRankingApp() {
+  const app = inject(rankingAppKey);
+
+  if (!app) {
+    throw new Error("\u7f3a\u5c11\u6392\u884c\u699c\u61c9\u7528\u7a0b\u5f0f\u8108\u7d61\uff0c\u8acb\u78ba\u8a8d App.vue \u5df2\u63d0\u4f9b useRankingApp()\u3002");
+  }
+
+  return app;
+}
+
+export function useRankingApp() {
+
+// 核心 Vue 狀態只保留畫面會變動的資料；不隨操作變動的職業定義、
+// 格式化與 URL 規則已抽到 domain/utils，避免這個 composable 繼續膨脹。
+const 排行榜資料 = ref(null);
+const 副本清單 = ref([]);
+const 副本鍵值 = ref("savage_m1s");
+const 副本選單開啟 = ref(false);
+const 讀取中 = ref(true);
+const 錯誤訊息 = ref("");
+const 伺服器篩選 = ref("");
+const 職業類型篩選 = ref("");
+const 職業篩選 = ref("");
+const 職業選單開啟 = ref(false);
+const 主色模式 = ref("default");
+const 搜尋關鍵字 = ref("");
+const 排序欄位 = ref("rdps");
+const 排序方向 = ref("desc");
+const 目前頁碼 = ref(1);
+const 每頁筆數 = 100;
+const { 主題模式, 主題儲存鍵, 主題按鈕文字, 目前主題文字, 初始化主題, 套用主題, 切換主題 } = useTheme();
+const 頁面模式 = ref("ranking");
+const 使用者索引 = ref(null);
+const 使用者資料 = ref(null);
+const 使用者搜尋關鍵字 = ref("");
+const 使用者伺服器篩選 = ref("");
+const 使用者職業類型篩選 = ref("");
+const 使用者職業篩選 = ref("");
+const 使用者職業選單開啟 = ref(false);
+const 使用者讀取中 = ref(false);
+const 使用者錯誤訊息 = ref("");
+const 比較角色左輸入 = ref("");
+const 比較角色右輸入 = ref("");
+const 比較角色左資料 = ref(null);
+const 比較角色右資料 = ref(null);
+const 比較角色左伺服器 = ref("");
+const 比較角色右伺服器 = ref("");
+const 比較職能篩選 = ref("role:tank");
+const 比較讀取中 = ref(false);
+const 比較錯誤訊息 = ref("");
+const 全服統計資料 = ref(null);
+const 全服統計讀取中 = ref(false);
+const 全服統計錯誤訊息 = ref("");
+const 統計副本鍵值 = ref("all");
+const 統計副本選單開啟 = ref(false);
+const 統計伺服器篩選 = ref("");
+const 統計職業範圍 = ref("all");
+const 伺服器拆分模式 = ref("none");
+const 統計傷害指標 = ref("rdps");
+const 職業傷害提示鎖定職業 = ref("");
+const 職業傷害提示互動職業 = ref("");
+const 職業分析職業 = ref("");
+const 職業分析職業類型 = ref("");
+const 職業分析選單開啟 = ref(false);
+
+const 目前副本 = computed(() => {
+  return 副本清單.value.find((副本) => 副本.key === 副本鍵值.value) || 副本清單.value[0] || null;
+});
+
+const 資料網址 = computed(() => {
+  return 建立公開資料網址(目前副本.value?.data_path || "data/rankings/savage_m1s.json");
+});
+
+const 傷害比較指標選項 = [
+  { value: "dps", label: "DPS" },
+  { value: "rdps", label: "rDPS" },
+  { value: "adps", label: "aDPS" },
+];
+
+const 副本分類順序 = ["零式", "極", "幻", "絕"];
+
+const 副本分組 = computed(() => {
+  const 分組索引 = new Map();
+
+  for (const 分類 of 副本分類順序) {
+    分組索引.set(分類, []);
+  }
+
+  for (const 副本 of 副本清單.value) {
+    const 分類 = 副本.category || "其他";
+    if (!分組索引.has(分類)) {
+      分組索引.set(分類, []);
+    }
+    分組索引.get(分類).push(副本);
+  }
+
+  return Array.from(分組索引.entries())
+    .map(([分類, 副本列表]) => ({
+      分類,
+      副本列表,
+    }))
+    .filter((分組) => 分組.副本列表.length > 0);
+});
+
+const 副本選單文字 = computed(() => {
+  return 目前副本.value?.name || "選擇副本";
+});
+
+function 目前職業主色() {
+  if (職業篩選.value) {
+    return 職業代碼色彩(職業篩選.value) || "default";
+  }
+
+  return 職業群組設定.find((群組) => 群組.代碼 === 職業類型篩選.value)?.色彩 || "default";
+}
+
+function 符合職業篩選(職業代碼) {
+  if (職業類型篩選.value) {
+    const 群組職業 = 職業群組索引[職業類型篩選.value];
+    if (!群組職業?.has(職業代碼)) {
+      return false;
+    }
+  }
+
+  return !職業篩選.value || 職業代碼 === 職業篩選.value;
+}
+
+function 清除職業篩選() {
+  職業類型篩選.value = "";
+  職業篩選.value = "";
+  職業選單開啟.value = false;
+}
+
+function 選擇職業類型(類型代碼) {
+  職業類型篩選.value = 類型代碼;
+  職業篩選.value = "";
+}
+
+function 選擇職業(職業代碼) {
+  職業篩選.value = 職業篩選.value === 職業代碼 ? "" : 職業代碼;
+  職業選單開啟.value = false;
+}
+
+function 切換職業選單() {
+  副本選單開啟.value = false;
+  統計副本選單開啟.value = false;
+  職業分析選單開啟.value = false;
+  使用者職業選單開啟.value = false;
+  職業選單開啟.value = !職業選單開啟.value;
+}
+
+function 處理職業選單失焦(event) {
+  if (!event.currentTarget.contains(event.relatedTarget)) {
+    職業選單開啟.value = false;
+  }
+}
+
+function 清除使用者職業篩選() {
+  使用者職業類型篩選.value = "";
+  使用者職業篩選.value = "";
+  使用者職業選單開啟.value = false;
+}
+
+function 選擇使用者職業類型(類型代碼) {
+  使用者職業類型篩選.value = 類型代碼;
+  使用者職業篩選.value = "";
+}
+
+function 選擇使用者職業(職業代碼) {
+  使用者職業篩選.value = 使用者職業篩選.value === 職業代碼 ? "" : 職業代碼;
+  使用者職業選單開啟.value = false;
+}
+
+function 切換使用者職業選單() {
+  副本選單開啟.value = false;
+  統計副本選單開啟.value = false;
+  職業選單開啟.value = false;
+  職業分析選單開啟.value = false;
+  使用者職業選單開啟.value = !使用者職業選單開啟.value;
+}
+
+function 處理使用者職業選單失焦(event) {
+  if (!event.currentTarget.contains(event.relatedTarget)) {
+    使用者職業選單開啟.value = false;
+  }
+}
+
+function 切換副本選單() {
+  職業選單開啟.value = false;
+  使用者職業選單開啟.value = false;
+  統計副本選單開啟.value = false;
+  職業分析選單開啟.value = false;
+  副本選單開啟.value = !副本選單開啟.value;
+}
+
+function 選擇副本(副本) {
+  if (!副本?.key) {
+    return;
+  }
+
+  副本鍵值.value = 副本.key;
+  副本選單開啟.value = false;
+}
+
+function 處理副本選單失焦(event) {
+  if (!event.currentTarget.contains(event.relatedTarget)) {
+    副本選單開啟.value = false;
+  }
+}
+
+function 切換統計副本選單() {
+  副本選單開啟.value = false;
+  職業選單開啟.value = false;
+  使用者職業選單開啟.value = false;
+  職業分析選單開啟.value = false;
+  統計副本選單開啟.value = !統計副本選單開啟.value;
+}
+
+function 選擇統計副本(副本) {
+  統計副本鍵值.value = 副本?.key || "all";
+  統計副本選單開啟.value = false;
+}
+
+function 處理統計副本選單失焦(event) {
+  if (!event.currentTarget.contains(event.relatedTarget)) {
+    統計副本選單開啟.value = false;
+  }
+}
+
+function 切換職業分析選單() {
+  副本選單開啟.value = false;
+  統計副本選單開啟.value = false;
+  職業選單開啟.value = false;
+  使用者職業選單開啟.value = false;
+  職業分析選單開啟.value = !職業分析選單開啟.value;
+}
+
+function 選擇職業分析類型(類型代碼) {
+  職業分析職業類型.value = 類型代碼;
+}
+
+function 選擇職業分析職業(職業代碼) {
+  職業分析職業.value = 職業代碼;
+  職業分析職業類型.value = 職業所屬類型(職業代碼)?.代碼 || 職業分析職業類型.value;
+  職業分析選單開啟.value = false;
+}
+
+function 處理職業分析選單失焦(event) {
+  if (!event.currentTarget.contains(event.relatedTarget)) {
+    職業分析選單開啟.value = false;
+  }
+}
+
+const 排序欄位標籤 = {
+  rank: "排名",
+  active: "Active",
+  dps: "DPS",
+  rdps: "rDPS",
+  adps: "aDPS",
+  clearTime: "通關時間",
+  recordedAt: "紀錄時間",
+};
+
+const 排序預設方向 = {
+  rank: "asc",
+  active: "desc",
+  dps: "desc",
+  rdps: "desc",
+  adps: "desc",
+  clearTime: "asc",
+  recordedAt: "desc",
+};
+
+function 排序欄位預設方向(欄位) {
+  return 排序預設方向[欄位] || "desc";
+}
+
+function 排序方向文字(欄位, 方向 = 排序方向.value) {
+  if (欄位 === "clearTime") {
+    return 方向 === "asc" ? "短到長" : "長到短";
+  }
+  if (欄位 === "recordedAt") {
+    return 方向 === "asc" ? "舊到新" : "新到舊";
+  }
+  return 方向 === "asc" ? "低到高" : "高到低";
+}
+
+function 下一個排序方向(欄位) {
+  if (排序欄位.value !== 欄位) {
+    return 排序欄位預設方向(欄位);
+  }
+  return 排序方向.value === "asc" ? "desc" : "asc";
+}
+
+function 切換排序(欄位) {
+  if (排序欄位.value === 欄位) {
+    排序方向.value = 下一個排序方向(欄位);
+    return;
+  }
+
+  排序欄位.value = 欄位;
+  排序方向.value = 排序欄位預設方向(欄位);
+}
+
+function 是否目前排序(欄位) {
+  return 排序欄位.value === 欄位;
+}
+
+function 排序方向圖示(欄位) {
+  if (!是否目前排序(欄位)) {
+    return "";
+  }
+  return 排序方向.value === "asc" ? "▲" : "▼";
+}
+
+function 排序ARIA(欄位) {
+  if (!是否目前排序(欄位)) {
+    return "none";
+  }
+  return 排序方向.value === "asc" ? "ascending" : "descending";
+}
+
+function 排序按鈕標籤(欄位) {
+  const 標籤 = 排序欄位標籤[欄位] || 欄位;
+  const 下一方向 = 下一個排序方向(欄位);
+  return `以${標籤}${排序方向文字(欄位, 下一方向)}排序`;
+}
+
+function 排序數值(列, 欄位) {
+  if (欄位 === "rank") {
+    return 列.原始排名 ?? 列.職業排名 ?? null;
+  }
+  if (欄位 === "active") {
+    return 列.active ?? null;
+  }
+  if (欄位 === "dps") {
+    return 列.dps ?? null;
+  }
+  if (欄位 === "rdps") {
+    return 列.rdps ?? 列.dps ?? null;
+  }
+  if (欄位 === "adps") {
+    return 列.adps ?? null;
+  }
+  if (欄位 === "clearTime") {
+    return 列.通關秒數 ?? null;
+  }
+  if (欄位 === "recordedAt") {
+    const 時間 = new Date(列.紀錄時間).getTime();
+    return Number.isNaN(時間) ? null : 時間;
+  }
+
+  return 列.rdps ?? 列.dps ?? null;
+}
+
+function 比較排行列(前一筆, 後一筆) {
+  const 欄位 = 排序欄位.value;
+  const 前值 = 排序數值(前一筆, 欄位);
+  const 後值 = 排序數值(後一筆, 欄位);
+  const 前值缺失 = 前值 === null || Number.isNaN(前值);
+  const 後值缺失 = 後值 === null || Number.isNaN(後值);
+
+  if (前值缺失 || 後值缺失) {
+    if (前值缺失 !== 後值缺失) {
+      return 前值缺失 ? 1 : -1;
+    }
+  } else if (前值 !== 後值) {
+    const 排序係數 = 排序方向.value === "asc" ? 1 : -1;
+    return (前值 - 後值) * 排序係數;
+  }
+
+  const 前rDPS = 前一筆.rdps ?? 前一筆.dps ?? 0;
+  const 後rDPS = 後一筆.rdps ?? 後一筆.dps ?? 0;
+  if (前rDPS !== 後rDPS) {
+    return 後rDPS - 前rDPS;
+  }
+
+  return 前一筆.角色名稱.localeCompare(後一筆.角色名稱, "zh-Hant-TW");
+}
+
+// public/data/rankings 目前有兩種相容格式：
+// 1. ranking_entries：Node 建置後供前端直接使用的扁平列。
+// 2. reports/fights/players：較舊或原始的 report 結構。
+// 這個正規化步驟讓 UI 後續只面對同一個欄位集合，避免每個頁面都理解資料來源差異。
+function 建立排行列(條目) {
+  const 職業代碼 = 條目.job || "-";
+  const 通關秒數 = 轉為數字(條目.clear_time_seconds);
+  const active = 轉為數字(條目.active_percent) ?? 計算Active百分比(條目.active_time_ms, 通關秒數);
+
+  return {
+    id: 條目.id || `${條目.report_code}-${條目.fight_id}-${條目.character_name}-${條目.server}`,
+    reportCode: 條目.report_code,
+    reportUrl: 條目.report_url,
+    角色名稱: 條目.character_name || 條目.name || "未知角色",
+    伺服器: 條目.server || "未知伺服器",
+    職業代碼,
+    職業: 顯示職業名稱(職業代碼),
+    rdps: 轉為數字(條目.rdps ?? 條目.dps),
+    adps: 轉為數字(條目.adps),
+    dps: 轉為數字(條目.dps),
+    active,
+    activeTimeMs: 轉為數字(條目.active_time_ms),
+    通關秒數,
+    紀錄時間: 條目.recorded_at_iso || 條目.report_start_time_iso,
+    重複來源數: 轉為數字(條目.duplicate_count) || 1,
+    原始排名: 轉為數字(條目.rank),
+    職業排名: 轉為數字(條目.job_rank ?? 條目.rank),
+  };
+}
+
+function 成績是否較佳(候選, 目前最佳) {
+  if (!目前最佳) {
+    return true;
+  }
+
+  if ((候選.rdps ?? 0) !== (目前最佳.rdps ?? 0)) {
+    return (候選.rdps ?? 0) > (目前最佳.rdps ?? 0);
+  }
+
+  if ((候選.通關秒數 ?? Infinity) !== (目前最佳.通關秒數 ?? Infinity)) {
+    return (候選.通關秒數 ?? Infinity) < (目前最佳.通關秒數 ?? Infinity);
+  }
+
+  if ((候選.adps ?? 0) !== (目前最佳.adps ?? 0)) {
+    return (候選.adps ?? 0) > (目前最佳.adps ?? 0);
+  }
+
+  return 候選.角色名稱.localeCompare(目前最佳.角色名稱, "zh-Hant-TW") < 0;
+}
+
+// 個人成績單內的「最佳」要以 rDPS 優先，平手才比較通關時間與 aDPS。
+// 這和排行榜去重規則保持一致，讓玩家頁、比較頁和排行榜對最佳成績的判斷一致。
+function 使用者成績是否較佳(候選, 目前最佳) {
+  if (!目前最佳) {
+    return true;
+  }
+
+  const 候選rDPS = 候選.rdps ?? 候選.dps ?? 0;
+  const 目前rDPS = 目前最佳.rdps ?? 目前最佳.dps ?? 0;
+  if (候選rDPS !== 目前rDPS) {
+    return 候選rDPS > 目前rDPS;
+  }
+
+  const 候選通關時間 = 候選.clear_time_seconds ?? Infinity;
+  const 目前通關時間 = 目前最佳.clear_time_seconds ?? Infinity;
+  if (候選通關時間 !== 目前通關時間) {
+    return 候選通關時間 < 目前通關時間;
+  }
+
+  const 候選aDPS = 候選.adps ?? 候選.dps ?? 0;
+  const 目前aDPS = 目前最佳.adps ?? 目前最佳.dps ?? 0;
+  if (候選aDPS !== 目前aDPS) {
+    return 候選aDPS > 目前aDPS;
+  }
+
+  return new Date(候選.recorded_at_iso || 0).getTime() > new Date(目前最佳.recorded_at_iso || 0).getTime();
+}
+
+// 同一角色在同一伺服器、同一職業可能因多份 report 或重抓資料重複出現。
+// 前端展示時只保留最佳列；原始歷史資料仍留在 data/rankings，不在 UI 層硬刪。
+function 只保留角色最佳成績(排行列) {
+  const 最佳成績索引 = new Map();
+
+  for (const 列 of 排行列) {
+    const 鍵值 = `${列.角色名稱}@${列.伺服器}:${列.職業代碼}`;
+    const 目前最佳 = 最佳成績索引.get(鍵值);
+
+    if (成績是否較佳(列, 目前最佳)) {
+      最佳成績索引.set(鍵值, 列);
+    }
+  }
+
+  return Array.from(最佳成績索引.values());
+}
+
+// 讀取舊格式時會把 report -> fight -> player 攤平成排行榜列。
+// 這段邏輯只做呈現用正規化，不改寫 append-only 歷史資料。
+function 展開排行榜列(原始資料) {
+  if (Array.isArray(原始資料?.ranking_entries)) {
+    return 原始資料.ranking_entries.map(建立排行列);
+  }
+
+  const 報告集合 = 原始資料?.reports ?? {};
+  const 報告列表 = Array.isArray(報告集合) ? 報告集合 : Object.values(報告集合);
+
+  const 攤平排行列 = 報告列表.flatMap((報告) => {
+    const 戰鬥列表 = Array.isArray(報告?.fights) ? 報告.fights : [];
+
+    return 戰鬥列表.flatMap((戰鬥) => {
+      const 玩家列表 = Array.isArray(戰鬥?.players) ? 戰鬥.players : [];
+      const 通關秒數 = 轉為數字(戰鬥?.clear_time_seconds);
+
+      return 玩家列表.map((玩家) => ({
+        id: `${報告.report_code}-${戰鬥.fight_id}-${玩家.name}-${玩家.server}`,
+        reportCode: 報告.report_code,
+        reportUrl: 報告.url,
+        角色名稱: 玩家.name || "未知角色",
+        伺服器: 玩家.server || "未知伺服器",
+        職業代碼: 玩家.job || "-",
+        職業: 顯示職業名稱(玩家.job),
+        rdps: 轉為數字(玩家.rdps ?? 玩家.dps),
+        adps: 轉為數字(玩家.adps),
+        dps: 轉為數字(玩家.dps),
+        active: 計算Active百分比(玩家.active_time_ms, 通關秒數),
+        activeTimeMs: 轉為數字(玩家.active_time_ms),
+        通關秒數,
+        紀錄時間: 戰鬥.recorded_at_iso || 報告.report_start_time_iso,
+        重複來源數: 1,
+      }));
+    });
+  });
+
+  return 只保留角色最佳成績(攤平排行列);
+}
+
+const 所有排行列 = computed(() => {
+  return 展開排行榜列(排行榜資料.value).sort(比較排行列);
+});
+
+const 伺服器選項 = computed(() => {
+  const 名稱集合 = new Set(
+    所有排行列.value.map((列) => 列.伺服器).filter((伺服器) => 伺服器 && 伺服器 !== "未知伺服器"),
+  );
+
+  return Array.from(名稱集合).sort((前一個, 後一個) => 前一個.localeCompare(後一個, "zh-Hant-TW"));
+});
+
+const 職業選項 = computed(() => {
+  const 目前有資料職業 = new Set();
+
+  for (const 列 of 所有排行列.value) {
+    if (列.職業代碼 && 列.職業代碼 !== "-") {
+      目前有資料職業.add(列.職業代碼);
+    }
+  }
+
+  const 群組選項 = 職業群組設定
+    .map((群組) => ({
+      代碼: 群組.代碼,
+      名稱: 群組.名稱,
+      色彩: 群組.色彩,
+      職業: 群組.職業.filter((職業代碼) => 目前有資料職業.has(職業代碼)).map((職業代碼) => ({
+        代碼: 職業代碼,
+        名稱: 顯示職業名稱(職業代碼),
+        色彩: 群組.色彩,
+      })),
+    }))
+    .filter((群組) => 群組.職業.length > 0);
+
+  if (!職業類型篩選.value) {
+    return [];
+  }
+
+  return 群組選項.find((群組) => 群組.代碼 === 職業類型篩選.value)?.職業 || [];
+});
+
+const 職業類型選項 = computed(() => {
+  const 目前有資料職業 = new Set();
+
+  for (const 列 of 所有排行列.value) {
+    if (列.職業代碼 && 列.職業代碼 !== "-") {
+      目前有資料職業.add(列.職業代碼);
+    }
+  }
+
+  return 職業群組設定
+    .filter((群組) => 群組.職業.some((職業代碼) => 目前有資料職業.has(職業代碼)))
+    .map((群組) => ({
+      代碼: 群組.代碼,
+      名稱: 群組.名稱,
+      色彩: 群組.色彩,
+    }));
+});
+
+const 目前職業類型 = computed(() => {
+  return 職業群組設定.find((群組) => 群組.代碼 === 職業類型篩選.value) || null;
+});
+
+const 職業選單文字 = computed(() => {
+  if (職業篩選.value) {
+    return 目前職業類型.value
+      ? `${目前職業類型.value.名稱} / ${顯示職業名稱(職業篩選.value)}`
+      : 顯示職業名稱(職業篩選.value);
+  }
+
+  return 目前職業類型.value?.名稱 || "全部職業";
+});
+
+const 職業選單Icon路徑 = computed(() => {
+  if (職業篩選.value) {
+    return 職業Icon路徑(職業篩選.value);
+  }
+
+  if (職業類型篩選.value) {
+    return 職業類型Icon路徑(職業類型篩選.value);
+  }
+
+  return "";
+});
+
+const 全服統計副本列表 = computed(() => {
+  return Array.isArray(全服統計資料.value?.encounters) ? 全服統計資料.value.encounters : [];
+});
+
+const 目前統計副本 = computed(() => {
+  if (統計副本鍵值.value === "all") {
+    return null;
+  }
+
+  return 全服統計副本列表.value.find((副本) => 副本.encounter_key === 統計副本鍵值.value) || null;
+});
+
+const 統計範圍文字 = computed(() => {
+  return 目前統計副本.value?.encounter_name || "全部副本";
+});
+
+const 統計副本選單文字 = computed(() => {
+  return 統計範圍文字.value;
+});
+
+const 顯示零式進度漏斗 = computed(() => {
+  return !目前統計副本.value || 目前統計副本.value.encounter_category === "零式";
+});
+
+const 顯示副本通關概覽 = computed(() => {
+  return !目前統計副本.value;
+});
+
+const 目前統計來源 = computed(() => {
+  return 目前統計副本.value || 全服統計資料.value || null;
+});
+
+const 傷害比較指標標籤 = computed(() => {
+  return 傷害比較指標選項.find((選項) => 選項.value === 統計傷害指標.value)?.label || "rDPS";
+});
+
+const 職業傷害提示作用職業 = computed(() => {
+  return 職業傷害提示互動職業.value || 職業傷害提示鎖定職業.value;
+});
+
+const 職業傷害比較資料來源 = computed(() => {
+  const 伺服器 = 統計伺服器篩選.value;
+
+  if (目前統計副本.value) {
+    if (伺服器) {
+      return (目前統計副本.value.server_stats || []).find((項目) => 項目.server === 伺服器)?.damage_stats || [];
+    }
+    return 目前統計副本.value.damage_stats || [];
+  }
+
+  if (伺服器) {
+    return (全服統計資料.value?.savage_server_damage_stats || []).find((項目) => 項目.server === 伺服器)?.damage_stats || [];
+  }
+
+  return 全服統計資料.value?.savage_damage_stats || [];
+});
+
+// 箱型圖資料由 build_user_data.mjs 預先聚合，前端只依目前篩選挑選指標與換算座標。
+// 保留這個邊界很重要：排序、分位數與樣本統計都應在 Data Building Layer 完成。
+const 職業傷害比較條件文字 = computed(() => {
+  const 範圍 = 目前統計副本.value ? 統計範圍文字.value : "零式 M1S-M4S";
+  return `${範圍}・${統計伺服器文字.value}`;
+});
+
+const 職業傷害比較基礎列 = computed(() => {
+  const 指標 = 統計傷害指標.value;
+
+  return 職業傷害比較資料來源.value
+    .map((項目) => {
+      const 指標統計 = 項目.metrics?.[指標];
+      if (!指標統計?.count) {
+        return null;
+      }
+
+      const 最小值 = 轉為數字(指標統計.min);
+      const 第一四分位 = 轉為數字(指標統計.q1);
+      const 中位數 = 轉為數字(指標統計.median);
+      const 第三四分位 = 轉為數字(指標統計.q3);
+      const 最大值 = 轉為數字(指標統計.max);
+      const 平均值 = 轉為數字(指標統計.average);
+      if ([最小值, 第一四分位, 中位數, 第三四分位, 最大值].some((數值) => 數值 === null)) {
+        return null;
+      }
+
+      return {
+        job: 項目.job,
+        role: 項目.role,
+        role_name: 項目.role_name,
+        count: 指標統計.count,
+        min: 最小值,
+        q1: 第一四分位,
+        median: 中位數,
+        q3: 第三四分位,
+        max: 最大值,
+        average: 平均值 ?? 中位數,
+        色彩: 職業比較圖色彩(項目.job),
+      };
+    })
+    .filter(Boolean)
+    .sort((前一個, 後一個) => 後一個.median - 前一個.median || 後一個.max - 前一個.max || 前一個.job.localeCompare(後一個.job));
+});
+
+const 職業傷害比較值域 = computed(() => {
+  const 數值列表 = 職業傷害比較基礎列.value.flatMap((列) => [列.min, 列.q1, 列.median, 列.q3, 列.max]);
+  if (數值列表.length === 0) {
+    return {
+      min: 0,
+      max: 1,
+      ticks: [],
+    };
+  }
+
+  const 原始最小值 = Math.min(...數值列表);
+  const 原始最大值 = Math.max(...數值列表);
+  const 差距 = Math.max(原始最大值 - 原始最小值, 原始最大值 * 0.08, 1);
+  const min = Math.max(0, Math.floor((原始最小值 - 差距 * 0.08) / 500) * 500);
+  const max = Math.ceil((原始最大值 + 差距 * 0.08) / 500) * 500 || 1;
+  const tickCount = 5;
+  const ticks = Array.from({ length: tickCount }, (_, 索引) => min + ((max - min) * 索引) / (tickCount - 1));
+
+  return {
+    min,
+    max: max <= min ? min + 1 : max,
+    ticks,
+  };
+});
+
+function 職業傷害位置(數值) {
+  const { min, max } = 職業傷害比較值域.value;
+  const 比例 = ((數值 - min) / (max - min)) * 100;
+  return `${Math.min(100, Math.max(0, 比例))}%`;
+}
+
+const 職業傷害比較刻度 = computed(() => {
+  return 職業傷害比較值域.value.ticks.map((數值) => ({
+    數值,
+    位置: 職業傷害位置(數值),
+  }));
+});
+
+const 職業傷害比較列 = computed(() => {
+  return 職業傷害比較基礎列.value.map((列) => ({
+    ...列,
+    樣式: {
+      "--職業比較色": 列.色彩,
+      "--最小值": 職業傷害位置(列.min),
+      "--第一四分位": 職業傷害位置(列.q1),
+      "--中位數": 職業傷害位置(列.median),
+      "--第三四分位": 職業傷害位置(列.q3),
+      "--最大值": 職業傷害位置(列.max),
+      "--平均值": 職業傷害位置(列.average),
+    },
+  }));
+});
+
+function 職業傷害提示文字(列) {
+  return `${顯示職業名稱(列.job)} ${傷害比較指標標籤.value}：最小 ${格式化傷害數值(列.min)}，中位數 ${格式化傷害數值(列.median)}，平均 ${格式化傷害數值(列.average)}，最大 ${格式化傷害數值(列.max)}，樣本 ${格式化整數(列.count)} 筆`;
+}
+
+function 顯示職業傷害提示(職業代碼) {
+  職業傷害提示互動職業.value = 職業代碼;
+}
+
+function 隱藏職業傷害提示(職業代碼) {
+  if (職業傷害提示互動職業.value === 職業代碼) {
+    職業傷害提示互動職業.value = "";
+  }
+}
+
+function 切換職業傷害提示(職業代碼) {
+  const 已鎖定 = 職業傷害提示鎖定職業.value === 職業代碼;
+  職業傷害提示鎖定職業.value = 已鎖定 ? "" : 職業代碼;
+  職業傷害提示互動職業.value = 已鎖定 ? "" : 職業代碼;
+}
+
+function 職業範圍類型(範圍) {
+  if (!範圍 || 範圍 === "all") {
+    return "all";
+  }
+  return String(範圍).startsWith("role:") ? "role" : "job";
+}
+
+function 取得統計計數(統計項目, 職業範圍 = 統計職業範圍.value) {
+  if (!統計項目) {
+    return 0;
+  }
+
+  const 類型 = 職業範圍類型(職業範圍);
+  if (類型 === "role") {
+    return 轉為數字((統計項目.role_stats || []).find((項目) => 項目.role === 職業範圍)?.clear_count) || 0;
+  }
+  if (類型 === "job") {
+    return 轉為數字((統計項目.job_stats || []).find((項目) => 項目.job === 職業範圍)?.clear_count) || 0;
+  }
+
+  return 轉為數字(統計項目.character_count ?? 統計項目.clear_count) || 0;
+}
+
+function 取得職業範圍文字(範圍 = 統計職業範圍.value) {
+  const 類型 = 職業範圍類型(範圍);
+  if (類型 === "role") {
+    return 職業群組設定.find((群組) => 群組.代碼 === 範圍)?.名稱 || "職業類型";
+  }
+  if (類型 === "job") {
+    const 群組 = 職業所屬類型(範圍);
+    return 群組 ? `${群組.名稱} / ${顯示職業名稱(範圍)}` : 顯示職業名稱(範圍);
+  }
+  return "全部職業";
+}
+
+const 伺服器佔比單位 = computed(() => {
+  if (職業範圍類型(統計職業範圍.value) !== "all") {
+    return "紀錄";
+  }
+  return 目前統計副本.value ? "人" : "人次";
+});
+
+const 統計伺服器選項 = computed(() => {
+  return (目前統計來源.value?.server_stats || [])
+    .map((項目) => 項目.server)
+    .filter(Boolean)
+    .sort((前一個, 後一個) => 前一個.localeCompare(後一個, "zh-Hant-TW"));
+});
+
+const 統計職業範圍選項 = computed(() => {
+  const 來源 = 目前統計來源.value || 全服統計資料.value;
+  const 角色類型選項 = (來源?.role_stats || []).map((項目) => ({
+    value: 項目.role,
+    label: 項目.role_name,
+    group: "職業類型",
+  }));
+  const 職業選項 = (來源?.job_stats || []).map((項目) => ({
+    value: 項目.job,
+    label: `${項目.role_name || "職業"} / ${顯示職業名稱(項目.job)}`,
+    group: "各職業",
+  }));
+
+  return [{ value: "all", label: "全部職業", group: "全部" }, ...角色類型選項, ...職業選項];
+});
+
+const 統計伺服器文字 = computed(() => {
+  return 統計伺服器篩選.value || "全部伺服器";
+});
+
+const 統計條件文字 = computed(() => {
+  return `${統計範圍文字.value}・${統計伺服器文字.value}・${取得職業範圍文字()}`;
+});
+
+const 全服概要項目 = computed(() => {
+  const 統計 = 全服統計資料.value;
+  const 副本 = 目前統計副本.value;
+  if (!統計) {
+    return [];
+  }
+
+  if (副本) {
+    return [
+      { 標籤: "通關角色", 數值: 格式化整數(副本.character_count) },
+      { 標籤: "職業紀錄", 數值: 格式化整數(副本.job_record_count) },
+      { 標籤: "公開成績", 數值: 格式化整數(副本.entry_count) },
+      { 標籤: "公開角色覆蓋率", 數值: 格式化百分比(副本.clear_share_percent) },
+    ];
+  }
+
+  return [
+    { 標籤: "全服公開角色", 數值: 格式化整數(統計.total_character_count) },
+    { 標籤: "副本通關人次", 數值: 格式化整數(統計.total_encounter_clear_count) },
+    { 標籤: "職業通關紀錄", 數值: 格式化整數(統計.total_job_clear_count) },
+    { 標籤: "公開成績", 數值: 格式化整數(統計.total_entry_count) },
+  ];
+});
+
+const 統計詞彙說明 = {
+  全服公開角色: "目前公開資料中出現過的唯一角色數，不代表遊戲內完整人口。",
+  副本通關人次: "各副本的通關角色數加總；同一角色跨副本會分別計入。",
+  職業通關紀錄: "同一角色若用不同職業留下通關成績，會各自計為一筆職業紀錄。",
+  公開成績: "目前抓取到且可公開呈現的 FFLogs 成績筆數。",
+  通關角色: "同一角色在同一副本會去重計算。",
+  職業紀錄: "同一角色在同一副本使用不同職業時，會分別計入。",
+  公開角色覆蓋率: "單一副本的通關角色數除以目前公開資料中出現過的唯一角色數。",
+  伺服器佔比: "在目前副本與職業範圍下，各伺服器佔全部符合條件紀錄的比例。",
+  職業佔比: "在目前副本與伺服器範圍下，各職業或職業類型佔全部符合條件紀錄的比例。",
+  隊友關係: "依公開通關同場資料整理常同場隊友、職能組成與副本聚集；不等同實際固定隊名單。",
+  同場副本聚集: "把此角色與隊友一起出現在同一筆公開通關紀錄的資料依副本彙整；場數是同場通關次數，隊友數是曾在該副本同場的不同角色數，用來看同場關係主要集中在哪些副本。",
+  伺服器生態比較: "以各伺服器內部的職能通關紀錄比例呈現，顏色越深代表該職能在該伺服器占比越高。",
+  通關紀錄: "套用職業範圍時，以符合職業條件的通關紀錄計算。",
+  範圍佔比: "套用伺服器或職業範圍後，副本通關概覽會改以目前篩選範圍作為分母。",
+  零式進度漏斗: "以目前伺服器與職業範圍計算各零式層數的公開通關規模；套用單一職業時，代表該職業留下的通關紀錄。",
+  全職業輸出比較: "以公開成績統計每個職業的傷害分布；全部副本時固定使用 M1S、M2S、M3S、M4S。",
+  Active: "有效輸出時間比例。數值越高，代表角色在戰鬥中維持輸出或行動的時間越完整。",
+  DPS: "原始每秒傷害，包含自身傷害以及吃到外部增益後造成的傷害。",
+  rDPS: "團隊貢獻 DPS。公式：DPS - 他人團輔 + 自體團輔，用來衡量你實際為團隊帶來的傷害。",
+  nDPS: "純淨 DPS。公式：DPS - 他人團輔，用來看移除外部增益後自己的輸出表現。",
+  aDPS: "調整後 DPS。公式：DPS - 被選取的單體增益，會移除標舞、舞伴、占星卡與龍眼等單體填充傷害。",
+  cDPS: "綜合 DPS。公式：DPS - 被選取的單體增益 + 自體團輔，用來同時觀察自身爆發與你提供給團隊的增益價值。",
+  "最佳 rDPS": "此角色目前公開成績中最高的團隊貢獻 DPS。",
+};
+
+function 統計說明文字(詞彙) {
+  return 統計詞彙說明[詞彙] || "";
+}
+
+const 伺服器佔比列表 = computed(() => {
+  const 伺服器列表 = 目前統計來源.value?.server_stats || [];
+  const 加總 = 伺服器列表.reduce((總數, 項目) => 總數 + 取得統計計數(項目), 0);
+
+  return 伺服器列表
+    .map((項目) => {
+      const 顯示數量 = 取得統計計數(項目);
+      return {
+        ...項目,
+        顯示數量,
+        顯示比例: 加總 > 0 ? Number(((顯示數量 / 加總) * 100).toFixed(2)) : 0,
+      };
+    })
+    .filter((項目) => 項目.顯示數量 > 0);
+});
+
+function 取得伺服器拆分列表(伺服器項目) {
+  if (!伺服器項目 || 伺服器拆分模式.value === "none") {
+    return [];
+  }
+
+  const 範圍類型 = 職業範圍類型(統計職業範圍.value);
+  const 原始列表 = 伺服器拆分模式.value === "role" ? 伺服器項目.role_stats || [] : 伺服器項目.job_stats || [];
+  const 過濾列表 = 原始列表.filter((項目) => {
+    if (範圍類型 === "role") {
+      return 伺服器拆分模式.value === "role" ? 項目.role === 統計職業範圍.value : 項目.role === 統計職業範圍.value;
+    }
+    if (範圍類型 === "job") {
+      return 伺服器拆分模式.value === "role"
+        ? 項目.role === 職業所屬類型(統計職業範圍.value)?.代碼
+        : 項目.job === 統計職業範圍.value;
+    }
+    return true;
+  });
+  const 加總 = 過濾列表.reduce((總數, 項目) => 總數 + (轉為數字(項目.clear_count) || 0), 0);
+
+  return 過濾列表.map((項目) => ({
+    ...項目,
+    顯示名稱: 項目.role_name || 顯示職業名稱(項目.job),
+    顯示比例: 加總 > 0 ? Number((((轉為數字(項目.clear_count) || 0) / 加總) * 100).toFixed(2)) : 0,
+  }));
+}
+
+const 職業佔比來源 = computed(() => {
+  if (!統計伺服器篩選.value) {
+    return 目前統計來源.value;
+  }
+
+  return (目前統計來源.value?.server_stats || []).find((項目) => 項目.server === 統計伺服器篩選.value) || null;
+});
+
+const 職業佔比標題文字 = computed(() => {
+  return `${統計範圍文字.value}・${統計伺服器文字.value}`;
+});
+
+const 職業佔比分組 = computed(() => {
+  const 來源 = 職業佔比來源.value;
+  const 範圍類型 = 職業範圍類型(統計職業範圍.value);
+  const 職業列表 = (來源?.job_stats || []).filter((項目) => {
+    if (範圍類型 === "role") {
+      return 項目.role === 統計職業範圍.value;
+    }
+    if (範圍類型 === "job") {
+      return 項目.job === 統計職業範圍.value;
+    }
+    return true;
+  });
+
+  return 職業群組設定
+    .map((群組) => {
+      const jobs = 職業列表.filter((項目) => 項目.role === 群組.代碼);
+      if (jobs.length === 0) {
+        return null;
+      }
+      const roleStats = (來源?.role_stats || []).find((項目) => 項目.role === 群組.代碼);
+      const clearCount = 範圍類型 === "job" ? jobs.reduce((總數, 項目) => 總數 + 項目.clear_count, 0) : roleStats?.clear_count;
+      const percentage = 範圍類型 === "job" ? jobs.reduce((總數, 項目) => 總數 + 項目.percentage, 0) : roleStats?.percentage;
+
+      return {
+        role: 群組.代碼,
+        role_name: 群組.名稱,
+        色彩: 群組.色彩,
+        clear_count: clearCount ?? jobs.reduce((總數, 項目) => 總數 + 項目.clear_count, 0),
+        percentage: percentage ?? 0,
+        jobs,
+      };
+    })
+    .filter(Boolean);
+});
+
+const 伺服器生態欄位 = computed(() => {
+  return 職業群組設定.map((群組) => ({
+    role: 群組.代碼,
+    label: 群組.名稱,
+    色彩: 群組.色彩,
+  }));
+});
+
+const 伺服器生態矩陣 = computed(() => {
+  const 伺服器列表 = 目前統計來源.value?.server_stats || [];
+
+  return 伺服器列表
+    .map((伺服器項目) => {
+      const roleStats = Array.isArray(伺服器項目.role_stats) ? 伺服器項目.role_stats : [];
+      const 加總 = roleStats.reduce((總數, 項目) => 總數 + (轉為數字(項目.clear_count) || 0), 0);
+      const 欄位 = 伺服器生態欄位.value.map((欄位項目) => {
+        const 統計 = roleStats.find((項目) => 項目.role === 欄位項目.role);
+        const 數量 = 轉為數字(統計?.clear_count) || 0;
+        return {
+          ...欄位項目,
+          數量,
+          比例: 加總 > 0 ? Number(((數量 / 加總) * 100).toFixed(2)) : 0,
+        };
+      });
+      const 最高欄位 = 欄位.slice().sort((前一個, 後一個) => 後一個.比例 - 前一個.比例)[0] || null;
+
+      return {
+        server: 伺服器項目.server,
+        欄位,
+        最高欄位,
+        加總,
+      };
+    })
+    .filter((列) => 列.加總 > 0);
+});
+
+const 職業分析職業選項 = computed(() => {
+  const 職業列表 = Array.isArray(全服統計資料.value?.job_stats) ? 全服統計資料.value.job_stats : [];
+  return 職業列表.map((項目) => ({
+    ...項目,
+    label: 顯示職業名稱(項目.job),
+  }));
+});
+
+const 職業分析目前職業代碼 = computed(() => {
+  return 職業分析職業.value || 職業分析職業選項.value[0]?.job || "";
+});
+
+const 職業分析目前職業 = computed(() => {
+  return 職業分析職業選項.value.find((項目) => 項目.job === 職業分析目前職業代碼.value) || null;
+});
+
+const 職業分析有資料職業 = computed(() => {
+  return new Set(職業分析職業選項.value.map((職業) => 職業.job).filter(Boolean));
+});
+
+const 職業分析類型選項 = computed(() => {
+  return 職業群組設定
+    .filter((群組) => 群組.職業.some((職業代碼) => 職業分析有資料職業.value.has(職業代碼)))
+    .map((群組) => ({
+      代碼: 群組.代碼,
+      名稱: 群組.名稱,
+      色彩: 群組.色彩,
+    }));
+});
+
+const 職業分析目前類型代碼 = computed(() => {
+  return (
+    職業分析職業類型.value ||
+    職業所屬類型(職業分析目前職業代碼.value)?.代碼 ||
+    職業分析類型選項.value[0]?.代碼 ||
+    ""
+  );
+});
+
+const 職業分析目前類型 = computed(() => {
+  return 職業群組設定.find((群組) => 群組.代碼 === 職業分析目前類型代碼.value) || null;
+});
+
+const 職業分析可選職業 = computed(() => {
+  const 群組 = 職業群組設定.find((項目) => 項目.代碼 === 職業分析目前類型代碼.value);
+  if (!群組) {
+    return [];
+  }
+
+  return 群組.職業
+    .filter((職業代碼) => 職業分析有資料職業.value.has(職業代碼))
+    .map((職業代碼) => ({
+      代碼: 職業代碼,
+      名稱: 顯示職業名稱(職業代碼),
+      色彩: 群組.色彩,
+    }));
+});
+
+const 職業分析選單文字 = computed(() => {
+  if (!職業分析目前職業代碼.value) {
+    return "選擇職業";
+  }
+
+  return 職業分析目前類型.value
+    ? `${職業分析目前類型.value.名稱} / ${顯示職業名稱(職業分析目前職業代碼.value)}`
+    : 顯示職業名稱(職業分析目前職業代碼.value);
+});
+
+const 職業分析選單Icon路徑 = computed(() => {
+  if (職業分析目前職業代碼.value) {
+    return 職業Icon路徑(職業分析目前職業代碼.value);
+  }
+
+  return 職業類型Icon路徑(職業分析目前類型代碼.value);
+});
+
+const 職業分析副本列 = computed(() => {
+  const 職業 = 職業分析目前職業代碼.value;
+  const 總數 = 轉為數字(職業分析目前職業.value?.clear_count) || 0;
+
+  return 全服統計副本列表.value
+    .map((副本) => {
+      const 統計 = (副本.job_stats || []).find((項目) => 項目.job === 職業);
+      const 數量 = 轉為數字(統計?.clear_count) || 0;
+      return {
+        ...副本,
+        數量,
+        副本內佔比: 轉為數字(統計?.percentage) || 0,
+        職業內佔比: 總數 > 0 ? Number(((數量 / 總數) * 100).toFixed(2)) : 0,
+      };
+    })
+    .filter((副本) => 副本.數量 > 0)
+    .sort((前一個, 後一個) => {
+      const 順序差 = 取得副本排序值(前一個.encounter_key) - 取得副本排序值(後一個.encounter_key);
+      return 順序差 || 前一個.encounter_name.localeCompare(後一個.encounter_name, "zh-Hant-TW");
+    });
+});
+
+const 職業分析伺服器列 = computed(() => {
+  const 職業 = 職業分析目前職業代碼.value;
+  const 總數 = 轉為數字(職業分析目前職業.value?.clear_count) || 0;
+
+  return (全服統計資料.value?.server_stats || [])
+    .map((伺服器) => {
+      const 統計 = (伺服器.job_stats || []).find((項目) => 項目.job === 職業);
+      const 數量 = 轉為數字(統計?.clear_count) || 0;
+      return {
+        server: 伺服器.server,
+        數量,
+        全職業佔比: 總數 > 0 ? Number(((數量 / 總數) * 100).toFixed(2)) : 0,
+        伺服器內佔比: 轉為數字(統計?.percentage) || 0,
+      };
+    })
+    .filter((伺服器) => 伺服器.數量 > 0)
+    .sort((前一個, 後一個) => 後一個.數量 - 前一個.數量 || 前一個.server.localeCompare(後一個.server, "zh-Hant-TW"));
+});
+
+const 職業分析概要 = computed(() => {
+  const 職業 = 職業分析目前職業.value;
+  if (!職業) {
+    return [];
+  }
+
+  const 主要副本 = 職業分析副本列.value.slice().sort((前一個, 後一個) => 後一個.數量 - 前一個.數量)[0] || null;
+  const 主要伺服器 = 職業分析伺服器列.value[0] || null;
+
+  return [
+    { 標籤: "通關紀錄", 數值: 格式化整數(職業.clear_count) },
+    { 標籤: "公開成績", 數值: 格式化整數(職業.entry_count) },
+    { 標籤: "全職業佔比", 數值: 格式化百分比(職業.percentage) },
+    { 標籤: "主要伺服器", 數值: 主要伺服器 ? `${主要伺服器.server} ${格式化百分比(主要伺服器.全職業佔比)}` : "-" },
+    { 標籤: "主要副本", 數值: 主要副本 ? `${主要副本.encounter_name} ${格式化百分比(主要副本.職業內佔比)}` : "-" },
+  ];
+});
+
+const 資料狀態列表 = computed(() => {
+  const 副本列表 = 目前統計副本.value ? [目前統計副本.value] : 全服統計副本列表.value;
+
+  return 副本列表.map((副本) => ({
+    ...副本,
+    有資料: (轉為數字(副本.character_count) || 0) > 0,
+    狀態文字: (轉為數字(副本.character_count) || 0) > 0 ? "已收錄" : "待收集",
+  }));
+});
+
+const 資料狀態分組 = computed(() => {
+  const 分組索引 = new Map();
+
+  for (const 分類 of 副本分類順序) {
+    分組索引.set(分類, {
+      分類,
+      副本列表: [],
+    });
+  }
+
+  for (const 副本 of 資料狀態列表.value) {
+    const 分類 = 副本.encounter_category || "其他";
+    if (!分組索引.has(分類)) {
+      分組索引.set(分類, {
+        分類,
+        副本列表: [],
+      });
+    }
+    分組索引.get(分類).副本列表.push(副本);
+  }
+
+  return Array.from(分組索引.values())
+    .map((分組) => {
+      const 總數 = 分組.副本列表.length;
+      const 已收錄數 = 分組.副本列表.filter((副本) => 副本.有資料).length;
+      return {
+        ...分組,
+        總數,
+        已收錄數,
+        收錄比例: 總數 > 0 ? Number(((已收錄數 / 總數) * 100).toFixed(2)) : 0,
+      };
+    })
+    .filter((分組) => 分組.總數 > 0);
+});
+
+const 近期動態基準時間 = computed(() => {
+  const 使用者時間 = 使用者索引列表.value
+    .map((使用者) => new Date(使用者.last_recorded_at_iso || 0).getTime())
+    .filter(Number.isFinite)
+    .sort((前一個, 後一個) => 後一個 - 前一個)[0];
+  const 索引時間 = new Date(使用者索引.value?.rankings_updated_at_iso || 0).getTime();
+  return 使用者時間 || (Number.isNaN(索引時間) ? Date.now() : 索引時間);
+});
+
+const 近期動態角色列表 = computed(() => {
+  return 使用者索引列表.value
+    .filter((使用者) => 使用者.last_recorded_at_iso)
+    .slice()
+    .sort((前一個, 後一個) => {
+      const 時間差 = new Date(後一個.last_recorded_at_iso || 0).getTime() - new Date(前一個.last_recorded_at_iso || 0).getTime();
+      return 時間差 || (後一個.best_rdps || 0) - (前一個.best_rdps || 0);
+    })
+    .slice(0, 24);
+});
+
+const 近期動態概要 = computed(() => {
+  const 七天前 = 近期動態基準時間.value - 7 * 24 * 60 * 60 * 1000;
+  const 近七天角色數 = 使用者索引列表.value.filter((使用者) => {
+    const 時間 = new Date(使用者.last_recorded_at_iso || 0).getTime();
+    return Number.isFinite(時間) && 時間 >= 七天前;
+  }).length;
+  const 最新角色 = 近期動態角色列表.value[0] || null;
+
+  return [
+    { 標籤: "收錄角色", 數值: 格式化整數(使用者索引.value?.total_users || 使用者索引列表.value.length) },
+    { 標籤: "近七天活躍", 數值: 格式化整數(近七天角色數) },
+    { 標籤: "最新角色", 數值: 最新角色?.character_name || "-" },
+    { 標籤: "最新紀錄", 數值: 格式化紀錄時間(最新角色?.last_recorded_at_iso) },
+  ];
+});
+
+function 取得成績職業總數(成績) {
+  if (!成績?.encounter_key || !成績?.job) {
+    return null;
+  }
+
+  const 副本 = (全服統計資料.value?.encounters || []).find((項目) => 項目.encounter_key === 成績.encounter_key);
+  const 職業 = (副本?.job_stats || []).find((項目) => 項目.job === 成績.job);
+  return 轉為數字(職業?.clear_count);
+}
+
+function 取得最高伺服器(副本) {
+  const 伺服器列表 = 副本?.server_stats || [];
+  const 加總 = 伺服器列表.reduce((總數, 項目) => 總數 + 取得統計計數(項目), 0);
+  return 伺服器列表
+    .map((項目) => {
+      const 顯示數量 = 取得統計計數(項目);
+      return {
+        ...項目,
+        顯示數量,
+        顯示比例: 加總 > 0 ? Number(((顯示數量 / 加總) * 100).toFixed(2)) : 0,
+      };
+    })
+    .filter((項目) => 項目.顯示數量 > 0)
+    .sort((前一個, 後一個) => 後一個.顯示數量 - 前一個.顯示數量 || 前一個.server.localeCompare(後一個.server, "zh-Hant-TW"))[0];
+}
+
+function 取得最高職業(統計項目) {
+  const 範圍類型 = 職業範圍類型(統計職業範圍.value);
+  const 職業列表 = (統計項目?.job_stats || []).filter((項目) => {
+    if (範圍類型 === "role") {
+      return 項目.role === 統計職業範圍.value;
+    }
+    if (範圍類型 === "job") {
+      return 項目.job === 統計職業範圍.value;
+    }
+    return true;
+  });
+
+  return 職業列表.sort((前一個, 後一個) => 後一個.clear_count - 前一個.clear_count || 前一個.job.localeCompare(後一個.job, "zh-Hant-TW"))[0];
+}
+
+const 副本通關概覽 = computed(() => {
+  const 總範圍來源 = 統計伺服器篩選.value
+    ? (全服統計資料.value?.server_stats || []).find((項目) => 項目.server === 統計伺服器篩選.value)
+    : 全服統計資料.value;
+  const 分母 = 取得統計計數(總範圍來源);
+
+  return 全服統計副本列表.value
+    .map((副本) => {
+      const 來源 = 統計伺服器篩選.value
+        ? (副本.server_stats || []).find((項目) => 項目.server === 統計伺服器篩選.value)
+        : 副本;
+      const 顯示數量 = 取得統計計數(來源);
+      const 顯示比例 = 分母 > 0 ? Number(((顯示數量 / 分母) * 100).toFixed(2)) : 0;
+      const 最高伺服器 = 統計伺服器篩選.value ? null : 取得最高伺服器(副本);
+      const 最高職業 = 取得最高職業(來源);
+
+      return {
+        ...副本,
+        顯示數量,
+        顯示比例,
+        最高伺服器,
+        最高職業,
+      };
+    })
+    .filter((副本) => 副本.顯示數量 > 0);
+});
+
+function 零式副本排序值(副本) {
+  const 清單索引 = 副本清單.value.findIndex((項目) => 項目.key === 副本.encounter_key);
+  if (清單索引 >= 0) {
+    return 清單索引;
+  }
+
+  const 層數 = String(副本.encounter_key || 副本.encounter_name || "").match(/m(\d+)s/i);
+  return 層數 ? Number(層數[1]) : Number.MAX_SAFE_INTEGER;
+}
+
+function 取得零式層級文字(副本, 索引) {
+  const 名稱層數 = String(副本.encounter_name || "").match(/M\d+S/i);
+  if (名稱層數) {
+    return 名稱層數[0].toUpperCase();
+  }
+
+  const 鍵值層數 = String(副本.encounter_key || "").match(/m\d+s/i);
+  if (鍵值層數) {
+    return 鍵值層數[0].toUpperCase();
+  }
+
+  return `第 ${索引 + 1} 層`;
+}
+
+function 取得副本統計篩選來源(副本) {
+  if (!統計伺服器篩選.value) {
+    return 副本;
+  }
+
+  return (副本?.server_stats || []).find((項目) => 項目.server === 統計伺服器篩選.value) || null;
+}
+
+const 零式漏斗單位 = computed(() => {
+  return 職業範圍類型(統計職業範圍.value) === "all" ? "人" : "紀錄";
+});
+
+const 零式漏斗條件文字 = computed(() => {
+  return `${統計伺服器文字.value}・${取得職業範圍文字()}`;
+});
+
+const 零式進度漏斗 = computed(() => {
+  const 零式副本列表 = 全服統計副本列表.value
+    .filter((副本) => 副本.encounter_category === "零式")
+    .sort((前一個, 後一個) => {
+      const 順序差 = 零式副本排序值(前一個) - 零式副本排序值(後一個);
+      return 順序差 || String(前一個.encounter_name || "").localeCompare(String(後一個.encounter_name || ""), "zh-Hant-TW");
+    });
+
+  const 基準數量 = 取得統計計數(取得副本統計篩選來源(零式副本列表[0]));
+  let 上一層數量 = null;
+
+  return 零式副本列表
+    .map((副本, 索引) => {
+      const 來源 = 取得副本統計篩選來源(副本);
+      const 顯示數量 = 取得統計計數(來源);
+      const 相對首層比例 = 基準數量 > 0 ? Number(((顯示數量 / 基準數量) * 100).toFixed(2)) : 0;
+      const 上一層比例 =
+        上一層數量 === null ? 100 : 上一層數量 > 0 ? Number(((顯示數量 / 上一層數量) * 100).toFixed(2)) : 0;
+      const 較上一層差異 = 上一層數量 === null ? 0 : 顯示數量 - 上一層數量;
+      上一層數量 = 顯示數量;
+
+      return {
+        ...副本,
+        索引,
+        層級文字: 取得零式層級文字(副本, 索引),
+        顯示數量,
+        相對首層比例,
+        上一層比例,
+        較上一層差異,
+      };
+    })
+    .filter((項目) => 項目.顯示數量 > 0);
+});
+
+const 更新時間文字 = computed(() => {
+  if (頁面模式.value === "user") {
+    const 更新時間 = 使用者索引.value?.rankings_updated_at_iso || 使用者資料.value?.generated_at_iso;
+    return 更新時間 ? `資料更新時間 ${格式化紀錄時間(更新時間)}` : "個人成績單資料";
+  }
+
+  if (頁面模式.value === "stats") {
+    const 更新時間 = 全服統計資料.value?.rankings_updated_at_iso || 全服統計資料.value?.generated_at_iso;
+    return 更新時間 ? `統計更新時間 ${格式化紀錄時間(更新時間)}` : "全服統計資料";
+  }
+
+  if (頁面模式.value === "compare") {
+    const 更新時間 = 使用者索引.value?.rankings_updated_at_iso || 比較角色左資料.value?.generated_at_iso || 比較角色右資料.value?.generated_at_iso;
+    return 更新時間 ? `資料更新時間 ${格式化紀錄時間(更新時間)}` : "玩家比較資料";
+  }
+
+  if (頁面模式.value === "jobs") {
+    const 更新時間 = 全服統計資料.value?.rankings_updated_at_iso || 全服統計資料.value?.generated_at_iso;
+    return 更新時間 ? `統計更新時間 ${格式化紀錄時間(更新時間)}` : "職業分析資料";
+  }
+
+  if (頁面模式.value === "activity") {
+    const 更新時間 = 使用者索引.value?.rankings_updated_at_iso || 使用者索引.value?.generated_at_iso;
+    return 更新時間 ? `資料更新時間 ${格式化紀錄時間(更新時間)}` : "近期動態資料";
+  }
+
+  const 更新時間 = 排行榜資料.value?.updated_at_iso;
+  return 更新時間 ? `更新時間 ${格式化紀錄時間(更新時間)}` : "尚未取得更新時間";
+});
+
+const 頁面副標 = computed(() => {
+  if (頁面模式.value === "user") {
+    return "Final Fantasy XIV 繁中服・個人成績單";
+  }
+
+  if (頁面模式.value === "stats") {
+    return "Final Fantasy XIV 繁中服・全服統計";
+  }
+
+  if (頁面模式.value === "compare") {
+    return "Final Fantasy XIV 繁中服・玩家比較";
+  }
+
+  if (頁面模式.value === "jobs") {
+    return "Final Fantasy XIV 繁中服・職業分析";
+  }
+
+  if (頁面模式.value === "activity") {
+    return "Final Fantasy XIV 繁中服・近期動態";
+  }
+
+  return 目前副本.value?.category ? `Final Fantasy XIV 繁中服・${目前副本.value.category}` : "Final Fantasy XIV 繁中服";
+});
+
+const 頁面標題 = computed(() => {
+  if (頁面模式.value === "user") {
+    return 使用者資料.value?.character_name ? `${使用者資料.value.character_name} 個人成績單` : "個人成績單";
+  }
+
+  if (頁面模式.value === "stats") {
+    return 目前統計副本.value ? `${目前統計副本.value.encounter_name} 全服統計` : "全服統計";
+  }
+
+  if (頁面模式.value === "compare") {
+    if (角色比較已完成.value) {
+      return `${比較角色左.value.character_name} vs ${比較角色右.value.character_name}`;
+    }
+    return "玩家比較";
+  }
+
+  if (頁面模式.value === "jobs") {
+    return 職業分析目前職業代碼.value ? `${顯示職業名稱(職業分析目前職業代碼.value)} 職業分析` : "職業分析";
+  }
+
+  if (頁面模式.value === "activity") {
+    return "近期動態";
+  }
+
+  return 目前副本.value?.name ? `${目前副本.value.name} 排行榜` : "排行榜";
+});
+
+const 使用者索引列表 = computed(() => {
+  return Array.isArray(使用者索引.value?.users) ? 使用者索引.value.users : [];
+});
+
+function 建立使用者搜尋建議列表(搜尋文字) {
+  const 關鍵字 = String(搜尋文字 || "")
+    .trim()
+    .toLocaleLowerCase("zh-TW");
+  if (!關鍵字) {
+    return [];
+  }
+
+  return 使用者索引列表.value
+    .flatMap((使用者) => {
+      const 伺服器列表 = 使用者.servers?.length ? 使用者.servers : [""];
+      return 伺服器列表.map((伺服器) => {
+        const 顯示文字 = 格式化使用者搜尋文字(使用者.character_name, 伺服器);
+        return {
+          value: 顯示文字,
+          label: `${使用者.encounter_count || 0} 副本 / ${使用者.public_entry_count || 0} 筆公開成績`,
+          character_name: 使用者.character_name,
+          server: 伺服器,
+        };
+      });
+    })
+    .filter((建議) => {
+      const 名稱符合 = 建議.character_name?.toLocaleLowerCase("zh-TW").includes(關鍵字);
+      const 伺服器符合 = 建議.server?.toLocaleLowerCase("zh-TW").includes(關鍵字);
+      const 顯示文字符合 = 建議.value.toLocaleLowerCase("zh-TW").includes(關鍵字);
+      return 名稱符合 || 伺服器符合 || 顯示文字符合;
+    })
+    .slice(0, 8);
+}
+
+const 使用者搜尋建議 = computed(() => {
+  return 建立使用者搜尋建議列表(使用者搜尋關鍵字.value);
+});
+
+const 比較角色左搜尋建議 = computed(() => {
+  return 建立使用者搜尋建議列表(比較角色左輸入.value);
+});
+
+const 比較角色右搜尋建議 = computed(() => {
+  return 建立使用者搜尋建議列表(比較角色右輸入.value);
+});
+
+function 取得使用者副本成績(資料, 伺服器 = "", 成績篩選 = () => true) {
+  const 副本列表 = Array.isArray(資料?.encounters) ? 資料.encounters : [];
+
+  return 副本列表
+    .map((副本) => {
+      const 公開成績 = (副本.public_entries || []).filter((成績) => (!伺服器 || 成績.server === 伺服器) && 成績篩選(成績));
+      if (公開成績.length === 0) {
+        return null;
+      }
+
+      const 最佳成績 = 公開成績.reduce((目前最佳, 成績) => (使用者成績是否較佳(成績, 目前最佳) ? 成績 : 目前最佳), null);
+      return {
+        ...副本,
+        best_entry: 最佳成績,
+        public_entries: 公開成績,
+      };
+    })
+    .filter(Boolean);
+}
+
+const 使用者完整副本成績 = computed(() => {
+  return 取得使用者副本成績(使用者資料.value, 使用者伺服器篩選.value);
+});
+
+const 使用者可用職業列表 = computed(() => {
+  const 職業集合 = new Set(
+    使用者完整副本成績.value
+      .flatMap((副本) =>副本.public_entries || [])
+      .map((成績) => 成績.job)
+      .filter(Boolean),
+  );
+
+  return Array.from(職業集合).sort((前一個, 後一個) => {
+    const 類型差 = 職業類型排序值(職業所屬類型(前一個)?.代碼) - 職業類型排序值(職業所屬類型(後一個)?.代碼);
+    return 類型差 || 顯示職業名稱(前一個).localeCompare(顯示職業名稱(後一個), "zh-Hant-TW");
+  });
+});
+
+const 使用者職業類型選項 = computed(() => {
+  return 職業群組設定.filter((群組) => 使用者可用職業列表.value.some((職業) => 群組.職業.includes(職業)));
+});
+
+const 使用者職業選項 = computed(() => {
+  return 使用者可用職業列表.value
+    .filter((職業) => !使用者職業類型篩選.value || 職業所屬類型(職業)?.代碼 === 使用者職業類型篩選.value)
+    .map((職業) => ({
+      代碼: 職業,
+      名稱: 顯示職業名稱(職業),
+      job: 職業,
+      job_name: 顯示職業名稱(職業),
+      role: 職業所屬類型(職業)?.代碼 || "",
+      色彩: 職業代碼色彩(職業),
+    }));
+});
+
+const 目前使用者職業類型 = computed(() => {
+  return 職業群組設定.find((群組) => 群組.代碼 === 使用者職業類型篩選.value) || null;
+});
+
+const 使用者職業選單文字 = computed(() => {
+  if (使用者職業篩選.value) {
+    return 目前使用者職業類型.value
+      ? `${目前使用者職業類型.value.名稱} / ${顯示職業名稱(使用者職業篩選.value)}`
+      : 顯示職業名稱(使用者職業篩選.value);
+  }
+
+  return 目前使用者職業類型.value?.名稱 || "全部職業";
+});
+
+const 使用者職業選單Icon路徑 = computed(() => {
+  if (使用者職業篩選.value) {
+    return 職業Icon路徑(使用者職業篩選.value);
+  }
+
+  if (使用者職業類型篩選.value) {
+    return 職業類型Icon路徑(使用者職業類型篩選.value);
+  }
+
+  return "";
+});
+
+function 符合使用者職業篩選(成績) {
+  if (使用者職業類型篩選.value && 職業所屬類型(成績.job)?.代碼 !== 使用者職業類型篩選.value) {
+    return false;
+  }
+
+  return !使用者職業篩選.value || 成績.job === 使用者職業篩選.value;
+}
+
+const 使用者副本成績 = computed(() => {
+  return 取得使用者副本成績(使用者資料.value, 使用者伺服器篩選.value, 符合使用者職業篩選);
+});
+
+function 建立使用者統計(副本成績) {
+  const 公開成績數 = 副本成績.reduce((總數, 副本) => 總數 + 副本.public_entries.length, 0);
+  const 最佳成績 = 副本成績.reduce(
+    (目前最佳, 副本) => (使用者成績是否較佳(副本.best_entry, 目前最佳) ? 副本.best_entry : 目前最佳),
+    null,
+  );
+  const 最後紀錄時間 = 副本成績
+    .flatMap((副本) => 副本.public_entries)
+    .map((成績) => 成績.recorded_at_iso)
+    .filter(Boolean)
+    .sort()
+    .at(-1);
+
+  return {
+    副本數: 副本成績.length,
+    公開成績數,
+    最佳成績,
+    最後紀錄時間,
+  };
+}
+
+const 使用者統計 = computed(() => {
+  return 建立使用者統計(使用者副本成績.value);
+});
+
+function 建立使用者成績趨勢項(副本, 職能, 成績列表) {
+  const 數值列表 = 成績列表.map((成績) => 轉為數字(成績.rdps) || 0);
+  const 最低 = Math.min(...數值列表);
+  const 最高 = Math.max(...數值列表);
+  const 第一筆 = 成績列表[0];
+  const 最新 = 成績列表.at(-1);
+  const 最佳 = 成績列表.reduce((目前最佳, 成績) => (使用者成績是否較佳(成績, 目前最佳) ? 成績 : 目前最佳), null);
+  const 點列表 = 成績列表.map((成績, index) => {
+    const rdps = 轉為數字(成績.rdps) || 0;
+    const x = 成績列表.length === 1 ? 50 : (index / (成績列表.length - 1)) * 100;
+    const y = 最高 === 最低 ? 26 : 42 - ((rdps - 最低) / (最高 - 最低)) * 32;
+    return {
+      id: 成績.id,
+      job: 成績.job,
+      rdps,
+      recorded_at_iso: 成績.recorded_at_iso,
+      x: Number(x.toFixed(2)),
+      y: Number(y.toFixed(2)),
+    };
+  });
+  const 折線路徑 = 點列表.length > 1 ? 點列表.map((點, index) => `${index === 0 ? "M" : "L"} ${點.x} ${點.y}`).join(" ") : "";
+  const 填色路徑 = 點列表.length > 1 ? `${折線路徑} L ${點列表.at(-1).x} 46 L ${點列表[0].x} 46 Z` : "";
+
+  return {
+    key: `${副本.encounter_key}::${職能.代碼}`,
+    encounter_key: 副本.encounter_key,
+    encounter_name: 副本.encounter_name,
+    encounter_category: 副本.encounter_category,
+    職能,
+    最新,
+    最佳,
+    變化: (轉為數字(最新?.rdps) || 0) - (轉為數字(第一筆?.rdps) || 0),
+    最低,
+    最高,
+    折線路徑,
+    填色路徑,
+    點列表,
+  };
+}
+
+const 使用者成績趨勢 = computed(() => {
+  return 使用者副本成績.value
+    .flatMap((副本) => {
+      const 職能成績索引 = new Map();
+      for (const 成績 of 副本.public_entries || []) {
+        const 職能 = 職業所屬類型(成績.job);
+        if (!職能 || 轉為數字(成績.rdps) === null) {
+          continue;
+        }
+
+        if (!職能成績索引.has(職能.代碼)) {
+          職能成績索引.set(職能.代碼, {
+            職能,
+            成績列表: [],
+          });
+        }
+        職能成績索引.get(職能.代碼).成績列表.push(成績);
+      }
+
+      return Array.from(職能成績索引.values()).map(({ 職能, 成績列表 }) => {
+        const 排序後成績 = 成績列表.sort((前一個, 後一個) => {
+          const 時間差 = new Date(前一個.recorded_at_iso || 0).getTime() - new Date(後一個.recorded_at_iso || 0).getTime();
+          return 時間差 || (前一個.rdps ?? 0) - (後一個.rdps ?? 0);
+        });
+
+        return 建立使用者成績趨勢項(副本, 職能, 排序後成績);
+      });
+    })
+    .sort((前一個, 後一個) => {
+      const 副本順序差 = 取得副本排序值(前一個.encounter_key) - 取得副本排序值(後一個.encounter_key);
+      const 職能順序差 = 職業類型排序值(前一個.職能?.代碼) - 職業類型排序值(後一個.職能?.代碼);
+      return 副本順序差 || 職能順序差 || 前一個.encounter_name.localeCompare(後一個.encounter_name, "zh-Hant-TW");
+    });
+});
+
+function 建立比較角色項目(資料, 伺服器 = "") {
+  if (!資料) {
+    return null;
+  }
+
+  const 副本成績 = 取得使用者副本成績(資料, 伺服器);
+  return {
+    character_name: 資料.character_name || "未知角色",
+    server: 伺服器 || 資料.servers?.[0] || "",
+    副本成績,
+    統計: 建立使用者統計(副本成績),
+  };
+}
+
+const 比較角色左 = computed(() => 建立比較角色項目(比較角色左資料.value, 比較角色左伺服器.value));
+const 比較角色右 = computed(() => 建立比較角色項目(比較角色右資料.value, 比較角色右伺服器.value));
+
+const 角色比較已完成 = computed(() => Boolean(比較角色左.value && 比較角色右.value));
+const 目前比較職能 = computed(() => 比較職能索引.get(比較職能篩選.value) || 比較職能設定[0]);
+
+function 取得副本排序值(副本鍵值) {
+  const 清單索引 = 副本清單.value.findIndex((副本) => 副本.key === 副本鍵值);
+  return 清單索引 >= 0 ? 清單索引 : Number.MAX_SAFE_INTEGER;
+}
+
+function 建立比較副本職能索引(副本成績列表, 職能代碼) {
+  const 索引 = new Map();
+
+  for (const 副本 of 副本成績列表) {
+    const 公開成績 = Array.isArray(副本.public_entries) ? 副本.public_entries : [];
+    for (const 成績 of 公開成績) {
+      const 職能 = 取得比較職能(成績.job);
+      if (!職能 || 職能.代碼 !== 職能代碼) {
+        continue;
+      }
+
+      const 鍵值 = 副本.encounter_key;
+      const 目前 = 索引.get(鍵值);
+      if (!目前 || 使用者成績是否較佳(成績, 目前.best_entry)) {
+        索引.set(鍵值, {
+          ...副本,
+          best_entry: 成績,
+          comparison_role: 職能,
+        });
+      }
+    }
+  }
+
+  return 索引;
+}
+
+const 角色比較列 = computed(() => {
+  if (!角色比較已完成.value) {
+    return [];
+  }
+
+  const 職能 = 目前比較職能.value;
+  const 左副本 = 建立比較副本職能索引(比較角色左.value.副本成績, 職能?.代碼);
+  const 右副本 = 建立比較副本職能索引(比較角色右.value.副本成績, 職能?.代碼);
+  const 副本鍵值列表 = Array.from(new Set([...左副本.keys(), ...右副本.keys()]));
+
+  return 副本鍵值列表
+    .map((副本鍵值) => {
+      const 左 = 左副本.get(副本鍵值) || null;
+      const 右 = 右副本.get(副本鍵值) || null;
+      const 左成績 = 左?.best_entry || null;
+      const 右成績 = 右?.best_entry || null;
+      const 左Rdps = 轉為數字(左成績?.rdps);
+      const 右Rdps = 轉為數字(右成績?.rdps);
+      const 差異 = 左Rdps !== null && 右Rdps !== null ? 左Rdps - 右Rdps : null;
+
+      return {
+        key: `${副本鍵值}::${職能?.代碼 || "role"}`,
+        encounter_key: 副本鍵值,
+        encounter_name: 左?.encounter_name || 右?.encounter_name || 副本鍵值,
+        encounter_category: 左?.encounter_category || 右?.encounter_category || "",
+        職能,
+        左,
+        右,
+        差異,
+      };
+    })
+    .sort((前一個, 後一個) => {
+      const 順序差 = 取得副本排序值(前一個.encounter_key) - 取得副本排序值(後一個.encounter_key);
+      return 順序差 || 前一個.encounter_name.localeCompare(後一個.encounter_name, "zh-Hant-TW");
+    });
+});
+
+const 使用者隊友列表 = computed(() => {
+  const 伺服器 = 使用者伺服器篩選.value;
+  const 隊友列表 = Array.isArray(使用者資料.value?.frequent_teammates) ? 使用者資料.value.frequent_teammates : [];
+  const 整理後列表 = 隊友列表
+    .map((隊友) => {
+      const 伺服器同場資料 = 伺服器 ? (隊友.user_servers || []).find((項目) => 項目.server === 伺服器) : null;
+      const 同場次數 = 伺服器 ? (伺服器同場資料?.co_clear_count ?? 0) : (隊友.co_clear_count ?? 0);
+      const 副本列表 = Array.isArray(隊友.encounters) ? 隊友.encounters : [];
+      const 主要副本 = 副本列表
+        .slice()
+        .sort((前一個, 後一個) => (後一個.co_clear_count || 0) - (前一個.co_clear_count || 0))
+        .slice(0, 2);
+
+      return {
+        ...隊友,
+        同場次數,
+        職業列表: (隊友.jobs || []).slice(0, 4),
+        職業文字: (隊友.jobs || []).map(顯示職業名稱).slice(0, 3).join(" / "),
+        主要副本,
+        副本文字: 主要副本.map((副本) => 副本.encounter_name).join(" / "),
+      };
+    })
+    .filter((隊友) => 隊友.同場次數 > 0)
+    .sort((前一個, 後一個) => {
+      if (前一個.同場次數 !== 後一個.同場次數) {
+        return 後一個.同場次數 - 前一個.同場次數;
+      }
+
+      return 前一個.character_name.localeCompare(後一個.character_name, "zh-Hant-TW");
+    });
+
+  const 最高同場次數 = 整理後列表[0]?.同場次數 || 0;
+  return 整理後列表.map((隊友) => ({
+    ...隊友,
+    強度: 最高同場次數 > 0 ? Number(((隊友.同場次數 / 最高同場次數) * 100).toFixed(2)) : 0,
+  }));
+});
+
+const 常見隊友 = computed(() => 使用者隊友列表.value.slice(0, 8));
+
+const 隊友職能分布 = computed(() => {
+  const 職能索引 = new Map(
+    職業群組設定.map((群組) => [
+      群組.代碼,
+      {
+        代碼: 群組.代碼,
+        名稱: 群組.名稱,
+        色彩: 群組.色彩,
+        人數: 0,
+        同場次數: 0,
+      },
+    ]),
+  );
+
+  for (const 隊友 of 使用者隊友列表.value) {
+    const 隊友職能集合 = new Set(
+      (隊友.jobs || [])
+        .map((職業) => 職業所屬類型(職業)?.代碼)
+        .filter(Boolean),
+    );
+
+    for (const 職能代碼 of 隊友職能集合) {
+      const bucket = 職能索引.get(職能代碼);
+      if (!bucket) {
+        continue;
+      }
+      bucket.人數 += 1;
+      bucket.同場次數 += 隊友.同場次數;
+    }
+  }
+
+  const 列表 = Array.from(職能索引.values()).filter((職能) => 職能.人數 > 0);
+  const 最高人數 = Math.max(...列表.map((職能) => 職能.人數), 0);
+
+  return 列表.map((職能) => ({
+    ...職能,
+    強度: 最高人數 > 0 ? Number(((職能.人數 / 最高人數) * 100).toFixed(2)) : 0,
+  }));
+});
+
+const 隊友關係摘要 = computed(() => {
+  const 隊友列表 = 使用者隊友列表.value;
+  const 最常同場隊友 = 隊友列表[0] || null;
+  const 高頻隊友數 = 隊友列表.filter((隊友) => 隊友.同場次數 >= 2).length;
+  const 總同場次數 = 隊友列表.reduce((總數, 隊友) => 總數 + 隊友.同場次數, 0);
+  const 伺服器列表 = 隊友列表.map((隊友) => 隊友.server).filter(Boolean);
+  const 伺服器數 = new Set(伺服器列表).size;
+  const 主要副本 = 隊友副本交集.value[0] || null;
+  const 最近同場時間 = 隊友列表
+    .map((隊友) => 隊友.last_recorded_at_iso)
+    .filter(Boolean)
+    .sort()
+    .at(-1);
+
+  let 關係型態 = "同場分散";
+  let 說明 = "公開同場資料多落在不同角色或單次紀錄，較像副本野團或短期組隊紀錄。";
+
+  if (高頻隊友數 >= 7 || (最常同場隊友?.同場次數 || 0) >= 4) {
+    關係型態 = "重複同場明顯";
+    說明 = "已有多位角色重複同場，適合觀察主要副本、職能組成與近期合作軌跡。";
+  } else if (高頻隊友數 >= 3) {
+    關係型態 = "小隊輪廓";
+    說明 = "有少數角色重複出現，但還不到穩定名單，更適合用副本聚集與職能分布判讀。";
+  } else if (主要副本?.teammate_count >= 7) {
+    關係型態 = "副本聚集";
+    說明 = "隊友主要集中在特定副本，代表該場公開紀錄對目前關係圖的影響較高。";
+  }
+
+  return {
+    最常同場隊友,
+    高頻隊友數,
+    總同場次數,
+    伺服器數,
+    主要副本,
+    最近同場時間,
+    關係型態,
+    說明,
+    職能種類數: 隊友職能分布.value.length,
+  };
+});
+
+const 使用者徽章 = computed(() => {
+  if (!使用者資料.value) {
+    return [];
+  }
+
+  const 副本集合 = new Set(使用者副本成績.value.map((副本) => 副本.encounter_key));
+  const 成績列表 = 使用者副本成績.value.flatMap((副本) => 副本.public_entries || []);
+  const 職業集合 = new Set(成績列表.map((成績) => 成績.job).filter(Boolean));
+  const 職能集合 = new Set(
+    Array.from(職業集合)
+      .map((職業) => 職業所屬類型(職業)?.代碼)
+      .filter(Boolean),
+  );
+  const 基準時間 = 近期動態基準時間.value;
+  const 最後紀錄時間 = new Date(使用者統計.value.最後紀錄時間 || 0).getTime();
+  const 徽章 = [];
+
+  if (["savage_m1s", "savage_m2s", "savage_m3s", "savage_m4s"].every((副本) => 副本集合.has(副本))) {
+    徽章.push({ 名稱: "零式全通", 說明: "目前收錄的四層零式皆有公開成績" });
+  }
+  if (職業集合.size >= 3) {
+    徽章.push({ 名稱: "多職玩家", 說明: `公開成績中出現 ${職業集合.size} 個職業` });
+  }
+  if (職能集合.size >= 3) {
+    徽章.push({ 名稱: "跨職能", 說明: `公開成績橫跨 ${職能集合.size} 種職能` });
+  }
+  if (使用者統計.value.公開成績數 >= 20) {
+    徽章.push({ 名稱: "高活躍", 說明: `公開成績 ${使用者統計.value.公開成績數} 筆` });
+  }
+  if (使用者隊友列表.value.length >= 50) {
+    徽章.push({ 名稱: "社群核心", 說明: `與 ${使用者隊友列表.value.length} 位角色有公開同場紀錄` });
+  }
+  if (Number.isFinite(最後紀錄時間) && 最後紀錄時間 >= 基準時間 - 7 * 24 * 60 * 60 * 1000) {
+    徽章.push({ 名稱: "近期活躍", 說明: "近七天內有公開紀錄" });
+  }
+
+  return 徽章;
+});
+
+const 隊友副本交集 = computed(() => {
+  const 副本索引 = new Map();
+
+  for (const 隊友 of 使用者隊友列表.value) {
+    for (const 副本 of 隊友.encounters || []) {
+      const key = 副本.encounter_key;
+      if (!key) {
+        continue;
+      }
+
+      const bucket = 副本索引.get(key) || {
+        encounter_key: key,
+        encounter_name: 副本.encounter_name || key,
+        co_clear_count: 0,
+        teammate_count: 0,
+      };
+      bucket.co_clear_count += 轉為數字(副本.co_clear_count) || 0;
+      bucket.teammate_count += 1;
+      副本索引.set(key, bucket);
+    }
+  }
+
+  const 列表 = Array.from(副本索引.values()).sort((前一個, 後一個) => {
+    if (前一個.co_clear_count !== 後一個.co_clear_count) {
+      return 後一個.co_clear_count - 前一個.co_clear_count;
+    }
+    return 後一個.teammate_count - 前一個.teammate_count;
+  });
+  const 最高同場 = 列表[0]?.co_clear_count || 0;
+
+  return 列表.slice(0, 6).map((副本) => ({
+    ...副本,
+    強度: 最高同場 > 0 ? Number(((副本.co_clear_count / 最高同場) * 100).toFixed(2)) : 0,
+  }));
+});
+
+const 過濾後排行列 = computed(() => {
+  const 關鍵字 = 搜尋關鍵字.value.trim().toLocaleLowerCase("zh-TW");
+
+  return 所有排行列.value.filter((列) => {
+    const 符合伺服器 = !伺服器篩選.value || 列.伺服器 === 伺服器篩選.value;
+    const 符合職業 = 符合職業篩選(列.職業代碼);
+    const 符合角色名稱 = !關鍵字 || 列.角色名稱.toLocaleLowerCase("zh-TW").includes(關鍵字);
+
+    return 符合伺服器 && 符合職業 && 符合角色名稱;
+  });
+});
+
+const 總頁數 = computed(() => {
+  return Math.max(Math.ceil(過濾後排行列.value.length / 每頁筆數), 1);
+});
+
+const 安全目前頁碼 = computed(() => {
+  const 頁碼 = Number(目前頁碼.value);
+  const 有效頁碼 = Number.isFinite(頁碼) ? Math.trunc(頁碼) : 1;
+  return Math.min(Math.max(有效頁碼, 1), 總頁數.value);
+});
+
+const 有上一頁 = computed(() => 安全目前頁碼.value > 1);
+const 有下一頁 = computed(() => 安全目前頁碼.value < 總頁數.value);
+
+const 當頁起始索引 = computed(() => {
+  return (安全目前頁碼.value - 1) * 每頁筆數;
+});
+
+const 當頁排行列 = computed(() => {
+  return 過濾後排行列.value.slice(當頁起始索引.value, 當頁起始索引.value + 每頁筆數);
+});
+
+const 顯示起始排名 = computed(() => {
+  return 過濾後排行列.value.length === 0 ? 0 : 當頁起始索引.value + 1;
+});
+
+const 顯示結束排名 = computed(() => {
+  return Math.min(當頁起始索引.value + 當頁排行列.value.length, 過濾後排行列.value.length);
+});
+
+function 排行列顯示排名(index) {
+  return 當頁起始索引.value + index + 1;
+}
+
+function 前往頁碼(頁碼) {
+  const 目標頁碼 = Number(頁碼);
+  if (!Number.isFinite(目標頁碼)) {
+    return;
+  }
+
+  目前頁碼.value = Math.min(Math.max(Math.trunc(目標頁碼), 1), 總頁數.value);
+}
+
+function 前一頁() {
+  前往頁碼(目前頁碼.value - 1);
+}
+
+function 下一頁() {
+  前往頁碼(目前頁碼.value + 1);
+}
+
+// 下面的讀取函式只拿 Vite 靜態資源，不直接呼叫 FFLogs。
+// FFLogs API 存取必須留在 Python Data Fetching Layer，避免前端洩漏憑證或繞過資料管線。
+async function 讀取副本清單() {
+  const 清單 = await 讀取Json(副本清單網址, "讀取副本清單失敗");
+  副本清單.value = Array.isArray(清單) ? 清單.filter((副本) => 副本.enabled !== false) : [];
+
+  if (!目前副本.value && 副本清單.value[0]) {
+    副本鍵值.value = 副本清單.value[0].key;
+  }
+}
+
+async function 讀取排行榜資料() {
+  讀取中.value = true;
+  錯誤訊息.value = "";
+
+  try {
+    排行榜資料.value = await 讀取Json(資料網址.value, "讀取失敗");
+  } catch (錯誤) {
+    錯誤訊息.value = 錯誤 instanceof Error ? 錯誤.message : "無法讀取排行榜資料";
+  } finally {
+    讀取中.value = false;
+  }
+}
+
+async function 讀取使用者索引() {
+  if (使用者索引.value) {
+    return 使用者索引.value;
+  }
+
+  使用者索引.value = await 讀取Json(使用者索引網址, "讀取個人成績單索引失敗");
+  return 使用者索引.value;
+}
+
+async function 讀取全服統計() {
+  if (全服統計資料.value) {
+    return 全服統計資料.value;
+  }
+
+  全服統計讀取中.value = true;
+  全服統計錯誤訊息.value = "";
+
+  try {
+    全服統計資料.value = await 讀取Json(全服統計網址, "讀取全服統計失敗");
+    return 全服統計資料.value;
+  } catch (錯誤) {
+    全服統計錯誤訊息.value = 錯誤 instanceof Error ? 錯誤.message : "無法讀取全服統計";
+    return null;
+  } finally {
+    全服統計讀取中.value = false;
+  }
+}
+
+function 尋找使用者索引項目(角色名稱) {
+  const 正規化名稱 = 角色名稱.trim().toLocaleLowerCase("zh-TW");
+  return 使用者索引列表.value.find((使用者) => 使用者.character_name.toLocaleLowerCase("zh-TW") === 正規化名稱) || null;
+}
+
+function 格式化使用者搜尋文字(角色名稱, 伺服器 = "") {
+  const 名稱 = String(角色名稱 || "").trim();
+  const 伺服器名稱 = String(伺服器 || "").trim();
+  return 伺服器名稱 ? `${名稱} @ ${伺服器名稱}` : 名稱;
+}
+
+function 解析使用者搜尋輸入(輸入文字) {
+  const 文字 = String(輸入文字 || "").trim();
+  const 分隔結果 = 文字.match(/^(.*?)\s*[@＠]\s*(.+)$/);
+  if (!分隔結果) {
+    return {
+      角色名稱: 文字,
+      伺服器: "",
+    };
+  }
+
+  return {
+    角色名稱: 分隔結果[1].trim(),
+    伺服器: 分隔結果[2].trim(),
+  };
+}
+
+function 更新網址為使用者(角色名稱, 伺服器 = "") {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const 網址 = new URL(window.location.href);
+  網址.searchParams.set("user", 角色名稱);
+  if (伺服器) {
+    網址.searchParams.set("server", 伺服器);
+  } else {
+    網址.searchParams.delete("server");
+  }
+  window.history.pushState(null, "", 網址);
+}
+
+function 更新網址為排行榜() {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const 網址 = new URL(window.location.href);
+  網址.searchParams.delete("user");
+  網址.searchParams.delete("server");
+  window.history.pushState(null, "", 網址);
+}
+
+async function 載入使用者成績(角色名稱, 伺服器 = "", 選項 = {}) {
+  const 查詢名稱 = String(角色名稱 || "").trim();
+  if (!查詢名稱) {
+    使用者錯誤訊息.value = "請輸入角色名稱";
+    return;
+  }
+
+  頁面模式.value = "user";
+  使用者讀取中.value = true;
+  使用者錯誤訊息.value = "";
+  使用者搜尋關鍵字.value = 查詢名稱;
+
+  try {
+    await 讀取使用者索引();
+    const 索引項目 = 尋找使用者索引項目(查詢名稱);
+    const 資料網址 = 索引項目?.file_path ? 建立公開資料網址(索引項目.file_path) : 建立使用者預設資料網址(查詢名稱);
+    const 回應 = await fetch(資料網址, {
+      headers: {
+        Accept: "application/json",
+      },
+    });
+
+    if (!回應.ok) {
+      throw new Error(`找不到「${查詢名稱}」的個人成績單`);
+    }
+
+    使用者資料.value = await 回應.json();
+    const 伺服器列表 = Array.isArray(使用者資料.value?.servers) ? 使用者資料.value.servers : [];
+    使用者伺服器篩選.value = 伺服器列表.includes(伺服器) ? 伺服器 : 伺服器列表[0] || "";
+    使用者搜尋關鍵字.value = 格式化使用者搜尋文字(使用者資料.value.character_name || 查詢名稱, 使用者伺服器篩選.value);
+
+    if (選項.更新網址 !== false) {
+      更新網址為使用者(使用者資料.value.character_name || 查詢名稱, 使用者伺服器篩選.value);
+    }
+    讀取全服統計();
+  } catch (錯誤) {
+    使用者資料.value = null;
+    使用者錯誤訊息.value = 錯誤 instanceof Error ? 錯誤.message : "無法讀取個人成績單";
+  } finally {
+    使用者讀取中.value = false;
+  }
+}
+
+async function 載入比較角色資料(輸入文字) {
+  const 查詢 = 解析使用者搜尋輸入(輸入文字);
+  if (!查詢.角色名稱) {
+    throw new Error("請輸入兩個玩家名稱");
+  }
+
+  await 讀取使用者索引();
+  const 索引項目 = 尋找使用者索引項目(查詢.角色名稱);
+  const 資料網址 = 索引項目?.file_path ? 建立公開資料網址(索引項目.file_path) : 建立使用者預設資料網址(查詢.角色名稱);
+  const 回應 = await fetch(資料網址, {
+    headers: {
+      Accept: "application/json",
+    },
+  });
+
+  if (!回應.ok) {
+    throw new Error(`找不到「${查詢.角色名稱}」的個人成績單`);
+  }
+
+  const 資料 = await 回應.json();
+  const 伺服器列表 = Array.isArray(資料?.servers) ? 資料.servers : [];
+  const 伺服器 = 伺服器列表.includes(查詢.伺服器) ? 查詢.伺服器 : 伺服器列表[0] || "";
+  return {
+    資料,
+    伺服器,
+  };
+}
+
+async function 提交角色比較() {
+  const 左輸入 = 比較角色左輸入.value.trim();
+  const 右輸入 = 比較角色右輸入.value.trim();
+  if (!左輸入 || !右輸入) {
+    比較錯誤訊息.value = "請輸入兩個玩家名稱";
+    return;
+  }
+
+  比較讀取中.value = true;
+  比較錯誤訊息.value = "";
+
+  try {
+    const [左結果, 右結果] = await Promise.all([載入比較角色資料(左輸入), 載入比較角色資料(右輸入)]);
+    比較角色左資料.value = 左結果.資料;
+    比較角色右資料.value = 右結果.資料;
+    比較角色左伺服器.value = 左結果.伺服器;
+    比較角色右伺服器.value = 右結果.伺服器;
+    比較角色左輸入.value = 格式化使用者搜尋文字(左結果.資料.character_name || 左輸入, 左結果.伺服器);
+    比較角色右輸入.value = 格式化使用者搜尋文字(右結果.資料.character_name || 右輸入, 右結果.伺服器);
+  } catch (錯誤) {
+    比較角色左資料.value = null;
+    比較角色右資料.value = null;
+    比較錯誤訊息.value = 錯誤 instanceof Error ? 錯誤.message : "無法讀取玩家比較資料";
+  } finally {
+    比較讀取中.value = false;
+  }
+}
+
+function 切換到排行榜() {
+  頁面模式.value = "ranking";
+  更新網址為排行榜();
+}
+
+function 切換到全服統計() {
+  頁面模式.value = "stats";
+  更新網址為排行榜();
+  讀取全服統計();
+}
+
+function 切換到個人成績單() {
+  頁面模式.value = "user";
+  讀取使用者索引().catch((錯誤) => {
+    使用者錯誤訊息.value = 錯誤 instanceof Error ? 錯誤.message : "無法讀取個人成績單索引";
+  });
+}
+
+function 切換到角色比較() {
+  頁面模式.value = "compare";
+  更新網址為排行榜();
+  讀取使用者索引().catch((錯誤) => {
+    比較錯誤訊息.value = 錯誤 instanceof Error ? 錯誤.message : "無法讀取個人成績單索引";
+  });
+}
+
+function 切換到職業分析() {
+  頁面模式.value = "jobs";
+  更新網址為排行榜();
+  讀取全服統計();
+}
+
+function 切換到近期動態() {
+  頁面模式.value = "activity";
+  更新網址為排行榜();
+  使用者錯誤訊息.value = "";
+  讀取使用者索引().catch((錯誤) => {
+    使用者錯誤訊息.value = 錯誤 instanceof Error ? 錯誤.message : "無法讀取近期動態索引";
+  });
+}
+
+function 提交使用者搜尋() {
+  const 查詢 = 解析使用者搜尋輸入(使用者搜尋關鍵字.value);
+  載入使用者成績(查詢.角色名稱, 查詢.伺服器);
+}
+
+function 開啟個人成績單(列) {
+  載入使用者成績(列.角色名稱, 列.伺服器);
+}
+
+function 開啟隊友成績單(隊友) {
+  載入使用者成績(隊友.character_name, 隊友.server);
+}
+
+watch(副本鍵值, () => {
+  伺服器篩選.value = "";
+  職業類型篩選.value = "";
+  職業篩選.value = "";
+  搜尋關鍵字.value = "";
+  目前頁碼.value = 1;
+  讀取排行榜資料();
+});
+
+watch(職業類型篩選, () => {
+  職業篩選.value = "";
+});
+
+watch([伺服器篩選, 職業類型篩選, 職業篩選, 搜尋關鍵字, 排序欄位, 排序方向], () => {
+  目前頁碼.value = 1;
+});
+
+watch([職業類型篩選, 職業篩選], () => {
+  主色模式.value = 目前職業主色();
+});
+
+watch(總頁數, (新總頁數) => {
+  if (!Number.isFinite(Number(目前頁碼.value)) || 目前頁碼.value < 1) {
+    目前頁碼.value = 1;
+    return;
+  }
+
+  if (目前頁碼.value > 新總頁數) {
+    目前頁碼.value = 新總頁數;
+  }
+});
+
+watch(使用者伺服器篩選, (伺服器) => {
+  if (頁面模式.value === "user" && 使用者資料.value?.character_name) {
+    更新網址為使用者(使用者資料.value.character_name, 伺服器);
+  }
+});
+
+watch([使用者資料, 使用者伺服器篩選, 使用者職業類型選項], () => {
+  if (使用者職業類型篩選.value && !使用者職業類型選項.value.some((職能) => 職能.代碼 === 使用者職業類型篩選.value)) {
+    使用者職業類型篩選.value = "";
+  }
+});
+
+watch([使用者職業類型篩選, 使用者職業選項], () => {
+  if (使用者職業篩選.value && !使用者職業選項.value.some((職業) => 職業.job === 使用者職業篩選.value)) {
+    使用者職業篩選.value = "";
+  }
+});
+
+watch([統計副本鍵值, 全服統計資料], () => {
+  if (統計伺服器篩選.value && !統計伺服器選項.value.includes(統計伺服器篩選.value)) {
+    統計伺服器篩選.value = "";
+  }
+
+  if (!統計職業範圍選項.value.some((選項) => 選項.value === 統計職業範圍.value)) {
+    統計職業範圍.value = "all";
+  }
+});
+
+watch([全服統計資料, 職業分析職業選項], () => {
+  if (職業分析職業.value && !職業分析職業選項.value.some((職業) => 職業.job === 職業分析職業.value)) {
+    職業分析職業.value = "";
+  }
+  if (職業分析職業類型.value && !職業分析類型選項.value.some((類型) => 類型.代碼 === 職業分析職業類型.value)) {
+    職業分析職業類型.value = "";
+  }
+});
+
+onMounted(() => {
+  初始化主題();
+  const 網址參數 = typeof window === "undefined" ? new URLSearchParams() : new URL(window.location.href).searchParams;
+  const 初始使用者 = 網址參數.get("user");
+  const 初始伺服器 = 網址參數.get("server") || "";
+
+  if (初始使用者) {
+    載入使用者成績(初始使用者, 初始伺服器, { 更新網址: false });
+  }
+
+  讀取中.value = true;
+  錯誤訊息.value = "";
+  讀取副本清單()
+    .then(() => 讀取排行榜資料())
+    .catch((錯誤) => {
+      錯誤訊息.value = 錯誤 instanceof Error ? 錯誤.message : "無法讀取副本清單";
+      讀取中.value = false;
+    });
+});
+
+  return {
+    排行榜資料,
+    副本清單,
+    副本鍵值,
+    副本選單開啟,
+    讀取中,
+    錯誤訊息,
+    伺服器篩選,
+    職業類型篩選,
+    職業篩選,
+    職業選單開啟,
+    主色模式,
+    搜尋關鍵字,
+    排序欄位,
+    排序方向,
+    目前頁碼,
+    每頁筆數,
+    主題模式,
+    主題儲存鍵,
+    頁面模式,
+    使用者索引,
+    使用者資料,
+    使用者搜尋關鍵字,
+    使用者伺服器篩選,
+    使用者職業類型篩選,
+    使用者職業篩選,
+    使用者職業選單開啟,
+    使用者讀取中,
+    使用者錯誤訊息,
+    比較角色左輸入,
+    比較角色右輸入,
+    比較角色左資料,
+    比較角色右資料,
+    比較角色左伺服器,
+    比較角色右伺服器,
+    比較職能篩選,
+    比較讀取中,
+    比較錯誤訊息,
+    全服統計資料,
+    全服統計讀取中,
+    全服統計錯誤訊息,
+    統計副本鍵值,
+    統計副本選單開啟,
+    統計伺服器篩選,
+    統計職業範圍,
+    伺服器拆分模式,
+    統計傷害指標,
+    職業傷害提示鎖定職業,
+    職業傷害提示互動職業,
+    職業分析職業,
+    職業分析職業類型,
+    職業分析選單開啟,
+    副本清單網址,
+    使用者索引網址,
+    全服統計網址,
+    目前副本,
+    資料網址,
+    傷害比較指標選項,
+    副本分類順序,
+    副本分組,
+    副本選單文字,
+    套用主題,
+    切換主題,
+    主題按鈕文字,
+    目前主題文字,
+    職業繁中名稱,
+    職業群組設定,
+    職業群組索引,
+    比較職能設定,
+    比較職能索引,
+    顯示職業名稱,
+    職業Icon路徑,
+    職業類型Icon路徑,
+    隱藏載入失敗圖片,
+    職業色彩類別,
+    職業代碼色彩,
+    職業比較圖色彩,
+    職業類型色彩,
+    職業類型排序值,
+    職業所屬類型,
+    取得比較職能,
+    目前職業主色,
+    排名色彩類別,
+    符合職業篩選,
+    清除職業篩選,
+    選擇職業類型,
+    選擇職業,
+    切換職業選單,
+    處理職業選單失焦,
+    清除使用者職業篩選,
+    選擇使用者職業類型,
+    選擇使用者職業,
+    切換使用者職業選單,
+    處理使用者職業選單失焦,
+    切換副本選單,
+    選擇副本,
+    處理副本選單失焦,
+    切換統計副本選單,
+    選擇統計副本,
+    處理統計副本選單失焦,
+    切換職業分析選單,
+    選擇職業分析類型,
+    選擇職業分析職業,
+    處理職業分析選單失焦,
+    格式化傷害數值,
+    格式化Active,
+    格式化整數,
+    格式化帶號整數,
+    格式化百分比,
+    格式化前段百分位,
+    格式化通關時間,
+    解析紀錄日期,
+    格式化紀錄時間,
+    格式化紀錄日期,
+    格式化紀錄時刻,
+    格式化排名,
+    建立公開資料網址,
+    建立使用者預設資料網址,
+    轉為數字,
+    比例條樣式,
+    趨勢點樣式,
+    計算Active百分比,
+    排序欄位標籤,
+    排序預設方向,
+    排序欄位預設方向,
+    排序方向文字,
+    下一個排序方向,
+    切換排序,
+    是否目前排序,
+    排序方向圖示,
+    排序ARIA,
+    排序按鈕標籤,
+    排序數值,
+    比較排行列,
+    建立排行列,
+    成績是否較佳,
+    使用者成績是否較佳,
+    只保留角色最佳成績,
+    展開排行榜列,
+    所有排行列,
+    伺服器選項,
+    職業選項,
+    職業類型選項,
+    目前職業類型,
+    職業選單文字,
+    職業選單Icon路徑,
+    全服統計副本列表,
+    目前統計副本,
+    統計範圍文字,
+    統計副本選單文字,
+    顯示零式進度漏斗,
+    顯示副本通關概覽,
+    目前統計來源,
+    傷害比較指標標籤,
+    職業傷害提示作用職業,
+    職業傷害比較資料來源,
+    職業傷害比較條件文字,
+    職業傷害比較基礎列,
+    職業傷害比較值域,
+    職業傷害位置,
+    職業傷害比較刻度,
+    職業傷害比較列,
+    職業傷害提示文字,
+    顯示職業傷害提示,
+    隱藏職業傷害提示,
+    切換職業傷害提示,
+    職業範圍類型,
+    取得統計計數,
+    取得職業範圍文字,
+    伺服器佔比單位,
+    統計伺服器選項,
+    統計職業範圍選項,
+    統計伺服器文字,
+    統計條件文字,
+    全服概要項目,
+    統計詞彙說明,
+    統計說明文字,
+    伺服器佔比列表,
+    取得伺服器拆分列表,
+    職業佔比來源,
+    職業佔比標題文字,
+    職業佔比分組,
+    伺服器生態欄位,
+    伺服器生態矩陣,
+    熱力格樣式,
+    職業分析職業選項,
+    職業分析目前職業代碼,
+    職業分析目前職業,
+    職業分析有資料職業,
+    職業分析類型選項,
+    職業分析目前類型代碼,
+    職業分析目前類型,
+    職業分析可選職業,
+    職業分析選單文字,
+    職業分析選單Icon路徑,
+    職業分析副本列,
+    職業分析伺服器列,
+    職業分析概要,
+    資料狀態列表,
+    資料狀態分組,
+    近期動態基準時間,
+    近期動態角色列表,
+    近期動態概要,
+    取得成績職業總數,
+    取得最高伺服器,
+    取得最高職業,
+    副本通關概覽,
+    零式副本排序值,
+    取得零式層級文字,
+    取得副本統計篩選來源,
+    零式漏斗單位,
+    零式漏斗條件文字,
+    零式進度漏斗,
+    更新時間文字,
+    頁面副標,
+    頁面標題,
+    使用者索引列表,
+    建立使用者搜尋建議列表,
+    使用者搜尋建議,
+    比較角色左搜尋建議,
+    比較角色右搜尋建議,
+    取得使用者副本成績,
+    使用者完整副本成績,
+    使用者可用職業列表,
+    使用者職業類型選項,
+    使用者職業選項,
+    目前使用者職業類型,
+    使用者職業選單文字,
+    使用者職業選單Icon路徑,
+    符合使用者職業篩選,
+    使用者副本成績,
+    建立使用者統計,
+    使用者統計,
+    建立使用者成績趨勢項,
+    使用者成績趨勢,
+    建立比較角色項目,
+    比較角色左,
+    比較角色右,
+    角色比較已完成,
+    目前比較職能,
+    取得副本排序值,
+    建立比較副本職能索引,
+    角色比較列,
+    使用者隊友列表,
+    常見隊友,
+    隊友職能分布,
+    隊友關係摘要,
+    使用者徽章,
+    隊友副本交集,
+    過濾後排行列,
+    總頁數,
+    安全目前頁碼,
+    有上一頁,
+    有下一頁,
+    當頁起始索引,
+    當頁排行列,
+    顯示起始排名,
+    顯示結束排名,
+    排行列顯示排名,
+    前往頁碼,
+    前一頁,
+    下一頁,
+    讀取副本清單,
+    讀取排行榜資料,
+    讀取使用者索引,
+    讀取全服統計,
+    尋找使用者索引項目,
+    格式化使用者搜尋文字,
+    解析使用者搜尋輸入,
+    更新網址為使用者,
+    更新網址為排行榜,
+    載入使用者成績,
+    載入比較角色資料,
+    提交角色比較,
+    切換到排行榜,
+    切換到全服統計,
+    切換到個人成績單,
+    切換到角色比較,
+    切換到職業分析,
+    切換到近期動態,
+    提交使用者搜尋,
+    開啟個人成績單,
+    開啟隊友成績單,
+  };
+}
