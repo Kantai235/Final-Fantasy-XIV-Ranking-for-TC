@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -26,6 +27,9 @@ auth_pool_class = getattr(fflogs, "FFLogs\u8a8d\u8b49\u6c60")
 report_has_tc_players = getattr(fflogs, "\u5831\u544a\u662f\u5426\u5305\u542b\u7e41\u4e2d\u670d\u73a9\u5bb6")
 
 
+MIN_REASONABLE_EPOCH_MS = 946684800000
+
+
 @dataclass
 class BackfillCandidate:
     report_code: str
@@ -46,6 +50,35 @@ def to_number(value: Any) -> float | None:
         except ValueError:
             return None
     return None
+
+
+def first_number(*values: Any) -> float | None:
+    for value in values:
+        number = to_number(value)
+        if number is not None:
+            return number
+    return None
+
+
+def fight_absolute_time(report_start_time: float | None, value: Any) -> float | None:
+    number = to_number(value)
+    if number is None:
+        return None
+    if number >= MIN_REASONABLE_EPOCH_MS:
+        return number
+    if report_start_time is not None:
+        return report_start_time + number
+    return None
+
+
+def fight_time_values(report: dict[str, Any], fight: dict[str, Any]) -> list[float]:
+    report_start_time = first_number(report.get("report_start_time"), report.get("startTime"))
+    values = [
+        first_number(fight.get("recorded_at"), fight.get("recordedAt")),
+        fight_absolute_time(report_start_time, first_number(fight.get("end_time"), fight.get("endTime"))),
+        fight_absolute_time(report_start_time, first_number(fight.get("start_time"), fight.get("startTime"))),
+    ]
+    return [value for value in values if value is not None]
 
 
 def load_all_encounters() -> dict[str, dict[str, Any]]:
@@ -96,24 +129,29 @@ def report_needs_backfill(report: dict[str, Any]) -> tuple[bool, int]:
     return needs_report_metadata or need_fights > 0, need_fights
 
 
-def report_sort_time(report: dict[str, Any]) -> float:
-    values = [
-        to_number(report.get("report_start_time")),
-        to_number(report.get("report_end_time")),
-        to_number(report.get("fetched_at")),
+def report_sort_time(report: dict[str, Any], now_ms: float | None = None) -> float:
+    report_values = [
+        first_number(report.get("report_end_time"), report.get("endTime")),
+        first_number(report.get("report_start_time"), report.get("startTime")),
     ]
+    missing_fight_values = []
+    all_fight_values = []
     for fight in report.get("fights") or []:
         if not isinstance(fight, dict):
             continue
-        values.extend(
-            [
-                to_number(fight.get("recorded_at")),
-                to_number(fight.get("start_time")),
-                to_number(fight.get("end_time")),
-            ]
-        )
+        values = fight_time_values(report, fight)
+        all_fight_values.extend(values)
+        if fight_needs_backfill(fight):
+            missing_fight_values.extend(values)
 
-    return max((value for value in values if value is not None), default=0)
+    for values in (missing_fight_values, all_fight_values, report_values):
+        usable_values = [
+            value for value in values if value is not None and (now_ms is None or value <= now_ms)
+        ]
+        if usable_values:
+            return max(usable_values)
+
+    return 0
 
 
 def make_shallow_report(report_code: str, report: dict[str, Any]) -> dict[str, Any]:
@@ -127,7 +165,7 @@ def make_shallow_report(report_code: str, report: dict[str, Any]) -> dict[str, A
     }
 
 
-def scan_candidates(encounters: dict[str, dict[str, Any]]) -> dict[str, BackfillCandidate]:
+def scan_candidates(encounters: dict[str, dict[str, Any]], now_ms: float) -> dict[str, BackfillCandidate]:
     candidates: dict[str, BackfillCandidate] = {}
 
     for key, encounter in sorted(encounters.items()):
@@ -153,7 +191,7 @@ def scan_candidates(encounters: dict[str, dict[str, Any]]) -> dict[str, Backfill
             candidate.encounter_keys.add(key)
             candidate.reports_by_key[key] = report
             candidate.need_fight_count += need_fights
-            candidate.sort_time = max(candidate.sort_time, report_sort_time(report))
+            candidate.sort_time = max(candidate.sort_time, report_sort_time(report, now_ms))
 
     return candidates
 
@@ -181,13 +219,14 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     encounters = load_all_encounters()
-    candidates = scan_candidates(encounters)
+    now_ms = time.time() * 1000
+    candidates = scan_candidates(encounters, now_ms)
     selected = sorted(candidates.values(), key=lambda item: (item.sort_time, item.report_code), reverse=True)[
         : max(args.limit, 0)
     ]
 
     print(f"Found {len(candidates)} report codes needing FFLogs backfill.")
-    print(f"Selected {len(selected)} newest report codes for this run.")
+    print(f"Selected {len(selected)} newest report codes by encounter time for this run.")
     if not selected:
         return 0
 
@@ -196,7 +235,7 @@ def main() -> int:
             f"{index:>2}. {candidate.report_code} "
             f"encounters={','.join(sorted(candidate.encounter_keys))} "
             f"missing_fights={candidate.need_fight_count} "
-            f"sort_time={int(candidate.sort_time) if candidate.sort_time else 0}"
+            f"encounter_time={int(candidate.sort_time) if candidate.sort_time else 0}"
         )
     if len(selected) > 20:
         print(f"... and {len(selected) - 20} more.")
