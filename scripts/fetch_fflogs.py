@@ -263,6 +263,34 @@ class FFLogs限流錯誤(RuntimeError):
         self.回應 = 回應
 
 
+class FFLogsGraphQL錯誤(RuntimeError):
+    def __init__(self, 錯誤列表: list[Any]) -> None:
+        self.錯誤列表 = 錯誤列表
+        super().__init__(f"FFLogs GraphQL 回傳錯誤：{json.dumps(錯誤列表, ensure_ascii=False)}")
+
+
+class FFLogs報告存取錯誤(FFLogsGraphQL錯誤):
+    pass
+
+
+def GraphQL錯誤是否為報告存取錯誤(錯誤列表: list[Any]) -> bool:
+    for 錯誤 in 錯誤列表:
+        if not isinstance(錯誤, dict):
+            continue
+
+        訊息 = str(錯誤.get("message") or "").lower()
+        路徑 = 錯誤.get("path")
+        是報告路徑 = isinstance(路徑, list) and "report" in 路徑
+        if 是報告路徑 and (
+            "permission to view this report" in 訊息
+            or "report does not exist" in 訊息
+            or "not found" in 訊息
+        ):
+            return True
+
+    return False
+
+
 淺層掃描查詢 = """
 query RecentReports($startTime: Float!, $endTime: Float!, $page: Int!, $limit: Int!, $zoneID: Int!) {
   reportData {
@@ -1415,8 +1443,11 @@ def 執行_graphql(
         raise RuntimeError(f"FFLogs GraphQL 請求失敗：HTTP {回應.status_code} {回應.text}")
 
     內容 = 回應.json()
-    if 內容.get("errors"):
-        raise RuntimeError(f"FFLogs GraphQL 回傳錯誤：{json.dumps(內容['errors'], ensure_ascii=False)}")
+    錯誤列表 = 內容.get("errors")
+    if 錯誤列表:
+        if GraphQL錯誤是否為報告存取錯誤(錯誤列表):
+            raise FFLogs報告存取錯誤(錯誤列表)
+        raise FFLogsGraphQL錯誤(錯誤列表)
 
     return 內容.get("data") or {}
 
@@ -2771,11 +2802,12 @@ def main() -> int:
         處理狀態: dict[str, Any],
         報告代碼: str,
         處理狀態文字: str,
+        額外內容: dict[str, Any] | None = None,
         *,
         立即寫入: bool = True,
     ) -> None:
         副本設定 = 處理狀態["副本設定"]
-        標記報告處理狀態(狀態, 副本設定, 報告代碼, 處理狀態文字, 立即寫入=立即寫入)
+        標記報告處理狀態(狀態, 副本設定, 報告代碼, 處理狀態文字, 額外內容, 立即寫入=立即寫入)
         處理狀態["已處理報告代碼"].add(報告代碼)
         處理狀態["本輪已嘗試報告代碼"].add(報告代碼)
 
@@ -2931,6 +2963,18 @@ def main() -> int:
 
             try:
                 有繁中服玩家, 繁中服玩家 = 報告是否包含繁中服玩家(session, 認證池, 報告代碼)
+            except FFLogs報告存取錯誤 as 錯誤:
+                for 目標副本 in 待處理副本:
+                    標記報告略過(
+                        副本處理狀態[目標副本["key"]],
+                        報告代碼,
+                        "skipped_inaccessible",
+                        {"reason": str(錯誤)},
+                        立即寫入=False,
+                    )
+                寫入_json(狀態檔案路徑, 狀態)
+                print(f"{副本設定['name']} {進度文字} FFLogs 報告無法存取，已略過 {len(待處理副本)} 個副本：{報告代碼}")
+                continue
             except Exception as 錯誤:
                 for 目標副本 in 待處理副本:
                     目標處理狀態 = 副本處理狀態[目標副本["key"]]
@@ -2958,6 +3002,15 @@ def main() -> int:
 
                 try:
                     成績 = 建立報告成績(session, 認證池, 目標副本, 報告, 繁中服玩家)
+                except FFLogs報告存取錯誤 as 錯誤:
+                    標記報告略過(
+                        目標處理狀態,
+                        報告代碼,
+                        "skipped_inaccessible",
+                        {"reason": str(錯誤)},
+                    )
+                    print(f"{目標副本['name']} {進度文字} FFLogs 報告無法存取，已略過：{報告代碼}")
+                    continue
                 except Exception as 錯誤:
                     # 單份報告失敗時不中斷整批排程，避免一份異常報告卡住 GitHub Actions。
                     目標處理狀態["reports_failed"] += 1

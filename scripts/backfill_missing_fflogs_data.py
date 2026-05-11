@@ -27,9 +27,14 @@ auth_pool_class = getattr(fflogs, "FFLogs\u8a8d\u8b49\u6c60")
 report_has_tc_players = getattr(fflogs, "\u5831\u544a\u662f\u5426\u5305\u542b\u7e41\u4e2d\u670d\u73a9\u5bb6")
 calculate_damage_time_info = getattr(fflogs, "\u8a08\u7b97\u50b7\u5bb3\u6642\u9593\u8cc7\u8a0a")
 milliseconds_to_seconds = getattr(fflogs, "\u6beb\u79d2\u8f49\u79d2\u6578")
+write_json = getattr(fflogs, "\u5beb\u5165_json")
+state_path = getattr(fflogs, "\u72c0\u614b\u6a94\u6848\u8def\u5f91")
+mark_report_status = getattr(fflogs, "\u6a19\u8a18\u5831\u544a\u8655\u7406\u72c0\u614b")
+report_access_error_class = getattr(fflogs, "FFLogs\u5831\u544a\u5b58\u53d6\u932f\u8aa4")
 
 
 MIN_REASONABLE_EPOCH_MS = 946684800000
+SKIPPED_INACCESSIBLE_STATUS = "skipped_inaccessible"
 
 
 @dataclass
@@ -230,7 +235,58 @@ def make_shallow_report(report_code: str, report: dict[str, Any]) -> dict[str, A
     }
 
 
-def scan_candidates(encounters: dict[str, dict[str, Any]], now_ms: float) -> dict[str, BackfillCandidate]:
+def load_state() -> dict[str, Any]:
+    state = read_json(state_path, {})
+    return state if isinstance(state, dict) else {}
+
+
+def skipped_inaccessible_report_codes(state: dict[str, Any]) -> set[str]:
+    skipped: set[str] = set()
+    encounters = state.get("encounters")
+    if not isinstance(encounters, dict):
+        return skipped
+
+    for encounter_state in encounters.values():
+        if not isinstance(encounter_state, dict):
+            continue
+        for bucket_name in ("checked_reports", "processed_reports"):
+            reports = encounter_state.get(bucket_name)
+            if not isinstance(reports, dict):
+                continue
+            for report_code, record in reports.items():
+                if isinstance(record, dict) and record.get("status") == SKIPPED_INACCESSIBLE_STATUS:
+                    skipped.add(str(report_code))
+
+    return skipped
+
+
+def mark_candidate_inaccessible(
+    state: dict[str, Any],
+    encounters: dict[str, dict[str, Any]],
+    candidate: BackfillCandidate,
+    error: Exception,
+) -> None:
+    extra = {"reason": str(error), "source": "backfill_missing_fflogs_data"}
+    for key in sorted(candidate.encounter_keys):
+        encounter = encounters.get(key)
+        if not encounter:
+            continue
+        mark_report_status(
+            state,
+            encounter,
+            candidate.report_code,
+            SKIPPED_INACCESSIBLE_STATUS,
+            extra,
+            立即寫入=False,
+        )
+    write_json(state_path, state)
+
+
+def scan_candidates(
+    encounters: dict[str, dict[str, Any]],
+    now_ms: float,
+    skipped_report_codes: set[str],
+) -> dict[str, BackfillCandidate]:
     candidates: dict[str, BackfillCandidate] = {}
 
     for key, encounter in sorted(encounters.items()):
@@ -252,6 +308,9 @@ def scan_candidates(encounters: dict[str, dict[str, Any]], now_ms: float) -> dic
                 continue
 
             code = str(report_code)
+            if code in skipped_report_codes:
+                continue
+
             candidate = candidates.setdefault(code, BackfillCandidate(report_code=code))
             candidate.encounter_keys.add(key)
             candidate.reports_by_key[key] = report
@@ -293,12 +352,16 @@ def main() -> int:
             )
 
     now_ms = time.time() * 1000
-    candidates = scan_candidates(encounters, now_ms)
+    state = load_state()
+    skipped_report_codes = skipped_inaccessible_report_codes(state)
+    candidates = scan_candidates(encounters, now_ms, skipped_report_codes)
     selected = sorted(candidates.values(), key=lambda item: (item.sort_time, item.report_code), reverse=True)[
         : max(args.limit, 0)
     ]
 
     print(f"Found {len(candidates)} report codes needing FFLogs backfill.")
+    if skipped_report_codes:
+        print(f"Skipped {len(skipped_report_codes)} inaccessible report codes already cached in state.")
     print(f"Selected {len(selected)} newest report codes by encounter time for this run.")
     if not selected:
         return 0
@@ -320,6 +383,7 @@ def main() -> int:
     auth_pool = auth_pool_class(session, read_credentials())
     updates_by_encounter: dict[str, list[dict[str, Any]]] = {key: [] for key in encounters}
     failed = 0
+    skipped_inaccessible = 0
     updated_reports = 0
 
     for index, candidate in enumerate(selected, start=1):
@@ -330,6 +394,14 @@ def main() -> int:
         if not matched_players:
             try:
                 _, matched_players = report_has_tc_players(session, auth_pool, candidate.report_code)
+            except report_access_error_class as error:
+                skipped_inaccessible += 1
+                mark_candidate_inaccessible(state, encounters, candidate, error)
+                print(
+                    f"[{index}/{len(selected)}] Skipped inaccessible report {candidate.report_code} "
+                    f"for {len(candidate.encounter_keys)} encounters."
+                )
+                continue
             except Exception as error:  # noqa: BLE001
                 failed += 1
                 print(f"[{index}/{len(selected)}] Failed to check players for {candidate.report_code}: {error}", file=sys.stderr)
@@ -343,6 +415,14 @@ def main() -> int:
 
             try:
                 score = build_report_score(session, auth_pool, encounter, shallow_report, matched_players)
+            except report_access_error_class as error:
+                skipped_inaccessible += 1
+                mark_candidate_inaccessible(state, encounters, candidate, error)
+                print(
+                    f"[{index}/{len(selected)}] Skipped inaccessible report {candidate.report_code} "
+                    f"for {len(candidate.encounter_keys)} encounters."
+                )
+                break
             except Exception as error:  # noqa: BLE001
                 failed += 1
                 print(f"[{index}/{len(selected)}] Failed to backfill {candidate.report_code} for {key}: {error}", file=sys.stderr)
@@ -377,6 +457,7 @@ def main() -> int:
         "Backfill complete: "
         f"{updated_reports} report codes fetched, "
         f"{updated_entries} report entries changed across {changed_encounters} encounters, "
+        f"{skipped_inaccessible} inaccessible report codes skipped, "
         f"{failed} failures."
     )
     return 0
