@@ -66,9 +66,9 @@ const 資料網址 = computed(() => {
 });
 
 const 傷害比較指標選項 = [
+  { value: "dps", label: "DPS" },
   { value: "rdps", label: "rDPS" },
   { value: "adps", label: "aDPS" },
-  { value: "dps", label: "DPS" },
 ];
 
 const 副本分類順序 = ["零式", "極", "幻", "絕"];
@@ -3153,11 +3153,58 @@ onMounted(() => {
               <td class="排名" :class="排名色彩類別(排行列顯示排名(index))">
                 {{ 格式化排名(排行列顯示排名(index)) }}
               </td>
-              <td>
+              <td class="排行榜角色欄位">
                 <button class="文字連結" type="button" @click="開啟個人成績單(列)">
                   {{ 列.角色名稱 }}
                 </button>
                 <a v-if="列.reportUrl" class="次要連結" :href="列.reportUrl" target="_blank" rel="noreferrer">報告</a>
+                <div class="手機排行卡">
+                  <div class="手機排行主列">
+                    <span class="手機排行職業" :title="列.職業">
+                      <img
+                        v-if="職業Icon路徑(列.職業代碼)"
+                        class="職業圖示"
+                        :src="職業Icon路徑(列.職業代碼)"
+                        alt=""
+                        loading="lazy"
+                        @error="隱藏載入失敗圖片"
+                      />
+                    </span>
+                    <div class="手機排行身份列">
+                      <button class="文字連結 手機排行角色名稱" type="button" @click="開啟個人成績單(列)">
+                        {{ 列.角色名稱 }}
+                      </button>
+                      <span class="手機排行伺服器">@{{ 列.伺服器 }}</span>
+                    </div>
+                  </div>
+                  <div class="手機排行傷害列">
+                    <span>
+                      <em>DPS</em>
+                      <strong>{{ 格式化傷害數值(列.dps) }}</strong>
+                    </span>
+                    <span class="手機排行重點傷害">
+                      <em>rDPS</em>
+                      <strong>{{ 格式化傷害數值(列.rdps) }}</strong>
+                    </span>
+                    <span>
+                      <em>aDPS</em>
+                      <strong>{{ 格式化傷害數值(列.adps) }}</strong>
+                    </span>
+                  </div>
+                  <div class="手機排行資訊列">
+                    <span>
+                      <em>通關</em>
+                      <strong>{{ 格式化通關時間(列.通關秒數) }}</strong>
+                    </span>
+                    <span>
+                      <em>紀錄</em>
+                      <time :datetime="列.紀錄時間 || undefined" :title="格式化紀錄時間(列.紀錄時間)">
+                        {{ 格式化紀錄日期(列.紀錄時間) }} {{ 格式化紀錄時刻(列.紀錄時間) }}
+                      </time>
+                    </span>
+                    <a v-if="列.reportUrl" :href="列.reportUrl" target="_blank" rel="noreferrer">報告</a>
+                  </div>
+                </div>
               </td>
               <td>{{ 列.伺服器 }}</td>
               <td>
@@ -7344,6 +7391,10 @@ td a:hover {
   font-weight: 680;
 }
 
+.手機排行卡 {
+  display: none;
+}
+
 .排名 {
   color: var(--靜音文字);
   font-weight: 720;
@@ -7402,17 +7453,73 @@ td a:hover {
     font-size: 1.55rem;
   }
 
+  .副標,
+  .更新時間 {
+    font-size: 0.86rem;
+    line-height: 1.45;
+  }
+
   .工具列 {
     grid-template-columns: 1fr;
   }
 
-  .頁面切換,
+  .頁面切換 {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(104px, 1fr));
+    gap: 8px;
+  }
+
+  .頁面切換 button {
+    min-height: 42px;
+    padding: 0 8px;
+    font-size: 0.9rem;
+  }
+
   .使用者搜尋表單 {
     display: grid;
   }
 
   .使用者搜尋表單 {
     grid-template-columns: 1fr;
+  }
+
+  .副本選單面板,
+  .職業選單面板 {
+    width: 100%;
+    max-height: min(520px, calc(100vh - 160px));
+  }
+
+  .職業選單面板 {
+    grid-template-columns: minmax(112px, 0.82fr) minmax(0, 1fr);
+    gap: 6px;
+    padding: 8px;
+  }
+
+  .職業選單職業欄 {
+    border-left: 1px solid var(--邊框柔和色);
+    border-top: 0;
+    padding-top: 0;
+    padding-left: 6px;
+  }
+
+  .職業選單分類欄,
+  .職業選單職業欄 {
+    min-width: 0;
+  }
+
+  .職業選單項 {
+    min-width: 0;
+    min-height: 38px;
+    gap: 6px;
+    padding: 0 8px;
+    font-size: 0.82rem;
+  }
+
+  .職業選單項 span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .個人成績概要 {
@@ -7466,6 +7573,17 @@ td a:hover {
     grid-template-columns: 1fr;
   }
 
+  .全服統計區,
+  .統計版面,
+  .統計面板,
+  .統計面板寬,
+  .職業傷害比較圖,
+  .生態矩陣外框,
+  .統計表格外框 {
+    min-width: 0;
+    max-width: 100%;
+  }
+
   .零式漏斗列表 {
     grid-template-columns: 1fr;
   }
@@ -7496,9 +7614,22 @@ td a:hover {
     gap: 4px;
   }
 
+  .統計面板標題 span {
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+  }
+
   .職業傷害比較說明列 {
     display: grid;
     gap: 4px;
+  }
+
+  .職業傷害比較說明列 span,
+  .職業傷害比較說明列 strong {
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
   }
 
   .職業傷害比較說明列 strong {
@@ -7510,13 +7641,137 @@ td a:hover {
   }
 
   .職業傷害比較圖 {
+    overflow-x: visible;
     padding: 10px;
   }
 
-  .職業傷害比較刻度列,
+  .職業傷害比較刻度列 {
+    display: none;
+  }
+
+  .職業傷害比較列表 {
+    display: grid;
+    gap: 10px;
+  }
+
   .職業傷害比較列 {
-    min-width: 820px;
-    grid-template-columns: 138px minmax(480px, 1fr) 156px;
+    min-width: 0;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "job value"
+      "track track";
+    gap: 8px 10px;
+    border: 1px solid var(--邊框柔和色);
+    border-radius: 8px;
+    padding: 10px;
+    background: var(--表面背景柔和);
+  }
+
+  .職業傷害比較職業 {
+    grid-area: job;
+    min-width: 0;
+  }
+
+  .職業傷害比較軌道 {
+    grid-area: track;
+    min-width: 0;
+    height: 30px;
+  }
+
+  .職業傷害比較數值 {
+    grid-area: value;
+    align-self: center;
+    justify-items: end;
+    text-align: right;
+  }
+
+  .職業傷害比較數值 span {
+    white-space: normal;
+  }
+
+  .職業傷害比較提示 {
+    width: min(260px, calc(100vw - 54px));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .生態矩陣 {
+    min-width: 0;
+    display: grid;
+  }
+
+  .生態矩陣 thead {
+    display: none;
+  }
+
+  .生態矩陣 tbody {
+    display: grid;
+    gap: 10px;
+  }
+
+  .生態矩陣 tr {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    border: 1px solid var(--邊框色);
+    border-radius: 8px;
+    padding: 10px;
+    background: var(--表面背景);
+  }
+
+  .生態矩陣 th,
+  .生態矩陣 td {
+    border-bottom: 0;
+    padding: 0;
+    text-align: left;
+    white-space: normal;
+  }
+
+  .生態矩陣 tbody th,
+  .生態矩陣 td:last-child {
+    grid-column: 1 / -1;
+  }
+
+  .生態矩陣 tbody th {
+    color: var(--主要文字);
+    font-size: 1rem;
+    font-weight: 820;
+  }
+
+  .生態矩陣 td::before {
+    display: block;
+    margin-bottom: 4px;
+    color: var(--靜音文字);
+    font-size: 0.72rem;
+    font-weight: 780;
+    line-height: 1.2;
+  }
+
+  .生態矩陣 td:nth-child(2)::before {
+    content: "防護";
+  }
+
+  .生態矩陣 td:nth-child(3)::before {
+    content: "治療";
+  }
+
+  .生態矩陣 td:nth-child(4)::before {
+    content: "近戰";
+  }
+
+  .生態矩陣 td:nth-child(5)::before {
+    content: "遠程物理";
+  }
+
+  .生態矩陣 td:nth-child(6)::before {
+    content: "遠程魔法";
+  }
+
+  .生態矩陣 td:nth-child(7)::before {
+    content: "主要傾向";
+  }
+
+  .熱力格 {
+    min-height: 48px;
   }
 
   .隊友關係版面 {
@@ -7533,6 +7788,16 @@ td a:hover {
 
   .常見隊友列表 {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .隊友項 {
+    grid-template-columns: 1fr;
+  }
+
+  .隊友項 em {
+    grid-column: 1;
+    grid-row: auto;
+    justify-self: start;
   }
 
   .隊友關係標題,
@@ -7555,19 +7820,1038 @@ td a:hover {
     grid-column: 1 / -1;
   }
 
+  .成績列職業 {
+    grid-column: 1 / -1;
+  }
+
+  .成績列數值 {
+    justify-items: start;
+    text-align: left;
+  }
+
   .成績列展開 {
     justify-self: start;
+  }
+
+  .趨勢圖 {
+    height: 132px;
+  }
+
+  .表格區,
+  .統計表格外框 {
+    overflow: visible;
+  }
+
+  .排行榜表格,
+  .統計表格,
+  .比較表格,
+  .近期動態表格,
+  .歷史表格 {
+    min-width: 0;
+  }
+
+  .排行榜表格,
+  .排行榜表格 tbody,
+  .統計表格,
+  .統計表格 tbody,
+  .歷史表格,
+  .歷史表格 tbody {
+    display: grid;
+    gap: 10px;
+  }
+
+  .排行榜表格 colgroup,
+  .排行榜表格 thead,
+  .統計表格 thead,
+  .歷史表格 thead {
+    display: none;
+  }
+
+  .排行榜表格 tr,
+  .統計表格 tr,
+  .歷史表格 tr {
+    min-width: 0;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px 10px;
+    border: 1px solid var(--邊框色);
+    border-radius: 8px;
+    padding: 10px;
+    background: var(--表面背景);
+  }
+
+  .排行榜表格 td,
+  .統計表格 td,
+  .歷史表格 td {
+    min-width: 0;
+    display: grid;
+    align-content: start;
+    gap: 4px;
+    border-bottom: 0;
+    padding: 0;
+    overflow: visible;
+    text-align: left;
+    text-overflow: clip;
+    white-space: normal;
+  }
+
+  .排行榜表格 td::before,
+  .統計表格 td::before,
+  .歷史表格 td::before {
+    color: var(--靜音文字);
+    font-size: 0.72rem;
+    font-weight: 780;
+    line-height: 1.2;
+  }
+
+  .排行榜表格 .數字,
+  .統計表格 .數字,
+  .歷史表格 .數字,
+  .歷史表格 .歷史報告欄位 {
+    text-align: left;
+  }
+
+  .排行榜表格 td:nth-child(1) {
+    grid-column: 1 / -1;
+  }
+
+  .排行榜表格 td:nth-child(2) {
+    grid-column: 1 / -1;
+  }
+
+  .排行榜表格 td:nth-child(10) {
+    grid-column: 1 / -1;
+  }
+
+  .排行榜表格 td:nth-child(1)::before {
+    content: "排名";
+  }
+
+  .排行榜表格 td:nth-child(2)::before {
+    content: "角色";
+  }
+
+  .排行榜表格 td:nth-child(3)::before {
+    content: "伺服器";
+  }
+
+  .排行榜表格 td:nth-child(4)::before {
+    content: "職業";
+  }
+
+  .排行榜表格 td:nth-child(5)::before {
+    content: "Active";
+  }
+
+  .排行榜表格 td:nth-child(6)::before {
+    content: "DPS";
+  }
+
+  .排行榜表格 td:nth-child(7)::before {
+    content: "rDPS";
+  }
+
+  .排行榜表格 td:nth-child(8)::before {
+    content: "aDPS";
+  }
+
+  .排行榜表格 td:nth-child(9)::before {
+    content: "通關時間";
+  }
+
+  .排行榜表格 td:nth-child(10)::before {
+    content: "紀錄時間";
+  }
+
+  .排行榜表格 td:nth-child(2) .文字連結 {
+    max-width: 100%;
+    white-space: normal;
+  }
+
+  .次要連結 {
+    margin-left: 0;
+  }
+
+  .排行榜表格 {
+    width: 100%;
+    max-width: 100%;
+    display: grid;
+    gap: 0;
+    overflow: hidden;
+    border-top: 1px solid var(--邊框柔和色);
+    box-sizing: border-box;
+  }
+
+  .排行榜表格 thead,
+  .排行榜表格 tbody {
+    width: 100%;
+    max-width: 100%;
+    display: grid;
+    gap: 0;
+    box-sizing: border-box;
+  }
+
+  .排行榜表格 thead {
+    position: sticky;
+    z-index: 5;
+    top: 0;
+  }
+
+  .排行榜表格 tr {
+    width: 100%;
+    max-width: 100%;
+    grid-template-columns: 38px minmax(0, 1fr) 32px 68px;
+    align-items: center;
+    gap: 0 4px;
+    border: 0;
+    border-bottom: 1px solid var(--邊框柔和色);
+    border-radius: 0;
+    padding: 6px 8px;
+    box-sizing: border-box;
+  }
+
+  .排行榜表格 thead tr {
+    grid-template-rows: 26px;
+    min-height: 34px;
+    padding-top: 4px;
+    padding-bottom: 4px;
+    background: var(--表頭背景);
+  }
+
+  .排行榜表格 tbody tr {
+    grid-template-rows: 28px 18px 28px;
+    min-height: 80px;
+    background: var(--表面背景);
+  }
+
+  .排行榜表格 th,
+  .排行榜表格 td {
+    min-width: 0;
+    display: flex;
+    grid-row: 1;
+    align-items: center;
+    border-bottom: 0;
+    padding: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .排行榜表格 td::before {
+    content: none !important;
+  }
+
+  .排行榜表格 th:nth-child(3),
+  .排行榜表格 th:nth-child(6),
+  .排行榜表格 th:nth-child(8),
+  .排行榜表格 th:nth-child(9),
+  .排行榜表格 th:nth-child(10),
+  .排行榜表格 th:nth-child(5),
+  .排行榜表格 td:nth-child(5) {
+    display: none;
+  }
+
+  .排行榜表格 th:nth-child(1),
+  .排行榜表格 td:nth-child(1) {
+    grid-column: 1;
+    justify-content: center;
+  }
+
+  .排行榜表格 td:nth-child(1) {
+    grid-row: 1 / 4;
+  }
+
+  .排行榜表格 th:nth-child(2),
+  .排行榜表格 td:nth-child(2) {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .排行榜表格 th:nth-child(4),
+  .排行榜表格 td:nth-child(4) {
+    grid-column: 3;
+    grid-row: 1;
+  }
+
+  .排行榜表格 th:nth-child(7),
+  .排行榜表格 td:nth-child(7) {
+    grid-column: 4;
+    grid-row: 1;
+    justify-content: flex-end;
+    color: var(--主要文字);
+    font-weight: 820;
+  }
+
+  .排行榜表格 td:nth-child(3) {
+    grid-column: 2;
+    grid-row: 2;
+  }
+
+  .排行榜表格 td:nth-child(6) {
+    grid-column: 3;
+    grid-row: 2;
+  }
+
+  .排行榜表格 td:nth-child(8) {
+    grid-column: 4;
+    grid-row: 2;
+  }
+
+  .排行榜表格 td:nth-child(9) {
+    grid-column: 2;
+    grid-row: 3;
+  }
+
+  .排行榜表格 td:nth-child(10) {
+    grid-column: 3 / 5;
+    grid-row: 3;
+  }
+
+  .排行榜表格 td:nth-child(6),
+  .排行榜表格 td:nth-child(8),
+  .排行榜表格 td:nth-child(10) {
+    justify-content: flex-end;
+  }
+
+  .排行榜表格 th {
+    color: var(--次要文字);
+    font-size: 0.72rem;
+    background: transparent;
+  }
+
+  .排行榜表格 .表頭排序按鈕 {
+    min-width: 0;
+    max-width: 100%;
+    min-height: 26px;
+    padding: 0 5px;
+    font-size: 0.72rem;
+  }
+
+  .排行榜表格 th:nth-child(4) {
+    font-size: 0;
+  }
+
+  .排行榜表格 th:nth-child(4)::after {
+    content: "職";
+    font-size: 0.72rem;
+  }
+
+  .排行榜表格 thead .說明提示 {
+    display: none;
+  }
+
+  .排行榜表格 td {
+    font-size: 0.78rem;
+  }
+
+  .排行榜表格 td:nth-child(3),
+  .排行榜表格 td:nth-child(6),
+  .排行榜表格 td:nth-child(8),
+  .排行榜表格 td:nth-child(9),
+  .排行榜表格 td:nth-child(10) {
+    gap: 3px;
+    color: var(--次要文字);
+    font-size: 0.66rem;
+    font-weight: 700;
+    line-height: 1.1;
+  }
+
+  .排行榜表格 td:nth-child(6)::before {
+    content: "D" !important;
+  }
+
+  .排行榜表格 td:nth-child(8)::before {
+    content: "A" !important;
+  }
+
+  .排行榜表格 td:nth-child(9)::before {
+    content: "通" !important;
+  }
+
+  .排行榜表格 td:nth-child(10)::before {
+    content: "紀" !important;
+  }
+
+  .排行榜表格 td:nth-child(6)::before,
+  .排行榜表格 td:nth-child(8)::before,
+  .排行榜表格 td:nth-child(9)::before,
+  .排行榜表格 td:nth-child(10)::before {
+    color: var(--靜音文字);
+    font-size: 0.6rem;
+    font-weight: 760;
+  }
+
+  .排行榜表格 .排名 {
+    min-height: 26px;
+    align-self: center;
+    border-radius: 999px;
+    padding: 0 4px;
+    font-size: 0.78rem;
+    line-height: 1;
+  }
+
+  .排行榜表格 td:nth-child(2) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .排行榜表格 td:nth-child(2) .文字連結 {
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+    font-size: 0.82rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .排行榜表格 td:nth-child(2) .次要連結 {
+    display: inline-flex;
+    border: 1px solid var(--邊框柔和色);
+    border-radius: 999px;
+    padding: 1px 4px;
+    color: var(--次要文字);
+    font-size: 0.62rem;
+    line-height: 1.1;
+    text-decoration: none;
+  }
+
+  .排行榜表格 .職業標籤 {
+    min-width: 0;
+    width: 28px;
+    height: 28px;
+    max-width: 100%;
+    min-height: 0;
+    border-radius: 0;
+    gap: 0;
+    justify-content: center;
+    padding: 0;
+    background: transparent;
+  }
+
+  .排行榜表格 .職業標籤圖示 {
+    width: 24px;
+    height: 24px;
+  }
+
+  .排行榜表格 td:nth-child(10) .緊湊紀錄時間 {
+    display: grid;
+    justify-items: end;
+    gap: 0;
+    line-height: 1;
+  }
+
+  .排行榜表格 td:nth-child(10) .緊湊紀錄時間 span:first-child {
+    font-size: 0.62rem;
+  }
+
+  .排行榜表格 td:nth-child(10) .緊湊紀錄時間 span:last-child {
+    font-size: 0.6rem;
+  }
+
+  .排行榜表格 td:nth-child(4) .職業標籤 span {
+    display: none;
+  }
+
+  .排行榜表格 tr {
+    width: 100%;
+    max-width: 100%;
+    grid-template-columns: 38px minmax(0, 1fr) 64px;
+    grid-template-rows: auto;
+    gap: 0 6px;
+    padding: 0 8px;
+    box-sizing: border-box;
+  }
+
+  .排行榜表格 thead tr {
+    grid-template-rows: 28px;
+    min-height: 34px;
+    padding-top: 4px;
+    padding-bottom: 4px;
+  }
+
+  .排行榜表格 tbody tr {
+    min-height: 0;
+    align-items: stretch;
+  }
+
+  .排行榜表格 th:nth-child(1),
+  .排行榜表格 td:nth-child(1) {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .排行榜表格 th:nth-child(2) {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .排行榜表格 th:nth-child(7) {
+    grid-column: 3;
+    grid-row: 1;
+  }
+
+  .排行榜表格 td:nth-child(2) {
+    grid-column: 2 / 4;
+    grid-row: 1;
+  }
+
+  .排行榜表格 th:nth-child(3),
+  .排行榜表格 th:nth-child(4),
+  .排行榜表格 th:nth-child(5),
+  .排行榜表格 th:nth-child(6),
+  .排行榜表格 th:nth-child(8),
+  .排行榜表格 th:nth-child(9),
+  .排行榜表格 th:nth-child(10),
+  .排行榜表格 td:nth-child(3),
+  .排行榜表格 td:nth-child(4),
+  .排行榜表格 td:nth-child(5),
+  .排行榜表格 td:nth-child(6),
+  .排行榜表格 td:nth-child(7),
+  .排行榜表格 td:nth-child(8),
+  .排行榜表格 td:nth-child(9),
+  .排行榜表格 td:nth-child(10) {
+    display: none;
+  }
+
+  .排行榜表格 td:nth-child(2) {
+    min-width: 0;
+    max-width: 100%;
+    display: block;
+    overflow: visible;
+    padding: 7px 0;
+    white-space: normal;
+  }
+
+  .排行榜表格 td:nth-child(2) > .文字連結,
+  .排行榜表格 td:nth-child(2) > .次要連結 {
+    display: none;
+  }
+
+  .手機排行卡 {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    display: grid !important;
+    gap: 6px;
+    overflow: hidden;
+    box-sizing: border-box;
+  }
+
+  .手機排行主列 {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 30px minmax(58px, auto);
+    align-items: center;
+    gap: 7px;
+    box-sizing: border-box;
+  }
+
+  .手機排行角色名稱 {
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+    color: var(--重點色);
+    font-size: 0.9rem;
+    font-weight: 820;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .手機排行職業 {
+    width: 30px;
+    height: 30px;
+    display: inline-grid;
+    place-items: center;
+  }
+
+  .手機排行職業 .職業圖示 {
+    width: 26px;
+    height: 26px;
+  }
+
+  .手機排行主值 {
+    min-width: 0;
+    max-width: 72px;
+    overflow: hidden;
+    justify-self: end;
+    color: var(--主要文字);
+    font-size: 0.92rem;
+    font-weight: 880;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+
+  .手機排行副列 {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 5px;
+    border-top: 1px solid var(--邊框柔和色);
+    padding-top: 6px;
+    box-sizing: border-box;
+  }
+
+  .手機排行副列 span,
+  .手機排行副列 a {
+    min-width: 0;
+    display: grid;
+    gap: 1px;
+    border-radius: 6px;
+    padding: 4px 5px;
+    overflow: visible;
+    color: var(--次要文字);
+    background: var(--表面背景柔和);
+    font-size: 0.7rem;
+    font-weight: 720;
+    line-height: 1.12;
+    text-decoration: none;
+  }
+
+  .手機排行副列 em {
+    overflow: visible;
+    color: var(--靜音文字);
+    font-size: 0.62rem;
+    font-style: normal;
+    font-weight: 780;
+    white-space: normal;
+  }
+
+  .手機排行副列 strong,
+  .手機排行副列 time {
+    min-width: 0;
+    overflow: visible;
+    color: var(--次要文字);
+    font-size: 0.7rem;
+    font-weight: 760;
+    font-variant-numeric: tabular-nums;
+    white-space: normal;
+    word-break: keep-all;
+  }
+
+  .手機排行副列 span:nth-child(5),
+  .手機排行副列 a {
+    grid-column: 1 / -1;
+  }
+
+  .排行榜表格 th:nth-child(4)::after,
+  .排行榜表格 td:nth-child(6)::before,
+  .排行榜表格 td:nth-child(8)::before,
+  .排行榜表格 td:nth-child(9)::before,
+  .排行榜表格 td:nth-child(10)::before {
+    content: none !important;
+  }
+
+  .排行榜表格 tr {
+    grid-template-columns: 38px minmax(0, 1fr);
+  }
+
+  .排行榜表格 th:nth-child(7) {
+    display: none;
+  }
+
+  .排行榜表格 td:nth-child(2) {
+    grid-column: 2;
+  }
+
+  .手機排行主列 {
+    grid-template-columns: 30px minmax(0, 1fr);
+    grid-template-areas:
+      "job name"
+      "job value";
+    gap: 2px 7px;
+  }
+
+  .手機排行角色名稱 {
+    grid-area: name;
+  }
+
+  .手機排行職業 {
+    grid-area: job;
+    align-self: center;
+  }
+
+  .手機排行主值 {
+    grid-area: value;
+    max-width: 100%;
+    justify-self: start;
+    font-size: 0.82rem;
+  }
+
+  .手機排行主值::before {
+    content: "rDPS ";
+    color: var(--靜音文字);
+    font-size: 0.68rem;
+    font-weight: 780;
+  }
+
+  .排行榜表格 tbody tr {
+    grid-template-columns: 38px minmax(0, 1fr) !important;
+    grid-template-rows: auto !important;
+    align-items: start;
+    min-height: 0 !important;
+    overflow: visible;
+  }
+
+  .排行榜表格 tbody td:nth-child(1) {
+    grid-column: 1 !important;
+    grid-row: 1 !important;
+    align-self: start;
+    margin-top: 7px;
+  }
+
+  .排行榜表格 tbody td:nth-child(2) {
+    grid-column: 2 !important;
+    grid-row: 1 !important;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    overflow: visible !important;
+  }
+
+  .排行榜表格 tbody td:nth-child(n + 3) {
+    display: none !important;
+  }
+
+  .手機排行卡,
+  .手機排行主列,
+  .手機排行傷害列,
+  .手機排行資訊列 {
+    max-width: 100%;
+    min-width: 0;
+    overflow: visible;
+  }
+
+  .手機排行卡 {
+    gap: 5px;
+  }
+
+  .手機排行主列 {
+    grid-template-columns: 30px minmax(0, 1fr) !important;
+    grid-template-areas: none !important;
+    align-items: center;
+    gap: 7px;
+  }
+
+  .手機排行身份列 {
+    min-width: 0;
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+  }
+
+  .手機排行職業 {
+    grid-area: auto;
+  }
+
+  .手機排行角色名稱 {
+    grid-area: auto;
+    min-width: 0;
+    flex: 0 1 auto;
+    font-size: 0.88rem;
+    line-height: 1.18;
+  }
+
+  .手機排行伺服器 {
+    min-width: 0;
+    flex: 1 2 auto;
+    overflow: hidden;
+    color: var(--靜音文字);
+    font-size: 0.66rem;
+    font-weight: 760;
+    line-height: 1;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .手機排行傷害列 {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 4px;
+    border-top: 1px solid var(--邊框柔和色);
+    padding-top: 5px;
+  }
+
+  .手機排行傷害列 span {
+    min-width: 0;
+    display: grid;
+    gap: 1px;
+    border-radius: 6px;
+    padding: 4px 5px;
+    background: var(--表面背景柔和);
+    line-height: 1.08;
+  }
+
+  .手機排行傷害列 em,
+  .手機排行資訊列 em {
+    overflow: hidden;
+    color: var(--靜音文字);
+    font-size: 0.58rem;
+    font-style: normal;
+    font-weight: 780;
+    line-height: 1;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .手機排行傷害列 strong {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--次要文字);
+    font-size: 0.7rem;
+    font-weight: 820;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .手機排行傷害列 .手機排行重點傷害 strong {
+    color: var(--主要文字);
+    font-size: 0.78rem;
+    font-weight: 900;
+  }
+
+  .手機排行資訊列 {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 6px;
+    color: var(--次要文字);
+    font-size: 0.66rem;
+    font-weight: 740;
+    line-height: 1.1;
+  }
+
+  .手機排行資訊列 span {
+    min-width: 0;
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+  }
+
+  .手機排行資訊列 strong,
+  .手機排行資訊列 time {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--次要文字);
+    font-size: 0.66rem;
+    font-weight: 760;
+    font-variant-numeric: tabular-nums;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .手機排行資訊列 a {
+    min-width: 0;
+    border: 1px solid var(--邊框柔和色);
+    border-radius: 999px;
+    padding: 2px 6px;
+    color: var(--次要文字);
+    font-size: 0.64rem;
+    font-weight: 780;
+    line-height: 1.1;
+    text-decoration: none;
+  }
+
+  .統計表格:not(.近期動態表格):not(.比較表格) td:nth-child(1),
+  .近期動態表格 td:nth-child(1),
+  .比較表格 td:nth-child(1) {
+    grid-column: 1 / -1;
+  }
+
+  .統計表格:not(.近期動態表格):not(.比較表格) td:nth-child(1)::before {
+    content: "副本";
+  }
+
+  .統計表格:not(.近期動態表格):not(.比較表格) td:nth-child(2)::before {
+    content: "分類";
+  }
+
+  .統計表格:not(.近期動態表格):not(.比較表格) td:nth-child(3)::before {
+    content: "通關";
+  }
+
+  .統計表格:not(.近期動態表格):not(.比較表格) td:nth-child(4)::before {
+    content: "範圍佔比";
+  }
+
+  .統計表格:not(.近期動態表格):not(.比較表格) td:nth-child(5)::before {
+    content: "最高伺服器";
+  }
+
+  .統計表格:not(.近期動態表格):not(.比較表格) td:nth-child(6)::before {
+    content: "最高職業";
+  }
+
+  .近期動態表格 td:nth-child(1)::before {
+    content: "角色";
+  }
+
+  .近期動態表格 td:nth-child(2)::before {
+    content: "伺服器";
+  }
+
+  .近期動態表格 td:nth-child(3)::before {
+    content: "副本數";
+  }
+
+  .近期動態表格 td:nth-child(4)::before {
+    content: "公開成績";
+  }
+
+  .近期動態表格 td:nth-child(5)::before {
+    content: "最佳 rDPS";
+  }
+
+  .近期動態表格 td:nth-child(6)::before {
+    content: "最後紀錄";
+  }
+
+  .比較表格 td:nth-child(1)::before {
+    content: "副本";
+  }
+
+  .比較表格 td:nth-child(2)::before {
+    content: "玩家 A";
+  }
+
+  .比較表格 td:nth-child(3)::before {
+    content: "玩家 B";
+  }
+
+  .比較表格 td:nth-child(4)::before {
+    content: "rDPS 差";
+  }
+
+  .歷史表格外框 {
+    overflow: visible;
+    padding: 10px;
+  }
+
+  .歷史表格 tr {
+    padding: 10px;
+  }
+
+  .歷史表格 td:nth-child(1),
+  .歷史表格 td:nth-child(2) {
+    grid-column: 1 / -1;
+  }
+
+  .歷史表格 td:nth-child(1)::before {
+    content: "紀錄時間";
+  }
+
+  .歷史表格 td:nth-child(2)::before {
+    content: "職業";
+  }
+
+  .歷史表格 td:nth-child(3)::before {
+    content: "報告";
+  }
+
+  .歷史表格 td:nth-child(4)::before {
+    content: "Active";
+  }
+
+  .歷史表格 td:nth-child(5)::before {
+    content: "DPS";
+  }
+
+  .歷史表格 td:nth-child(6)::before {
+    content: "rDPS";
+  }
+
+  .歷史表格 td:nth-child(7)::before {
+    content: "aDPS";
+  }
+
+  .歷史表格 td:nth-child(8)::before {
+    content: "通關時間";
+  }
+
+  .統計空列 {
+    grid-column: 1 / -1;
+    text-align: left;
+  }
+
+  .統計空列::before {
+    content: none !important;
   }
 
   .分頁資訊列 {
     min-width: 0;
     display: grid;
     justify-items: start;
+    gap: 10px;
+    padding: 12px;
   }
 
   .分頁控制 {
     width: 100%;
-    justify-content: space-between;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
+    justify-content: stretch;
+    gap: 8px;
+  }
+
+  .分頁控制 label {
+    min-width: 0;
+  }
+
+  .分頁控制 input {
+    width: min(70px, 100%);
+  }
+
+  .頁數文字 {
+    align-self: center;
+    justify-self: end;
+  }
+
+  .頁面切換 {
+    max-width: 100%;
+    display: flex;
+    flex-wrap: wrap;
+    overflow: visible;
+  }
+
+  .頁面切換 button {
+    min-width: 0;
+    flex: 1 1 calc(50% - 4px);
+  }
+
+  .分頁控制 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-areas:
+      "prev next"
+      "jump count";
+  }
+
+  .分頁控制 button {
+    width: 100%;
+    min-width: 0;
+    justify-content: center;
+  }
+
+  .分頁控制 button:first-child {
+    grid-area: prev;
+  }
+
+  .分頁控制 button:last-child {
+    grid-area: next;
+  }
+
+  .分頁控制 label {
+    grid-area: jump;
+  }
+
+  .分頁控制 .頁數文字 {
+    grid-area: count;
   }
 }
 </style>
