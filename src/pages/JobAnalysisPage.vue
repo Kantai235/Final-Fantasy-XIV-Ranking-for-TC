@@ -35,31 +35,31 @@ export default {
           <span class="選單箭頭">▾</span>
         </button>
 
-        <div v-if="職業分析選單開啟" class="職業選單面板">
+        <div v-if="職業分析選單開啟" class="職業選單面板 職業分析選單面板">
           <div class="職業選單分類欄" role="menu" aria-label="職業類型">
             <button
-              v-for="類型 in 職業分析類型選項"
-              :key="類型.代碼"
+              v-for="分組 in 職業分析職業分組"
+              :key="分組.代碼"
               class="職業選單項"
               type="button"
-              :class="[職業色彩類別(類型.色彩), { 已選取: 職業分析目前類型代碼 === 類型.代碼 }]"
-              @click="選擇職業分析類型(類型.代碼)"
+              :class="[職業色彩類別(分組.色彩), { 已展開: 職業分析展示類型代碼 === 分組.代碼 }]"
+              @click="選擇職業分析類型(分組.代碼)"
             >
               <img
-                v-if="職業類型Icon路徑(類型.代碼)"
+                v-if="職業類型Icon路徑(分組.代碼)"
                 class="職業圖示"
-                :src="職業類型Icon路徑(類型.代碼)"
+                :src="職業類型Icon路徑(分組.代碼)"
                 alt=""
                 loading="lazy"
                 @error="隱藏載入失敗圖片"
               />
-              <span>{{ 類型.名稱 }}</span>
+              <span>{{ 分組.名稱 }}</span>
             </button>
           </div>
 
           <div class="職業選單職業欄" role="menu" aria-label="職業">
             <button
-              v-for="職業 in 職業分析可選職業"
+              v-for="職業 in 職業分析展示職業"
               :key="職業.代碼"
               class="職業選單項"
               type="button"

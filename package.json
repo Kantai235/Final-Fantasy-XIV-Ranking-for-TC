@@ -11,6 +11,7 @@
     "sync:data": "node scripts/sync_upstream_data.mjs",
     "prebuild": "npm run build:public-rankings && npm run build:user-data",
     "build": "vite build",
+    "postbuild": "node scripts/build_spa_fallback.mjs",
     "preview": "vite preview --host 127.0.0.1"
   },
   "dependencies": {

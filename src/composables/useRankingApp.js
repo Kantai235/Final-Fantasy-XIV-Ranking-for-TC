@@ -1,4 +1,4 @@
-import { computed, inject, onMounted, ref, watch } from "vue";
+import { computed, inject, onMounted, onUnmounted, ref, watch } from "vue";
 import {
   比較職能設定,
   比較職能索引,
@@ -40,6 +40,7 @@ import {
   建立公開資料網址,
   建立使用者預設資料網址,
 } from "../utils/publicData";
+import { 寫入網址狀態, 讀取目前網址狀態 } from "../utils/urlState";
 import { 排名色彩類別, 比例條樣式, 熱力格樣式, 趨勢點樣式, 隱藏載入失敗圖片 } from "../utils/viewHelpers";
 import { useTheme } from "./useTheme";
 
@@ -59,9 +60,17 @@ export function useRankingApp() {
 
 // 核心 Vue 狀態只保留畫面會變動的資料；不隨操作變動的職業定義、
 // 格式化與 URL 規則已抽到 domain/utils，避免這個 composable 繼續膨脹。
+const 預設副本鍵值 = "savage_m1s";
+const 預設排序欄位 = "rdps";
+const 預設排序方向 = "desc";
+const 預設比較職能 = "role:tank";
+const 預設統計副本鍵值 = "all";
+const 預設統計職業範圍 = "all";
+const 預設伺服器拆分模式 = "none";
+const 預設統計傷害指標 = "rdps";
 const 排行榜資料 = ref(null);
 const 副本清單 = ref([]);
-const 副本鍵值 = ref("savage_m1s");
+const 副本鍵值 = ref(預設副本鍵值);
 const 副本選單開啟 = ref(false);
 const 讀取中 = ref(true);
 const 錯誤訊息 = ref("");
@@ -69,10 +78,9 @@ const 伺服器篩選 = ref("");
 const 職業類型篩選 = ref("");
 const 職業篩選 = ref("");
 const 職業選單開啟 = ref(false);
-const 主色模式 = ref("default");
 const 搜尋關鍵字 = ref("");
-const 排序欄位 = ref("rdps");
-const 排序方向 = ref("desc");
+const 排序欄位 = ref(預設排序欄位);
+const 排序方向 = ref(預設排序方向);
 const 目前頁碼 = ref(1);
 const 每頁筆數 = 100;
 const { 主題模式, 主題儲存鍵, 主題按鈕文字, 目前主題文字, 初始化主題, 套用主題, 切換主題 } = useTheme();
@@ -92,23 +100,25 @@ const 比較角色左資料 = ref(null);
 const 比較角色右資料 = ref(null);
 const 比較角色左伺服器 = ref("");
 const 比較角色右伺服器 = ref("");
-const 比較職能篩選 = ref("role:tank");
+const 比較職能篩選 = ref(預設比較職能);
 const 比較讀取中 = ref(false);
 const 比較錯誤訊息 = ref("");
 const 全服統計資料 = ref(null);
 const 全服統計讀取中 = ref(false);
 const 全服統計錯誤訊息 = ref("");
-const 統計副本鍵值 = ref("all");
+const 統計副本鍵值 = ref(預設統計副本鍵值);
 const 統計副本選單開啟 = ref(false);
 const 統計伺服器篩選 = ref("");
-const 統計職業範圍 = ref("all");
-const 伺服器拆分模式 = ref("none");
-const 統計傷害指標 = ref("rdps");
+const 統計職業範圍 = ref(預設統計職業範圍);
+const 統計職業選單開啟 = ref(false);
+const 伺服器拆分模式 = ref(預設伺服器拆分模式);
+const 統計傷害指標 = ref(預設統計傷害指標);
 const 職業傷害提示鎖定職業 = ref("");
 const 職業傷害提示互動職業 = ref("");
 const 職業分析職業 = ref("");
-const 職業分析職業類型 = ref("");
+const 職業分析展示類型 = ref("");
 const 職業分析選單開啟 = ref(false);
+let 正在套用網址狀態 = false;
 
 const 目前副本 = computed(() => {
   return 副本清單.value.find((副本) => 副本.key === 副本鍵值.value) || 副本清單.value[0] || null;
@@ -153,13 +163,51 @@ const 副本選單文字 = computed(() => {
   return 目前副本.value?.name || "選擇副本";
 });
 
-function 目前職業主色() {
-  if (職業篩選.value) {
-    return 職業代碼色彩(職業篩選.value) || "default";
+function 主色由職業選擇(職業代碼, 類型代碼) {
+  if (職業代碼) {
+    return 職業代碼色彩(職業代碼) || "default";
   }
 
-  return 職業群組設定.find((群組) => 群組.代碼 === 職業類型篩選.value)?.色彩 || "default";
+  return 職業類型色彩(類型代碼) || "default";
 }
+
+function 主色由職業範圍(職業範圍) {
+  if (!職業範圍 || 職業範圍 === "all") {
+    return "default";
+  }
+
+  if (String(職業範圍).startsWith("role:")) {
+    return 職業類型色彩(職業範圍) || "default";
+  }
+
+  return 職業代碼色彩(職業範圍) || "default";
+}
+
+function 目前職業主色() {
+  return 主色由職業選擇(職業篩選.value, 職業類型篩選.value);
+}
+
+function 目前頁面主色() {
+  if (頁面模式.value === "stats") {
+    return 主色由職業範圍(統計職業範圍.value);
+  }
+  if (頁面模式.value === "user") {
+    return 主色由職業選擇(使用者職業篩選.value, 使用者職業類型篩選.value);
+  }
+  if (頁面模式.value === "compare") {
+    return 主色由職業範圍(比較職能篩選.value);
+  }
+  if (頁面模式.value === "jobs") {
+    return 主色由職業選擇(職業分析目前職業代碼.value, 職業分析目前類型代碼.value);
+  }
+  if (頁面模式.value === "activity") {
+    return "default";
+  }
+
+  return 目前職業主色();
+}
+
+const 主色模式 = computed(() => 目前頁面主色());
 
 function 符合職業篩選(職業代碼) {
   if (職業類型篩選.value) {
@@ -191,6 +239,7 @@ function 選擇職業(職業代碼) {
 function 切換職業選單() {
   副本選單開啟.value = false;
   統計副本選單開啟.value = false;
+  統計職業選單開啟.value = false;
   職業分析選單開啟.value = false;
   使用者職業選單開啟.value = false;
   職業選單開啟.value = !職業選單開啟.value;
@@ -221,6 +270,7 @@ function 選擇使用者職業(職業代碼) {
 function 切換使用者職業選單() {
   副本選單開啟.value = false;
   統計副本選單開啟.value = false;
+  統計職業選單開啟.value = false;
   職業選單開啟.value = false;
   職業分析選單開啟.value = false;
   使用者職業選單開啟.value = !使用者職業選單開啟.value;
@@ -236,6 +286,7 @@ function 切換副本選單() {
   職業選單開啟.value = false;
   使用者職業選單開啟.value = false;
   統計副本選單開啟.value = false;
+  統計職業選單開啟.value = false;
   職業分析選單開啟.value = false;
   副本選單開啟.value = !副本選單開啟.value;
 }
@@ -259,6 +310,7 @@ function 切換統計副本選單() {
   副本選單開啟.value = false;
   職業選單開啟.value = false;
   使用者職業選單開啟.value = false;
+  統計職業選單開啟.value = false;
   職業分析選單開啟.value = false;
   統計副本選單開啟.value = !統計副本選單開啟.value;
 }
@@ -274,21 +326,59 @@ function 處理統計副本選單失焦(event) {
   }
 }
 
-function 切換職業分析選單() {
+function 清除統計職業範圍() {
+  統計職業範圍.value = "all";
+  統計職業選單開啟.value = false;
+}
+
+function 選擇統計職業類型(類型代碼) {
+  統計職業範圍.value = 類型代碼;
+}
+
+function 選擇統計職業(職業代碼) {
+  統計職業範圍.value = 統計職業範圍.value === 職業代碼 ? 職業所屬類型(職業代碼)?.代碼 || "all" : 職業代碼;
+  統計職業選單開啟.value = false;
+}
+
+function 切換統計職業選單() {
   副本選單開啟.value = false;
   統計副本選單開啟.value = false;
   職業選單開啟.value = false;
   使用者職業選單開啟.value = false;
-  職業分析選單開啟.value = !職業分析選單開啟.value;
+  職業分析選單開啟.value = false;
+  統計職業選單開啟.value = !統計職業選單開啟.value;
+}
+
+function 處理統計職業選單失焦(event) {
+  if (!event.currentTarget.contains(event.relatedTarget)) {
+    統計職業選單開啟.value = false;
+  }
+}
+
+function 切換職業分析選單() {
+  副本選單開啟.value = false;
+  統計副本選單開啟.value = false;
+  統計職業選單開啟.value = false;
+  職業選單開啟.value = false;
+  使用者職業選單開啟.value = false;
+  const 即將開啟 = !職業分析選單開啟.value;
+  if (即將開啟) {
+    職業分析展示類型.value = 職業分析目前類型代碼.value;
+  }
+  職業分析選單開啟.value = 即將開啟;
 }
 
 function 選擇職業分析類型(類型代碼) {
-  職業分析職業類型.value = 類型代碼;
+  // 職業分析的職能只用來瀏覽右側職業子選項，不是篩選條件。
+  // 因此這裡不會改變目前職業，也不會觸發 /jobs 的 URL query 更新。
+  if (職業分析職業分組.value.some((群組) => 群組.代碼 === 類型代碼)) {
+    職業分析展示類型.value = 類型代碼;
+  }
 }
 
 function 選擇職業分析職業(職業代碼) {
   職業分析職業.value = 職業代碼;
-  職業分析職業類型.value = 職業所屬類型(職業代碼)?.代碼 || 職業分析職業類型.value;
+  職業分析展示類型.value = 職業所屬類型(職業代碼)?.代碼 || 職業分析展示類型.value;
   職業分析選單開啟.value = false;
 }
 
@@ -885,6 +975,63 @@ const 統計職業範圍選項 = computed(() => {
   return [{ value: "all", label: "全部職業", group: "全部" }, ...角色類型選項, ...職業選項];
 });
 
+const 統計職業範圍類型代碼 = computed(() => {
+  const 類型 = 職業範圍類型(統計職業範圍.value);
+  if (類型 === "role") {
+    return 統計職業範圍.value;
+  }
+  if (類型 === "job") {
+    return 職業所屬類型(統計職業範圍.value)?.代碼 || "";
+  }
+  return "";
+});
+
+const 統計職業範圍職業代碼 = computed(() => {
+  return 職業範圍類型(統計職業範圍.value) === "job" ? 統計職業範圍.value : "";
+});
+
+const 統計職業類型選項 = computed(() => {
+  const 來源 = 目前統計來源.value || 全服統計資料.value;
+  const 可用類型 = new Set((來源?.role_stats || []).map((項目) => 項目.role).filter(Boolean));
+  return 職業群組設定
+    .filter((群組) => 可用類型.has(群組.代碼))
+    .map((群組) => ({
+      ...群組,
+      clear_count: 轉為數字((來源?.role_stats || []).find((項目) => 項目.role === 群組.代碼)?.clear_count) || 0,
+    }));
+});
+
+const 統計職業選項 = computed(() => {
+  const 來源 = 目前統計來源.value || 全服統計資料.value;
+  const 類型代碼 = 統計職業範圍類型代碼.value;
+  if (!類型代碼) {
+    return [];
+  }
+
+  return (來源?.job_stats || [])
+    .filter((項目) => 項目.role === 類型代碼)
+    .map((項目) => ({
+      代碼: 項目.job,
+      名稱: 顯示職業名稱(項目.job),
+      色彩: 職業代碼色彩(項目.job),
+      clear_count: 轉為數字(項目.clear_count) || 0,
+    }));
+});
+
+const 統計職業選單文字 = computed(() => 取得職業範圍文字());
+
+const 統計職業選單Icon路徑 = computed(() => {
+  if (統計職業範圍職業代碼.value) {
+    return 職業Icon路徑(統計職業範圍職業代碼.value);
+  }
+
+  if (統計職業範圍類型代碼.value) {
+    return 職業類型Icon路徑(統計職業範圍類型代碼.value);
+  }
+
+  return "";
+});
+
 const 統計伺服器文字 = computed(() => {
   return 統計伺服器篩選.value || "全部伺服器";
 });
@@ -1082,7 +1229,11 @@ const 職業分析職業選項 = computed(() => {
 });
 
 const 職業分析目前職業代碼 = computed(() => {
-  return 職業分析職業.value || 職業分析職業選項.value[0]?.job || "";
+  if (職業分析職業.value) {
+    return 職業分析職業.value;
+  }
+
+  return 職業分析職業選項.value[0]?.job || "";
 });
 
 const 職業分析目前職業 = computed(() => {
@@ -1093,21 +1244,33 @@ const 職業分析有資料職業 = computed(() => {
   return new Set(職業分析職業選項.value.map((職業) => 職業.job).filter(Boolean));
 });
 
-const 職業分析類型選項 = computed(() => {
+const 職業分析職業分組 = computed(() => {
+  // 職業分析的職能只作為選單分組、右欄展示與主題色來源，不是可分享的篩選狀態。
+  // 因此 URL 只需要保存 job，職能則由 job 對應表反推，分享連結會更短也更穩定。
   return 職業群組設定
-    .filter((群組) => 群組.職業.some((職業代碼) => 職業分析有資料職業.value.has(職業代碼)))
-    .map((群組) => ({
-      代碼: 群組.代碼,
-      名稱: 群組.名稱,
-      色彩: 群組.色彩,
-    }));
+    .map((群組) => {
+      const 職業列表 = 群組.職業
+        .filter((職業代碼) => 職業分析有資料職業.value.has(職業代碼))
+        .map((職業代碼) => ({
+          代碼: 職業代碼,
+          名稱: 顯示職業名稱(職業代碼),
+          色彩: 群組.色彩,
+        }));
+
+      return {
+        代碼: 群組.代碼,
+        名稱: 群組.名稱,
+        色彩: 群組.色彩,
+        職業列表,
+      };
+    })
+    .filter((群組) => 群組.職業列表.length > 0);
 });
 
 const 職業分析目前類型代碼 = computed(() => {
   return (
-    職業分析職業類型.value ||
     職業所屬類型(職業分析目前職業代碼.value)?.代碼 ||
-    職業分析類型選項.value[0]?.代碼 ||
+    職業分析職業分組.value[0]?.代碼 ||
     ""
   );
 });
@@ -1116,19 +1279,16 @@ const 職業分析目前類型 = computed(() => {
   return 職業群組設定.find((群組) => 群組.代碼 === 職業分析目前類型代碼.value) || null;
 });
 
-const 職業分析可選職業 = computed(() => {
-  const 群組 = 職業群組設定.find((項目) => 項目.代碼 === 職業分析目前類型代碼.value);
-  if (!群組) {
-    return [];
+const 職業分析展示類型代碼 = computed(() => {
+  if (職業分析職業分組.value.some((群組) => 群組.代碼 === 職業分析展示類型.value)) {
+    return 職業分析展示類型.value;
   }
 
-  return 群組.職業
-    .filter((職業代碼) => 職業分析有資料職業.value.has(職業代碼))
-    .map((職業代碼) => ({
-      代碼: 職業代碼,
-      名稱: 顯示職業名稱(職業代碼),
-      色彩: 群組.色彩,
-    }));
+  return 職業分析目前類型代碼.value;
+});
+
+const 職業分析展示職業 = computed(() => {
+  return 職業分析職業分組.value.find((群組) => 群組.代碼 === 職業分析展示類型代碼.value)?.職業列表 || [];
 });
 
 const 職業分析選單文字 = computed(() => {
@@ -2103,7 +2263,8 @@ async function 讀取副本清單() {
   const 清單 = await 讀取Json(副本清單網址, "讀取副本清單失敗");
   副本清單.value = Array.isArray(清單) ? 清單.filter((副本) => 副本.enabled !== false) : [];
 
-  if (!目前副本.value && 副本清單.value[0]) {
+  const 副本鍵值有效 = 副本清單.value.some((副本) => 副本.key === 副本鍵值.value);
+  if (!副本鍵值有效 && 副本清單.value[0]) {
     副本鍵值.value = 副本清單.value[0].key;
   }
 }
@@ -2176,30 +2337,85 @@ function 解析使用者搜尋輸入(輸入文字) {
   };
 }
 
-function 更新網址為使用者(角色名稱, 伺服器 = "") {
-  if (typeof window === "undefined") {
+function 更新分享網址(頁面, 額外狀態 = {}, 選項 = {}) {
+  if (正在套用網址狀態 && !選項.強制) {
     return;
   }
 
-  const 網址 = new URL(window.location.href);
-  網址.searchParams.set("user", 角色名稱);
-  if (伺服器) {
-    網址.searchParams.set("server", 伺服器);
-  } else {
-    網址.searchParams.delete("server");
-  }
-  window.history.pushState(null, "", 網址);
+  寫入網址狀態({ page: 頁面, ...額外狀態 }, 選項);
 }
 
-function 更新網址為排行榜() {
-  if (typeof window === "undefined") {
-    return;
+function 非預設分享值(值, 預設值) {
+  const 文字 = String(值 ?? "").trim();
+  return 文字 && 文字 !== 預設值 ? 文字 : "";
+}
+
+function 預設排行榜副本鍵值() {
+  return 副本清單.value[0]?.key || 預設副本鍵值;
+}
+
+function 排行榜排序分享狀態() {
+  const 欄位 = 排序欄位.value;
+  const 方向 = 排序方向.value;
+  const 是否預設排序 = 欄位 === 預設排序欄位 && 方向 === 預設排序方向;
+  if (是否預設排序) {
+    return {
+      sort: "",
+      order: "",
+    };
   }
 
-  const 網址 = new URL(window.location.href);
-  網址.searchParams.delete("user");
-  網址.searchParams.delete("server");
-  window.history.pushState(null, "", 網址);
+  return {
+    sort: 欄位,
+    order: 方向 === 排序欄位預設方向(欄位) ? "" : 方向,
+  };
+}
+
+function 更新網址為使用者(角色名稱, 伺服器 = "", 選項 = {}) {
+  更新分享網址("user", {
+    user: 角色名稱,
+    server: 伺服器,
+  }, 選項);
+}
+
+function 更新網址為排行榜(選項 = {}) {
+  更新分享網址("ranking", {
+    encounter: 非預設分享值(副本鍵值.value, 預設排行榜副本鍵值()),
+    server: 伺服器篩選.value,
+    jobType: 職業類型篩選.value,
+    job: 職業篩選.value,
+    q: 搜尋關鍵字.value,
+    ...排行榜排序分享狀態(),
+    pageNo: 目前頁碼.value > 1 ? 目前頁碼.value : "",
+  }, 選項);
+}
+
+function 更新網址為全服統計(選項 = {}) {
+  更新分享網址("stats", {
+    encounter: 非預設分享值(統計副本鍵值.value, 預設統計副本鍵值),
+    server: 統計伺服器篩選.value,
+    jobScope: 非預設分享值(統計職業範圍.value, 預設統計職業範圍),
+    split: 非預設分享值(伺服器拆分模式.value, 預設伺服器拆分模式),
+    metric: 非預設分享值(統計傷害指標.value, 預設統計傷害指標),
+  }, 選項);
+}
+
+function 更新網址為角色比較(選項 = {}) {
+  更新分享網址("compare", {
+    left: 比較角色左輸入.value,
+    right: 比較角色右輸入.value,
+    role: 非預設分享值(比較職能篩選.value, 預設比較職能),
+  }, 選項);
+}
+
+function 更新網址為職業分析(選項 = {}) {
+  更新分享網址("jobs", {
+    job: 非預設分享值(職業分析職業.value, 職業分析職業選項.value[0]?.job || ""),
+  }, 選項);
+}
+
+function 更新網址為近期動態(選項 = {}) {
+  更新分享網址("activity", {}, 選項);
 }
 
 async function 載入使用者成績(角色名稱, 伺服器 = "", 選項 = {}) {
@@ -2273,7 +2489,7 @@ async function 載入比較角色資料(輸入文字) {
   };
 }
 
-async function 提交角色比較() {
+async function 提交角色比較(選項 = {}) {
   const 左輸入 = 比較角色左輸入.value.trim();
   const 右輸入 = 比較角色右輸入.value.trim();
   if (!左輸入 || !右輸入) {
@@ -2292,6 +2508,9 @@ async function 提交角色比較() {
     比較角色右伺服器.value = 右結果.伺服器;
     比較角色左輸入.value = 格式化使用者搜尋文字(左結果.資料.character_name || 左輸入, 左結果.伺服器);
     比較角色右輸入.value = 格式化使用者搜尋文字(右結果.資料.character_name || 右輸入, 右結果.伺服器);
+    if (選項.更新網址 !== false) {
+      更新網址為角色比較();
+    }
   } catch (錯誤) {
     比較角色左資料.value = null;
     比較角色右資料.value = null;
@@ -2308,12 +2527,13 @@ function 切換到排行榜() {
 
 function 切換到全服統計() {
   頁面模式.value = "stats";
-  更新網址為排行榜();
+  更新網址為全服統計();
   讀取全服統計();
 }
 
 function 切換到個人成績單() {
   頁面模式.value = "user";
+  更新分享網址("user", {});
   讀取使用者索引().catch((錯誤) => {
     使用者錯誤訊息.value = 錯誤 instanceof Error ? 錯誤.message : "無法讀取個人成績單索引";
   });
@@ -2321,7 +2541,7 @@ function 切換到個人成績單() {
 
 function 切換到角色比較() {
   頁面模式.value = "compare";
-  更新網址為排行榜();
+  更新網址為角色比較();
   讀取使用者索引().catch((錯誤) => {
     比較錯誤訊息.value = 錯誤 instanceof Error ? 錯誤.message : "無法讀取個人成績單索引";
   });
@@ -2329,13 +2549,13 @@ function 切換到角色比較() {
 
 function 切換到職業分析() {
   頁面模式.value = "jobs";
-  更新網址為排行榜();
+  更新網址為職業分析();
   讀取全服統計();
 }
 
 function 切換到近期動態() {
   頁面模式.value = "activity";
-  更新網址為排行榜();
+  更新網址為近期動態();
   使用者錯誤訊息.value = "";
   讀取使用者索引().catch((錯誤) => {
     使用者錯誤訊息.value = 錯誤 instanceof Error ? 錯誤.message : "無法讀取近期動態索引";
@@ -2355,25 +2575,145 @@ function 開啟隊友成績單(隊友) {
   載入使用者成績(隊友.character_name, 隊友.server);
 }
 
+function 套用排行榜網址狀態(網址狀態) {
+  頁面模式.value = "ranking";
+  副本鍵值.value = 網址狀態.encounter || 預設排行榜副本鍵值();
+  伺服器篩選.value = 網址狀態.server || "";
+  職業類型篩選.value = 網址狀態.jobType || "";
+  職業篩選.value = 網址狀態.job || "";
+  搜尋關鍵字.value = 網址狀態.q || "";
+
+  if (排序欄位標籤[網址狀態.sort]) {
+    排序欄位.value = 網址狀態.sort;
+    排序方向.value = ["asc", "desc"].includes(網址狀態.order) ? 網址狀態.order : 排序欄位預設方向(網址狀態.sort);
+  } else {
+    排序欄位.value = 預設排序欄位;
+    排序方向.value = ["asc", "desc"].includes(網址狀態.order) ? 網址狀態.order : 預設排序方向;
+  }
+
+  const 分享頁碼 = Number.parseInt(網址狀態.pageNo, 10);
+  目前頁碼.value = Number.isFinite(分享頁碼) && 分享頁碼 > 0 ? 分享頁碼 : 1;
+}
+
+async function 套用統計網址狀態(網址狀態) {
+  頁面模式.value = "stats";
+  統計副本鍵值.value = 網址狀態.encounter || 預設統計副本鍵值;
+  統計伺服器篩選.value = 網址狀態.server || "";
+  統計職業範圍.value = 網址狀態.jobScope || 預設統計職業範圍;
+  伺服器拆分模式.value = ["none", "role", "job"].includes(網址狀態.split) ? 網址狀態.split : 預設伺服器拆分模式;
+  統計傷害指標.value = ["dps", "rdps", "adps"].includes(網址狀態.metric) ? 網址狀態.metric : 預設統計傷害指標;
+  await 讀取全服統計();
+}
+
+async function 套用個人成績單網址狀態(網址狀態) {
+  頁面模式.value = "user";
+  if (網址狀態.user) {
+    await 載入使用者成績(網址狀態.user, 網址狀態.server, { 更新網址: false });
+    return;
+  }
+
+  await 讀取使用者索引().catch((錯誤) => {
+    使用者錯誤訊息.value = 錯誤 instanceof Error ? 錯誤.message : "無法讀取個人成績單索引";
+  });
+}
+
+async function 套用角色比較網址狀態(網址狀態) {
+  頁面模式.value = "compare";
+  比較角色左輸入.value = 網址狀態.left || "";
+  比較角色右輸入.value = 網址狀態.right || "";
+  if (比較職能索引.has(網址狀態.role)) {
+    比較職能篩選.value = 網址狀態.role;
+  } else {
+    比較職能篩選.value = 預設比較職能;
+  }
+
+  if (網址狀態.left && 網址狀態.right) {
+    await 提交角色比較({ 更新網址: false });
+    return;
+  }
+
+  比較角色左資料.value = null;
+  比較角色右資料.value = null;
+  await 讀取使用者索引().catch((錯誤) => {
+    比較錯誤訊息.value = 錯誤 instanceof Error ? 錯誤.message : "無法讀取個人成績單索引";
+  });
+}
+
+async function 套用職業分析網址狀態(網址狀態) {
+  頁面模式.value = "jobs";
+  職業分析職業.value = 網址狀態.job || "";
+  await 讀取全服統計();
+  if (職業分析職業.value && !職業分析職業選項.value.some((職業) => 職業.job === 職業分析職業.value)) {
+    職業分析職業.value = "";
+  }
+  更新網址為職業分析({ replace: true, 強制: true });
+}
+
+async function 套用近期動態網址狀態() {
+  頁面模式.value = "activity";
+  使用者錯誤訊息.value = "";
+  await 讀取使用者索引().catch((錯誤) => {
+    使用者錯誤訊息.value = 錯誤 instanceof Error ? 錯誤.message : "無法讀取近期動態索引";
+  });
+}
+
+async function 套用網址狀態(網址狀態 = 讀取目前網址狀態()) {
+  // URL 是分享入口，也是瀏覽器上一頁/下一頁的狀態來源。套用期間暫停寫回，
+  // 避免 popstate 讀取舊網址後又立刻 push 一筆新歷史紀錄。
+  正在套用網址狀態 = true;
+  try {
+    if (網址狀態.page === "stats") {
+      await 套用統計網址狀態(網址狀態);
+    } else if (網址狀態.page === "user") {
+      await 套用個人成績單網址狀態(網址狀態);
+    } else if (網址狀態.page === "compare") {
+      await 套用角色比較網址狀態(網址狀態);
+    } else if (網址狀態.page === "jobs") {
+      await 套用職業分析網址狀態(網址狀態);
+    } else if (網址狀態.page === "activity") {
+      await 套用近期動態網址狀態();
+    } else {
+      套用排行榜網址狀態(網址狀態);
+    }
+  } finally {
+    await Promise.resolve();
+    正在套用網址狀態 = false;
+  }
+}
+
+function 處理瀏覽紀錄變更() {
+  套用網址狀態();
+}
+
 watch(副本鍵值, () => {
-  伺服器篩選.value = "";
-  職業類型篩選.value = "";
-  職業篩選.value = "";
-  搜尋關鍵字.value = "";
-  目前頁碼.value = 1;
-  讀取排行榜資料();
+  if (!正在套用網址狀態) {
+    伺服器篩選.value = "";
+    職業類型篩選.value = "";
+    職業篩選.value = "";
+    搜尋關鍵字.value = "";
+    目前頁碼.value = 1;
+  }
+  if (副本清單.value.length > 0) {
+    讀取排行榜資料();
+  }
+  if (頁面模式.value === "ranking") {
+    更新網址為排行榜({ replace: true });
+  }
 });
 
 watch(職業類型篩選, () => {
-  職業篩選.value = "";
+  if (!正在套用網址狀態) {
+    職業篩選.value = "";
+  }
 });
 
 watch([伺服器篩選, 職業類型篩選, 職業篩選, 搜尋關鍵字, 排序欄位, 排序方向], () => {
-  目前頁碼.value = 1;
-});
-
-watch([職業類型篩選, 職業篩選], () => {
-  主色模式.value = 目前職業主色();
+  if (!正在套用網址狀態) {
+    目前頁碼.value = 1;
+  }
+  if (頁面模式.value === "ranking") {
+    更新網址為排行榜({ replace: true });
+  }
 });
 
 watch(總頁數, (新總頁數) => {
@@ -2387,9 +2727,15 @@ watch(總頁數, (新總頁數) => {
   }
 });
 
+watch(目前頁碼, () => {
+  if (頁面模式.value === "ranking") {
+    更新網址為排行榜({ replace: true });
+  }
+});
+
 watch(使用者伺服器篩選, (伺服器) => {
   if (頁面模式.value === "user" && 使用者資料.value?.character_name) {
-    更新網址為使用者(使用者資料.value.character_name, 伺服器);
+    更新網址為使用者(使用者資料.value.character_name, 伺服器, { replace: true });
   }
 });
 
@@ -2413,26 +2759,45 @@ watch([統計副本鍵值, 全服統計資料], () => {
   if (!統計職業範圍選項.value.some((選項) => 選項.value === 統計職業範圍.value)) {
     統計職業範圍.value = "all";
   }
+
+  if (頁面模式.value === "stats") {
+    更新網址為全服統計({ replace: true });
+  }
+});
+
+watch([統計副本鍵值, 統計伺服器篩選, 統計職業範圍, 伺服器拆分模式, 統計傷害指標], () => {
+  if (頁面模式.value === "stats") {
+    更新網址為全服統計({ replace: true });
+  }
 });
 
 watch([全服統計資料, 職業分析職業選項], () => {
   if (職業分析職業.value && !職業分析職業選項.value.some((職業) => 職業.job === 職業分析職業.value)) {
     職業分析職業.value = "";
   }
-  if (職業分析職業類型.value && !職業分析類型選項.value.some((類型) => 類型.代碼 === 職業分析職業類型.value)) {
-    職業分析職業類型.value = "";
+  if (職業分析展示類型.value && !職業分析職業分組.value.some((群組) => 群組.代碼 === 職業分析展示類型.value)) {
+    職業分析展示類型.value = "";
+  }
+});
+
+watch(比較職能篩選, () => {
+  if (頁面模式.value === "compare") {
+    更新網址為角色比較({ replace: true });
+  }
+});
+
+watch(職業分析職業, () => {
+  if (頁面模式.value === "jobs") {
+    更新網址為職業分析({ replace: true });
   }
 });
 
 onMounted(() => {
   初始化主題();
-  const 網址參數 = typeof window === "undefined" ? new URLSearchParams() : new URL(window.location.href).searchParams;
-  const 初始使用者 = 網址參數.get("user");
-  const 初始伺服器 = 網址參數.get("server") || "";
-
-  if (初始使用者) {
-    載入使用者成績(初始使用者, 初始伺服器, { 更新網址: false });
+  if (typeof window !== "undefined") {
+    window.addEventListener("popstate", 處理瀏覽紀錄變更);
   }
+  套用網址狀態();
 
   讀取中.value = true;
   錯誤訊息.value = "";
@@ -2442,6 +2807,12 @@ onMounted(() => {
       錯誤訊息.value = 錯誤 instanceof Error ? 錯誤.message : "無法讀取副本清單";
       讀取中.value = false;
     });
+});
+
+onUnmounted(() => {
+  if (typeof window !== "undefined") {
+    window.removeEventListener("popstate", 處理瀏覽紀錄變更);
+  }
 });
 
   return {
@@ -2489,12 +2860,12 @@ onMounted(() => {
     統計副本選單開啟,
     統計伺服器篩選,
     統計職業範圍,
+    統計職業選單開啟,
     伺服器拆分模式,
     統計傷害指標,
     職業傷害提示鎖定職業,
     職業傷害提示互動職業,
     職業分析職業,
-    職業分析職業類型,
     職業分析選單開啟,
     副本清單網址,
     使用者索引網址,
@@ -2544,6 +2915,11 @@ onMounted(() => {
     切換統計副本選單,
     選擇統計副本,
     處理統計副本選單失焦,
+    清除統計職業範圍,
+    選擇統計職業類型,
+    選擇統計職業,
+    切換統計職業選單,
+    處理統計職業選單失焦,
     切換職業分析選單,
     選擇職業分析類型,
     選擇職業分析職業,
@@ -2616,6 +2992,12 @@ onMounted(() => {
     伺服器佔比單位,
     統計伺服器選項,
     統計職業範圍選項,
+    統計職業範圍類型代碼,
+    統計職業範圍職業代碼,
+    統計職業類型選項,
+    統計職業選項,
+    統計職業選單文字,
+    統計職業選單Icon路徑,
     統計伺服器文字,
     統計條件文字,
     全服概要項目,
@@ -2633,10 +3015,11 @@ onMounted(() => {
     職業分析目前職業代碼,
     職業分析目前職業,
     職業分析有資料職業,
-    職業分析類型選項,
     職業分析目前類型代碼,
     職業分析目前類型,
-    職業分析可選職業,
+    職業分析職業分組,
+    職業分析展示類型代碼,
+    職業分析展示職業,
     職業分析選單文字,
     職業分析選單Icon路徑,
     職業分析副本列,

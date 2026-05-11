@@ -62,14 +62,85 @@ export default {
         </option>
       </select>
     </label>
-    <label class="欄位">
+    <div class="欄位 職業選單欄位" @focusout="處理統計職業選單失焦">
       <span>職業範圍</span>
-      <select v-model="統計職業範圍">
-        <option v-for="選項 in 統計職業範圍選項" :key="選項.value" :value="選項.value">
-          {{ 選項.label }}
-        </option>
-      </select>
-    </label>
+      <div class="職業選單">
+        <button
+          class="職業選單按鈕"
+          type="button"
+          :aria-expanded="統計職業選單開啟"
+          aria-haspopup="true"
+          @click="切換統計職業選單"
+        >
+          <span class="職業選單目前值">
+            <img
+              v-if="統計職業選單Icon路徑"
+              class="職業圖示"
+              :src="統計職業選單Icon路徑"
+              alt=""
+              loading="lazy"
+              @error="隱藏載入失敗圖片"
+            />
+            <span>{{ 統計職業選單文字 }}</span>
+          </span>
+          <span class="選單箭頭">▾</span>
+        </button>
+
+        <div v-if="統計職業選單開啟" class="職業選單面板">
+          <div class="職業選單分類欄" role="menu" aria-label="統計職業類型">
+            <button
+              class="職業選單項"
+              type="button"
+              :class="{ 已選取: 統計職業範圍 === 'all' }"
+              @click="清除統計職業範圍"
+            >
+              全部職業
+            </button>
+            <button
+              v-for="類型 in 統計職業類型選項"
+              :key="類型.代碼"
+              class="職業選單項"
+              type="button"
+              :class="[職業色彩類別(類型.色彩), { 已選取: 統計職業範圍類型代碼 === 類型.代碼 }]"
+              @click="選擇統計職業類型(類型.代碼)"
+            >
+              <img
+                v-if="職業類型Icon路徑(類型.代碼)"
+                class="職業圖示"
+                :src="職業類型Icon路徑(類型.代碼)"
+                alt=""
+                loading="lazy"
+                @error="隱藏載入失敗圖片"
+              />
+              <span>{{ 類型.名稱 }}</span>
+            </button>
+          </div>
+
+          <div class="職業選單職業欄" role="menu" aria-label="統計職業">
+            <template v-if="統計職業範圍類型代碼 && 統計職業選項.length > 0">
+              <button
+                v-for="職業 in 統計職業選項"
+                :key="職業.代碼"
+                class="職業選單項"
+                type="button"
+                :class="[職業色彩類別(職業.色彩), { 已選取: 統計職業範圍職業代碼 === 職業.代碼 }]"
+                @click="選擇統計職業(職業.代碼)"
+              >
+                <img
+                  v-if="職業Icon路徑(職業.代碼)"
+                  class="職業圖示"
+                  :src="職業Icon路徑(職業.代碼)"
+                  alt=""
+                  loading="lazy"
+                  @error="隱藏載入失敗圖片"
+                />
+                <span>{{ 職業.名稱 }}</span>
+              </button>
+            </template>
+          </div>
+        </div>
+      </div>
+    </div>
     <label class="欄位">
       <span>伺服器佔比拆分</span>
       <select v-model="伺服器拆分模式">

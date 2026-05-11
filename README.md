@@ -15,9 +15,9 @@ Final Fantasy XIV 繁中服排行榜是一個以 FFLogs 公開資料為來源的
 - 顯示 DPS、rDPS、aDPS、Active、通關時間與紀錄時間。
 - 個人成績單可查看角色各副本最佳紀錄、歷史紀錄與常同場隊友，並依職能或職業篩選成績與趨勢。
 - 玩家比較可選擇防護、治療、近戰、遠程物理或遠程魔法職業，並排比較兩名玩家的公開成績。
-- 全服統計可查看伺服器分布、職業分布、零式進度概覽與資料狀態。
+- 全服統計可查看伺服器分布、職業分布、零式進度概覽與資料狀態，職業範圍選擇沿用排行榜的職業選單。
 - 職業分析可查看特定職業在副本與伺服器中的分布。
-- 支援深色 / 亮色主題。
+- 支援深色 / 亮色主題，並依目前頁面的職業或職能篩選切換主色調。
 - GitHub Actions 可定時抓取 FFLogs 並提交更新後的資料。
 
 ## 技術棧
@@ -39,11 +39,12 @@ Final Fantasy XIV 繁中服排行榜是一個以 FFLogs 公開資料為來源的
 │   ├── domain/                # FFXIV 職業、職能等領域設定
 │   ├── pages/                 # 依頁面切分的主要呈現元件
 │   ├── styles/                # 全站樣式
-│   ├── utils/                 # 格式化、靜態資料 URL 與 fetch 工具
+│   ├── utils/                 # 格式化、分享網址狀態、靜態資料 URL 與 fetch 工具
 │   └── main.js                # Vue 入口
 ├── scripts/
 │   ├── fetch_fflogs.py        # 抓取並整理 FFLogs 排行榜資料
-│   └── build_user_data.mjs    # 產生個人成績單與全服統計資料
+│   ├── build_user_data.mjs    # 產生個人成績單與全服統計資料
+│   └── build_spa_fallback.mjs # 為 GitHub Pages 產生 History API fallback
 ├── config/
 │   ├── encounters.json        # 副本、FFLogs ID 與掃描起始日期
 │   ├── fflogs.json            # 抓取範圍、限流、重試與手動補抓設定
@@ -135,6 +136,21 @@ npm run build:user-data
 ```bash
 npm run build
 ```
+
+## 分享網址
+
+前端維持靜態網站架構，不使用後端路由；頁面以 History API 路徑表示，只有偏離預設值的篩選條件才會寫入 query string，讓分享連結盡量短。
+
+- 排行榜：`./`
+- 全服統計：`./stats`
+- 個人成績單：`./user?name=角色名稱&server=伺服器`
+- 玩家比較：`./compare?left=角色A%20@%20伺服器&right=角色B%20@%20伺服器`
+- 職業分析：`./jobs?job=Paladin`
+- 近期動態：`./activity`
+
+例如排行榜預設副本、全服統計的「全部副本」、玩家比較的預設防護職能，都不會寫入 URL。職業分析只保存 `job`，職能會由職業對應表反推，不會額外寫入 `jobType`。舊版 `?page=user&user=角色名稱` 或 `?user=角色名稱&server=伺服器` 連結仍會自動導向個人成績單頁，避免既有分享連結失效。
+
+`npm run build` 會在 Vite 建置完成後複製 `dist/index.html` 為 `dist/404.html`，讓 GitHub Pages 重新整理 `./stats`、`./user` 等路徑時仍可交回 Vue SPA 解析。
 
 ## 同步 GitHub Actions 與本機資料
 

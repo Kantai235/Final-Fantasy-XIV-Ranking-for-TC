@@ -406,6 +406,11 @@ button:disabled {
   padding-left: 8px;
 }
 
+.職業分析選單面板 {
+  max-height: min(560px, calc(100vh - 180px));
+  overflow-y: auto;
+}
+
 .職業選單項 {
   min-height: 36px;
   display: flex;
@@ -428,6 +433,11 @@ button:disabled {
 }
 
 .職業選單項:hover:not(:disabled) {
+  color: var(--主要文字);
+  background: var(--表面背景柔和);
+}
+
+.職業選單項.已展開 {
   color: var(--主要文字);
   background: var(--表面背景柔和);
 }
@@ -456,6 +466,18 @@ button:disabled {
 }
 
 .職業選單項.輸出色:hover:not(:disabled) {
+  background: var(--輸出色柔和);
+}
+
+.職業選單項.防護色.已展開 {
+  background: var(--防護色柔和);
+}
+
+.職業選單項.治療色.已展開 {
+  background: var(--治療色柔和);
+}
+
+.職業選單項.輸出色.已展開 {
   background: var(--輸出色柔和);
 }
 
