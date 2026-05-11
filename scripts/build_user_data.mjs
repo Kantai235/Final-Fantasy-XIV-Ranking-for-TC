@@ -4,6 +4,9 @@ import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+// 本檔是資料管線的 Data Building Layer。
+// 它讀取 data/rankings 的可追溯原始資料與 ranking_entries，聚合成前端可直接讀取的靜態 JSON。
+// 請勿在 Vue 元件中重做這裡的排序、去重、分位數或隊友統計，否則各頁會出現不一致的結果。
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const sourceRankingsDir = path.join(rootDir, "data", "rankings");
 const publicRankingsDir = path.join(rootDir, "public", "data", "rankings");
@@ -12,6 +15,8 @@ const configEncountersPath = path.join(rootDir, "config", "encounters.json");
 const publicDataDir = path.join(rootDir, "public", "data");
 const outputDir = path.join(rootDir, "public", "data", "users");
 const globalStatsPath = path.join(publicDataDir, "global_stats.json");
+// 目前箱型圖只比較現行零式系列；其他副本仍會進入全服統計與個人成績單。
+// minimumDamageActivePercent 用來排除明顯中途死亡或缺乏輸出時間的樣本，避免分位數被極端異常值拉歪。
 const savageDamageComparisonEncounterKeys = ["savage_m1s", "savage_m2s", "savage_m3s", "savage_m4s"];
 const savageDamageComparisonEncounterKeySet = new Set(savageDamageComparisonEncounterKeys);
 const minimumDamageActivePercent = 50;
@@ -110,6 +115,8 @@ function createId(value) {
 }
 
 function isBetterEntry(candidate, currentBest) {
+  // 與 fetch_fflogs.py 的「最佳成績」規則保持一致：
+  // rDPS 優先，平手看通關時間，再看 aDPS，最後以較新的紀錄補齊決定性。
   if (!currentBest) {
     return true;
   }
@@ -409,6 +416,8 @@ function buildServerDistributionList(distribution, totalRecords) {
 }
 
 function collectScopeDistribution(entries, scopeKeyForEntry) {
+  // clear_count 以「角色@伺服器」去重；role/job record 則保留同角色不同職能或職業的紀錄。
+  // 這是為了讓伺服器人口分布與職業分布各自回答不同問題，不把多職玩家誤算成多個角色。
   const characterKeys = new Set();
   const roleRecordKeys = new Set();
   const jobRecordKeys = new Set();
@@ -523,6 +532,8 @@ function normalizeFileBaseName(characterName, usedNames) {
 }
 
 function makePublicEntry({ encounter, report, reportCode, fight, player, fightPlayers }) {
+  // 個人成績單需要同場隊友、職業排名與完整時間欄位，因此這裡會從 report/fight/player 重組公開 entry。
+  // 若來源只有 ranking_entries，collectEntriesFromRankingEntries 會走相容路徑，但就不會有隊友資訊。
   const characterName = player.name || player.character_name;
   const server = player.server;
   const job = player.job;
@@ -600,6 +611,8 @@ function makePublicEntry({ encounter, report, reportCode, fight, player, fightPl
 }
 
 function collectEntriesFromReports({ ranking, encounter }) {
+  // 完整 reports 是最可信來源：它能辨識同場玩家、重複上傳與 fight_hash。
+  // exactKey 不含 report_code，讓同一場戰鬥被多名隊員上傳時只算一次，duplicate_count 保留來源數。
   const entriesByExactKey = new Map();
   const rankIndex = buildJobRankIndex(ranking.ranking_entries || []);
 
@@ -710,6 +723,8 @@ function collectEntriesFromRankingEntries({ ranking, encounter }) {
 }
 
 async function loadEncounters() {
+  // 優先讀 public/data/encounters.json，因為它代表「前端可見副本」；
+  // config/encounters.json 的 enabled 只控制下一輪掃描，不應讓既有歷史資料在網站上消失。
   const encounters = await readJson(publicEncountersPath, null) ?? await readJson(configEncountersPath, []);
   if (!Array.isArray(encounters)) {
     throw new Error("Encounter config must be a JSON array.");
@@ -738,6 +753,8 @@ async function loadRankingForEncounter(encounter) {
 }
 
 async function loadRankingReportShards(ranking) {
+  // ranking 主檔為了 Git 檔案大小只列 report_shards；實際報告資料在 data/rankings/*.reports/*.json。
+  // assertInside 會阻止惡意或錯誤的分片路徑跳出 data/rankings。
   const shardPaths = Array.isArray(ranking.report_shards) ? ranking.report_shards : [];
   const reports = {};
 
@@ -956,6 +973,8 @@ async function main() {
     }
   }
 
+  // public/data/users 是完整衍生產物，可以整包重建；append-only 保護的是 data/state 與 data/rankings。
+  // 使用者檔名以角色名稱正規化，index.json 的 file_path 才是前端實際讀取入口。
   await rm(outputDir, { recursive: true, force: true });
   await mkdir(outputDir, { recursive: true });
 

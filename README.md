@@ -59,6 +59,30 @@ Final Fantasy XIV 繁中服排行榜是一個以 FFLogs 公開資料為來源的
     └── update_rankings.yml    # 定時更新排行榜資料
 ```
 
+## 給 Codex / 協作者的專案脈絡
+
+這個專案最重要的邊界是「抓取、建置、呈現」三層分離：
+
+1. `scripts/fetch_fflogs.py` 是 Data Fetching Layer。它查 FFLogs GraphQL、處理限流與重試、用 `masterData.actors` 判斷是否有繁中服玩家，並把可追溯的 report/fight/player 原始脈絡寫入 `data/rankings/`。
+2. `scripts/build_user_data.mjs` 是 Data Building Layer。它讀取 `data/rankings/` 與 `public/data/rankings/`，產生 `public/data/users/`、`public/data/users/index.json` 與 `public/data/global_stats.json`。
+3. `src/` 是 UI Presentation Layer。Vue 只讀 `public/data/` 靜態 JSON，不能直接呼叫 FFLogs API，也不能在元件內重做全服統計或資料聚合。
+
+容易誤判的資料契約：
+
+- `config/encounters.json` 的 `enabled` 只代表下一輪 Python 爬蟲是否掃描該副本。
+- `public/data/encounters.json` 才是前端選單來源。已經有歷史排行榜資料的副本即使暫停掃描，仍會保留在公開清單，避免既有排行榜與個人成績單消失。
+- `data/rankings/*.json` 主檔通常只保留 `ranking_entries` 與 `report_shards`；完整 report 會在同名的 `*.reports/*.json` 分片中。
+- `ranking_entries` 是去重後的扁平索引；完整追溯請讀 `reports -> fights -> players`。
+- 同一角色同一副本同一職業的最佳成績排序規則為 rDPS 優先，平手看通關時間，再看 aDPS。
+- `data/state.json` 的 `checked_reports` 是跨輪快取，`processed_reports` 是單輪 checkpoint；兩者和 `data/rankings/` 都不能用硬刪或覆蓋方式整理。
+
+開發代理注意事項：
+
+- 修改前先檢查 `git status`。本專案常有資料管線產物處於未提交狀態，不要回復或清掉非本次任務造成的資料差異。
+- 不要擅自啟動 `npm run dev` 或 Vite 開發伺服器；需要瀏覽器驗證時先取得使用者同意。
+- 驗證資料聚合優先跑 `npm run build:user-data`。若只是重建公開排行榜 JSON，可跑 `python scripts/fetch_fflogs.py --rebuild-public`，這個模式不會呼叫 FFLogs API。
+- 需要同步本機與 GitHub Actions 產生的資料時，先跑 `npm run sync:data -- --dry-run`，確認沒有 `REMOVAL` 或 `CONFLICT` 再真正同步。
+
 ## 快速開始
 
 安裝前端依賴：

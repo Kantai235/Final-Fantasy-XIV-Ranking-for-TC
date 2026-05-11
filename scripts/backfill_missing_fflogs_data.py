@@ -15,6 +15,9 @@ sys.path.insert(0, str(SCRIPT_DIR))
 import fetch_fflogs as fflogs  # noqa: E402
 
 
+# 這支腳本只補齊既有 data/rankings 中缺少的新欄位或 FFLogs raw 片段。
+# 為了避免主爬蟲與補抓腳本出現兩套解析規則，所有 FFLogs 查詢、排行榜寫入與狀態標記都沿用 fetch_fflogs.py。
+# getattr 使用 unicode 名稱是為了讓本檔保持英文檔名與工具友善，同時仍可呼叫主腳本的繁中函式。
 read_json = getattr(fflogs, "\u8b80\u53d6_json")
 ranking_path = getattr(fflogs, "\u6392\u884c\u699c\u6a94\u6848\u8def\u5f91")
 normalize_ranking = getattr(fflogs, "\u6b63\u898f\u5316\u6392\u884c\u699c")
@@ -114,6 +117,8 @@ def load_all_encounters() -> dict[str, dict[str, Any]]:
 
 
 def fight_needs_backfill(fight: dict[str, Any]) -> bool:
+    # 舊資料可能只有 clear_time_ms，沒有 damage_time_ms 或 damageDone raw table。
+    # 缺這些欄位時，職業箱型圖與 aDPS/rDPS 說明會失去可追溯分母，因此列入補抓候選。
     raw = fight.get("fflogs_raw") if isinstance(fight.get("fflogs_raw"), dict) else {}
     raw_damage_done = raw.get("damage_done") if isinstance(raw, dict) else None
     return (
@@ -136,6 +141,8 @@ def report_needs_backfill(report: dict[str, Any]) -> tuple[bool, int]:
 
 
 def locally_fill_damage_time_fields(report: dict[str, Any]) -> int:
+    # 若既有 raw damageDone 已足夠，就先在本機補衍生欄位，不浪費 FFLogs API 配額。
+    # 只有 raw 不完整的 report 才會進入後面的 API backfill。
     changed = 0
     for fight in report.get("fights") or []:
         if not isinstance(fight, dict):
@@ -241,6 +248,7 @@ def load_state() -> dict[str, Any]:
 
 
 def skipped_inaccessible_report_codes(state: dict[str, Any]) -> set[str]:
+    # 隱藏、刪除或沒有權限的 report 會被 state 快取，避免排程每次都對同一批不可存取報告重試。
     skipped: set[str] = set()
     encounters = state.get("encounters")
     if not isinstance(encounters, dict):
@@ -287,6 +295,7 @@ def scan_candidates(
     now_ms: float,
     skipped_report_codes: set[str],
 ) -> dict[str, BackfillCandidate]:
+    # 同一 report 可能出現在多個 encounter；候選以 report_code 合併，真正寫回時再拆回各副本排行榜。
     candidates: dict[str, BackfillCandidate] = {}
 
     for key, encounter in sorted(encounters.items()):

@@ -15,6 +15,9 @@ import requests
 from dotenv import load_dotenv
 
 
+# 本檔是資料管線的 Data Fetching Layer。
+# 它只負責和 FFLogs GraphQL API 溝通、判斷報告是否含繁中服玩家、保存可追溯的原始戰鬥資料。
+# 前端顯示用的統計、個人成績單與職業分布，必須留給 scripts/build_user_data.mjs 聚合。
 API_URL = "https://www.fflogs.com/api/v2/client"
 TOKEN_URL = "https://www.fflogs.com/oauth/token"
 
@@ -116,6 +119,8 @@ def 布林設定(名稱: str) -> bool:
     raise RuntimeError(f"FFLogs 執行設定 {名稱} 必須是布林值。")
 
 中國區域_ID = 4
+# FFLogs 的中國區域會同時包含中國服與繁中服；目前 API 的 reports 查詢不能直接以伺服器過濾。
+# 因此管線先以 region=China 的報告作為候選，再用 masterData.actors 的 server 欄位篩出繁中服玩家。
 繁中服伺服器名稱 = {"伊弗利特", "迦樓羅", "利維坦", "鳳凰", "奧汀", "巴哈姆特", "泰坦"}
 有效職業名稱 = {
     "Paladin",
@@ -142,6 +147,8 @@ def 布林設定(名稱: str) -> bool:
     "BlueMage",
 }
 無效來源類型 = {"Boss", "LimitBreak", "Pet"}
+# public/data/rankings/*.json 只輸出這些欄位，避免把 FFLogs 原始資料、上傳者、公會等資訊帶到前端。
+# 完整 report/fight/player 原始脈絡仍保存在 data/rankings/*.reports/*.json，供回溯與補抓使用。
 公開排行榜條目欄位 = (
     "id",
     "character_name",
@@ -313,6 +320,10 @@ query RecentReports($startTime: Float!, $endTime: Float!, $page: Int!, $limit: I
 """
 
 
+# 查詢分成三階段是為了節省 API 配額：
+# 1. 淺層 reports 查詢只列出時間區間內的公開報告。
+# 2. masterData actors 先確認報告是否含繁中服玩家，避免對無關報告查完整戰鬥。
+# 3. 確認命中後才查 fight list 與 damage/playerDetails，整理可追溯的排行榜資料。
 深層過濾查詢 = """
 query ReportMasterData($code: String!) {
   reportData {
@@ -874,6 +885,8 @@ def 專案相對路徑(路徑: Path) -> str:
 
 
 def 讀取副本設定清單() -> list[dict[str, Any]]:
+    # 這份清單只代表「本輪要掃描的副本」。
+    # enabled=false 不代表前端要隱藏既有歷史資料，因為排行榜是 append-only 歷史資產。
     設定清單 = 讀取_json(副本設定檔路徑, [])
     if not isinstance(設定清單, list):
         raise RuntimeError(f"副本設定檔格式錯誤：{副本設定檔路徑}")
@@ -930,6 +943,9 @@ def 讀取全部有效副本設定清單() -> list[dict[str, Any]]:
 
 
 def 寫入公開副本清單(副本清單: list[dict[str, Any]]) -> None:
+    # public/data/encounters.json 是前端選單，不等同於掃描清單。
+    # 已停用掃描但仍有 data/rankings 或 public/data/rankings 的副本，必須保留在前端，
+    # 否則歷史排行榜與個人成績單會因為設定暫停掃描而從網站消失。
     啟用鍵值 = {副本["key"] for 副本 in 副本清單}
     設定清單 = 讀取_json(副本設定檔路徑, [])
     公開清單: list[dict[str, Any]] = []
@@ -1767,6 +1783,8 @@ def 建立傷害表格摘要(原始成績: dict[str, Any]) -> dict[str, Any]:
 
 
 def 計算傷害時間資訊(原始成績: dict[str, Any], 戰鬥時間毫秒: float | None) -> dict[str, int | float | None]:
+    # FFLogs damageDone table 的 totalTime/combatTime/damageDowntime 比 fight.combatTime 更接近輸出統計分母。
+    # rDPS/aDPS 會受停手時間影響；若沒有表格資料才退回戰鬥時間，避免把缺漏資料誤算成 0 秒。
     傷害資料 = 取得傷害統計資料(原始成績)
     表格總時間毫秒 = 轉_float(傷害資料.get("totalTime"))
     表格戰鬥時間毫秒 = 轉_float(傷害資料.get("combatTime"))
@@ -1843,6 +1861,8 @@ def 找出玩家主鍵(
     guid_索引: dict[str, str],
     名稱索引: dict[str, str],
 ) -> str | None:
+    # 傷害表格有時只帶 id/guid/name 的其中一種；跨伺服器同名角色不能只靠 name 合併。
+    # 名稱索引只在 playerDetails 中同名候選唯一時使用，避免把不同伺服器或分身誤判成同一人。
     if 傷害列.get("id") is not None and str(傷害列.get("id")) in id_索引:
         return id_索引[str(傷害列.get("id"))]
     if 傷害列.get("guid") is not None and str(傷害列.get("guid")) in guid_索引:
@@ -1870,6 +1890,8 @@ def 計算_active_percent(active_time_ms: Any, clear_time_ms: Any) -> float | No
 
 
 def 從原始成績整理玩家_dps(原始成績: dict[str, Any], 戰鬥時間毫秒: float | None) -> list[dict[str, Any]]:
+    # playerDetails 提供身分，damageDone 提供輸出數值；兩者必須合併才有可信的「繁中服角色 + 職業 + DPS」。
+    # 這裡不做全服統計或 UI 排序，只產出每場戰鬥可回溯的玩家列。
     玩家索引, id_索引, guid_索引, 名稱索引 = 建立玩家索引(原始成績)
 
     for 傷害列 in 取得傷害統計列(原始成績):
@@ -1946,6 +1968,8 @@ def 建立戰鬥簽章(戰鬥: dict[str, Any]) -> str:
 
 
 def 成績是否優先(候選: dict[str, Any], 目前最佳: dict[str, Any] | None) -> bool:
+    # 同一角色同一職業只保留最佳成績：rDPS 優先，平手才看通關時間與 aDPS。
+    # 前端與 build_user_data.mjs 也沿用同樣排序，避免不同頁面顯示不同「最佳」。
     if 目前最佳 is None:
         return True
 
@@ -2035,6 +2059,8 @@ def 登記排行榜條目(
 
 
 def 建立排行榜條目(排行榜: dict[str, Any]) -> list[dict[str, Any]]:
+    # ranking_entries 是給前端快速讀取的扁平索引；reports/fights/players 才是可追溯歷史。
+    # 重建時會同時讀兩種來源，確保舊資料、分片資料與新資料都能用同一套去重規則整理。
     精確成績索引: dict[str, dict[str, Any]] = {}
     最佳成績索引: dict[str, dict[str, Any]] = {}
 
@@ -2200,6 +2226,8 @@ def 清除舊排行榜報告分片(副本設定: dict[str, Any]) -> None:
 
 
 def 寫入排行榜報告分片(副本設定: dict[str, Any], 報告索引: dict[str, Any]) -> list[str]:
+    # 完整 report 內容可能很大，分片目標壓在 GitHub 100 MB 檔案限制以下。
+    # 主檔保留 ranking_entries 與 report_shards，讀取時再透過 讀取排行榜檔案() 合併。
     清除舊排行榜報告分片(副本設定)
     if not 報告索引:
         return []
@@ -2254,6 +2282,8 @@ def 建立報告成績(
     淺層報告: dict[str, Any],
     繁中服玩家: list[dict[str, Any]],
 ) -> dict[str, Any] | None:
+    # 一份 report 可能含同 zone 多個 encounter，且 FFLogs revision/visibility/masterData 都需要保留以便日後追查。
+    # 這裡保存完整 report 與 fight 脈絡，但不產生個人成績單或全服統計，避免資料層混進 UI 格式。
     報告代碼 = 淺層報告["code"]
     報告 = 查詢通關戰鬥(session, 認證池, 副本設定, 報告代碼)
     if not 報告:
@@ -2594,6 +2624,8 @@ def 更新狀態(
     統計: dict[str, Any],
     已處理副本清單: list[dict[str, Any]],
 ) -> None:
+    # processed_reports 是單輪 checkpoint，成功跑完整輪後會清空，避免永久膨脹。
+    # checked_reports 才是跨輪的略過/已檢查快取；清理時只裁切最舊快取，不會刪 data/rankings 的歷史報告。
     狀態 = dict(原始狀態)
     狀態["last_scanned_at"] = 新時間戳記
     狀態["last_scanned_at_iso"] = 毫秒轉_iso(新時間戳記)
@@ -2660,6 +2692,8 @@ def main() -> int:
     歷史補查候選報告代碼: set[str] = set()
 
     def 取得同區同難度副本清單(基準副本: dict[str, Any]) -> list[dict[str, Any]]:
+        # 同一份 FFLogs report 常同時包含同區同難度的多個副本。
+        # 掃到任一副本時順手檢查同區副本，可減少重複淺層掃描與 API 請求。
         同區副本 = [
             副本
             for 副本 in 副本清單
@@ -2780,6 +2814,8 @@ def main() -> int:
         報告代碼: str,
         強制重抓: bool,
     ) -> tuple[list[dict[str, Any]], bool]:
+        # 強制重抓模式只重新處理指定 report，不推進掃描點；一般模式則跳過已在 state 或排行榜中的報告。
+        # 這讓手動補抓能修正單份報告，同時保護既有 append-only 資料不被整批重算覆蓋。
         待處理副本: list[dict[str, Any]] = []
         目前副本已處理 = False
 

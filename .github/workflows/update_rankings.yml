@@ -76,7 +76,7 @@ jobs:
           FFLOGS_CLIENT_CREDENTIALS_JSON: ${{ secrets.FFLOGS_CLIENT_CREDENTIALS_JSON }}
         run: python scripts/backfill_missing_fflogs_data.py --limit 250
 
-      - name: Split complete ranking data for Git
+      - name: 分割完整排行榜資料供 Git 追蹤
         run: python scripts/fetch_fflogs.py --split-rankings
 
       - name: 產生個人成績單資料
@@ -129,7 +129,11 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add data public/data/encounters.json public/data/global_stats.json
-          git commit -m "chore: 自動更新排行榜資料"
+          git commit \
+            -m "chore(data): 自動更新排行榜資料" \
+            -m "原因：GitHub Actions 定時同步 FFLogs 公開報告，讓靜態網站資料保持最新。" \
+            -m "主要變更：更新 data 與 public/data 內的排行榜、個人成績單、全服統計或更新狀態產物。" \
+            -m "測試/驗證：本 workflow 已完成 fetch_fflogs.py、backfill_missing_fflogs_data.py、build_user_data.mjs 與 npm run build。"
           for attempt in 1 2 3; do
             git fetch origin "${{ github.ref_name }}"
             git rebase "origin/${{ github.ref_name }}"

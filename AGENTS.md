@@ -57,3 +57,30 @@
 * 文件末端可新增「附錄：已確立的技術決策」，由 AI 於開發過程中隨實作累積補充技術細節（如 FFLogs GraphQL 查詢 Schema、資料檔結構對應），作為未來協作的背景知識。
 
 ## 附錄：已確立的技術決策
+
+### A. 資料流與責任邊界
+1. `scripts/fetch_fflogs.py` 是唯一可直接呼叫 FFLogs GraphQL API 的資料管線入口，負責 OAuth、限流、重試、報告存取例外、繁中服玩家初篩，以及 `data/rankings/` 與 `data/state.json` 的可追溯資料寫入。
+2. `scripts/build_user_data.mjs` 是唯一負責全服統計、個人成績單、隊友統計、職業分布與傷害分位數的資料建置腳本。Vue 元件不得重做這些聚合。
+3. `src/` 前端只能讀取 `public/data/` 靜態 JSON。任何新增畫面若需要新統計欄位，應先擴充 Node.js 建置層，再讓前端讀取結果。
+
+### B. 副本清單的雙層語意
+1. `config/encounters.json` 的 `enabled` 只控制下一輪 Python 爬蟲是否掃描該副本。
+2. `public/data/encounters.json` 是前端選單來源。只要副本已有 `data/rankings/` 或 `public/data/rankings/` 歷史資料，即使 `enabled=false`，仍應保留在公開清單中，避免歷史排行榜與個人成績單消失。
+3. `key` 是 `data/rankings/{key}.json`、`data/rankings/{key}.reports/`、`state.encounters[key]` 與前端網址狀態的共同主鍵，建立後不得任意改名。
+
+### C. 排行榜與去重規則
+1. `data/rankings/*.json` 主檔保留 `ranking_entries`、副本摘要、更新時間與 `report_shards`；完整 report 內容保存在同名 `*.reports/*.json` 分片。
+2. `ranking_entries` 是扁平索引，供前端快速顯示與 Node.js 聚合；完整追溯仍以 `reports -> fights -> players` 為準。
+3. 同一角色、同一伺服器、同一職業的最佳成績排序規則為 rDPS 優先，平手看通關時間，再看 aDPS，最後才用紀錄時間或名稱穩定排序。
+4. `fight_hash` 用於辨識不同 report 上傳的同一場戰鬥；`source_reports` 與 `duplicate_count` 必須保留，不能因去重而刪掉來源線索。
+
+### D. FFLogs 欄位解析脈絡
+1. 淺層 reports 查詢目前不能直接用伺服器過濾，因此先用 `region.id == 4` 篩中國區域，再查 `masterData.actors(type: "Player")` 確認是否包含繁中服伺服器。
+2. 玩家身分以 `playerDetails` 為主，因為它能排除 Boss、LimitBreak、Pet，並提供角色、伺服器與職業；`damageDone.entries` 只作為輸出數值來源。
+3. `id` / `guid` 優先於角色名稱；只有在同一 report 的名稱唯一時才用名稱 fallback，避免跨伺服器同名角色被合併。
+4. `damage_time_ms` 優先來自 FFLogs damageDone table 的 `combatTime - damageDowntime`。沒有該表格時才退回 fight combatTime，避免 rDPS/aDPS 分母被誤判。
+
+### E. 驗證與同步
+1. 文件或註解變更仍需至少執行語法檢查與 `npm run build:user-data`，確認資料聚合可完成。
+2. `python scripts/fetch_fflogs.py --rebuild-public` 只重建公開排行榜與副本清單，不會呼叫 FFLogs API；適合在沒有憑證或不想推進掃描點時驗證公開產物。
+3. 若本機與 GitHub Actions 都產生資料，必須先執行 `npm run sync:data -- --dry-run`；看到 `REMOVAL` 或 `CONFLICT` 不可自動套用。

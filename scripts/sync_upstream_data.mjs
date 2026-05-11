@@ -5,6 +5,8 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+// 這支工具處理「本機爬蟲」與「GitHub Actions 排程」同時產生資料時的合併。
+// 它只管理 append-only 資料與衍生 public/data 產物；一般程式碼衝突仍應交給 Git 人工處理。
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const maxBuffer = 1024 * 1024 * 512;
 const missing = Symbol("missing");
@@ -73,6 +75,7 @@ function normalizePath(filePath) {
 }
 
 function isSourceDataPath(filePath) {
+  // 來源資料是不可逆歷史資產：encounter key、state report 狀態與完整排行榜報告都不能被靜默刪除。
   const normalized = normalizePath(filePath);
   return (
     normalized === "config/encounters.json" ||
@@ -82,6 +85,7 @@ function isSourceDataPath(filePath) {
 }
 
 function isGeneratedDataPath(filePath) {
+  // 衍生資料可由來源資料重建；合併衝突時通常採用上游或重建結果，而不是手工拼接。
   const normalized = normalizePath(filePath);
   return (
     normalized === "public/data/encounters.json" ||
@@ -355,6 +359,8 @@ function checkRemovedArrayItems(issues, label, baseArray, sideArray, sideName, k
 }
 
 function checkProtectedRemovals(relPath, base, side, sideName, issues) {
+  // 任何一邊刪掉受保護鍵值都視為 REMOVAL，而不是自動接受。
+  // 這能避免歷史 report、checked_reports 或 encounter key 在同步時被不小心洗掉。
   if (base === missing) {
     return;
   }
@@ -598,6 +604,8 @@ function mergePrimitiveArray(base, local, remote) {
 }
 
 function mergeRankingEntries(base, local, remote, pathParts, issues) {
+  // ranking_entries 是完整 reports 的扁平索引；同一角色同一職業以最佳成績合併並重新排名。
+  // 若雙方是同一筆 id，source_reports 與 duplicate_count 會保留雙方來源，方便追查重複上傳。
   const baseMap = new Map((Array.isArray(base) ? base : []).map((item) => [rankingEntryKey(item), item]).filter(([key]) => key));
   const localMap = new Map((Array.isArray(local) ? local : []).map((item) => [rankingEntryKey(item), item]).filter(([key]) => key));
   const remoteMap = new Map((Array.isArray(remote) ? remote : []).map((item) => [rankingEntryKey(item), item]).filter(([key]) => key));
@@ -697,6 +705,8 @@ function chooseStatusRecord(base, local, remote) {
 }
 
 function mergeAppendOnlyMap(base, local, remote, pathParts, issues, valueMerger = chooseStatusRecord) {
+  // state.checked_reports、state.processed_reports 與 ranking reports 都是 append-only map。
+  // 合併時只新增或選擇較新的狀態，不會因某一邊缺少鍵值就刪除另一邊已有的歷史資料。
   const output = {};
   const baseMap = asObject(base);
   const localMap = asObject(local);
