@@ -48,6 +48,7 @@ public/data/users/
 # Local crawler state variants
 data/state.local.json
 data/state.*.local.json
+data/shallow_scan_cache/
 
 # Atomic JSON write leftovers
 *.tmp

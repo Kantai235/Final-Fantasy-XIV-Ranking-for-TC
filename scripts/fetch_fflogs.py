@@ -25,6 +25,7 @@ load_dotenv(專案根目錄 / ".env")
 副本設定檔路徑 = 專案根目錄 / "config" / "encounters.json"
 FFLogs執行設定檔路徑 = 專案根目錄 / "config" / "fflogs.json"
 公開副本清單路徑 = 專案根目錄 / "public" / "data" / "encounters.json"
+淺層掃描快取目錄 = 專案根目錄 / "data" / "shallow_scan_cache"
 
 FFLogs執行設定預設值: dict[str, Any] = {
     "report_page_limit": 100,
@@ -41,11 +42,14 @@ FFLogs執行設定預設值: dict[str, Any] = {
     "history_max_deep_reports_per_run": 25,
     "report_status_cache_limit": 50000,
     "request_timeout": 30,
+    "request_connect_timeout": None,
+    "request_read_timeout": None,
     "request_retries": 3,
     "rate_limit_requests": 240,
     "rate_limit_window_seconds": 120,
     "rate_limit_padding_seconds": 1.0,
     "rate_limited_cooldown_seconds": 3600,
+    "shallow_scan_cache_enabled": True,
     "json_write_retries": 10,
     "json_write_retry_seconds": 0.5,
     "ranking_flush_reports": 25,
@@ -85,6 +89,16 @@ def 整數設定(名稱: str) -> int:
 def 浮點設定(名稱: str) -> float:
     try:
         return float(FFLogs執行設定[名稱])
+    except (TypeError, ValueError) as 錯誤:
+        raise RuntimeError(f"FFLogs 執行設定 {名稱} 必須是數字。") from 錯誤
+
+
+def 可選浮點設定(名稱: str, 預設值: float) -> float:
+    值 = FFLogs執行設定.get(名稱)
+    if 值 is None or 值 == "":
+        return 預設值
+    try:
+        return float(值)
     except (TypeError, ValueError) as 錯誤:
         raise RuntimeError(f"FFLogs 執行設定 {名稱} 必須是數字。") from 錯誤
 
@@ -171,12 +185,16 @@ def 布林設定(名稱: str) -> bool:
 )
 歷史補查深層報告上限 = 整數設定("history_max_deep_reports_per_run")
 報告檢查快取上限 = max(0, 整數設定("report_status_cache_limit"))
-請求逾時秒數 = 整數設定("request_timeout")
+請求逾時秒數 = max(1.0, 浮點設定("request_timeout"))
+請求連線逾時秒數 = max(1.0, 可選浮點設定("request_connect_timeout", min(10.0, 請求逾時秒數)))
+請求讀取逾時秒數 = max(1.0, 可選浮點設定("request_read_timeout", 請求逾時秒數))
+請求逾時設定 = (請求連線逾時秒數, 請求讀取逾時秒數)
 重試次數 = 整數設定("request_retries")
 速率限制請求數 = 整數設定("rate_limit_requests")
 速率限制視窗秒數 = 整數設定("rate_limit_window_seconds")
 速率限制緩衝秒數 = 浮點設定("rate_limit_padding_seconds")
 限流冷卻秒數 = 整數設定("rate_limited_cooldown_seconds")
+淺層掃描快取已啟用 = 布林設定("shallow_scan_cache_enabled")
 json寫入重試次數 = max(1, 整數設定("json_write_retries"))
 json寫入重試等待秒數 = max(0.1, 浮點設定("json_write_retry_seconds"))
 排行榜批次寫入報告數 = max(1, 整數設定("ranking_flush_reports"))
@@ -643,11 +661,34 @@ def 寫入_json(路徑: Path, 內容: Any, *, 緊湊格式: bool = False) -> Non
                 pass
 
 
+階段切換清除欄位 = {
+    "current_window_start_at",
+    "current_window_start_at_iso",
+    "current_window_end_at",
+    "current_window_end_at_iso",
+    "last_completed_window_end_at",
+    "last_completed_window_end_at_iso",
+    "shallow_reports_found_so_far",
+    "current_report_index",
+    "total_reports",
+    "current_report_code",
+    "current_report_start_at",
+    "current_report_start_at_iso",
+    "processed_reports_in_checkpoint",
+}
+
+
 def 更新副本掃描進度(狀態: dict[str, Any], 副本設定: dict[str, Any], **進度: Any) -> None:
     副本狀態索引 = 狀態.setdefault("encounters", {})
     副本狀態 = 副本狀態索引.setdefault(副本設定["key"], {})
     即時進度 = 副本狀態.setdefault("active_scan", {})
     更新時間戳記 = 現在毫秒()
+
+    新階段 = 進度.get("stage")
+    if 新階段 and 新階段 != 即時進度.get("stage"):
+        for 欄位名稱 in 階段切換清除欄位:
+            if 欄位名稱 not in 進度:
+                即時進度.pop(欄位名稱, None)
 
     即時進度.update(進度)
     即時進度["updated_at"] = 更新時間戳記
@@ -686,6 +727,102 @@ def 轉_int_or_none(值: Any) -> int | None:
         return int(值)
     except (TypeError, ValueError):
         return None
+
+
+淺層掃描快取版本 = 1
+
+
+def 建立淺層掃描快取路徑(副本設定: dict[str, Any], 起始時間戳記: int, 掃描區間小時: int) -> Path:
+    zone_id = int(副本設定["zone_id"])
+    快取識別 = {
+        "version": 淺層掃描快取版本,
+        "zone_id": zone_id,
+        "start_at": int(起始時間戳記),
+        "scan_window_hours": int(掃描區間小時),
+    }
+    雜湊 = hashlib.sha256(json.dumps(快取識別, sort_keys=True).encode("utf-8")).hexdigest()[:16]
+    return 淺層掃描快取目錄 / f"zone_{zone_id}_{起始時間戳記}_{掃描區間小時}_{雜湊}.json"
+
+
+def 讀取淺層掃描快取(
+    副本設定: dict[str, Any],
+    起始時間戳記: int,
+    掃描區間小時: int,
+) -> tuple[Path | None, int | None, list[dict[str, Any]]]:
+    if not 淺層掃描快取已啟用:
+        return None, None, []
+
+    快取路徑 = 建立淺層掃描快取路徑(副本設定, 起始時間戳記, 掃描區間小時)
+    if not 快取路徑.exists():
+        return 快取路徑, None, []
+
+    try:
+        快取內容 = 讀取_json(快取路徑, {})
+    except Exception as 錯誤:
+        print(f"淺層掃描快取讀取失敗，將重新掃描：{快取路徑}（{錯誤}）", file=sys.stderr)
+        return 快取路徑, None, []
+
+    if not isinstance(快取內容, dict):
+        return 快取路徑, None, []
+    if 快取內容.get("version") != 淺層掃描快取版本:
+        return 快取路徑, None, []
+    if int(快取內容.get("zone_id") or -1) != int(副本設定["zone_id"]):
+        return 快取路徑, None, []
+    if 轉_int_or_none(快取內容.get("start_at")) != int(起始時間戳記):
+        return 快取路徑, None, []
+    if 轉_int_or_none(快取內容.get("scan_window_hours")) != int(掃描區間小時):
+        return 快取路徑, None, []
+
+    完成至 = 轉_int_or_none(快取內容.get("completed_until"))
+    報告列表 = [
+        報告
+        for 報告 in 快取內容.get("reports") or []
+        if isinstance(報告, dict) and 報告.get("code")
+    ]
+    return 快取路徑, 完成至, 報告列表
+
+
+def 寫入淺層掃描快取(
+    快取路徑: Path | None,
+    副本設定: dict[str, Any],
+    起始時間戳記: int,
+    結束時間戳記: int,
+    掃描區間小時: int,
+    完成至: int,
+    報告列表: list[dict[str, Any]],
+) -> None:
+    if not 淺層掃描快取已啟用:
+        return
+
+    路徑 = 快取路徑 or 建立淺層掃描快取路徑(副本設定, 起始時間戳記, 掃描區間小時)
+    更新時間戳記 = 現在毫秒()
+    快取內容 = {
+        "version": 淺層掃描快取版本,
+        "zone_id": int(副本設定["zone_id"]),
+        "start_at": int(起始時間戳記),
+        "start_at_iso": 毫秒轉_iso(起始時間戳記),
+        "target_end_at": int(結束時間戳記),
+        "target_end_at_iso": 毫秒轉_iso(結束時間戳記),
+        "scan_window_hours": int(掃描區間小時),
+        "completed_until": int(完成至),
+        "completed_until_iso": 毫秒轉_iso(完成至),
+        "updated_at": 更新時間戳記,
+        "updated_at_iso": 毫秒轉_iso(更新時間戳記),
+        "reports": 報告列表,
+    }
+    try:
+        寫入_json(路徑, 快取內容, 緊湊格式=True)
+    except Exception as 錯誤:
+        print(f"淺層掃描快取寫入失敗，掃描仍會繼續：{路徑}（{錯誤}）", file=sys.stderr)
+
+
+def 可重用淺層快取完成時間(結束時間戳記: int, 快取完成至: int | None) -> int | None:
+    if 快取完成至 is None:
+        return None
+
+    安全回溯毫秒 = max(0, 增量掃描回溯小時) * 60 * 60 * 1000
+    安全可用至 = min(結束時間戳記, 現在毫秒() - 安全回溯毫秒)
+    return min(快取完成至, 安全可用至, 結束時間戳記)
 
 
 def 排行榜檔案路徑(副本設定: dict[str, Any], public: bool = False) -> Path:
@@ -1087,12 +1224,17 @@ def post_並重試(
     **kwargs: Any,
 ) -> requests.Response:
     最後錯誤: Exception | None = None
+    最後回應: requests.Response | None = None
     使用速率限制器 = 速率限制器 or FFLOGS速率限制器
+    實際重試次數 = max(1, 重試次數)
+    kwargs.setdefault("timeout", 請求逾時設定)
 
-    for 第幾次 in range(1, 重試次數 + 1):
+    for 第幾次 in range(1, 實際重試次數 + 1):
         try:
             使用速率限制器.等待可送出()
-            回應 = session.post(url, timeout=請求逾時秒數, **kwargs)
+            回應 = session.post(url, **kwargs)
+            最後回應 = 回應
+            最後錯誤 = None
             if 回應.status_code not in {429, 500, 502, 503, 504}:
                 return 回應
             if 回應.status_code == 429 and 限流時直接回傳:
@@ -1105,18 +1247,34 @@ def post_並重試(
                 等待秒數 = 速率限制視窗秒數 + int(速率限制緩衝秒數)
             else:
                 等待秒數 = min(2 ** 第幾次, 30)
-            print(f"FFLogs API 暫時無法回應，{等待秒數} 秒後重試。HTTP {回應.status_code}", file=sys.stderr)
+            if 第幾次 >= 實際重試次數:
+                break
+            print(
+                f"FFLogs API 暫時無法回應（第 {第幾次}/{實際重試次數} 次），"
+                f"{等待秒數} 秒後重試。HTTP {回應.status_code}",
+                file=sys.stderr,
+            )
             time.sleep(等待秒數)
         except requests.RequestException as 錯誤:
             最後錯誤 = 錯誤
             等待秒數 = min(2 ** 第幾次, 30)
-            print(f"連線失敗，{等待秒數} 秒後重試：{錯誤}", file=sys.stderr)
+            錯誤類型 = "請求逾時" if isinstance(錯誤, requests.Timeout) else "連線失敗"
+            if 第幾次 >= 實際重試次數:
+                break
+            print(
+                f"{錯誤類型}（第 {第幾次}/{實際重試次數} 次，"
+                f"connect/read timeout={請求連線逾時秒數:g}/{請求讀取逾時秒數:g}s），"
+                f"{等待秒數} 秒後重試：{錯誤}",
+                file=sys.stderr,
+            )
             time.sleep(等待秒數)
 
     if 最後錯誤:
         raise RuntimeError("FFLogs API 請求重試後仍失敗。") from 最後錯誤
 
-    return 回應
+    if 最後回應 is None:
+        raise RuntimeError("FFLogs API 請求未取得任何回應。")
+    return 最後回應
 
 
 def 取得_bearer_token(
@@ -1351,8 +1509,25 @@ def 擷取最新報告(
     階段名稱: str = "淺層掃描",
 ) -> list[dict[str, Any]]:
     報告索引: dict[str, dict[str, Any]] = {}
-    區間毫秒 = max(掃描區間小時 or 淺層掃描區間小時, 1) * 60 * 60 * 1000
+    實際掃描區間小時 = max(掃描區間小時 or 淺層掃描區間小時, 1)
+    區間毫秒 = 實際掃描區間小時 * 60 * 60 * 1000
     目前起點 = 起始時間戳記
+    快取路徑, 快取完成至, 快取報告列表 = 讀取淺層掃描快取(副本設定, 起始時間戳記, 實際掃描區間小時)
+    可重用完成至 = 可重用淺層快取完成時間(結束時間戳記, 快取完成至)
+
+    if 可重用完成至 is not None and 可重用完成至 >= 起始時間戳記:
+        for 報告 in 快取報告列表:
+            報告開始時間 = 轉_float(報告.get("startTime"))
+            if 報告開始時間 is not None and int(報告開始時間) > 可重用完成至:
+                continue
+            代碼 = 報告.get("code")
+            if 代碼:
+                報告索引[代碼] = 報告
+        目前起點 = min(可重用完成至 + 1, 結束時間戳記)
+        print(
+            f"{階段名稱}重用快取至 {毫秒轉_iso(可重用完成至)}，"
+            f"已載入 {len(報告索引)} 份報告。"
+        )
 
     while 目前起點 < 結束時間戳記:
         目前終點 = min(目前起點 + 區間毫秒 - 1, 結束時間戳記)
@@ -1384,6 +1559,15 @@ def 擷取最新報告(
                 }
             )
 
+        寫入淺層掃描快取(
+            快取路徑,
+            副本設定,
+            起始時間戳記,
+            結束時間戳記,
+            實際掃描區間小時,
+            目前終點,
+            sorted(報告索引.values(), key=lambda 報告: 報告.get("startTime") or 0),
+        )
         目前起點 = 目前終點 + 1
 
     return sorted(報告索引.values(), key=lambda 報告: 報告.get("startTime") or 0)
@@ -2869,6 +3053,9 @@ if __name__ == "__main__":
             分割排行榜儲存檔案()
             raise SystemExit(0)
         raise SystemExit(main())
+    except KeyboardInterrupt:
+        print("收到中斷訊號，已保留目前掃描進度；稍後可重新執行續跑。", file=sys.stderr)
+        raise SystemExit(130)
     except Exception as 錯誤:
         print(f"執行失敗：{錯誤}", file=sys.stderr)
         raise SystemExit(1)
