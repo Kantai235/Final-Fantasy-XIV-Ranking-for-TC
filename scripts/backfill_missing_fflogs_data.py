@@ -25,6 +25,8 @@ write_ranking_file = getattr(fflogs, "\u5beb\u5165\u6392\u884c\u699c\u6a94\u6848
 read_credentials = getattr(fflogs, "\u8b80\u53d6\u8a8d\u8b49\u8a2d\u5b9a")
 auth_pool_class = getattr(fflogs, "FFLogs\u8a8d\u8b49\u6c60")
 report_has_tc_players = getattr(fflogs, "\u5831\u544a\u662f\u5426\u5305\u542b\u7e41\u4e2d\u670d\u73a9\u5bb6")
+calculate_damage_time_info = getattr(fflogs, "\u8a08\u7b97\u50b7\u5bb3\u6642\u9593\u8cc7\u8a0a")
+milliseconds_to_seconds = getattr(fflogs, "\u6beb\u79d2\u8f49\u79d2\u6578")
 
 
 MIN_REASONABLE_EPOCH_MS = 946684800000
@@ -110,8 +112,7 @@ def fight_needs_backfill(fight: dict[str, Any]) -> bool:
     raw = fight.get("fflogs_raw") if isinstance(fight.get("fflogs_raw"), dict) else {}
     raw_damage_done = raw.get("damage_done") if isinstance(raw, dict) else None
     return (
-        fight.get("damage_downtime_ms") is None
-        or fight.get("damage_time_ms") is None
+        fight.get("damage_time_ms") is None
         or not isinstance(raw_damage_done, dict)
     )
 
@@ -127,6 +128,70 @@ def report_needs_backfill(report: dict[str, Any]) -> tuple[bool, int]:
             need_fights += 1
 
     return needs_report_metadata or need_fights > 0, need_fights
+
+
+def locally_fill_damage_time_fields(report: dict[str, Any]) -> int:
+    changed = 0
+    for fight in report.get("fights") or []:
+        if not isinstance(fight, dict):
+            continue
+
+        raw = fight.get("fflogs_raw") if isinstance(fight.get("fflogs_raw"), dict) else {}
+        raw_damage_done = raw.get("damage_done") if isinstance(raw, dict) else None
+        if not isinstance(raw_damage_done, dict):
+            continue
+
+        time_info = calculate_damage_time_info({"damage_done": raw_damage_done}, to_number(fight.get("clear_time_ms")))
+        for field_name in (
+            "fflogs_total_time_ms",
+            "fflogs_combat_time_ms",
+            "damage_downtime_ms",
+            "damage_time_ms",
+        ):
+            value = time_info.get(field_name)
+            if fight.get(field_name) is None and value is not None:
+                fight[field_name] = value
+                changed += 1
+
+        for ms_field, seconds_field in (
+            ("fflogs_total_time_ms", "fflogs_total_time_seconds"),
+            ("fflogs_combat_time_ms", "fflogs_combat_time_seconds"),
+            ("damage_downtime_ms", "damage_downtime_seconds"),
+            ("damage_time_ms", "damage_time_seconds"),
+        ):
+            if fight.get(seconds_field) is None and fight.get(ms_field) is not None:
+                fight[seconds_field] = milliseconds_to_seconds(fight.get(ms_field))
+                changed += 1
+
+    return changed
+
+
+def locally_fill_existing_damage_time_fields(encounters: dict[str, dict[str, Any]]) -> tuple[int, int]:
+    changed_fields = 0
+    changed_encounters = 0
+
+    for key, encounter in sorted(encounters.items()):
+        path = ranking_path(encounter)
+        if not path.exists():
+            continue
+
+        ranking = load_ranking_file(encounter)
+        reports = ranking.get("reports") if isinstance(ranking, dict) else {}
+        if not isinstance(reports, dict):
+            continue
+
+        encounter_changed_fields = 0
+        for report in reports.values():
+            if isinstance(report, dict):
+                encounter_changed_fields += locally_fill_damage_time_fields(report)
+
+        if encounter_changed_fields:
+            write_ranking_file(encounter, ranking)
+            changed_fields += encounter_changed_fields
+            changed_encounters += 1
+            print(f"Locally filled {encounter_changed_fields} derived damage time fields for {key}.")
+
+    return changed_fields, changed_encounters
 
 
 def report_sort_time(report: dict[str, Any], now_ms: float | None = None) -> float:
@@ -219,6 +284,14 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     encounters = load_all_encounters()
+    if not args.dry_run:
+        local_fields, local_encounters = locally_fill_existing_damage_time_fields(encounters)
+        if local_fields:
+            print(
+                f"Local derived damage time fill complete: "
+                f"{local_fields} fields changed across {local_encounters} encounters."
+            )
+
     now_ms = time.time() * 1000
     candidates = scan_candidates(encounters, now_ms)
     selected = sorted(candidates.values(), key=lambda item: (item.sort_time, item.report_code), reverse=True)[

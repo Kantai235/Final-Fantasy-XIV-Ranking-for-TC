@@ -1740,6 +1740,8 @@ def 計算傷害時間資訊(原始成績: dict[str, Any], 戰鬥時間毫秒: f
     表格總時間毫秒 = 轉_float(傷害資料.get("totalTime"))
     表格戰鬥時間毫秒 = 轉_float(傷害資料.get("combatTime"))
     停手時間毫秒 = 轉_float(傷害資料.get("damageDowntime"))
+    if 停手時間毫秒 is None and 傷害資料:
+        停手時間毫秒 = 0
     分母基準毫秒 = 表格戰鬥時間毫秒 if 表格戰鬥時間毫秒 is not None else 戰鬥時間毫秒
 
     傷害計算時間毫秒 = None
