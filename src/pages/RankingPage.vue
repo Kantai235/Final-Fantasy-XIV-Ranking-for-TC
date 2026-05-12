@@ -134,8 +134,8 @@ export default {
   </div>
 
   <label class="欄位 搜尋欄位">
-    <span>角色名稱</span>
-    <input v-model="搜尋關鍵字" type="search" placeholder="搜尋角色名稱" />
+    <span>玩家名稱</span>
+    <input v-model="搜尋關鍵字" type="search" placeholder="搜尋玩家名稱" />
   </label>
 </section>
 
@@ -192,7 +192,7 @@ export default {
               <span v-if="是否目前排序('rank')" class="排序箭頭" aria-hidden="true">{{ 排序方向圖示("rank") }}</span>
             </button>
           </th>
-          <th scope="col">角色名稱</th>
+          <th scope="col">玩家名稱</th>
           <th scope="col">伺服器</th>
           <th scope="col">職業</th>
           <th scope="col" class="數字" :aria-sort="排序ARIA('active')">

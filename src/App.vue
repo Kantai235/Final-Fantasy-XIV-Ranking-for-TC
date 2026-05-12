@@ -7,6 +7,7 @@ import ComparePage from "./pages/ComparePage.vue";
 import GlobalStatsPage from "./pages/GlobalStatsPage.vue";
 import JobAnalysisPage from "./pages/JobAnalysisPage.vue";
 import RankingPage from "./pages/RankingPage.vue";
+import TeamRankingsPage from "./pages/TeamRankingsPage.vue";
 import UserProfilePage from "./pages/UserProfilePage.vue";
 import { rankingAppKey, useRankingApp } from "./composables/useRankingApp";
 
@@ -27,6 +28,7 @@ provide(rankingAppKey, rankingApp);
     <ActivityPage v-else-if="view.頁面模式 === 'activity'" />
     <UserProfilePage v-else-if="view.頁面模式 === 'user'" />
     <ComparePage v-else-if="view.頁面模式 === 'compare'" />
+    <TeamRankingsPage v-else-if="view.頁面模式 === 'teams'" />
   </main>
 </template>
 

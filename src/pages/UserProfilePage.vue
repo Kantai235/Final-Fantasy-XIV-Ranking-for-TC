@@ -13,12 +13,12 @@ export default {
   <section class="使用者搜尋區" aria-label="個人成績單查詢">
     <form class="使用者搜尋表單 個人成績搜尋表單" @submit.prevent="提交使用者搜尋">
       <label class="欄位 使用者搜尋欄位">
-        <span>角色 / 伺服器</span>
+        <span>玩家 / 伺服器</span>
         <input
           v-model="使用者搜尋關鍵字"
           type="search"
           list="使用者搜尋建議"
-          placeholder="輸入角色名稱，或選擇「角色 @ 伺服器」"
+          placeholder="輸入玩家名稱，或選擇「玩家 @ 伺服器」"
         />
         <datalist id="使用者搜尋建議">
           <option v-for="建議 in 使用者搜尋建議" :key="`${建議.character_name}@${建議.server}`" :value="建議.value">
@@ -115,7 +115,7 @@ export default {
   <section class="個人成績區" aria-live="polite">
     <div v-if="使用者讀取中" class="狀態列">讀取個人成績單中</div>
     <div v-else-if="使用者錯誤訊息" class="狀態列 錯誤">{{ 使用者錯誤訊息 }}</div>
-    <div v-else-if="!使用者資料" class="狀態列">輸入角色名稱後即可查看個人成績單</div>
+    <div v-else-if="!使用者資料" class="狀態列">輸入玩家名稱後即可查看個人成績單</div>
     <div v-else-if="使用者副本成績.length === 0" class="狀態列">目前沒有符合篩選條件的公開成績</div>
 
     <template v-else>
@@ -149,6 +149,34 @@ export default {
           <strong>{{ 徽章.名稱 }}</strong>
           <span>{{ 徽章.說明 }}</span>
         </article>
+      </section>
+
+      <section v-if="使用者分位亮點.length > 0" class="個人分位區" aria-label="個人分位亮點">
+        <header class="成績趨勢標題">
+          <h2>個人分位亮點</h2>
+          <span>同副本同職業 rDPS 樣本比較</span>
+        </header>
+        <div class="個人分位列表">
+          <article v-for="成績 in 使用者分位亮點" :key="成績.id" class="個人分位項">
+            <span class="比較副本">
+              <small>{{ 成績.encounter_category || "副本" }}</small>
+              <strong>{{ 成績.encounter_name }}</strong>
+            </span>
+            <span class="職業標籤" :class="職業色彩類別(職業代碼色彩(成績.job))">
+              <img
+                v-if="職業Icon路徑(成績.job)"
+                class="職業圖示 職業標籤圖示"
+                :src="職業Icon路徑(成績.job)"
+                alt=""
+                loading="lazy"
+                @error="隱藏載入失敗圖片"
+              />
+              <span>{{ 顯示職業名稱(成績.job) }}</span>
+            </span>
+            <strong>{{ 格式化前段百分位(成績.performance?.rank, 成績.performance?.sample_count) }}</strong>
+            <small>rDPS {{ 格式化傷害數值(成績.rdps) }}・高於中位 {{ 格式化帶號整數(成績.performance?.delta_to_median) }}</small>
+          </article>
+        </div>
       </section>
 
       <section v-if="使用者成績趨勢.length > 0" class="成績趨勢區" aria-label="成績趨勢">
@@ -216,7 +244,7 @@ export default {
               <span class="說明提示內容" role="tooltip">{{ 統計說明文字("隊友關係") }}</span>
             </span>
           </h2>
-          <span>{{ 使用者隊友列表.length }} 位公開同場角色</span>
+          <span>{{ 使用者隊友列表.length }} 位公開同場玩家</span>
         </header>
 
         <div class="隊友關係版面">
@@ -258,7 +286,7 @@ export default {
               <div class="隊友摘要項">
                 <small>同場紀錄</small>
                 <strong>{{ 格式化整數(隊友關係摘要.總同場次數) }}</strong>
-                <em>{{ 使用者隊友列表.length }} 位角色</em>
+                <em>{{ 使用者隊友列表.length }} 位玩家</em>
               </div>
               <div class="隊友摘要項">
                 <small>重複同場</small>
@@ -355,6 +383,11 @@ export default {
               <em>{{ 格式化前段百分位(副本.best_entry.job_rank ?? 副本.best_entry.rank, 取得成績職業總數(副本.best_entry)) }}</em>
             </span>
             <span class="成績列數值">
+              <small>同職分位</small>
+              <strong>{{ 格式化前段百分位(副本.best_entry.performance?.rank, 副本.best_entry.performance?.sample_count) }}</strong>
+              <em>中位 {{ 格式化帶號整數(副本.best_entry.performance?.delta_to_median) }}</em>
+            </span>
+            <span class="成績列數值">
               <small class="說明標籤">
                 <span>Active</span>
                 <span class="說明提示">
@@ -431,6 +464,7 @@ export default {
                       </span>
                     </span>
                   </th>
+                  <th scope="col" class="數字">同職分位</th>
                   <th scope="col" class="數字">
                     <span class="表頭說明標籤">
                       <span>aDPS</span>
@@ -466,6 +500,7 @@ export default {
                   <td class="數字">{{ 格式化Active(成績.active_percent) }}</td>
                   <td class="數字">{{ 格式化傷害數值(成績.dps) }}</td>
                   <td class="數字">{{ 格式化傷害數值(成績.rdps) }}</td>
+                  <td class="數字">{{ 格式化前段百分位(成績.performance?.rank, 成績.performance?.sample_count) }}</td>
                   <td class="數字">{{ 格式化傷害數值(成績.adps) }}</td>
                   <td class="數字">{{ 格式化通關時間(成績.clear_time_seconds) }}</td>
                 </tr>

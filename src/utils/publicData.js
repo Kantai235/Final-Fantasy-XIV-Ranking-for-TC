@@ -5,6 +5,8 @@ const 公開資料基底路徑 = import.meta.env.BASE_URL;
 export const 副本清單網址 = `${公開資料基底路徑}data/encounters.json`;
 export const 使用者索引網址 = `${公開資料基底路徑}data/users/index.json`;
 export const 全服統計網址 = `${公開資料基底路徑}data/global_stats.json`;
+export const 近期動態網址 = `${公開資料基底路徑}data/activity.json`;
+export const 隊伍榜網址 = `${公開資料基底路徑}data/team_rankings.json`;
 
 export function 建立公開資料網址(相對路徑) {
   return `${公開資料基底路徑}${String(相對路徑)

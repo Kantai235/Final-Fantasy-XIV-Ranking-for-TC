@@ -37,6 +37,8 @@ import {
   全服統計網址,
   副本清單網址,
   使用者索引網址,
+  近期動態網址,
+  隊伍榜網址,
   建立公開資料網址,
 } from "../utils/publicData";
 import {
@@ -123,6 +125,13 @@ const 職業傷害提示互動職業 = ref("");
 const 職業分析職業 = ref("");
 const 職業分析展示類型 = ref("");
 const 職業分析選單開啟 = ref(false);
+const 近期動態資料 = ref(null);
+const 近期動態讀取中 = ref(false);
+const 近期動態錯誤訊息 = ref("");
+const 隊伍榜資料 = ref(null);
+const 隊伍榜讀取中 = ref(false);
+const 隊伍榜錯誤訊息 = ref("");
+const 隊伍榜副本鍵值 = ref("all");
 let 正在套用網址狀態 = false;
 
 const 目前副本 = computed(() => {
@@ -533,7 +542,7 @@ function 建立排行列(條目) {
     id: 條目.id || `${條目.report_code}-${條目.fight_id}-${條目.character_name}-${條目.server}`,
     reportCode: 條目.report_code,
     reportUrl: 條目.report_url,
-    角色名稱: 條目.character_name || 條目.name || "未知角色",
+    角色名稱: 條目.character_name || 條目.name || "未知玩家",
     伺服器: 條目.server || "未知伺服器",
     職業代碼,
     職業: 顯示職業名稱(職業代碼),
@@ -636,7 +645,7 @@ function 展開排行榜列(原始資料) {
         id: `${報告.report_code}-${戰鬥.fight_id}-${玩家.name}-${玩家.server}`,
         reportCode: 報告.report_code,
         reportUrl: 報告.url,
-        角色名稱: 玩家.name || "未知角色",
+        角色名稱: 玩家.name || "未知玩家",
         伺服器: 玩家.server || "未知伺服器",
         職業代碼: 玩家.job || "-",
         職業: 顯示職業名稱(玩家.job),
@@ -1054,15 +1063,15 @@ const 全服概要項目 = computed(() => {
 
   if (副本) {
     return [
-      { 標籤: "通關角色", 數值: 格式化整數(副本.character_count) },
+      { 標籤: "通關玩家", 數值: 格式化整數(副本.character_count) },
       { 標籤: "職業紀錄", 數值: 格式化整數(副本.job_record_count) },
       { 標籤: "公開成績", 數值: 格式化整數(副本.entry_count) },
-      { 標籤: "公開角色覆蓋率", 數值: 格式化百分比(副本.clear_share_percent) },
+      { 標籤: "公開玩家覆蓋率", 數值: 格式化百分比(副本.clear_share_percent) },
     ];
   }
 
   return [
-    { 標籤: "全服公開角色", 數值: 格式化整數(統計.total_character_count) },
+    { 標籤: "全服公開玩家", 數值: 格式化整數(統計.total_character_count) },
     { 標籤: "副本通關人次", 數值: 格式化整數(統計.total_encounter_clear_count) },
     { 標籤: "職業通關紀錄", 數值: 格式化整數(統計.total_job_clear_count) },
     { 標籤: "公開成績", 數值: 格式化整數(統計.total_entry_count) },
@@ -1070,29 +1079,29 @@ const 全服概要項目 = computed(() => {
 });
 
 const 統計詞彙說明 = {
-  全服公開角色: "目前公開資料中出現過的唯一角色數，不代表遊戲內完整人口。",
-  副本通關人次: "各副本的通關角色數加總；同一角色跨副本會分別計入。",
-  職業通關紀錄: "同一角色若用不同職業留下通關成績，會各自計為一筆職業紀錄。",
+  全服公開玩家: "目前公開資料中出現過的唯一玩家數，不代表遊戲內完整人口。",
+  副本通關人次: "各副本的通關玩家數加總；同一玩家跨副本會分別計入。",
+  職業通關紀錄: "同一玩家若用不同職業留下通關成績，會各自計為一筆職業紀錄。",
   公開成績: "目前抓取到且可公開呈現的 FFLogs 成績筆數。",
-  通關角色: "同一角色在同一副本會去重計算。",
-  職業紀錄: "同一角色在同一副本使用不同職業時，會分別計入。",
-  公開角色覆蓋率: "單一副本的通關角色數除以目前公開資料中出現過的唯一角色數。",
+  通關玩家: "同一玩家在同一副本會去重計算。",
+  職業紀錄: "同一玩家在同一副本使用不同職業時，會分別計入。",
+  公開玩家覆蓋率: "單一副本的通關玩家數除以目前公開資料中出現過的唯一玩家數。",
   伺服器佔比: "在目前副本與職業範圍下，各伺服器佔全部符合條件紀錄的比例。",
   職業佔比: "在目前副本與伺服器範圍下，各職業或職業類型佔全部符合條件紀錄的比例。",
   隊友關係: "依公開通關同場資料整理常同場隊友、職能組成與副本聚集；不等同實際固定隊名單。",
-  同場副本聚集: "把此角色與隊友一起出現在同一筆公開通關紀錄的資料依副本彙整；場數是同場通關次數，隊友數是曾在該副本同場的不同角色數，用來看同場關係主要集中在哪些副本。",
+  同場副本聚集: "把此玩家與隊友一起出現在同一筆公開通關紀錄的資料依副本彙整；場數是同場通關次數，隊友數是曾在該副本同場的不同玩家數，用來看同場關係主要集中在哪些副本。",
   伺服器生態比較: "以各伺服器內部的職能通關紀錄比例呈現，顏色越深代表該職能在該伺服器占比越高。",
   通關紀錄: "套用職業範圍時，以符合職業條件的通關紀錄計算。",
   範圍佔比: "套用伺服器或職業範圍後，副本通關概覽會改以目前篩選範圍作為分母。",
   零式進度漏斗: "以目前伺服器與職業範圍計算各零式層數的公開通關規模；套用單一職業時，代表該職業留下的通關紀錄。",
   全職業輸出比較: "以公開成績統計每個職業的傷害分布；全部副本時固定使用 M1S、M2S、M3S、M4S。",
-  Active: "有效輸出時間比例。數值越高，代表角色在戰鬥中維持輸出或行動的時間越完整。",
+  Active: "有效輸出時間比例。數值越高，代表玩家在戰鬥中維持輸出或行動的時間越完整。",
   DPS: "原始每秒傷害，包含自身傷害以及吃到外部增益後造成的傷害。",
   rDPS: "團隊貢獻 DPS。公式：DPS - 他人團輔 + 自體團輔，用來衡量你實際為團隊帶來的傷害。",
   nDPS: "純淨 DPS。公式：DPS - 他人團輔，用來看移除外部增益後自己的輸出表現。",
   aDPS: "調整後 DPS。公式：DPS - 被選取的單體增益，會移除標舞、舞伴、占星卡與龍眼等單體填充傷害。",
   cDPS: "綜合 DPS。公式：DPS - 被選取的單體增益 + 自體團輔，用來同時觀察自身爆發與你提供給團隊的增益價值。",
-  "最佳 rDPS": "此角色目前公開成績中最高的團隊貢獻 DPS。",
+  "最佳 rDPS": "此玩家目前公開成績中最高的團隊貢獻 DPS。",
 };
 
 function 統計說明文字(詞彙) {
@@ -1418,7 +1427,14 @@ const 資料狀態分組 = computed(() => {
     .filter((分組) => 分組.總數 > 0);
 });
 
+const 近期動態來源 = computed(() => 近期動態資料.value || {});
+
 const 近期動態基準時間 = computed(() => {
+  const 動態基準時間 = new Date(近期動態來源.value.baseline_at_iso || 0).getTime();
+  if (Number.isFinite(動態基準時間) && 動態基準時間 > 0) {
+    return 動態基準時間;
+  }
+
   const 使用者時間 = 使用者索引列表.value
     .map((使用者) => new Date(使用者.last_recorded_at_iso || 0).getTime())
     .filter(Number.isFinite)
@@ -1427,7 +1443,12 @@ const 近期動態基準時間 = computed(() => {
   return 使用者時間 || (Number.isNaN(索引時間) ? Date.now() : 索引時間);
 });
 
-const 近期動態角色列表 = computed(() => {
+const 近期動態最新成績列表 = computed(() => {
+  const 新版清單 = Array.isArray(近期動態來源.value.recent_entries) ? 近期動態來源.value.recent_entries : [];
+  if (新版清單.length > 0) {
+    return 新版清單.slice(0, 24);
+  }
+
   return 使用者索引列表.value
     .filter((使用者) => 使用者.last_recorded_at_iso)
     .slice()
@@ -1435,22 +1456,108 @@ const 近期動態角色列表 = computed(() => {
       const 時間差 = new Date(後一個.last_recorded_at_iso || 0).getTime() - new Date(前一個.last_recorded_at_iso || 0).getTime();
       return 時間差 || (後一個.best_rdps || 0) - (前一個.best_rdps || 0);
     })
-    .slice(0, 24);
+    .slice(0, 24)
+    .map((使用者) => ({
+      character_name: 使用者.character_name,
+      server: 使用者.servers?.[0] || "",
+      rdps: 使用者.best_rdps,
+      recorded_at_iso: 使用者.last_recorded_at_iso,
+      encounter_name: `${格式化整數(使用者.encounter_count)} 副本`,
+      job: "",
+    }));
 });
 
+const 近期刷新紀錄列表 = computed(() => {
+  return Array.isArray(近期動態來源.value.personal_bests) ? 近期動態來源.value.personal_bests.slice(0, 12) : [];
+});
+
+const 近期新角色列表 = computed(() => {
+  return Array.isArray(近期動態來源.value.new_characters) ? 近期動態來源.value.new_characters.slice(0, 12) : [];
+});
+
+const 近期伺服器活躍列表 = computed(() => {
+  return Array.isArray(近期動態來源.value.server_activity) ? 近期動態來源.value.server_activity.slice(0, 7) : [];
+});
+
+const 近期副本活躍列表 = computed(() => {
+  return Array.isArray(近期動態來源.value.encounter_activity) ? 近期動態來源.value.encounter_activity.slice(0, 8) : [];
+});
+
+const 近期動態角色列表 = computed(() => 近期動態最新成績列表.value);
+
 const 近期動態概要 = computed(() => {
+  const 動態摘要 = 近期動態來源.value.summary;
+  if (動態摘要) {
+    return [
+      { 標籤: `近 ${近期動態來源.value.window_days || 7} 天紀錄`, 數值: 格式化整數(動態摘要.recent_entry_count) },
+      { 標籤: "刷新個人最佳", 數值: 格式化整數(動態摘要.personal_best_count) },
+      { 標籤: "新收錄玩家", 數值: 格式化整數(動態摘要.new_character_count) },
+      { 標籤: "最活躍伺服器", 數值: 動態摘要.top_server?.server || "-" },
+    ];
+  }
+
   const 七天前 = 近期動態基準時間.value - 7 * 24 * 60 * 60 * 1000;
   const 近七天角色數 = 使用者索引列表.value.filter((使用者) => {
     const 時間 = new Date(使用者.last_recorded_at_iso || 0).getTime();
     return Number.isFinite(時間) && 時間 >= 七天前;
   }).length;
-  const 最新角色 = 近期動態角色列表.value[0] || null;
+  const 最新角色 = 近期動態最新成績列表.value[0] || null;
 
   return [
-    { 標籤: "收錄角色", 數值: 格式化整數(使用者索引.value?.total_users || 使用者索引列表.value.length) },
+    { 標籤: "收錄玩家", 數值: 格式化整數(使用者索引.value?.total_users || 使用者索引列表.value.length) },
     { 標籤: "近七天活躍", 數值: 格式化整數(近七天角色數) },
-    { 標籤: "最新角色", 數值: 最新角色?.character_name || "-" },
-    { 標籤: "最新紀錄", 數值: 格式化紀錄時間(最新角色?.last_recorded_at_iso) },
+    { 標籤: "最新玩家", 數值: 最新角色?.character_name || "-" },
+    { 標籤: "最新紀錄", 數值: 格式化紀錄時間(最新角色?.recorded_at_iso || 最新角色?.last_recorded_at_iso) },
+  ];
+});
+
+const 隊伍榜副本列表 = computed(() => {
+  return Array.isArray(隊伍榜資料.value?.encounters) ? 隊伍榜資料.value.encounters : [];
+});
+
+const 目前隊伍榜副本 = computed(() => {
+  if (隊伍榜副本鍵值.value === "all") {
+    return null;
+  }
+
+  return 隊伍榜副本列表.value.find((副本) => 副本.encounter_key === 隊伍榜副本鍵值.value) || null;
+});
+
+const 隊伍榜列 = computed(() => {
+  if (隊伍榜副本鍵值.value === "all") {
+    return (隊伍榜資料.value?.overall_fastest || []).map((紀錄, 索引) => ({
+      ...紀錄,
+      顯示排名: 索引 + 1,
+    }));
+  }
+
+  return (目前隊伍榜副本.value?.records || []).map((紀錄, 索引) => ({
+    ...紀錄,
+    顯示排名: 紀錄.rank || 索引 + 1,
+  }));
+});
+
+const 隊伍榜概要 = computed(() => {
+  const 副本 = 目前隊伍榜副本.value;
+  const 最速 = 隊伍榜列.value[0] || null;
+
+  return [
+    {
+      標籤: "隊伍紀錄",
+      數值: 格式化整數(副本 ? 副本.record_count : 隊伍榜資料.value?.total_team_record_count),
+    },
+    {
+      標籤: "副本數",
+      數值: 格式化整數(隊伍榜資料.value?.encounter_count),
+    },
+    {
+      標籤: "最速通關",
+      數值: 格式化通關時間(最速?.clear_time_seconds),
+    },
+    {
+      標籤: "最速副本",
+      數值: 最速?.encounter_name || 副本?.encounter_name || "-",
+    },
   ];
 });
 
@@ -1618,8 +1725,13 @@ const 更新時間文字 = computed(() => {
   }
 
   if (頁面模式.value === "activity") {
-    const 更新時間 = 使用者索引.value?.rankings_updated_at_iso || 使用者索引.value?.generated_at_iso;
+    const 更新時間 = 近期動態資料.value?.rankings_updated_at_iso || 近期動態資料.value?.generated_at_iso;
     return 更新時間 ? `資料更新時間 ${格式化紀錄時間(更新時間)}` : "近期動態資料";
+  }
+
+  if (頁面模式.value === "teams") {
+    const 更新時間 = 隊伍榜資料.value?.rankings_updated_at_iso || 隊伍榜資料.value?.generated_at_iso;
+    return 更新時間 ? `資料更新時間 ${格式化紀錄時間(更新時間)}` : "隊伍榜資料";
   }
 
   const 更新時間 = 排行榜資料.value?.updated_at_iso;
@@ -1647,6 +1759,10 @@ const 頁面副標 = computed(() => {
     return "Final Fantasy XIV 繁中服・近期動態";
   }
 
+  if (頁面模式.value === "teams") {
+    return "Final Fantasy XIV 繁中服・隊伍榜";
+  }
+
   return 目前副本.value?.category ? `Final Fantasy XIV 繁中服・${目前副本.value.category}` : "Final Fantasy XIV 繁中服";
 });
 
@@ -1672,6 +1788,10 @@ const 頁面標題 = computed(() => {
 
   if (頁面模式.value === "activity") {
     return "近期動態";
+  }
+
+  if (頁面模式.value === "teams") {
+    return 目前隊伍榜副本.value ? `${目前隊伍榜副本.value.encounter_name} 隊伍榜` : "隊伍榜";
   }
 
   return 目前副本.value?.name ? `${目前副本.value.name} 排行榜` : "排行榜";
@@ -1841,6 +1961,25 @@ const 使用者統計 = computed(() => {
   return 建立使用者統計(使用者副本成績.value);
 });
 
+const 使用者分位亮點 = computed(() => {
+  return 使用者副本成績.value
+    .map((副本) =>
+      副本.best_entry
+        ? {
+            ...副本.best_entry,
+            encounter_name: 副本.encounter_name,
+            encounter_category: 副本.encounter_category,
+          }
+        : null,
+    )
+    .filter((成績) => 成績?.performance?.qualified)
+    .sort((前一個, 後一個) => {
+      const 分位差 = (前一個.performance?.top_percent ?? 100) - (後一個.performance?.top_percent ?? 100);
+      return 分位差 || (後一個.rdps ?? 0) - (前一個.rdps ?? 0);
+    })
+    .slice(0, 4);
+});
+
 function 建立使用者成績趨勢項(副本, 職能, 成績列表) {
   const 數值列表 = 成績列表.map((成績) => 轉為數字(成績.rdps) || 0);
   const 最低 = Math.min(...數值列表);
@@ -1923,7 +2062,7 @@ function 建立比較角色項目(資料, 伺服器 = "") {
 
   const 副本成績 = 取得使用者副本成績(資料, 伺服器);
   return {
-    character_name: 資料.character_name || "未知角色",
+    character_name: 資料.character_name || "未知玩家",
     server: 伺服器 || 資料.servers?.[0] || "",
     副本成績,
     統計: 建立使用者統計(副本成績),
@@ -2099,14 +2238,14 @@ const 隊友關係摘要 = computed(() => {
     .at(-1);
 
   let 關係型態 = "同場分散";
-  let 說明 = "公開同場資料多落在不同角色或單次紀錄，較像副本野團或短期組隊紀錄。";
+  let 說明 = "公開同場資料多落在不同玩家或單次紀錄，較像副本野團或短期組隊紀錄。";
 
   if (高頻隊友數 >= 7 || (最常同場隊友?.同場次數 || 0) >= 4) {
     關係型態 = "重複同場明顯";
-    說明 = "已有多位角色重複同場，適合觀察主要副本、職能組成與近期合作軌跡。";
+    說明 = "已有多位玩家重複同場，適合觀察主要副本、職能組成與近期合作軌跡。";
   } else if (高頻隊友數 >= 3) {
     關係型態 = "小隊輪廓";
-    說明 = "有少數角色重複出現，但還不到穩定名單，更適合用副本聚集與職能分布判讀。";
+    說明 = "有少數玩家重複出現，但還不到穩定名單，更適合用副本聚集與職能分布判讀。";
   } else if (主要副本?.teammate_count >= 7) {
     關係型態 = "副本聚集";
     說明 = "隊友主要集中在特定副本，代表該場公開紀錄對目前關係圖的影響較高。";
@@ -2155,7 +2294,7 @@ const 使用者徽章 = computed(() => {
     徽章.push({ 名稱: "高活躍", 說明: `公開成績 ${使用者統計.value.公開成績數} 筆` });
   }
   if (使用者隊友列表.value.length >= 50) {
-    徽章.push({ 名稱: "社群核心", 說明: `與 ${使用者隊友列表.value.length} 位角色有公開同場紀錄` });
+    徽章.push({ 名稱: "社群核心", 說明: `與 ${使用者隊友列表.value.length} 位玩家有公開同場紀錄` });
   }
   if (Number.isFinite(最後紀錄時間) && 最後紀錄時間 >= 基準時間 - 7 * 24 * 60 * 60 * 1000) {
     徽章.push({ 名稱: "近期活躍", 說明: "近七天內有公開紀錄" });
@@ -2315,6 +2454,47 @@ async function 讀取全服統計() {
   }
 }
 
+async function 讀取近期動態資料() {
+  if (近期動態資料.value) {
+    return 近期動態資料.value;
+  }
+
+  近期動態讀取中.value = true;
+  近期動態錯誤訊息.value = "";
+
+  try {
+    近期動態資料.value = await 讀取Json(近期動態網址, "讀取近期動態失敗");
+    return 近期動態資料.value;
+  } catch (錯誤) {
+    近期動態錯誤訊息.value = 錯誤 instanceof Error ? 錯誤.message : "無法讀取近期動態";
+    return null;
+  } finally {
+    近期動態讀取中.value = false;
+  }
+}
+
+async function 讀取隊伍榜資料() {
+  if (隊伍榜資料.value) {
+    return 隊伍榜資料.value;
+  }
+
+  隊伍榜讀取中.value = true;
+  隊伍榜錯誤訊息.value = "";
+
+  try {
+    隊伍榜資料.value = await 讀取Json(隊伍榜網址, "讀取隊伍榜失敗");
+    if (隊伍榜副本鍵值.value !== "all" && !隊伍榜副本列表.value.some((副本) => 副本.encounter_key === 隊伍榜副本鍵值.value)) {
+      隊伍榜副本鍵值.value = "all";
+    }
+    return 隊伍榜資料.value;
+  } catch (錯誤) {
+    隊伍榜錯誤訊息.value = 錯誤 instanceof Error ? 錯誤.message : "無法讀取隊伍榜";
+    return null;
+  } finally {
+    隊伍榜讀取中.value = false;
+  }
+}
+
 function 尋找使用者索引條目(角色名稱) {
   return 尋找使用者索引條目於列表(使用者索引列表.value, 角色名稱);
 }
@@ -2400,10 +2580,16 @@ function 更新網址為近期動態(選項 = {}) {
   更新分享網址("activity", {}, 選項);
 }
 
+function 更新網址為隊伍榜(選項 = {}) {
+  更新分享網址("teams", {
+    encounter: 非預設分享值(隊伍榜副本鍵值.value, "all"),
+  }, 選項);
+}
+
 async function 載入使用者成績(角色名稱, 伺服器 = "", 選項 = {}) {
   const 查詢名稱 = String(角色名稱 || "").trim();
   if (!查詢名稱) {
-    使用者錯誤訊息.value = "請輸入角色名稱";
+    使用者錯誤訊息.value = "請輸入玩家名稱";
     return;
   }
 
@@ -2514,10 +2700,22 @@ function 切換到職業分析() {
 function 切換到近期動態() {
   頁面模式.value = "activity";
   更新網址為近期動態();
-  使用者錯誤訊息.value = "";
-  讀取使用者索引().catch((錯誤) => {
-    使用者錯誤訊息.value = 錯誤 instanceof Error ? 錯誤.message : "無法讀取近期動態索引";
-  });
+  近期動態錯誤訊息.value = "";
+  讀取近期動態資料();
+  讀取使用者索引().catch(() => {});
+}
+
+function 切換到隊伍榜() {
+  頁面模式.value = "teams";
+  更新網址為隊伍榜();
+  讀取隊伍榜資料();
+}
+
+function 選擇隊伍榜副本(副本鍵值) {
+  隊伍榜副本鍵值.value = 副本鍵值 || "all";
+  if (頁面模式.value === "teams") {
+    更新網址為隊伍榜({ replace: true });
+  }
 }
 
 function 提交使用者搜尋() {
@@ -2609,10 +2807,19 @@ async function 套用職業分析網址狀態(網址狀態) {
 
 async function 套用近期動態網址狀態() {
   頁面模式.value = "activity";
-  使用者錯誤訊息.value = "";
-  await 讀取使用者索引().catch((錯誤) => {
-    使用者錯誤訊息.value = 錯誤 instanceof Error ? 錯誤.message : "無法讀取近期動態索引";
-  });
+  近期動態錯誤訊息.value = "";
+  await 讀取近期動態資料();
+  讀取使用者索引().catch(() => {});
+}
+
+async function 套用隊伍榜網址狀態(網址狀態) {
+  頁面模式.value = "teams";
+  隊伍榜副本鍵值.value = 網址狀態.encounter || "all";
+  await 讀取隊伍榜資料();
+  if (隊伍榜副本鍵值.value !== "all" && !隊伍榜副本列表.value.some((副本) => 副本.encounter_key === 隊伍榜副本鍵值.value)) {
+    隊伍榜副本鍵值.value = "all";
+  }
+  更新網址為隊伍榜({ replace: true, 強制: true });
 }
 
 async function 套用網址狀態(網址狀態 = 讀取目前網址狀態()) {
@@ -2630,6 +2837,8 @@ async function 套用網址狀態(網址狀態 = 讀取目前網址狀態()) {
       await 套用職業分析網址狀態(網址狀態);
     } else if (網址狀態.page === "activity") {
       await 套用近期動態網址狀態();
+    } else if (網址狀態.page === "teams") {
+      await 套用隊伍榜網址狀態(網址狀態);
     } else {
       套用排行榜網址狀態(網址狀態);
     }
@@ -2750,6 +2959,12 @@ watch(職業分析職業, () => {
   }
 });
 
+watch(隊伍榜副本鍵值, () => {
+  if (頁面模式.value === "teams") {
+    更新網址為隊伍榜({ replace: true });
+  }
+});
+
 onMounted(() => {
   初始化主題();
   if (typeof window !== "undefined") {
@@ -2825,9 +3040,18 @@ onUnmounted(() => {
     職業傷害提示互動職業,
     職業分析職業,
     職業分析選單開啟,
+    近期動態資料,
+    近期動態讀取中,
+    近期動態錯誤訊息,
+    隊伍榜資料,
+    隊伍榜讀取中,
+    隊伍榜錯誤訊息,
+    隊伍榜副本鍵值,
     副本清單網址,
     使用者索引網址,
     全服統計網址,
+    近期動態網址,
+    隊伍榜網址,
     目前副本,
     資料網址,
     傷害比較指標選項,
@@ -2984,9 +3208,19 @@ onUnmounted(() => {
     職業分析概要,
     資料狀態列表,
     資料狀態分組,
+    近期動態來源,
     近期動態基準時間,
+    近期動態最新成績列表,
+    近期刷新紀錄列表,
+    近期新角色列表,
+    近期伺服器活躍列表,
+    近期副本活躍列表,
     近期動態角色列表,
     近期動態概要,
+    隊伍榜副本列表,
+    目前隊伍榜副本,
+    隊伍榜列,
+    隊伍榜概要,
     取得成績職業總數,
     取得最高伺服器,
     取得最高職業,
@@ -3017,6 +3251,7 @@ onUnmounted(() => {
     使用者副本成績,
     建立使用者統計,
     使用者統計,
+    使用者分位亮點,
     建立使用者成績趨勢項,
     使用者成績趨勢,
     建立比較角色項目,
@@ -3050,11 +3285,14 @@ onUnmounted(() => {
     讀取排行榜資料,
     讀取使用者索引,
     讀取全服統計,
+    讀取近期動態資料,
+    讀取隊伍榜資料,
     尋找使用者索引條目,
     格式化使用者搜尋文字,
     解析使用者搜尋輸入,
     更新網址為使用者,
     更新網址為排行榜,
+    更新網址為隊伍榜,
     載入使用者成績,
     載入比較角色資料,
     提交角色比較,
@@ -3064,6 +3302,8 @@ onUnmounted(() => {
     切換到角色比較,
     切換到職業分析,
     切換到近期動態,
+    切換到隊伍榜,
+    選擇隊伍榜副本,
     提交使用者搜尋,
     開啟個人成績單,
     開啟隊友成績單,

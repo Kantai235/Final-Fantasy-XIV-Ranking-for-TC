@@ -1,4 +1,4 @@
-export const 可分享頁面模式 = new Set(["ranking", "stats", "user", "compare", "jobs", "activity"]);
+export const 可分享頁面模式 = new Set(["ranking", "stats", "user", "compare", "jobs", "activity", "teams"]);
 
 const 頁面路徑片段 = {
   ranking: "",
@@ -7,6 +7,7 @@ const 頁面路徑片段 = {
   compare: "compare",
   jobs: "jobs",
   activity: "activity",
+  teams: "teams",
 };
 
 const 路徑片段頁面 = new Map(
@@ -169,6 +170,11 @@ function 寫入頁面專屬參數(參數, 狀態) {
     // 職業分析只有「職業」是可分享的選擇；職能可由職業反推，
     // 不寫入 jobType 可避免 /jobs 連結出現重複語意的 query。
     寫入參數(參數, "job", 狀態.job);
+    return;
+  }
+
+  if (狀態.page === "teams") {
+    寫入參數(參數, "encounter", 狀態.encounter);
   }
 }
 

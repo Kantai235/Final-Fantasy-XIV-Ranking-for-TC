@@ -12,6 +12,8 @@ const rawFieldNames = new Set(["fflogs_raw", "master_data", "matched_players"]);
 const issues = [];
 let checkedSourceReports = 0;
 let checkedUserFiles = 0;
+let checkedActivityItems = 0;
+let checkedTeamRecords = 0;
 
 function reportIssue(message) {
   issues.push(message);
@@ -56,6 +58,14 @@ function ensureUniqueKeys(items, keyName, label) {
 
 function hasRankingData(ranking) {
   return Array.isArray(ranking?.ranking_entries) || Array.isArray(ranking?.report_shards) || ranking?.reports;
+}
+
+function isFiniteNumber(value) {
+  return Number.isFinite(Number(value));
+}
+
+function isObjectRecord(value) {
+  return value && typeof value === "object" && !Array.isArray(value);
 }
 
 async function loadSourceReports(ranking, rankingLabel) {
@@ -202,6 +212,95 @@ async function validateGlobalStats() {
   }
 }
 
+async function validateActivity() {
+  const activityPath = path.join(publicDataDir, "activity.json");
+  if (!existsSync(activityPath)) {
+    reportIssue("缺少 public/data/activity.json，請先執行 npm run build:user-data");
+    return;
+  }
+
+  const activity = await readJson(activityPath, "public/data/activity.json");
+  if (activity?.schema_version !== 1) {
+    reportIssue("public/data/activity.json 的 schema_version 必須是 1");
+  }
+  if (!isObjectRecord(activity?.summary)) {
+    reportIssue("public/data/activity.json 缺少 summary");
+  }
+  if (!isFiniteNumber(activity?.summary?.recent_entry_count)) {
+    reportIssue("public/data/activity.json 缺少 summary.recent_entry_count");
+  }
+
+  const listNames = ["recent_entries", "personal_bests", "new_characters", "server_activity", "encounter_activity"];
+  for (const listName of listNames) {
+    if (!Array.isArray(activity?.[listName])) {
+      reportIssue(`public/data/activity.json 的 ${listName} 必須是陣列`);
+      continue;
+    }
+    checkedActivityItems += activity[listName].length;
+  }
+
+  for (const entry of activity?.recent_entries || []) {
+    if (!entry?.character_name || !entry?.server || !entry?.encounter_key || !entry?.job) {
+      reportIssue("public/data/activity.json 的 recent_entries 有條目缺少角色、伺服器、副本或職業");
+      break;
+    }
+  }
+}
+
+async function validateTeamRankings() {
+  const teamRankingsPath = path.join(publicDataDir, "team_rankings.json");
+  if (!existsSync(teamRankingsPath)) {
+    reportIssue("缺少 public/data/team_rankings.json，請先執行 npm run build:user-data");
+    return;
+  }
+
+  const teamRankings = await readJson(teamRankingsPath, "public/data/team_rankings.json");
+  if (teamRankings?.schema_version !== 1) {
+    reportIssue("public/data/team_rankings.json 的 schema_version 必須是 1");
+  }
+  if (!Array.isArray(teamRankings?.encounters)) {
+    reportIssue("public/data/team_rankings.json 的 encounters 必須是陣列");
+    return;
+  }
+  if (!Array.isArray(teamRankings?.overall_fastest)) {
+    reportIssue("public/data/team_rankings.json 的 overall_fastest 必須是陣列");
+  }
+  if (teamRankings?.encounter_count !== teamRankings.encounters.length) {
+    reportIssue(`public/data/team_rankings.json 的 encounter_count=${teamRankings?.encounter_count} 與 encounters 長度 ${teamRankings.encounters.length} 不一致`);
+  }
+
+  ensureUniqueKeys(teamRankings.encounters, "encounter_key", "public/data/team_rankings.json encounters");
+  const totalRecordCount = teamRankings.encounters.reduce((sum, encounter) => sum + (Number(encounter?.record_count) || 0), 0);
+  if (teamRankings?.total_team_record_count !== totalRecordCount) {
+    reportIssue(`public/data/team_rankings.json 的 total_team_record_count=${teamRankings?.total_team_record_count} 與副本紀錄總數 ${totalRecordCount} 不一致`);
+  }
+
+  for (const encounter of teamRankings.encounters) {
+    if (!Array.isArray(encounter?.records)) {
+      reportIssue(`隊伍榜副本 ${encounter?.encounter_key || "(未知)"} 的 records 必須是陣列`);
+      continue;
+    }
+    if ((Number(encounter.record_count) || 0) < encounter.records.length) {
+      reportIssue(`隊伍榜副本 ${encounter.encounter_key} 的 record_count 小於 records 長度`);
+    }
+
+    for (const record of encounter.records) {
+      checkedTeamRecords += 1;
+      if (!record?.id || !isFiniteNumber(record?.clear_time_seconds)) {
+        reportIssue(`隊伍榜副本 ${encounter.encounter_key} 有紀錄缺少 id 或 clear_time_seconds`);
+        continue;
+      }
+      if (!Array.isArray(record.players) || record.players.length !== 8) {
+        reportIssue(`隊伍榜紀錄 ${record.id} 的 players 必須剛好是 8 人`);
+        continue;
+      }
+      if (record.players.some((player) => !player?.character_name || !player?.server || !player?.job)) {
+        reportIssue(`隊伍榜紀錄 ${record.id} 有隊員缺少角色、伺服器或職業`);
+      }
+    }
+  }
+}
+
 async function validateUsers() {
   const usersDir = path.join(publicDataDir, "users");
   const userIndexPath = path.join(usersDir, "index.json");
@@ -239,6 +338,8 @@ async function main() {
   const publicEncounters = await validateEncounters();
   await validateRankings(publicEncounters);
   await validateGlobalStats();
+  await validateActivity();
+  await validateTeamRankings();
   await validateUsers();
 
   if (issues.length > 0) {
@@ -253,7 +354,7 @@ async function main() {
   }
 
   console.log(
-    `資料驗證通過：${publicEncounters.length} 個公開副本、${checkedSourceReports} 份來源 report、${checkedUserFiles} 份使用者檔案。`,
+    `資料驗證通過：${publicEncounters.length} 個公開副本、${checkedSourceReports} 份來源 report、${checkedUserFiles} 份使用者檔案、${checkedActivityItems} 筆近期動態項目、${checkedTeamRecords} 筆隊伍榜紀錄。`,
   );
 }
 

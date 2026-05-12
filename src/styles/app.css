@@ -163,6 +163,7 @@ h1 {
 
 .頁面切換 {
   display: flex;
+  flex-wrap: wrap;
   gap: 10px;
   margin-bottom: 18px;
 }
@@ -723,6 +724,126 @@ button:disabled {
 
 .近期動態表格 {
   min-width: 900px;
+}
+
+.近期動態職業標籤 {
+  max-width: 150px;
+}
+
+.近期動態職業標籤 span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.表格補充文字 {
+  display: block;
+  margin-top: 3px;
+  color: var(--靜音文字);
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+.近期洞察版面 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.近期新角色列表 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  background: var(--邊框柔和色);
+}
+
+.近期新角色項 {
+  min-width: 0;
+  min-height: auto;
+  display: grid;
+  justify-items: start;
+  gap: 5px;
+  border: 0;
+  border-radius: 0;
+  padding: 12px 14px;
+  color: var(--主要文字);
+  background: var(--表面背景);
+  text-align: left;
+}
+
+.近期新角色項:hover:not(:disabled) {
+  background: var(--列hover背景);
+}
+
+.近期新角色項 strong,
+.近期新角色項 span {
+  min-width: 0;
+  overflow: hidden;
+  max-width: 100%;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.近期新角色項 span {
+  color: var(--次要文字);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.隊伍榜工具列 {
+  width: min(320px, 100%);
+  margin-bottom: 18px;
+}
+
+.隊伍榜區 {
+  display: grid;
+  gap: 16px;
+}
+
+.隊伍榜表格 {
+  min-width: 980px;
+}
+
+.隊伍成員欄位 {
+  min-width: 360px;
+}
+
+.隊伍成員列表 {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.隊伍成員 {
+  min-height: 30px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-color: var(--邊框色);
+  padding: 4px 8px;
+  color: var(--主要文字);
+  background: var(--表面背景柔和);
+  font-size: 0.78rem;
+  font-weight: 760;
+}
+
+.隊伍成員:hover:not(:disabled) {
+  border-color: var(--重點色);
+  color: var(--重點文字);
+  background: var(--重點色);
+}
+
+.隊伍成員 small {
+  color: inherit;
+  opacity: 0.72;
+}
+
+.隊伍成員 span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .全服統計區 {
@@ -1812,6 +1933,43 @@ button:disabled {
   line-height: 1.35;
 }
 
+.個人分位區 {
+  overflow: hidden;
+  border: 1px solid var(--邊框色);
+  border-radius: 8px;
+  background: var(--表面背景);
+}
+
+.個人分位列表 {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  background: var(--邊框柔和色);
+}
+
+.個人分位項 {
+  min-width: 0;
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  padding: 13px 14px;
+  background: var(--表面背景);
+}
+
+.個人分位項 > strong {
+  color: var(--重點色);
+  font-size: 1.08rem;
+  font-weight: 880;
+  font-variant-numeric: tabular-nums;
+}
+
+.個人分位項 > small {
+  color: var(--次要文字);
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
 .趨勢項 {
   display: grid;
   gap: 12px;
@@ -2472,8 +2630,8 @@ th .說明提示內容 {
 
 .個人成績列 {
   --個人成績欄位: minmax(170px, 1.45fr) minmax(104px, 0.72fr) minmax(76px, 0.48fr)
-    minmax(82px, 0.52fr) minmax(82px, 0.52fr) minmax(82px, 0.52fr) minmax(82px, 0.52fr)
-    minmax(82px, 0.52fr);
+    minmax(92px, 0.58fr) minmax(82px, 0.52fr) minmax(82px, 0.52fr) minmax(82px, 0.52fr)
+    minmax(82px, 0.52fr) minmax(82px, 0.52fr);
   --個人成績欄距: 12px;
   overflow: visible;
   border: 1px solid var(--邊框色);
@@ -3230,6 +3388,256 @@ td a:hover {
 
   .常見隊友列表 {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .近期洞察版面,
+  .個人分位列表,
+  .近期新角色列表 {
+    grid-template-columns: 1fr;
+  }
+
+  .隊伍成員欄位 {
+    min-width: 0;
+  }
+
+  .統計表格.近期動態表格,
+  .統計表格.近期動態表格 tbody {
+    gap: 6px;
+  }
+
+  .統計表格.近期動態表格 tr {
+    grid-template-columns: 28px minmax(0, 1fr) auto;
+    gap: 3px 8px;
+    padding: 8px 9px;
+  }
+
+  .統計表格.近期動態表格 td {
+    gap: 1px;
+    line-height: 1.16;
+  }
+
+  .統計表格.近期動態表格 td::before {
+    display: none;
+  }
+
+  .近期動態表格 td:nth-child(1) .文字連結 {
+    max-width: 100%;
+    overflow: hidden;
+    font-size: 0.82rem;
+    line-height: 1.15;
+    text-overflow: ellipsis;
+  }
+
+  .近期動態表格 .表格補充文字 {
+    margin-top: 0;
+    font-size: 0.66rem;
+    line-height: 1.1;
+  }
+
+  .近期動態表格 .比較副本 {
+    gap: 0;
+    line-height: 1.12;
+  }
+
+  .近期動態表格 .比較副本 small {
+    font-size: 0.62rem;
+  }
+
+  .近期動態表格 .比較副本 strong {
+    overflow: hidden;
+    font-size: 0.72rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .近期動態職業標籤 {
+    width: 26px;
+    height: 26px;
+    min-height: 0;
+    justify-content: center;
+    border-radius: 0;
+    padding: 0;
+    background: transparent;
+  }
+
+  .近期動態職業標籤 .職業標籤圖示 {
+    width: 23px;
+    height: 23px;
+  }
+
+  .近期動態職業標籤 span {
+    display: none;
+  }
+
+  .近期刷新表格 td:nth-child(3),
+  .近期公開表格 td:nth-child(4) {
+    grid-column: 1;
+    grid-row: 1 / span 2;
+    justify-self: start;
+    align-self: start;
+  }
+
+  .近期刷新表格 td:nth-child(1),
+  .近期公開表格 td:nth-child(1) {
+    grid-column: 2;
+    grid-row: 1;
+    min-width: 0;
+  }
+
+  .近期刷新表格 td:nth-child(2),
+  .近期公開表格 td:nth-child(3) {
+    grid-column: 2 / 4;
+    grid-row: 2;
+    min-width: 0;
+  }
+
+  .近期刷新表格 td:nth-child(4),
+  .近期公開表格 td:nth-child(5) {
+    grid-column: 3;
+    grid-row: 1;
+    justify-self: end;
+    align-self: start;
+    color: var(--重點色);
+    font-size: 0.82rem;
+    font-weight: 860;
+    text-align: right;
+    white-space: nowrap;
+  }
+
+  .近期刷新表格 td:nth-child(5),
+  .近期刷新表格 td:nth-child(6),
+  .近期公開表格 td:nth-child(2),
+  .近期公開表格 td:nth-child(6) {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--次要文字);
+    font-size: 0.66rem;
+    font-weight: 740;
+    line-height: 1.1;
+    white-space: nowrap;
+  }
+
+  .近期刷新表格 td:nth-child(5) {
+    grid-column: 2;
+    grid-row: 3;
+  }
+
+  .近期刷新表格 td:nth-child(6) {
+    grid-column: 3;
+    grid-row: 3;
+    justify-self: end;
+  }
+
+  .近期公開表格 td:nth-child(2) {
+    grid-column: 2;
+    grid-row: 3;
+  }
+
+  .近期公開表格 td:nth-child(6) {
+    grid-column: 3;
+    grid-row: 3;
+    justify-self: end;
+  }
+
+  .近期刷新表格 td:nth-child(5)::before {
+    content: "分位";
+    display: inline;
+  }
+
+  .近期公開表格 td:nth-child(2)::before {
+    content: "伺服器";
+    display: inline;
+  }
+
+  .統計表格.隊伍榜表格 tr {
+    grid-template-columns: 38px minmax(0, 1fr) auto;
+    gap: 10px 12px;
+    padding: 12px;
+  }
+
+  .隊伍榜表格 td:nth-child(1) {
+    width: 34px;
+    height: 34px;
+    grid-column: 1;
+    grid-row: 1 / span 2;
+    place-items: center;
+    align-self: start;
+    border: 1px solid var(--邊框柔和色);
+    border-radius: 999px;
+    color: var(--重點色);
+    background: var(--表面背景柔和);
+    font-size: 0.82rem;
+    font-weight: 880;
+  }
+
+  .隊伍榜表格 td:nth-child(1)::before,
+  .隊伍榜表格 td:nth-child(6)::before {
+    display: none;
+  }
+
+  .隊伍榜表格 td:nth-child(2) {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .隊伍榜表格 td:nth-child(3) {
+    grid-column: 2;
+    grid-row: 2;
+  }
+
+  .隊伍榜表格 td:nth-child(4) {
+    grid-column: 3;
+    grid-row: 2;
+    justify-self: end;
+    text-align: right;
+  }
+
+  .隊伍榜表格 td:nth-child(3),
+  .隊伍榜表格 td:nth-child(4) {
+    border: 1px solid var(--邊框柔和色);
+    border-radius: 6px;
+    padding: 8px;
+    background: var(--表面背景柔和);
+  }
+
+  .隊伍榜表格 td:nth-child(5) {
+    grid-column: 1 / -1;
+    grid-row: 3;
+  }
+
+  .隊伍榜表格 td:nth-child(6) {
+    grid-column: 3;
+    grid-row: 1;
+    justify-self: end;
+    align-self: start;
+  }
+
+  .隊伍榜表格 td:nth-child(6) a {
+    display: inline-flex;
+    border: 1px solid var(--邊框色);
+    border-radius: 999px;
+    padding: 4px 9px;
+    background: var(--表面背景柔和);
+    font-size: 0.76rem;
+    font-weight: 800;
+    text-decoration: none;
+  }
+
+  .隊伍榜表格 .隊伍成員列表 {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .隊伍榜表格 .隊伍成員 {
+    width: 100%;
+    min-width: 0;
+    justify-content: flex-start;
+  }
+
+  .近期新角色項 span {
+    white-space: normal;
   }
 
   .隊友項 {
@@ -4101,58 +4509,102 @@ td a:hover {
     text-decoration: none;
   }
 
-  .統計表格:not(.近期動態表格):not(.比較表格) td:nth-child(1),
-  .近期動態表格 td:nth-child(1),
-  .比較表格 td:nth-child(1) {
+  .統計表格:not(.近期動態表格):not(.比較表格):not(.隊伍榜表格) td:nth-child(1),
+  .比較表格 td:nth-child(1),
+  .隊伍榜表格 td:nth-child(5) {
     grid-column: 1 / -1;
   }
 
-  .統計表格:not(.近期動態表格):not(.比較表格) td:nth-child(1)::before {
+  .統計表格:not(.近期動態表格):not(.比較表格):not(.隊伍榜表格) td:nth-child(1)::before {
     content: "副本";
   }
 
-  .統計表格:not(.近期動態表格):not(.比較表格) td:nth-child(2)::before {
+  .統計表格:not(.近期動態表格):not(.比較表格):not(.隊伍榜表格) td:nth-child(2)::before {
     content: "分類";
   }
 
-  .統計表格:not(.近期動態表格):not(.比較表格) td:nth-child(3)::before {
+  .統計表格:not(.近期動態表格):not(.比較表格):not(.隊伍榜表格) td:nth-child(3)::before {
     content: "通關";
   }
 
-  .統計表格:not(.近期動態表格):not(.比較表格) td:nth-child(4)::before {
+  .統計表格:not(.近期動態表格):not(.比較表格):not(.隊伍榜表格) td:nth-child(4)::before {
     content: "範圍佔比";
   }
 
-  .統計表格:not(.近期動態表格):not(.比較表格) td:nth-child(5)::before {
+  .統計表格:not(.近期動態表格):not(.比較表格):not(.隊伍榜表格) td:nth-child(5)::before {
     content: "最高伺服器";
   }
 
-  .統計表格:not(.近期動態表格):not(.比較表格) td:nth-child(6)::before {
+  .統計表格:not(.近期動態表格):not(.比較表格):not(.隊伍榜表格) td:nth-child(6)::before {
     content: "最高職業";
   }
 
   .近期動態表格 td:nth-child(1)::before {
-    content: "角色";
+    content: "玩家";
   }
 
-  .近期動態表格 td:nth-child(2)::before {
+  .近期刷新表格 td:nth-child(2)::before {
+    content: "副本";
+  }
+
+  .近期刷新表格 td:nth-child(3)::before {
+    content: "職業";
+  }
+
+  .近期刷新表格 td:nth-child(4)::before {
+    content: "rDPS 提升";
+  }
+
+  .近期刷新表格 td:nth-child(5)::before {
+    content: "分位";
+  }
+
+  .近期刷新表格 td:nth-child(6)::before {
+    content: "紀錄時間";
+  }
+
+  .近期公開表格 td:nth-child(2)::before {
     content: "伺服器";
   }
 
-  .近期動態表格 td:nth-child(3)::before {
-    content: "副本數";
+  .近期公開表格 td:nth-child(3)::before {
+    content: "副本";
   }
 
-  .近期動態表格 td:nth-child(4)::before {
-    content: "公開成績";
+  .近期公開表格 td:nth-child(4)::before {
+    content: "職業";
   }
 
-  .近期動態表格 td:nth-child(5)::before {
-    content: "最佳 rDPS";
+  .近期公開表格 td:nth-child(5)::before {
+    content: "rDPS";
   }
 
-  .近期動態表格 td:nth-child(6)::before {
-    content: "最後紀錄";
+  .近期公開表格 td:nth-child(6)::before {
+    content: "紀錄時間";
+  }
+
+  .隊伍榜表格 td:nth-child(1)::before {
+    content: "排名";
+  }
+
+  .隊伍榜表格 td:nth-child(2)::before {
+    content: "副本";
+  }
+
+  .隊伍榜表格 td:nth-child(3)::before {
+    content: "通關時間";
+  }
+
+  .隊伍榜表格 td:nth-child(4)::before {
+    content: "隊伍 rDPS";
+  }
+
+  .隊伍榜表格 td:nth-child(5)::before {
+    content: "隊伍成員";
+  }
+
+  .隊伍榜表格 td:nth-child(6)::before {
+    content: "報告";
   }
 
   .比較表格 td:nth-child(1)::before {
@@ -4210,10 +4662,14 @@ td a:hover {
   }
 
   .歷史表格 td:nth-child(7)::before {
-    content: "aDPS";
+    content: "同職分位";
   }
 
   .歷史表格 td:nth-child(8)::before {
+    content: "aDPS";
+  }
+
+  .歷史表格 td:nth-child(9)::before {
     content: "通關時間";
   }
 

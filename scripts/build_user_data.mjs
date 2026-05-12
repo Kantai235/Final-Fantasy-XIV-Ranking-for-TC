@@ -16,11 +16,16 @@ const configEncountersPath = path.join(rootDir, "config", "encounters.json");
 const publicDataDir = path.join(rootDir, "public", "data");
 const outputDir = path.join(rootDir, "public", "data", "users");
 const globalStatsPath = path.join(publicDataDir, "global_stats.json");
+const activityPath = path.join(publicDataDir, "activity.json");
+const teamRankingsPath = path.join(publicDataDir, "team_rankings.json");
 // 目前箱型圖只比較現行零式系列；其他副本仍會進入全服統計與個人成績單。
 // minimumDamageActivePercent 用來排除明顯中途死亡或缺乏輸出時間的樣本，避免分位數被極端異常值拉歪。
 const savageDamageComparisonEncounterKeys = ["savage_m1s", "savage_m2s", "savage_m3s", "savage_m4s"];
 const savageDamageComparisonEncounterKeySet = new Set(savageDamageComparisonEncounterKeys);
 const minimumDamageActivePercent = 50;
+const activityWindowDays = 7;
+const recentActivityLimit = 40;
+const teamRecordsPerEncounterLimit = 50;
 
 const jobRoleGroups = [
   {
@@ -61,6 +66,7 @@ const jobRoleByJob = new Map(
     ]),
   ),
 );
+const jobRoleOrder = new Map(jobRoleGroups.map((group, index) => [group.role, index]));
 
 function assertInside(parent, target) {
   const relative = path.relative(parent, target);
@@ -263,6 +269,100 @@ function getDamageActivePercent(entry) {
 
 function isDamageComparisonEntry(entry) {
   return getDamageActivePercent(entry) >= minimumDamageActivePercent;
+}
+
+function roundPercent(value) {
+  return value === null ? null : Number(value.toFixed(2));
+}
+
+function entryRecordedAtMs(entry) {
+  const time = new Date(entry?.recorded_at_iso || 0).getTime();
+  return Number.isNaN(time) ? 0 : time;
+}
+
+function buildEntrySummary(entry) {
+  return {
+    id: entry.id,
+    encounter_key: entry.encounter_key,
+    encounter_name: entry.encounter_name,
+    encounter_category: entry.encounter_category,
+    character_name: entry.character_name,
+    server: entry.server,
+    job: entry.job,
+    dps: entry.dps,
+    rdps: entry.rdps,
+    adps: entry.adps,
+    active_percent: entry.active_percent,
+    clear_time_seconds: entry.clear_time_seconds,
+    recorded_at_iso: entry.recorded_at_iso,
+    report_code: entry.report_code,
+    report_url: entry.report_url,
+    rank: entry.rank,
+    job_rank: entry.job_rank,
+    performance: entry.performance || null,
+  };
+}
+
+function attachRdpsPerformance(entries) {
+  // 個人成績分位必須在 Data Building Layer 先算好，避免 Vue 針對每位角色重新掃描全站成績。
+  // 分位母體限定「同副本、同職業、Active 達標」的公開紀錄，和職業輸出箱型圖使用同一套樣本門檻。
+  const buckets = new Map();
+
+  for (const entry of entries) {
+    entry.performance = {
+      qualified: false,
+      active_threshold: minimumDamageActivePercent,
+      sample_count: 0,
+      reason: "active_low_or_missing",
+    };
+
+    if (!entry?.encounter_key || !entry?.job || toNumber(entry.rdps) === null || !isDamageComparisonEntry(entry)) {
+      continue;
+    }
+
+    const key = `${entry.encounter_key}:${entry.job}`;
+    if (!buckets.has(key)) {
+      buckets.set(key, []);
+    }
+    buckets.get(key).push(entry);
+  }
+
+  for (const bucketEntries of buckets.values()) {
+    bucketEntries.sort((left, right) => (right.rdps ?? 0) - (left.rdps ?? 0) || entryRecordedAtMs(right) - entryRecordedAtMs(left));
+    const valuesAsc = bucketEntries
+      .map((entry) => toNumber(entry.rdps))
+      .filter((value) => value !== null && value > 0)
+      .sort((left, right) => left - right);
+    const sampleCount = bucketEntries.length;
+    const median = roundDamageStat(percentile(valuesAsc, 0.5));
+    const q3 = roundDamageStat(percentile(valuesAsc, 0.75));
+    const top10Index = Math.min(sampleCount - 1, Math.max(0, Math.ceil(sampleCount * 0.1) - 1));
+    const top10Threshold = roundDamageStat(bucketEntries[top10Index]?.rdps ?? null);
+    let previousValue = null;
+    let previousRank = 0;
+
+    bucketEntries.forEach((entry, index) => {
+      const rdps = toNumber(entry.rdps) || 0;
+      const rank = rdps === previousValue ? previousRank : index + 1;
+      previousValue = rdps;
+      previousRank = rank;
+
+      entry.performance = {
+        qualified: true,
+        active_threshold: minimumDamageActivePercent,
+        sample_count: sampleCount,
+        rank,
+        top_percent: roundPercent((rank / sampleCount) * 100),
+        score_percentile: roundPercent(((sampleCount - rank + 1) / sampleCount) * 100),
+        median_rdps: median,
+        q3_rdps: q3,
+        top10_rdps: top10Threshold,
+        delta_to_median: median === null ? null : roundDamageStat(rdps - median),
+        delta_to_q3: q3 === null ? null : roundDamageStat(rdps - q3),
+        gap_to_top10: top10Threshold === null ? null : roundDamageStat(Math.max(0, top10Threshold - rdps)),
+      };
+    });
+  }
 }
 
 function buildJobDamageStats(entries) {
@@ -742,6 +842,129 @@ function collectEntriesFromRankingEntries({ ranking, encounter }) {
     .filter((entry) => entry.character_name && entry.server && entry.job && entry.dps !== null);
 }
 
+function compareTeamPlayers(left, right) {
+  const leftRoleOrder = jobRoleOrder.get(getJobRole(left.job).role) ?? Number.MAX_SAFE_INTEGER;
+  const rightRoleOrder = jobRoleOrder.get(getJobRole(right.job).role) ?? Number.MAX_SAFE_INTEGER;
+  return (
+    leftRoleOrder - rightRoleOrder ||
+    compareByLocale(left.job || "", right.job || "") ||
+    compareByLocale(left.server || "", right.server || "") ||
+    compareByLocale(left.character_name || "", right.character_name || "")
+  );
+}
+
+function summarizeTeamPlayers(players) {
+  return players
+    .filter((player) => {
+      const characterName = player?.name || player?.character_name;
+      return characterName && player?.server && player?.job && toNumber(player?.dps) !== null;
+    })
+    .map((player) => ({
+      character_name: player.name || player.character_name,
+      server: player.server,
+      job: player.job,
+      role: getJobRole(player.job).role,
+      role_name: getJobRole(player.job).role_name,
+      dps: toNumber(player.dps),
+      rdps: toNumber(player.rdps ?? player.dps),
+      adps: toNumber(player.adps),
+      active_percent: toNumber(player.active_percent),
+    }))
+    .sort(compareTeamPlayers);
+}
+
+function compareTeamRecords(left, right) {
+  const clearTimeDiff = (left.clear_time_seconds ?? Infinity) - (right.clear_time_seconds ?? Infinity);
+  if (clearTimeDiff !== 0) {
+    return clearTimeDiff;
+  }
+
+  const damageDiff = (right.total_rdps ?? 0) - (left.total_rdps ?? 0);
+  if (damageDiff !== 0) {
+    return damageDiff;
+  }
+
+  return entryRecordedAtMs(right) - entryRecordedAtMs(left);
+}
+
+function buildTeamRecord({ encounter, report, reportCode, fight }) {
+  const players = summarizeTeamPlayers(Array.isArray(fight?.players) ? fight.players : []);
+  if (players.length !== 8) {
+    return null;
+  }
+
+  const clearTimeMs = toNumber(fight.clear_time_ms);
+  const clearTimeSeconds = toNumber(fight.clear_time_seconds) ?? (clearTimeMs === null ? null : clearTimeMs / 1000);
+  if (clearTimeSeconds === null || clearTimeSeconds <= 0) {
+    return null;
+  }
+
+  const totalRdps = players.reduce((sum, player) => sum + (toNumber(player.rdps) || 0), 0);
+  const totalAdps = players.reduce((sum, player) => sum + (toNumber(player.adps) || 0), 0);
+  const totalDps = players.reduce((sum, player) => sum + (toNumber(player.dps) || 0), 0);
+  const identity = {
+    encounter_key: encounter.key,
+    fight_hash: fight.fight_hash || null,
+    report_code: reportCode,
+    fight_id: fight.fight_id ?? null,
+    clear_time_seconds: clearTimeSeconds,
+    players: players.map((player) => `${player.character_name}@${player.server}:${player.job}`),
+  };
+
+  return {
+    id: createId(identity),
+    encounter_key: encounter.key,
+    encounter_name: encounter.name,
+    encounter_category: encounter.category || null,
+    clear_time_seconds: clearTimeSeconds,
+    clear_time_ms: clearTimeMs,
+    recorded_at_iso: fight.recorded_at_iso || report.report_start_time_iso || null,
+    report_code: reportCode,
+    report_url: report.url || (reportCode ? `https://www.fflogs.com/reports/${reportCode}` : null),
+    fight_id: fight.fight_id ?? null,
+    duplicate_count: 1,
+    total_rdps: roundDamageStat(totalRdps),
+    total_adps: roundDamageStat(totalAdps),
+    total_dps: roundDamageStat(totalDps),
+    players,
+  };
+}
+
+function collectTeamRecordsFromReports({ ranking, encounter }) {
+  // 隊伍榜以 fight 為單位，和個人榜不同：同一場戰鬥若被不同隊員上傳，只保留一筆並累計 duplicate_count。
+  // fight_hash 是最佳識別來源；缺少時才退回 report/fight/player 簽章，避免誤合併不同隊伍的相近時間紀錄。
+  const recordsByFight = new Map();
+
+  for (const [fallbackReportCode, report] of Object.entries(ranking.reports || {})) {
+    if (!report || typeof report !== "object") {
+      continue;
+    }
+
+    const reportCode = report.report_code || fallbackReportCode;
+    for (const fight of report.fights || []) {
+      if (!fight || typeof fight !== "object") {
+        continue;
+      }
+
+      const record = buildTeamRecord({ encounter, report, reportCode, fight });
+      if (!record) {
+        continue;
+      }
+
+      const dedupeKey = fight.fight_hash ? `${encounter.key}:${fight.fight_hash}` : record.id;
+      const existing = recordsByFight.get(dedupeKey);
+      if (existing) {
+        existing.duplicate_count += 1;
+        continue;
+      }
+
+      recordsByFight.set(dedupeKey, record);
+    }
+  }
+
+  return Array.from(recordsByFight.values()).sort(compareTeamRecords);
+}
+
 async function loadEncounters() {
   // 優先讀 public/data/encounters.json，因為它代表「前端可見副本」；
   // config/encounters.json 的 enabled 只控制下一輪掃描，不應讓既有歷史資料在網站上消失。
@@ -959,9 +1182,241 @@ function buildUserPayload(user, generatedAtIso, updatedAtIsoByEncounter) {
   };
 }
 
+function buildRecentEntries(entries, sinceMs) {
+  return entries
+    .filter((entry) => entryRecordedAtMs(entry) >= sinceMs)
+    .sort(compareEntriesByTimeThenScore)
+    .slice(0, recentActivityLimit)
+    .map(buildEntrySummary);
+}
+
+function buildPersonalBestActivity(entries, sinceMs) {
+  const groupedEntries = new Map();
+
+  for (const entry of entries) {
+    const key = `${characterServerKey(entry.character_name, entry.server)}:${entry.encounter_key}:${entry.job}`;
+    if (!groupedEntries.has(key)) {
+      groupedEntries.set(key, []);
+    }
+    groupedEntries.get(key).push(entry);
+  }
+
+  const improvements = [];
+  for (const entryList of groupedEntries.values()) {
+    entryList.sort((left, right) => entryRecordedAtMs(left) - entryRecordedAtMs(right));
+    let bestEntry = null;
+
+    for (const entry of entryList) {
+      if (!isBetterEntry(entry, bestEntry)) {
+        continue;
+      }
+
+      const previousBest = bestEntry;
+      bestEntry = entry;
+      if (!previousBest || entryRecordedAtMs(entry) < sinceMs) {
+        continue;
+      }
+
+      improvements.push({
+        ...buildEntrySummary(entry),
+        previous_rdps: previousBest.rdps ?? null,
+        previous_recorded_at_iso: previousBest.recorded_at_iso || null,
+        rdps_gain: roundDamageStat((entry.rdps ?? 0) - (previousBest.rdps ?? 0)),
+        clear_time_gain_seconds:
+          previousBest.clear_time_seconds === null || entry.clear_time_seconds === null
+            ? null
+            : Number((previousBest.clear_time_seconds - entry.clear_time_seconds).toFixed(3)),
+      });
+    }
+  }
+
+  return improvements
+    .sort((left, right) => {
+      const gainDiff = (right.rdps_gain ?? 0) - (left.rdps_gain ?? 0);
+      return gainDiff || entryRecordedAtMs(right) - entryRecordedAtMs(left);
+    });
+}
+
+function buildNewCharacterActivity(entries, sinceMs) {
+  const groupedByCharacter = new Map();
+
+  for (const entry of entries) {
+    const key = characterServerKey(entry.character_name, entry.server);
+    let bucket = groupedByCharacter.get(key);
+    if (!bucket) {
+      bucket = {
+        character_name: entry.character_name,
+        server: entry.server,
+        first_entry: entry,
+        last_entry: entry,
+        best_entry: entry,
+        encounters: new Set(),
+        jobs: new Set(),
+        entry_count: 0,
+      };
+      groupedByCharacter.set(key, bucket);
+    }
+
+    bucket.entry_count += 1;
+    bucket.encounters.add(entry.encounter_key);
+    bucket.jobs.add(entry.job);
+    if (entryRecordedAtMs(entry) < entryRecordedAtMs(bucket.first_entry)) {
+      bucket.first_entry = entry;
+    }
+    if (entryRecordedAtMs(entry) > entryRecordedAtMs(bucket.last_entry)) {
+      bucket.last_entry = entry;
+    }
+    if (isBetterEntry(entry, bucket.best_entry)) {
+      bucket.best_entry = entry;
+    }
+  }
+
+  return Array.from(groupedByCharacter.values())
+    .filter((bucket) => entryRecordedAtMs(bucket.first_entry) >= sinceMs)
+    .map((bucket) => ({
+      character_name: bucket.character_name,
+      server: bucket.server,
+      first_recorded_at_iso: bucket.first_entry.recorded_at_iso,
+      last_recorded_at_iso: bucket.last_entry.recorded_at_iso,
+      encounter_count: bucket.encounters.size,
+      job_count: bucket.jobs.size,
+      public_entry_count: bucket.entry_count,
+      best_entry: buildEntrySummary(bucket.best_entry),
+    }))
+    .sort((left, right) => entryRecordedAtMs(right.best_entry) - entryRecordedAtMs(left.best_entry));
+}
+
+function buildScopeActivity(entries, personalBests, scopeName) {
+  const buckets = new Map();
+
+  for (const entry of entries) {
+    const key = entry?.[scopeName];
+    if (!key) {
+      continue;
+    }
+
+    let bucket = buckets.get(key);
+    if (!bucket) {
+      bucket = {
+        [scopeName]: key,
+        entry_count: 0,
+        characters: new Set(),
+        encounters: new Set(),
+        jobs: new Set(),
+        latest_recorded_at_iso: null,
+        personal_best_count: 0,
+      };
+      buckets.set(key, bucket);
+    }
+
+    bucket.entry_count += 1;
+    bucket.characters.add(characterServerKey(entry.character_name, entry.server));
+    bucket.encounters.add(entry.encounter_key);
+    bucket.jobs.add(entry.job);
+    if (entryRecordedAtMs(entry) > new Date(bucket.latest_recorded_at_iso || 0).getTime()) {
+      bucket.latest_recorded_at_iso = entry.recorded_at_iso;
+    }
+  }
+
+  for (const best of personalBests) {
+    const key = best?.[scopeName];
+    if (key && buckets.has(key)) {
+      buckets.get(key).personal_best_count += 1;
+    }
+  }
+
+  return Array.from(buckets.values())
+    .map((bucket) => ({
+      [scopeName]: bucket[scopeName],
+      entry_count: bucket.entry_count,
+      character_count: bucket.characters.size,
+      encounter_count: bucket.encounters.size,
+      job_count: bucket.jobs.size,
+      personal_best_count: bucket.personal_best_count,
+      latest_recorded_at_iso: bucket.latest_recorded_at_iso,
+    }))
+    .sort((left, right) => right.entry_count - left.entry_count || compareByLocale(left[scopeName], right[scopeName]));
+}
+
+function buildActivityPayload(entries, generatedAtIso, latestRankingUpdatedAt) {
+  const latestEntryTime = entries
+    .map(entryRecordedAtMs)
+    .filter((time) => time > 0)
+    .sort((left, right) => right - left)[0] || Date.now();
+  const sinceMs = latestEntryTime - activityWindowDays * 24 * 60 * 60 * 1000;
+  const recentEntries = entries.filter((entry) => entryRecordedAtMs(entry) >= sinceMs);
+  const personalBests = buildPersonalBestActivity(entries, sinceMs);
+  const newCharacters = buildNewCharacterActivity(entries, sinceMs);
+  const serverActivity = buildScopeActivity(recentEntries, personalBests, "server");
+  const encounterActivity = buildScopeActivity(recentEntries, personalBests, "encounter_key").map((item) => {
+    const source = recentEntries.find((entry) => entry.encounter_key === item.encounter_key);
+    return {
+      ...item,
+      encounter_name: source?.encounter_name || item.encounter_key,
+      encounter_category: source?.encounter_category || null,
+    };
+  });
+
+  return {
+    schema_version: 1,
+    generated_at_iso: generatedAtIso,
+    rankings_updated_at_iso: latestRankingUpdatedAt,
+    window_days: activityWindowDays,
+    baseline_at_iso: new Date(latestEntryTime).toISOString(),
+    summary: {
+      recent_entry_count: recentEntries.length,
+      personal_best_count: personalBests.length,
+      new_character_count: newCharacters.length,
+      active_server_count: serverActivity.length,
+      active_encounter_count: encounterActivity.length,
+      top_server: serverActivity[0] || null,
+      top_encounter: encounterActivity[0] || null,
+    },
+    recent_entries: buildRecentEntries(entries, sinceMs),
+    personal_bests: personalBests.slice(0, recentActivityLimit),
+    new_characters: newCharacters.slice(0, recentActivityLimit),
+    server_activity: serverActivity,
+    encounter_activity: encounterActivity,
+  };
+}
+
+function buildTeamRankingsPayload(teamRecordsByEncounter, generatedAtIso, latestRankingUpdatedAt) {
+  const encounters = Array.from(teamRecordsByEncounter.entries())
+    .map(([encounterKey, records]) => {
+      const sortedRecords = records.slice().sort(compareTeamRecords);
+      const firstRecord = sortedRecords[0] || null;
+      return {
+        encounter_key: encounterKey,
+        encounter_name: firstRecord?.encounter_name || encounterKey,
+        encounter_category: firstRecord?.encounter_category || null,
+        record_count: sortedRecords.length,
+        fastest_clear_seconds: firstRecord?.clear_time_seconds ?? null,
+        fastest_record: firstRecord,
+        records: sortedRecords.slice(0, teamRecordsPerEncounterLimit).map((record, index) => ({
+          ...record,
+          rank: index + 1,
+        })),
+      };
+    })
+    .sort((left, right) => compareByLocale(left.encounter_category || "", right.encounter_category || "") || compareByLocale(left.encounter_name, right.encounter_name));
+  const allRecords = encounters.flatMap((encounter) => encounter.records.map((record) => ({ ...record, encounter_name: encounter.encounter_name })));
+
+  return {
+    schema_version: 1,
+    generated_at_iso: generatedAtIso,
+    rankings_updated_at_iso: latestRankingUpdatedAt,
+    total_team_record_count: encounters.reduce((sum, encounter) => sum + encounter.record_count, 0),
+    encounter_count: encounters.length,
+    overall_fastest: allRecords.slice().sort(compareTeamRecords).slice(0, recentActivityLimit),
+    encounters,
+  };
+}
+
 async function main() {
   assertInside(path.join(rootDir, "public", "data"), outputDir);
   assertInside(publicDataDir, globalStatsPath);
+  assertInside(publicDataDir, activityPath);
+  assertInside(publicDataDir, teamRankingsPath);
 
   const encounters = await loadEncounters();
   const usersByName = new Map();
@@ -969,6 +1424,7 @@ async function main() {
   const overallCharacterKeys = new Set();
   const encounterStats = [];
   const allEntries = [];
+  const teamRecordsByEncounter = new Map();
 
   for (const encounter of encounters) {
     const ranking = await loadRankingForEncounter(encounter);
@@ -983,15 +1439,21 @@ async function main() {
     const entries = ranking.reports
       ? collectEntriesFromReports({ ranking, encounter })
       : collectEntriesFromRankingEntries({ ranking, encounter });
+    const teamRecords = ranking.reports ? collectTeamRecordsFromReports({ ranking, encounter }) : [];
 
     encounterStats.push(collectEncounterStats(encounter, entries, ranking.updated_at_iso));
     allEntries.push(...entries);
+    if (teamRecords.length > 0) {
+      teamRecordsByEncounter.set(encounter.key, teamRecords);
+    }
 
     for (const entry of entries) {
       overallCharacterKeys.add(characterServerKey(entry.character_name, entry.server));
       addEntry(usersByName, entry);
     }
   }
+
+  attachRdpsPerformance(allEntries);
 
   // public/data/users 是完整衍生產物，可以整包重建；append-only 保護的是 data/state 與 data/rankings。
   // 使用者檔名以角色名稱正規化，index.json 的 file_path 才是前端實際讀取入口。
@@ -1060,8 +1522,13 @@ async function main() {
     encounters: normalizedEncounterStats,
   });
 
+  await writeJson(activityPath, buildActivityPayload(allEntries, generatedAtIso, latestRankingUpdatedAt));
+  await writeJson(teamRankingsPath, buildTeamRankingsPayload(teamRecordsByEncounter, generatedAtIso, latestRankingUpdatedAt));
+
   console.log(`Built ${indexUsers.length} user data files in ${path.relative(rootDir, outputDir)}.`);
   console.log(`Built global stats in ${path.relative(rootDir, globalStatsPath)}.`);
+  console.log(`Built activity feed in ${path.relative(rootDir, activityPath)}.`);
+  console.log(`Built team rankings in ${path.relative(rootDir, teamRankingsPath)}.`);
 }
 
 main().catch((error) => {

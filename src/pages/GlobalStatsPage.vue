@@ -450,17 +450,17 @@ export default {
                 <th scope="col">分類</th>
                 <th scope="col" class="數字">
                   <span class="表頭說明標籤">
-                    <span>{{ 職業範圍類型(統計職業範圍) === "all" ? "通關角色" : "通關紀錄" }}</span>
+                    <span>{{ 職業範圍類型(統計職業範圍) === "all" ? "通關玩家" : "通關紀錄" }}</span>
                     <span class="說明提示">
                       <button
                         class="說明提示按鈕"
                         type="button"
-                        :aria-label="`${職業範圍類型(統計職業範圍) === 'all' ? '通關角色' : '通關紀錄'}說明`"
+                        :aria-label="`${職業範圍類型(統計職業範圍) === 'all' ? '通關玩家' : '通關紀錄'}說明`"
                       >
                         ?
                       </button>
                       <span class="說明提示內容" role="tooltip">
-                        {{ 統計說明文字(職業範圍類型(統計職業範圍) === "all" ? "通關角色" : "通關紀錄") }}
+                        {{ 統計說明文字(職業範圍類型(統計職業範圍) === "all" ? "通關玩家" : "通關紀錄") }}
                       </span>
                     </span>
                   </span>
@@ -547,7 +547,7 @@ export default {
                   <strong>{{ 副本.encounter_name }}</strong>
                 </span>
                 <em>{{ 副本.狀態文字 }}</em>
-                <small>{{ 副本.有資料 ? `${格式化整數(副本.character_count)} 角色` : "尚無公開成績" }}</small>
+                <small>{{ 副本.有資料 ? `${格式化整數(副本.character_count)} 玩家` : "尚無公開成績" }}</small>
               </article>
             </div>
           </section>
