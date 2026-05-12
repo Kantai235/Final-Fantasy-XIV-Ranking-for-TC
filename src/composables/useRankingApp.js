@@ -69,7 +69,7 @@ export function useRankingApp() {
 
 // 核心 Vue 狀態只保留畫面會變動的資料；不隨操作變動的職業定義、
 // 格式化與 URL 規則已抽到 domain/utils，避免這個 composable 繼續膨脹。
-const 預設副本鍵值 = "savage_m1s";
+const 預設副本鍵值 = "savage_m4s";
 const 預設排序欄位 = "rdps";
 const 預設排序方向 = "desc";
 const 預設比較職能 = "role:tank";
@@ -77,6 +77,7 @@ const 預設統計副本鍵值 = "all";
 const 預設統計職業範圍 = "all";
 const 預設伺服器拆分模式 = "none";
 const 預設統計傷害指標 = "rdps";
+const 預設隊伍榜副本鍵值 = "savage_m4s";
 const 排行榜資料 = ref(null);
 const 副本清單 = ref([]);
 const 副本鍵值 = ref(預設副本鍵值);
@@ -133,7 +134,7 @@ const 近期動態錯誤訊息 = ref("");
 const 隊伍榜資料 = ref(null);
 const 隊伍榜讀取中 = ref(false);
 const 隊伍榜錯誤訊息 = ref("");
-const 隊伍榜副本鍵值 = ref("all");
+const 隊伍榜副本鍵值 = ref(預設隊伍榜副本鍵值);
 const 伺服器對比資料 = ref(null);
 const 伺服器對比讀取中 = ref(false);
 const 伺服器對比錯誤訊息 = ref("");
@@ -1585,21 +1586,10 @@ const 隊伍榜副本列表 = computed(() => {
 });
 
 const 目前隊伍榜副本 = computed(() => {
-  if (隊伍榜副本鍵值.value === "all") {
-    return null;
-  }
-
   return 隊伍榜副本列表.value.find((副本) => 副本.encounter_key === 隊伍榜副本鍵值.value) || null;
 });
 
 const 隊伍榜列 = computed(() => {
-  if (隊伍榜副本鍵值.value === "all") {
-    return (隊伍榜資料.value?.overall_fastest || []).map((紀錄, 索引) => ({
-      ...紀錄,
-      顯示排名: 索引 + 1,
-    }));
-  }
-
   return (目前隊伍榜副本.value?.records || []).map((紀錄, 索引) => ({
     ...紀錄,
     顯示排名: 紀錄.rank || 索引 + 1,
@@ -2092,7 +2082,7 @@ function 近期動態分享描述() {
 }
 
 function 隊伍榜分享描述() {
-  const 範圍 = 目前隊伍榜副本.value?.encounter_name || "全部副本";
+  const 範圍 = 目前隊伍榜副本.value?.encounter_name || "指定副本";
   const 隊伍數 = 分享數量文字(隊伍榜列.value.length, "組隊伍紀錄");
   return 正規化分享描述(
     `${範圍}隊伍榜整理同場 8 人公開紀錄的通關時間、隊伍 rDPS 與成員組成${隊伍數 ? `，目前收錄 ${隊伍數}` : ""}。`,
@@ -2839,9 +2829,7 @@ async function 讀取隊伍榜資料() {
 
   try {
     隊伍榜資料.value = await 讀取Json(隊伍榜網址, "讀取隊伍榜失敗");
-    if (隊伍榜副本鍵值.value !== "all" && !隊伍榜副本列表.value.some((副本) => 副本.encounter_key === 隊伍榜副本鍵值.value)) {
-      隊伍榜副本鍵值.value = "all";
-    }
+    套用隊伍榜有效副本鍵值();
     return 隊伍榜資料.value;
   } catch (錯誤) {
     隊伍榜錯誤訊息.value = 錯誤 instanceof Error ? 錯誤.message : "無法讀取隊伍榜";
@@ -2906,7 +2894,25 @@ function 非預設分享值(值, 預設值) {
 }
 
 function 預設排行榜副本鍵值() {
-  return 副本清單.value[0]?.key || 預設副本鍵值;
+  return 副本清單.value.some((副本) => 副本.key === 預設副本鍵值)
+    ? 預設副本鍵值
+    : 副本清單.value[0]?.key || 預設副本鍵值;
+}
+
+function 隊伍榜副本鍵值有效(副本鍵值) {
+  return 隊伍榜副本列表.value.some((副本) => 副本.encounter_key === 副本鍵值);
+}
+
+function 套用隊伍榜有效副本鍵值() {
+  if (隊伍榜副本鍵值有效(隊伍榜副本鍵值.value)) {
+    return;
+  }
+
+  // 「全部副本最速」已從 UI 移除；舊分享網址或空值進來時一律回到
+  // 目前指定的隊伍榜預設副本，避免使用者停在已不存在的選項。
+  隊伍榜副本鍵值.value = 隊伍榜副本鍵值有效(預設隊伍榜副本鍵值)
+    ? 預設隊伍榜副本鍵值
+    : 隊伍榜副本列表.value[0]?.encounter_key || 預設隊伍榜副本鍵值;
 }
 
 function 排行榜排序分享狀態() {
@@ -2975,7 +2981,7 @@ function 更新網址為近期動態(選項 = {}) {
 
 function 更新網址為隊伍榜(選項 = {}) {
   更新分享網址("teams", {
-    encounter: 非預設分享值(隊伍榜副本鍵值.value, "all"),
+    encounter: 非預設分享值(隊伍榜副本鍵值.value, 預設隊伍榜副本鍵值),
   }, 選項);
 }
 
@@ -3171,7 +3177,10 @@ function 切換到伺服器對比() {
 }
 
 function 選擇隊伍榜副本(副本鍵值) {
-  隊伍榜副本鍵值.value = 副本鍵值 || "all";
+  隊伍榜副本鍵值.value = 副本鍵值 || 預設隊伍榜副本鍵值;
+  if (隊伍榜資料.value) {
+    套用隊伍榜有效副本鍵值();
+  }
   if (頁面模式.value === "teams") {
     更新網址為隊伍榜({ replace: true });
   }
@@ -3282,11 +3291,9 @@ async function 套用近期動態網址狀態() {
 
 async function 套用隊伍榜網址狀態(網址狀態) {
   頁面模式.value = "teams";
-  隊伍榜副本鍵值.value = 網址狀態.encounter || "all";
+  隊伍榜副本鍵值.value = 網址狀態.encounter || 預設隊伍榜副本鍵值;
   await 讀取隊伍榜資料();
-  if (隊伍榜副本鍵值.value !== "all" && !隊伍榜副本列表.value.some((副本) => 副本.encounter_key === 隊伍榜副本鍵值.value)) {
-    隊伍榜副本鍵值.value = "all";
-  }
+  套用隊伍榜有效副本鍵值();
   更新網址為隊伍榜({ replace: true, 強制: true });
 }
 

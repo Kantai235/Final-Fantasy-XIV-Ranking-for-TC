@@ -14,7 +14,6 @@ export default {
     <label class="欄位">
       <span>副本</span>
       <select :value="隊伍榜副本鍵值" @change="選擇隊伍榜副本($event.target.value)">
-        <option value="all">全部副本最速</option>
         <option v-for="副本 in 隊伍榜副本列表" :key="副本.encounter_key" :value="副本.encounter_key">
           {{ 副本.encounter_name }}
         </option>
@@ -38,7 +37,7 @@ export default {
 
       <section class="統計面板 統計面板寬" aria-label="隊伍通關紀錄">
         <header class="統計面板標題">
-          <h2>{{ 目前隊伍榜副本?.encounter_name || "全部副本最速" }}</h2>
+          <h2>{{ 目前隊伍榜副本?.encounter_name || "隊伍榜" }}</h2>
           <span>依通關時間排序，同場 8 人公開紀錄</span>
         </header>
         <div class="統計表格外框">

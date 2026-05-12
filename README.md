@@ -227,12 +227,12 @@ npm run build
 - 全服統計：`./stats`、`./stats/savage_m1s`
 - 個人成績單：`./user/玩家名稱?server=伺服器`
 - 玩家比較：`./compare?left=玩家A%20@%20伺服器&right=玩家B%20@%20伺服器`
-- 隊伍榜：`./teams?encounter=savage_m1s`
+- 隊伍榜：`./teams`、`./teams?encounter=savage_m1s`
 - 伺服器對比：`./servers/陸行鳥/vs/莫古力`
 - 職業分析：`./jobs/Paladin`
 - 近期動態：`./activity`
 
-例如排行榜預設副本、全服統計的「全部副本」、玩家比較的預設防護職能，都不會寫入 URL。全服統計的副本、職業分析的職業、伺服器對比的左右伺服器會寫入乾淨路徑，讓社群爬蟲可以讀到對應的靜態 SEO/OG；額外的指標、分群、伺服器篩選等細部條件仍保留為 query，由前端載入後同步動態 meta。舊版 `?page=user&user=玩家名稱`、`?user=玩家名稱&server=伺服器`、`./user?name=玩家名稱`、`./jobs?job=Paladin` 或 `./servers?left=陸行鳥&right=莫古力` 連結仍會自動套用到對應頁面，避免既有分享連結失效；但需要社群爬蟲讀到專屬 OG 時，應使用 `./user/玩家名稱`、`./stats/{副本 key}`、`./jobs/{職業}` 或 `./servers/{左}/vs/{右}` 這類乾淨路徑。
+例如排行榜預設副本與隊伍榜預設副本目前都是 `savage_m4s`（零式 M4S / 狡雷），全服統計的「全部副本」、玩家比較的預設防護職能，也都不會寫入 URL。全服統計的副本、職業分析的職業、伺服器對比的左右伺服器會寫入乾淨路徑，讓社群爬蟲可以讀到對應的靜態 SEO/OG；額外的指標、分群、伺服器篩選等細部條件仍保留為 query，由前端載入後同步動態 meta。舊版 `?page=user&user=玩家名稱`、`?user=玩家名稱&server=伺服器`、`./user?name=玩家名稱`、`./jobs?job=Paladin` 或 `./servers?left=陸行鳥&right=莫古力` 連結仍會自動套用到對應頁面，避免既有分享連結失效；但需要社群爬蟲讀到專屬 OG 時，應使用 `./user/玩家名稱`、`./stats/{副本 key}`、`./jobs/{職業}` 或 `./servers/{左}/vs/{右}` 這類乾淨路徑。
 
 `index.html` 提供站台層級 SEO、Open Graph、Twitter Card 與 JSON-LD 結構化資料，社群預覽圖位於 `public/og-image.png`。`npm run build` 後會由 `scripts/build_spa_fallback.mjs` 產生 `/stats/`、`/user/`、`/compare/`、`/teams/`、`/servers/`、`/jobs/` 與 `/activity/` 的 route 專屬 HTML，讓不執行 JavaScript 的社群爬蟲也能讀到各頁預設標題、描述、canonical 與 OG/Twitter meta。
 

@@ -437,6 +437,7 @@ export default {
                   <th scope="col">紀錄時間</th>
                   <th scope="col">職業</th>
                   <th scope="col" class="歷史報告欄位">報告</th>
+                  <th scope="col" class="數字">同職分位</th>
                   <th scope="col" class="數字">
                     <span class="表頭說明標籤">
                       <span>Active</span>
@@ -464,7 +465,6 @@ export default {
                       </span>
                     </span>
                   </th>
-                  <th scope="col" class="數字">同職分位</th>
                   <th scope="col" class="數字">
                     <span class="表頭說明標籤">
                       <span>aDPS</span>
@@ -497,10 +497,10 @@ export default {
                     <a v-if="成績.report_url" :href="成績.report_url" target="_blank" rel="noreferrer">FFLogs</a>
                     <span v-else>-</span>
                   </td>
+                  <td class="數字">{{ 格式化前段百分位(成績.performance?.rank, 成績.performance?.sample_count) }}</td>
                   <td class="數字">{{ 格式化Active(成績.active_percent) }}</td>
                   <td class="數字">{{ 格式化傷害數值(成績.dps) }}</td>
                   <td class="數字">{{ 格式化傷害數值(成績.rdps) }}</td>
-                  <td class="數字">{{ 格式化前段百分位(成績.performance?.rank, 成績.performance?.sample_count) }}</td>
                   <td class="數字">{{ 格式化傷害數值(成績.adps) }}</td>
                   <td class="數字">{{ 格式化通關時間(成績.clear_time_seconds) }}</td>
                 </tr>
