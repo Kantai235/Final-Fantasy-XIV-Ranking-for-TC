@@ -38,8 +38,13 @@ import {
   副本清單網址,
   使用者索引網址,
   建立公開資料網址,
-  建立使用者預設資料網址,
 } from "../utils/publicData";
+import {
+  尋找使用者索引條目 as 尋找使用者索引條目於列表,
+  格式化使用者搜尋文字,
+  解析使用者搜尋輸入,
+  讀取使用者資料檔,
+} from "../utils/userData";
 import { 寫入網址狀態, 讀取目前網址狀態 } from "../utils/urlState";
 import { 排名色彩類別, 比例條樣式, 熱力格樣式, 趨勢點樣式, 隱藏載入失敗圖片 } from "../utils/viewHelpers";
 import { useTheme } from "./useTheme";
@@ -2310,31 +2315,8 @@ async function 讀取全服統計() {
   }
 }
 
-function 尋找使用者索引項目(角色名稱) {
-  const 正規化名稱 = 角色名稱.trim().toLocaleLowerCase("zh-TW");
-  return 使用者索引列表.value.find((使用者) => 使用者.character_name.toLocaleLowerCase("zh-TW") === 正規化名稱) || null;
-}
-
-function 格式化使用者搜尋文字(角色名稱, 伺服器 = "") {
-  const 名稱 = String(角色名稱 || "").trim();
-  const 伺服器名稱 = String(伺服器 || "").trim();
-  return 伺服器名稱 ? `${名稱} @ ${伺服器名稱}` : 名稱;
-}
-
-function 解析使用者搜尋輸入(輸入文字) {
-  const 文字 = String(輸入文字 || "").trim();
-  const 分隔結果 = 文字.match(/^(.*?)\s*[@＠]\s*(.+)$/);
-  if (!分隔結果) {
-    return {
-      角色名稱: 文字,
-      伺服器: "",
-    };
-  }
-
-  return {
-    角色名稱: 分隔結果[1].trim(),
-    伺服器: 分隔結果[2].trim(),
-  };
+function 尋找使用者索引條目(角色名稱) {
+  return 尋找使用者索引條目於列表(使用者索引列表.value, 角色名稱);
 }
 
 function 更新分享網址(頁面, 額外狀態 = {}, 選項 = {}) {
@@ -2432,19 +2414,7 @@ async function 載入使用者成績(角色名稱, 伺服器 = "", 選項 = {}) 
 
   try {
     await 讀取使用者索引();
-    const 索引項目 = 尋找使用者索引項目(查詢名稱);
-    const 資料網址 = 索引項目?.file_path ? 建立公開資料網址(索引項目.file_path) : 建立使用者預設資料網址(查詢名稱);
-    const 回應 = await fetch(資料網址, {
-      headers: {
-        Accept: "application/json",
-      },
-    });
-
-    if (!回應.ok) {
-      throw new Error(`找不到「${查詢名稱}」的個人成績單`);
-    }
-
-    使用者資料.value = await 回應.json();
+    使用者資料.value = await 讀取使用者資料檔(查詢名稱, 使用者索引列表.value);
     const 伺服器列表 = Array.isArray(使用者資料.value?.servers) ? 使用者資料.value.servers : [];
     使用者伺服器篩選.value = 伺服器列表.includes(伺服器) ? 伺服器 : 伺服器列表[0] || "";
     使用者搜尋關鍵字.value = 格式化使用者搜尋文字(使用者資料.value.character_name || 查詢名稱, 使用者伺服器篩選.value);
@@ -2468,19 +2438,7 @@ async function 載入比較角色資料(輸入文字) {
   }
 
   await 讀取使用者索引();
-  const 索引項目 = 尋找使用者索引項目(查詢.角色名稱);
-  const 資料網址 = 索引項目?.file_path ? 建立公開資料網址(索引項目.file_path) : 建立使用者預設資料網址(查詢.角色名稱);
-  const 回應 = await fetch(資料網址, {
-    headers: {
-      Accept: "application/json",
-    },
-  });
-
-  if (!回應.ok) {
-    throw new Error(`找不到「${查詢.角色名稱}」的個人成績單`);
-  }
-
-  const 資料 = await 回應.json();
+  const 資料 = await 讀取使用者資料檔(查詢.角色名稱, 使用者索引列表.value);
   const 伺服器列表 = Array.isArray(資料?.servers) ? 資料.servers : [];
   const 伺服器 = 伺服器列表.includes(查詢.伺服器) ? 查詢.伺服器 : 伺服器列表[0] || "";
   return {
@@ -2937,7 +2895,6 @@ onUnmounted(() => {
     格式化紀錄時刻,
     格式化排名,
     建立公開資料網址,
-    建立使用者預設資料網址,
     轉為數字,
     比例條樣式,
     趨勢點樣式,
@@ -3093,7 +3050,7 @@ onUnmounted(() => {
     讀取排行榜資料,
     讀取使用者索引,
     讀取全服統計,
-    尋找使用者索引項目,
+    尋找使用者索引條目,
     格式化使用者搜尋文字,
     解析使用者搜尋輸入,
     更新網址為使用者,

@@ -7,7 +7,8 @@ import { fileURLToPath } from "node:url";
 // 本檔是資料管線的 Data Building Layer。
 // 它讀取 data/rankings 的可追溯原始資料與 ranking_entries，聚合成前端可直接讀取的靜態 JSON。
 // 請勿在 Vue 元件中重做這裡的排序、去重、分位數或隊友統計，否則各頁會出現不一致的結果。
-const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const defaultRootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const rootDir = path.resolve(process.env.FFXIV_TC_ROOT_DIR || defaultRootDir);
 const sourceRankingsDir = path.join(rootDir, "data", "rankings");
 const publicRankingsDir = path.join(rootDir, "public", "data", "rankings");
 const publicEncountersPath = path.join(rootDir, "public", "data", "encounters.json");
@@ -81,6 +82,25 @@ async function readJson(filePath, fallback = null) {
 
 function writeJson(filePath, data) {
   return writeFile(filePath, `${JSON.stringify(data)}\n`, "utf8");
+}
+
+function resolveGeneratedAtIso(latestRankingUpdatedAt) {
+  const override = String(process.env.FFXIV_TC_GENERATED_AT_ISO || "").trim();
+  if (override) {
+    const overrideTime = new Date(override).getTime();
+    if (!Number.isNaN(overrideTime)) {
+      return new Date(overrideTime).toISOString();
+    }
+    throw new Error("FFXIV_TC_GENERATED_AT_ISO must be a valid ISO timestamp.");
+  }
+
+  // public/data/global_stats.json 是會被 Git 追蹤的衍生資料。
+  // 若同一批 ranking 重建時總是寫入目前時間，排程會產生沒有資料意義的 diff；
+  // 因此預設以來源 ranking 的最新更新時間作為產物時間戳，只有沒有來源時間時才退回現在時間。
+  const latestRankingTime = new Date(latestRankingUpdatedAt || 0).getTime();
+  return Number.isNaN(latestRankingTime) || latestRankingTime <= 0
+    ? new Date().toISOString()
+    : new Date(latestRankingTime).toISOString();
 }
 
 function toNumber(value) {
@@ -978,7 +998,8 @@ async function main() {
   await rm(outputDir, { recursive: true, force: true });
   await mkdir(outputDir, { recursive: true });
 
-  const generatedAtIso = new Date().toISOString();
+  const latestRankingUpdatedAt = Array.from(updatedAtIsoByEncounter.values()).sort().at(-1) || null;
+  const generatedAtIso = resolveGeneratedAtIso(latestRankingUpdatedAt);
   const usedFileBaseNames = new Set();
   const indexUsers = [];
 
@@ -1002,7 +1023,6 @@ async function main() {
     });
   }
 
-  const latestRankingUpdatedAt = Array.from(updatedAtIsoByEncounter.values()).sort().at(-1) || null;
   const globalDistribution = collectScopeDistribution(allEntries, (entry) => entry.encounter_key);
   const savageDamageComparisonEntries = allEntries.filter((entry) => savageDamageComparisonEncounterKeySet.has(entry.encounter_key));
   const totalEncounterClearCount = globalDistribution.character_count;

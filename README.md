@@ -44,6 +44,10 @@ Final Fantasy XIV 繁中服排行榜是一個以 FFLogs 公開資料為來源的
 ├── scripts/
 │   ├── fetch_fflogs.py        # 抓取並整理 FFLogs 排行榜資料
 │   ├── build_user_data.mjs    # 產生個人成績單與全服統計資料
+│   ├── validate_data.mjs      # 驗證公開資料、分片與使用者索引完整性
+│   ├── test_build_user_data.mjs # 使用 fixture 驗證資料建置規則
+│   ├── test_frontend_data_contract.mjs # 驗證前端資料讀取契約與 useRankingApp 匯出
+│   ├── compact_state.py       # 壓縮 state.json 中重複 checkpoint
 │   └── build_spa_fallback.mjs # 為 GitHub Pages 產生 History API fallback
 ├── config/
 │   ├── encounters.json        # 副本、FFLogs ID 與掃描起始日期
@@ -75,6 +79,7 @@ Final Fantasy XIV 繁中服排行榜是一個以 FFLogs 公開資料為來源的
 - `ranking_entries` 是去重後的扁平索引；完整追溯請讀 `reports -> fights -> players`。
 - 新資料不再保存 `fflogs_raw`、`master_data` 與 `matched_players`，避免可重查的 FFLogs raw table 讓 repo 容量快速膨脹；若需要重新推導 raw 層欄位，應以 report code 重新查 FFLogs API。
 - 同一角色同一副本同一職業的最佳成績排序規則為 rDPS 優先，平手看通關時間，再看 aDPS。
+- `build_user_data.mjs` 預設以最新 `rankings_updated_at_iso` 作為 `generated_at_iso`，避免同一批資料重建時讓 `global_stats.json` 產生無意義 diff；需要指定產物時間時可設定 `FFXIV_TC_GENERATED_AT_ISO`。
 - `data/state.json` 的 `checked_reports` 是跨輪快取，`processed_reports` 是單輪 checkpoint；兩者和 `data/rankings/` 都不能用硬刪或覆蓋方式整理。
 
 開發代理注意事項：
@@ -82,6 +87,7 @@ Final Fantasy XIV 繁中服排行榜是一個以 FFLogs 公開資料為來源的
 - 修改前先檢查 `git status`。本專案常有資料管線產物處於未提交狀態，不要回復或清掉非本次任務造成的資料差異。
 - 不要擅自啟動 `npm run dev` 或 Vite 開發伺服器；需要瀏覽器驗證時先取得使用者同意。
 - 驗證資料聚合優先跑 `npm run build:user-data`。若只是重建公開排行榜 JSON，可跑 `python scripts/fetch_fflogs.py --rebuild-public`，這個模式不會呼叫 FFLogs API。
+- 驗證公開資料完整性可跑 `npm run validate:data`；它會檢查公開副本是否都有 ranking 檔案、來源分片是否存在、raw 欄位是否回流，以及使用者索引是否可讀。
 - 需要同步本機與 GitHub Actions 產生的資料時，先跑 `npm run sync:data -- --dry-run`，確認沒有 `REMOVAL` 或 `CONFLICT` 再真正同步。
 
 ## 快速開始
@@ -142,6 +148,15 @@ FFLOGS_CLIENT_CREDENTIALS_JSON=[{"client_id":"client_id_1","client_secret":"clie
 
 `.env` 內含敏感資訊，不應提交到版本控制。
 
+可選的前端分析設定：
+
+```env
+VITE_GA_MEASUREMENT_ID=G-XXXXXXXXXX
+VITE_GA_ENABLE_IN_DEV=false
+```
+
+`VITE_GA_ENABLE_IN_DEV` 只有在刻意要於 `npm run dev` 送出 GA 事件時才設為 `true`。
+
 ## 常用指令
 
 啟動開發伺服器：
@@ -156,6 +171,24 @@ npm run dev
 npm run build:user-data
 ```
 
+驗證公開資料完整性：
+
+```bash
+npm run validate:data
+```
+
+執行語法檢查：
+
+```bash
+npm run check
+```
+
+執行資料建置與前端資料契約測試：
+
+```bash
+npm test
+```
+
 清理既有 `data/rankings/*.reports/*.json` 裡可重查的大型 FFLogs raw 欄位時，先預覽再正式執行：
 
 ```bash
@@ -164,6 +197,15 @@ npm run compact:rankings
 ```
 
 這個指令只移除 `fflogs_raw`、`master_data`、`matched_players` 與 fight 層 raw payload，並重新分片；不會刪除 report、fight 或 player 紀錄。
+
+壓縮 `data/state.json` 中已由 `checked_reports` 保留的重複 checkpoint 時，先預覽再正式執行：
+
+```bash
+npm run compact:state -- --dry-run
+npm run compact:state
+```
+
+這個指令只移除和 `checked_reports` 完全相同的 `processed_reports` 重複紀錄；`checked_reports` 仍保留 report 狀態，避免破壞掃描略過依據。
 
 建置靜態網站：
 
@@ -200,7 +242,7 @@ npm run sync:data -- --dry-run
 npm run sync:data
 ```
 
-這個工具會保護 append-only 資料：`data/state.json` 的 report 狀態、`data/rankings/*.json` 的 reports，以及 `config/encounters.json` 的 encounter key。如果任一邊刪除了既有資料，工具會停止並列出需要人工確認的項目。合併成功後會重建 `public/data` 產物；若只想合併來源資料，可以加上 `--no-rebuild`。
+這個工具會保護 append-only 資料：`data/state.json` 的 report 狀態、`data/rankings/*.json` 的 reports，以及 `config/encounters.json` 的 encounter key。如果任一邊刪除了既有資料，工具會停止並列出需要人工確認的條目。合併成功後會重建 `public/data` 產物；若只想合併來源資料，可以加上 `--no-rebuild`。
 
 預覽建置結果：
 
@@ -233,6 +275,7 @@ python scripts/fetch_fflogs.py
 3. `npm run build`
    - 先自動執行 `build:public-rankings`，確保 `public/data/rankings/*.json` 與目前原始排行榜資料同步。
    - 接著自動執行 `build:user-data`。
+   - 執行 `validate:data`，確認公開副本、排行榜分片、全服統計與使用者索引完整。
    - 再由 Vite 建置靜態網站到 `dist/`。
 
 ## 設定副本
@@ -278,8 +321,9 @@ npm run build:user-data
 4. 執行 `scripts/backfill_missing_fflogs_data.py --limit 250` 補齊缺漏的 FFLogs 戰鬥資料。
 5. 執行 `python scripts/fetch_fflogs.py --split-rankings`，將完整排行榜資料拆分成適合 Git 追蹤的檔案。
 6. 產生個人成績單、全服統計資料與 `data/update_status.json`。
-7. 若 `data` 或 `public/data` 有變更，提交並推送更新。
-8. 執行 `npm run build` 建置 `dist/`，並部署到 GitHub Pages。
+7. 執行 `npm run build`，在提交前完成公開資料驗證與 Vite 建置。
+8. 若 `data` 或 `public/data` 有變更，提交並推送更新。
+9. 上傳 `dist/` 並部署到 GitHub Pages。
 
 需要在 GitHub Repository Secrets 設定至少一組：
 
@@ -306,5 +350,6 @@ npm run build
 
 - `data/state.json` 是抓取進度狀態，手動修改前請先確認目前掃描狀態。
 - `public/data/users/` 是由 `scripts/build_user_data.mjs` 重新產生的資料。
+- `public/data/rankings/` 是由 `fetch_fflogs.py --rebuild-public` 或 `--split-rankings` 重新產生的公開排行榜資料；若副本列在 `public/data/encounters.json`，就必須有對應公開 ranking 檔案。
 - FFLogs API 有限流，`config/fflogs.json` 可調整請求限制、重試與冷卻時間。
 - 排行榜只統計公開報告中可解析且符合繁中服條件的資料。

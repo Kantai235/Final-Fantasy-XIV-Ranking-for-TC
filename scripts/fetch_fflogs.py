@@ -2442,10 +2442,19 @@ def 寫入排行榜檔案(副本設定: dict[str, Any], 排行榜: dict[str, Any
 
 
 def 重建公開排行榜檔案() -> None:
-    副本清單 = 讀取副本設定清單()
-    寫入公開副本清單(副本清單)
+    # rebuild-public 不呼叫 FFLogs API，只把 data/rankings 的既有歷史資料轉成前端可讀的 public/data。
+    # 因此這裡不能只看 enabled=true：停掃的副本若仍有歷史排行榜，也必須同步重建公開檔案，
+    # 否則 public/data/encounters.json 會列出副本，但前端讀不到對應 data/rankings/{key}.json。
+    全部副本清單 = 讀取全部有效副本設定清單()
+    啟用副本清單 = [副本 for 副本 in 全部副本清單 if 副本.get("enabled")]
+    啟用鍵值 = {副本["key"] for 副本 in 啟用副本清單}
+    寫入公開副本清單(啟用副本清單)
 
-    for 副本設定 in 副本清單:
+    for 副本設定 in 全部副本清單:
+        已有排行榜檔案 = 排行榜檔案路徑(副本設定).exists() or 排行榜檔案路徑(副本設定, public=True).exists()
+        if 副本設定["key"] not in 啟用鍵值 and not 已有排行榜檔案:
+            continue
+
         排行榜 = 讀取排行榜檔案(副本設定)
         排行榜.setdefault("schema_version", 1)
         排行榜.setdefault("encounter", 建立副本摘要(副本設定))

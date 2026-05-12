@@ -114,6 +114,14 @@ jobs:
           fs.writeFileSync("data/update_status.json", `${JSON.stringify(status, null, 2)}\n`, "utf8");
           NODE
 
+      - name: 設定 GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: 建置並驗證 GitHub Pages 靜態網站
+        env:
+          VITE_GA_MEASUREMENT_ID: ${{ vars.VITE_GA_MEASUREMENT_ID || secrets.VITE_GA_MEASUREMENT_ID }}
+        run: npm run build
+
       - name: 檢查排行榜資料是否有變動
         id: data-changes
         run: |
@@ -133,7 +141,7 @@ jobs:
             -m "chore(data): 自動更新排行榜資料" \
             -m "原因：GitHub Actions 定時同步 FFLogs 公開報告，讓靜態網站資料保持最新。" \
             -m "主要變更：更新 data 與 public/data 內的排行榜、個人成績單、全服統計或更新狀態產物。" \
-            -m "測試/驗證：本 workflow 已完成 fetch_fflogs.py、backfill_missing_fflogs_data.py、build_user_data.mjs 與 npm run build。"
+            -m "測試/驗證：本 workflow 已完成 fetch_fflogs.py、backfill_missing_fflogs_data.py、validate:data 與 npm run build。"
           for attempt in 1 2 3; do
             git fetch origin "${{ github.ref_name }}"
             git rebase "origin/${{ github.ref_name }}"
@@ -145,14 +153,6 @@ jobs:
           done
           echo "Unable to push ranking data after syncing remote branch."
           exit 1
-
-      - name: 設定 GitHub Pages
-        uses: actions/configure-pages@v5
-
-      - name: 建置 GitHub Pages 靜態網站
-        env:
-          VITE_GA_MEASUREMENT_ID: ${{ vars.VITE_GA_MEASUREMENT_ID || secrets.VITE_GA_MEASUREMENT_ID }}
-        run: npm run build
 
       - name: 上傳 GitHub Pages artifact
         uses: actions/upload-pages-artifact@v3

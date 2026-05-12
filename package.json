@@ -6,11 +6,17 @@
   "scripts": {
     "build:public-rankings": "python scripts/fetch_fflogs.py --rebuild-public",
     "compact:rankings": "python scripts/compact_ranking_data.py",
+    "compact:state": "python scripts/compact_state.py",
     "backfill:fflogs": "python scripts/backfill_missing_fflogs_data.py --limit 500",
     "build:user-data": "node scripts/build_user_data.mjs",
+    "validate:data": "node scripts/validate_data.mjs",
+    "test:build-user-data": "node scripts/test_build_user_data.mjs",
+    "test:frontend-data": "node scripts/test_frontend_data_contract.mjs",
+    "test": "npm run test:build-user-data && npm run test:frontend-data",
+    "check": "python -m py_compile scripts/fetch_fflogs.py scripts/backfill_missing_fflogs_data.py scripts/compact_ranking_data.py scripts/compact_state.py && node --check scripts/build_user_data.mjs && node --check scripts/sync_upstream_data.mjs && node --check scripts/validate_data.mjs && node --check scripts/test_build_user_data.mjs && node --check scripts/test_frontend_data_contract.mjs",
     "dev": "vite --host 127.0.0.1",
     "sync:data": "node scripts/sync_upstream_data.mjs",
-    "prebuild": "npm run build:public-rankings && npm run build:user-data",
+    "prebuild": "npm run build:public-rankings && npm run build:user-data && npm run validate:data",
     "build": "vite build",
     "postbuild": "node scripts/build_spa_fallback.mjs",
     "preview": "vite preview --host 127.0.0.1"
