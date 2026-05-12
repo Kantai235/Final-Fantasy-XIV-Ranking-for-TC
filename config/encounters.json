@@ -6,7 +6,7 @@
     "zone_id": 62,
     "encounter_id": 93,
     "difficulty": 101,
-    "enabled": false,
+    "enabled": true,
     "scan_start_date": "2026-02-01"
   },
   {
@@ -16,7 +16,7 @@
     "zone_id": 62,
     "encounter_id": 94,
     "difficulty": 101,
-    "enabled": false,
+    "enabled": true,
     "scan_start_date": "2026-02-01"
   },
   {
@@ -26,7 +26,7 @@
     "zone_id": 62,
     "encounter_id": 95,
     "difficulty": 101,
-    "enabled": false,
+    "enabled": true,
     "scan_start_date": "2026-02-01"
   },
   {
@@ -36,7 +36,7 @@
     "zone_id": 62,
     "encounter_id": 96,
     "difficulty": 101,
-    "enabled": false,
+    "enabled": true,
     "scan_start_date": "2026-02-01"
   },
   {
@@ -46,7 +46,7 @@
     "zone_id": 58,
     "encounter_id": 1071,
     "difficulty": 100,
-    "enabled": false,
+    "enabled": true,
     "scan_start_date": "2025-11-27"
   },
   {
@@ -56,7 +56,7 @@
     "zone_id": 58,
     "encounter_id": 1072,
     "difficulty": 100,
-    "enabled": false,
+    "enabled": true,
     "scan_start_date": "2025-11-27"
   },
   {
@@ -66,7 +66,7 @@
     "zone_id": 58,
     "encounter_id": 1078,
     "difficulty": 100,
-    "enabled": false,
+    "enabled": true,
     "scan_start_date": "2026-04-21"
   },
   {
@@ -76,7 +76,7 @@
     "zone_id": 64,
     "encounter_id": 3009,
     "difficulty": 100,
-    "enabled": false,
+    "enabled": true,
     "scan_start_date": "2026-04-21"
   },
   {
@@ -86,7 +86,7 @@
     "zone_id": 59,
     "encounter_id": 1073,
     "difficulty": 100,
-    "enabled": true,
+    "enabled": false,
     "scan_start_date": "2025-11-27"
   },
   {
@@ -96,7 +96,7 @@
     "zone_id": 59,
     "encounter_id": 1074,
     "difficulty": 100,
-    "enabled": true,
+    "enabled": false,
     "scan_start_date": "2025-11-27"
   },
   {
@@ -106,7 +106,7 @@
     "zone_id": 59,
     "encounter_id": 1075,
     "difficulty": 100,
-    "enabled": true,
+    "enabled": false,
     "scan_start_date": "2025-11-27"
   },
   {
@@ -116,7 +116,7 @@
     "zone_id": 59,
     "encounter_id": 1076,
     "difficulty": 100,
-    "enabled": true,
+    "enabled": false,
     "scan_start_date": "2025-11-27"
   },
   {
@@ -126,7 +126,7 @@
     "zone_id": 59,
     "encounter_id": 1077,
     "difficulty": 100,
-    "enabled": true,
+    "enabled": false,
     "scan_start_date": "2025-11-27"
   }
 ]
