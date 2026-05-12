@@ -78,6 +78,8 @@ const 預設統計職業範圍 = "all";
 const 預設伺服器拆分模式 = "none";
 const 預設統計傷害指標 = "rdps";
 const 預設隊伍榜副本鍵值 = "savage_m4s";
+const 作者角色名稱 = "乾太";
+const 作者說明文字 = "這個網站的作者，可愛的乾太。";
 const 排行榜資料 = ref(null);
 const 副本清單 = ref([]);
 const 副本鍵值 = ref(預設副本鍵值);
@@ -2627,6 +2629,9 @@ const 使用者徽章 = computed(() => {
   const 最後紀錄時間 = new Date(使用者統計.value.最後紀錄時間 || 0).getTime();
   const 徽章 = [];
 
+  if (是網站作者(使用者資料.value.character_name)) {
+    徽章.push({ 名稱: "網站作者", 說明: 作者說明文字, 樣式類別: "作者徽章" });
+  }
   if (["savage_m1s", "savage_m2s", "savage_m3s", "savage_m4s"].every((副本) => 副本集合.has(副本))) {
     徽章.push({ 名稱: "零式全通", 說明: "目前收錄的四層零式皆有公開成績" });
   }
@@ -3208,6 +3213,10 @@ function 開啟隊友成績單(隊友) {
   載入使用者成績(隊友.character_name, 隊友.server);
 }
 
+function 是網站作者(角色名稱) {
+  return String(角色名稱 || "").trim() === 作者角色名稱;
+}
+
 function 套用排行榜網址狀態(網址狀態) {
   頁面模式.value = "ranking";
   副本鍵值.value = 網址狀態.encounter || 預設排行榜副本鍵值();
@@ -3507,6 +3516,7 @@ onUnmounted(() => {
     主題模式,
     主題儲存鍵,
     頁面模式,
+    作者說明文字,
     使用者索引,
     使用者資料,
     使用者搜尋關鍵字,
@@ -3832,5 +3842,6 @@ onUnmounted(() => {
     提交使用者搜尋,
     開啟個人成績單,
     開啟隊友成績單,
+    是網站作者,
   };
 }

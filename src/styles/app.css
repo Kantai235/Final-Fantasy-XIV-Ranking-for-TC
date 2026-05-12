@@ -19,6 +19,10 @@
   --重點色: #d6a354;
   --重點色深: #b9853d;
   --重點文字: #1b1408;
+  --作者色: #5bb8ff;
+  --作者色深: #2c8ee8;
+  --作者色柔和: rgba(91, 184, 255, 0.18);
+  --作者文字: #ffffff;
   --錯誤文字: #ff8176;
   --停用背景: #252c2a;
   --停用文字: #7f877f;
@@ -61,6 +65,10 @@
   --重點色: #9a620e;
   --重點色深: #80500d;
   --重點文字: #fffaf0;
+  --作者色: #1f78d4;
+  --作者色深: #165ea8;
+  --作者色柔和: rgba(31, 120, 212, 0.14);
+  --作者文字: #ffffff;
   --錯誤文字: #a8332e;
   --停用背景: #edf1f5;
   --停用文字: #8a939e;
@@ -2232,10 +2240,22 @@ button:disabled {
   background: var(--表面背景);
 }
 
+.使用者徽章.作者徽章 {
+  border-color: color-mix(in srgb, var(--作者色) 70%, var(--邊框色));
+  background:
+    linear-gradient(135deg, var(--作者色柔和), transparent 64%),
+    var(--表面背景);
+  box-shadow: inset 0 0 0 1px var(--作者色柔和);
+}
+
 .使用者徽章 strong {
   color: var(--重點色);
   font-size: 0.9rem;
   font-weight: 840;
+}
+
+.使用者徽章.作者徽章 strong {
+  color: var(--作者色);
 }
 
 .使用者徽章 span {
@@ -2243,6 +2263,10 @@ button:disabled {
   font-size: 0.78rem;
   font-weight: 700;
   line-height: 1.35;
+}
+
+.使用者徽章.作者徽章 span {
+  color: var(--主要文字);
 }
 
 .個人分位區 {
@@ -2512,6 +2536,35 @@ button:disabled {
 .說明提示按鈕:focus {
   color: var(--重點文字);
   background: var(--重點色);
+}
+
+.作者提示 {
+  margin-left: 10px;
+  vertical-align: text-bottom;
+}
+
+.作者提示 .說明提示內容 {
+  width: min(230px, calc(100vw - 40px));
+}
+
+.排行榜角色欄位 .作者提示 .說明提示內容,
+.手機排行身份列 .作者提示 .說明提示內容 {
+  top: calc(100% + 8px);
+  bottom: auto;
+}
+
+.作者勾勾按鈕 {
+  color: var(--作者文字);
+  background: var(--作者色);
+  border-color: var(--作者色深);
+  box-shadow: 0 0 0 2px var(--作者色柔和);
+  font-size: 0.68rem;
+}
+
+.作者勾勾按鈕:hover:not(:disabled),
+.作者勾勾按鈕:focus {
+  color: var(--作者文字);
+  background: var(--作者色深);
 }
 
 .說明提示內容 {
@@ -3214,6 +3267,31 @@ td {
 .排行榜表格 td {
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.排行榜表格 .排行榜角色欄位 {
+  overflow: visible;
+}
+
+.手機排行角色名稱列 {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  vertical-align: bottom;
+}
+
+.手機排行角色名稱列 .文字連結 {
+  min-width: 0;
+}
+
+.手機排行角色名稱列 {
+  flex: 0 1 auto;
+  max-width: 100%;
+}
+
+.手機排行角色名稱列 .作者提示 {
+  flex: 0 0 auto;
 }
 
 .排行榜表格 td:nth-child(2) .文字連結 {
@@ -4536,7 +4614,7 @@ td a:hover {
     min-width: 0;
     display: grid !important;
     gap: 6px;
-    overflow: hidden;
+    overflow: visible;
     box-sizing: border-box;
   }
 

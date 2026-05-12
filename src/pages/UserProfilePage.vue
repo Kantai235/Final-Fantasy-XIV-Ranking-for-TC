@@ -145,7 +145,7 @@ export default {
       </section>
 
       <section v-if="使用者徽章.length > 0" class="使用者徽章區" aria-label="個人徽章">
-        <article v-for="徽章 in 使用者徽章" :key="徽章.名稱" class="使用者徽章">
+        <article v-for="徽章 in 使用者徽章" :key="徽章.名稱" class="使用者徽章" :class="徽章.樣式類別">
           <strong>{{ 徽章.名稱 }}</strong>
           <span>{{ 徽章.說明 }}</span>
         </article>

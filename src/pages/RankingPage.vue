@@ -302,6 +302,10 @@ export default {
             <button class="文字連結" type="button" @click="開啟個人成績單(列)">
               {{ 列.角色名稱 }}
             </button>
+            <span v-if="是網站作者(列.角色名稱)" class="說明提示 作者提示">
+              <button class="說明提示按鈕 作者勾勾按鈕" type="button" aria-label="網站作者說明">✓</button>
+              <span class="說明提示內容" role="tooltip">{{ 作者說明文字 }}</span>
+            </span>
             <a v-if="列.reportUrl" class="次要連結" :href="列.reportUrl" target="_blank" rel="noreferrer">報告</a>
             <div class="手機排行卡">
               <div class="手機排行主列">
@@ -316,9 +320,15 @@ export default {
                   />
                 </span>
                 <div class="手機排行身份列">
-                  <button class="文字連結 手機排行角色名稱" type="button" @click="開啟個人成績單(列)">
-                    {{ 列.角色名稱 }}
-                  </button>
+                  <span class="手機排行角色名稱列">
+                    <button class="文字連結 手機排行角色名稱" type="button" @click="開啟個人成績單(列)">
+                      {{ 列.角色名稱 }}
+                    </button>
+                    <span v-if="是網站作者(列.角色名稱)" class="說明提示 作者提示">
+                      <button class="說明提示按鈕 作者勾勾按鈕" type="button" aria-label="網站作者說明">✓</button>
+                      <span class="說明提示內容" role="tooltip">{{ 作者說明文字 }}</span>
+                    </span>
+                  </span>
                   <span class="手機排行伺服器">@{{ 列.伺服器 }}</span>
                 </div>
               </div>
