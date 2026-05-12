@@ -717,6 +717,126 @@ button:disabled {
   display: block;
 }
 
+.職業深化版面 {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+}
+
+.職業副本輸出列表 {
+  display: grid;
+  gap: 1px;
+  background: var(--邊框柔和色);
+}
+
+.職業副本輸出項 {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(140px, 1.1fr) repeat(3, minmax(72px, 0.42fr)) auto;
+  gap: 6px 12px;
+  align-items: center;
+  padding: 10px 12px;
+  background: var(--表面背景);
+}
+
+.職業副本輸出名稱,
+.職業副本輸出數值 {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.職業副本輸出名稱 small,
+.職業副本輸出數值 small,
+.職業副本輸出樣本 {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--次要文字);
+  font-size: 0.72rem;
+  font-weight: 720;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.職業副本輸出名稱 strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--主要文字);
+  font-size: 0.84rem;
+  font-weight: 820;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.職業副本輸出數值 {
+  justify-items: end;
+  text-align: right;
+}
+
+.職業副本輸出數值 strong {
+  color: var(--主要文字);
+  font-size: 0.86rem;
+  font-weight: 850;
+  font-variant-numeric: tabular-nums;
+}
+
+.職業副本輸出樣本 {
+  justify-self: end;
+}
+
+.職業副本輸出條 {
+  grid-column: 1 / -1;
+  display: block;
+  overflow: hidden;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--表面背景柔和);
+}
+
+.職業副本輸出條 span {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--重點色);
+}
+
+.職業代表紀錄列 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.職業代表紀錄卡 {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  border: 1px solid var(--邊框色);
+  border-radius: 8px;
+  padding: 14px;
+  background: var(--表面背景);
+}
+
+.職業代表紀錄卡 span,
+.職業代表紀錄卡 em,
+.職業代表紀錄卡 small {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--次要文字);
+  font-size: 0.8rem;
+  font-style: normal;
+  font-weight: 720;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.職業代表紀錄卡 strong {
+  color: var(--主要文字);
+  font-size: 1.24rem;
+  font-weight: 880;
+  font-variant-numeric: tabular-nums;
+}
+
 .近期動態區 {
   display: grid;
   gap: 16px;
@@ -1866,6 +1986,176 @@ button:disabled {
   font-size: 0.96rem;
   font-weight: 820;
   font-variant-numeric: tabular-nums;
+}
+
+.伺服器對比工具列 {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) auto minmax(180px, 1fr);
+  align-items: end;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.伺服器交換按鈕 {
+  min-width: 82px;
+}
+
+.伺服器對比區 {
+  display: grid;
+  gap: 16px;
+}
+
+.伺服器對比主卡列 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.伺服器對比主卡 {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--邊框色);
+  border-radius: 8px;
+  background: var(--表面背景);
+}
+
+.伺服器對比主卡 header {
+  display: grid;
+  gap: 4px;
+  border-bottom: 1px solid var(--邊框柔和色);
+  padding: 14px;
+}
+
+.伺服器對比主卡 header span,
+.伺服器對比主數據 span {
+  color: var(--次要文字);
+  font-size: 0.82rem;
+  font-weight: 720;
+}
+
+.伺服器對比主卡 header strong {
+  color: var(--主要文字);
+  font-size: 1.28rem;
+  font-weight: 880;
+}
+
+.伺服器對比主數據 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  background: var(--邊框柔和色);
+}
+
+.伺服器對比主數據 span {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  background: var(--表面背景);
+}
+
+.伺服器對比主數據 strong {
+  color: var(--主要文字);
+  font-size: 1rem;
+  font-weight: 850;
+  font-variant-numeric: tabular-nums;
+}
+
+.伺服器對比指標列表 {
+  display: grid;
+  gap: 1px;
+  background: var(--邊框柔和色);
+}
+
+.伺服器對比指標 {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(92px, auto) minmax(92px, auto);
+  align-items: center;
+  gap: 12px;
+  padding: 11px 14px;
+  background: var(--表面背景);
+}
+
+.伺服器對比指標 span {
+  color: var(--次要文字);
+  font-size: 0.82rem;
+  font-weight: 760;
+}
+
+.伺服器對比指標 strong,
+.伺服器對比指標 em {
+  color: var(--主要文字);
+  font-size: 0.92rem;
+  font-style: normal;
+  font-weight: 820;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.伺服器對比指標.左領先 strong,
+.伺服器對比指標.右領先 em {
+  color: var(--重點色);
+}
+
+.伺服器職能對比列表 {
+  display: grid;
+}
+
+.伺服器職能對比項 {
+  display: grid;
+  gap: 8px;
+  border-bottom: 1px solid var(--邊框柔和色);
+  padding: 12px 14px;
+}
+
+.伺服器雙向條 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.伺服器雙向條 span {
+  height: 9px;
+  border-radius: 999px;
+  background: var(--重點色);
+}
+
+.伺服器雙向條 .左側 {
+  justify-self: end;
+  transform-origin: right center;
+}
+
+.伺服器雙向條 .右側 {
+  justify-self: start;
+  transform-origin: left center;
+}
+
+.伺服器職能數值 {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--次要文字);
+  font-size: 0.76rem;
+  font-weight: 730;
+}
+
+.伺服器對比表格 small {
+  display: block;
+  margin-top: 3px;
+  color: var(--次要文字);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.伺服器對比表格 th,
+.伺服器對比表格 td {
+  text-align: center;
+}
+
+.伺服器對比表格 td:first-child,
+.伺服器對比表格 th:first-child {
+  text-align: left;
 }
 
 .成績趨勢區 {
@@ -3161,8 +3451,39 @@ td a:hover {
   }
 
   .職業分析工具列,
-  .職業分析概要 {
+  .職業分析概要,
+  .職業深化版面,
+  .職業代表紀錄列,
+  .伺服器對比工具列,
+  .伺服器對比主卡列 {
     grid-template-columns: 1fr;
+  }
+
+  .伺服器交換按鈕 {
+    width: 100%;
+  }
+
+  .伺服器對比主數據 {
+    grid-template-columns: 1fr;
+  }
+
+  .職業副本輸出項 {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 6px 10px;
+  }
+
+  .職業副本輸出名稱 {
+    grid-column: 1 / -1;
+  }
+
+  .職業副本輸出數值 {
+    justify-items: start;
+    text-align: left;
+  }
+
+  .職業副本輸出樣本 {
+    align-self: end;
+    justify-self: end;
   }
 
   .統計概要 {
@@ -4509,33 +4830,33 @@ td a:hover {
     text-decoration: none;
   }
 
-  .統計表格:not(.近期動態表格):not(.比較表格):not(.隊伍榜表格) td:nth-child(1),
+  .統計表格:not(.近期動態表格):not(.比較表格):not(.隊伍榜表格):not(.伺服器對比表格) td:nth-child(1),
   .比較表格 td:nth-child(1),
   .隊伍榜表格 td:nth-child(5) {
     grid-column: 1 / -1;
   }
 
-  .統計表格:not(.近期動態表格):not(.比較表格):not(.隊伍榜表格) td:nth-child(1)::before {
+  .統計表格:not(.近期動態表格):not(.比較表格):not(.隊伍榜表格):not(.伺服器對比表格) td:nth-child(1)::before {
     content: "副本";
   }
 
-  .統計表格:not(.近期動態表格):not(.比較表格):not(.隊伍榜表格) td:nth-child(2)::before {
+  .統計表格:not(.近期動態表格):not(.比較表格):not(.隊伍榜表格):not(.伺服器對比表格) td:nth-child(2)::before {
     content: "分類";
   }
 
-  .統計表格:not(.近期動態表格):not(.比較表格):not(.隊伍榜表格) td:nth-child(3)::before {
+  .統計表格:not(.近期動態表格):not(.比較表格):not(.隊伍榜表格):not(.伺服器對比表格) td:nth-child(3)::before {
     content: "通關";
   }
 
-  .統計表格:not(.近期動態表格):not(.比較表格):not(.隊伍榜表格) td:nth-child(4)::before {
+  .統計表格:not(.近期動態表格):not(.比較表格):not(.隊伍榜表格):not(.伺服器對比表格) td:nth-child(4)::before {
     content: "範圍佔比";
   }
 
-  .統計表格:not(.近期動態表格):not(.比較表格):not(.隊伍榜表格) td:nth-child(5)::before {
+  .統計表格:not(.近期動態表格):not(.比較表格):not(.隊伍榜表格):not(.伺服器對比表格) td:nth-child(5)::before {
     content: "最高伺服器";
   }
 
-  .統計表格:not(.近期動態表格):not(.比較表格):not(.隊伍榜表格) td:nth-child(6)::before {
+  .統計表格:not(.近期動態表格):not(.比較表格):not(.隊伍榜表格):not(.伺服器對比表格) td:nth-child(6)::before {
     content: "最高職業";
   }
 
@@ -4605,6 +4926,33 @@ td a:hover {
 
   .隊伍榜表格 td:nth-child(6)::before {
     content: "報告";
+  }
+
+  .伺服器對比表格 td:nth-child(1) {
+    grid-column: 1 / -1;
+  }
+
+  .伺服器對比表格 td:nth-child(2),
+  .伺服器對比表格 td:nth-child(3),
+  .伺服器對比表格 td:nth-child(4) {
+    justify-items: center;
+    text-align: center;
+  }
+
+  .伺服器對比表格 td:nth-child(1)::before {
+    content: "副本";
+  }
+
+  .伺服器對比表格 td:nth-child(2)::before {
+    content: "左側伺服器";
+  }
+
+  .伺服器對比表格 td:nth-child(3)::before {
+    content: "右側伺服器";
+  }
+
+  .伺服器對比表格 td:nth-child(4)::before {
+    content: "差異";
   }
 
   .比較表格 td:nth-child(1)::before {

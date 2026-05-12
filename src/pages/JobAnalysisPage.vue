@@ -114,6 +114,48 @@ export default {
         </div>
       </section>
 
+      <section v-if="職業分析詳細" class="職業深化版面" aria-label="職業深入分析">
+        <article class="統計面板">
+          <header class="統計面板標題">
+            <h2>副本別 rDPS</h2>
+            <span>Active 達標樣本中位</span>
+          </header>
+          <div class="職業副本輸出列表">
+            <div v-for="副本 in 職業分析副本輸出列" :key="副本.key" class="職業副本輸出項">
+              <span class="職業副本輸出名稱">
+                <small>{{ 副本.分類 }}</small>
+                <strong>{{ 副本.名稱 }}</strong>
+              </span>
+              <span class="職業副本輸出數值">
+                <small>中位</small>
+                <strong>{{ 格式化傷害數值(副本.中位數) }}</strong>
+              </span>
+              <span class="職業副本輸出數值">
+                <small>前段 25%</small>
+                <strong>{{ 格式化傷害數值(副本.上四分位) }}</strong>
+              </span>
+              <span class="職業副本輸出數值">
+                <small>最高</small>
+                <strong>{{ 格式化傷害數值(副本.最高值) }}</strong>
+              </span>
+              <span class="職業副本輸出樣本">{{ 格式化整數(副本.樣本數) }} 筆</span>
+              <span class="職業副本輸出條" aria-hidden="true">
+                <span :style="比例條樣式(副本.強度)"></span>
+              </span>
+            </div>
+          </div>
+        </article>
+      </section>
+
+      <section v-if="職業分析代表紀錄.length > 0" class="職業代表紀錄列" aria-label="代表紀錄">
+        <article v-for="紀錄 in 職業分析代表紀錄" :key="紀錄.標籤" class="職業代表紀錄卡">
+          <span>{{ 紀錄.標籤 }}</span>
+          <strong>{{ 紀錄.主要數值 }}</strong>
+          <em>{{ 紀錄.補充 }}</em>
+          <small>{{ 紀錄.成績.encounter_name }}・{{ 格式化紀錄日期(紀錄.成績.recorded_at_iso) }}</small>
+        </article>
+      </section>
+
       <section class="統計版面" aria-label="職業副本與伺服器分析">
         <article class="統計面板">
           <header class="統計面板標題">

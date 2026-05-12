@@ -18,6 +18,7 @@ const outputDir = path.join(rootDir, "public", "data", "users");
 const globalStatsPath = path.join(publicDataDir, "global_stats.json");
 const activityPath = path.join(publicDataDir, "activity.json");
 const teamRankingsPath = path.join(publicDataDir, "team_rankings.json");
+const serverComparePath = path.join(publicDataDir, "server_compare.json");
 // 目前箱型圖只比較現行零式系列；其他副本仍會進入全服統計與個人成績單。
 // minimumDamageActivePercent 用來排除明顯中途死亡或缺乏輸出時間的樣本，避免分位數被極端異常值拉歪。
 const savageDamageComparisonEncounterKeys = ["savage_m1s", "savage_m2s", "savage_m3s", "savage_m4s"];
@@ -1091,7 +1092,7 @@ function addEntry(usersByName, entry) {
   encounterEntries.push(entry);
 }
 
-function buildFrequentTeammates(user) {
+function buildTeammateRows(user) {
   return Array.from(user.teammates.values())
     .map((teammate) => ({
       character_name: teammate.character_name,
@@ -1121,8 +1122,11 @@ function buildFrequentTeammates(user) {
       }
 
       return compareByLocale(left.character_name, right.character_name);
-    })
-    .slice(0, 20);
+    });
+}
+
+function buildFrequentTeammates(user) {
+  return buildTeammateRows(user).slice(0, 20);
 }
 
 function buildEntryPayload(entry) {
@@ -1412,11 +1416,228 @@ function buildTeamRankingsPayload(teamRecordsByEncounter, generatedAtIso, latest
   };
 }
 
+function groupEntriesBy(entries, keyForEntry) {
+  const groups = new Map();
+
+  for (const entry of entries || []) {
+    const key = keyForEntry(entry);
+    if (!key) {
+      continue;
+    }
+    if (!groups.has(key)) {
+      groups.set(key, []);
+    }
+    groups.get(key).push(entry);
+  }
+
+  return groups;
+}
+
+function pickBestEntry(entries) {
+  return (entries || []).reduce((best, entry) => (isBetterEntry(entry, best) ? entry : best), null);
+}
+
+function pickFastestEntry(entries) {
+  return (entries || [])
+    .filter((entry) => toNumber(entry.clear_time_seconds) !== null && toNumber(entry.clear_time_seconds) > 0)
+    .sort((left, right) => {
+      const clearTimeDiff = (left.clear_time_seconds ?? Infinity) - (right.clear_time_seconds ?? Infinity);
+      return clearTimeDiff || (right.rdps ?? 0) - (left.rdps ?? 0) || entryRecordedAtMs(right) - entryRecordedAtMs(left);
+    })[0] || null;
+}
+
+function buildDamageProfile(entries) {
+  const qualifiedEntries = (entries || []).filter(isDamageComparisonEntry);
+  return {
+    dps: buildDamageMetricStats(qualifiedEntries.map((entry) => entry.dps)),
+    rdps: buildDamageMetricStats(qualifiedEntries.map((entry) => entry.rdps ?? entry.dps)),
+    adps: buildDamageMetricStats(qualifiedEntries.map((entry) => entry.adps)),
+  };
+}
+
+function buildJobProfiles(entries, encounterStats) {
+  const entriesByJob = groupEntriesBy(entries, (entry) => entry.job);
+  const globalJobStats = collectScopeDistribution(entries, (entry) => entry.encounter_key).job_stats;
+  const globalDamageStats = buildJobDamageStats(entries);
+  const encounterStatsByKey = new Map((encounterStats || []).map((encounter) => [encounter.encounter_key, encounter]));
+  const encounterOrder = new Map((encounterStats || []).map((encounter, index) => [encounter.encounter_key, index]));
+
+  return Array.from(entriesByJob.entries())
+    .map(([job, jobEntries]) => {
+      const role = getJobRole(job);
+      const distribution = collectScopeDistribution(jobEntries, (entry) => entry.encounter_key);
+      const entriesByServer = groupEntriesBy(jobEntries, (entry) => entry.server);
+      const entriesByEncounter = groupEntriesBy(jobEntries, (entry) => entry.encounter_key);
+      const rolePeers = globalJobStats
+        .filter((item) => item.role === role.role)
+        .sort((left, right) => right.clear_count - left.clear_count || compareByLocale(left.job, right.job));
+      const damagePeers = globalDamageStats
+        .filter((item) => item.role === role.role && toNumber(item.metrics?.rdps?.median) !== null)
+        .sort((left, right) => (right.metrics.rdps?.median || 0) - (left.metrics.rdps?.median || 0));
+      const damageStats = globalDamageStats.find((item) => item.job === job);
+
+      const servers = Array.from(entriesByServer.entries())
+        .map(([server, serverEntries]) => {
+          const serverDistribution = collectScopeDistribution(serverEntries, (entry) => entry.encounter_key);
+          const bestEntry = pickBestEntry(serverEntries);
+          return {
+            server,
+            clear_count: serverDistribution.character_count,
+            entry_count: serverDistribution.entry_count,
+            job_share_percent: toPercent(serverDistribution.character_count, distribution.character_count),
+            best_entry: bestEntry ? buildEntrySummary(bestEntry) : null,
+          };
+        })
+        .sort((left, right) => right.clear_count - left.clear_count || compareByLocale(left.server, right.server));
+
+      const encounters = Array.from(entriesByEncounter.entries())
+        .map(([encounterKey, encounterEntries]) => {
+          const encounterDistribution = collectScopeDistribution(encounterEntries, encounterKey);
+          const encounter = encounterStatsByKey.get(encounterKey);
+          const bestEntry = pickBestEntry(encounterEntries);
+          const fastestEntry = pickFastestEntry(encounterEntries);
+          return {
+            encounter_key: encounterKey,
+            encounter_name: encounterEntries[0]?.encounter_name || encounter?.encounter_name || encounterKey,
+            encounter_category: encounterEntries[0]?.encounter_category || encounter?.encounter_category || null,
+            clear_count: encounterDistribution.character_count,
+            entry_count: encounterDistribution.entry_count,
+            encounter_share_percent: toPercent(encounterDistribution.character_count, encounter?.character_count || 0),
+            job_share_percent: toPercent(encounterDistribution.character_count, distribution.character_count),
+            damage_profile: buildDamageProfile(encounterEntries),
+            best_entry: bestEntry ? buildEntrySummary(bestEntry) : null,
+            fastest_entry: fastestEntry ? buildEntrySummary(fastestEntry) : null,
+          };
+        })
+        .sort((left, right) => {
+          const orderDiff = (encounterOrder.get(left.encounter_key) ?? Number.MAX_SAFE_INTEGER) -
+            (encounterOrder.get(right.encounter_key) ?? Number.MAX_SAFE_INTEGER);
+          return orderDiff || compareByLocale(left.encounter_name, right.encounter_name);
+        });
+      const bestEntry = pickBestEntry(jobEntries);
+      const fastestEntry = pickFastestEntry(jobEntries);
+
+      return {
+        job,
+        ...role,
+        unique_player_count: new Set(jobEntries.map((entry) => characterServerKey(entry.character_name, entry.server))).size,
+        encounter_clear_count: distribution.character_count,
+        role_record_count: distribution.role_record_count,
+        job_record_count: distribution.job_record_count,
+        entry_count: distribution.entry_count,
+        encounter_count: encounters.length,
+        role_peer_rank: rolePeers.findIndex((item) => item.job === job) + 1 || null,
+        role_peer_count: rolePeers.length,
+        rdps_peer_rank: damagePeers.findIndex((item) => item.job === job) + 1 || null,
+        rdps_peer_count: damagePeers.length,
+        damage_profile: buildDamageProfile(jobEntries),
+        savage_damage_profile: buildDamageProfile(jobEntries.filter((entry) => savageDamageComparisonEncounterKeySet.has(entry.encounter_key))),
+        damage_stats: damageStats || null,
+        best_entry: bestEntry ? buildEntrySummary(bestEntry) : null,
+        fastest_entry: fastestEntry ? buildEntrySummary(fastestEntry) : null,
+        servers,
+        encounters,
+      };
+    })
+    .sort((left, right) => {
+      if (left.encounter_clear_count !== right.encounter_clear_count) {
+        return right.encounter_clear_count - left.encounter_clear_count;
+      }
+      return compareByLocale(left.job, right.job);
+    });
+}
+
+function buildServerEncounterCompareRows(serverEntries, encounterStatsByKey) {
+  return Array.from(groupEntriesBy(serverEntries, (entry) => entry.encounter_key).entries())
+    .map(([encounterKey, encounterEntries]) => {
+      const distribution = collectScopeDistribution(encounterEntries, encounterKey);
+      const encounter = encounterStatsByKey.get(encounterKey);
+      const bestEntry = pickBestEntry(encounterEntries);
+      const fastestEntry = pickFastestEntry(encounterEntries);
+
+      return {
+        encounter_key: encounterKey,
+        encounter_name: encounterEntries[0]?.encounter_name || encounter?.encounter_name || encounterKey,
+        encounter_category: encounterEntries[0]?.encounter_category || encounter?.encounter_category || null,
+        character_count: distribution.character_count,
+        job_record_count: distribution.job_record_count,
+        entry_count: distribution.entry_count,
+        clear_share_percent: toPercent(distribution.character_count, encounter?.character_count || 0),
+        damage_profile: buildDamageProfile(encounterEntries),
+        best_entry: bestEntry ? buildEntrySummary(bestEntry) : null,
+        fastest_entry: fastestEntry ? buildEntrySummary(fastestEntry) : null,
+      };
+    })
+    .sort((left, right) => {
+      const leftOrder = Array.from(encounterStatsByKey.keys()).indexOf(left.encounter_key);
+      const rightOrder = Array.from(encounterStatsByKey.keys()).indexOf(right.encounter_key);
+      return leftOrder - rightOrder || compareByLocale(left.encounter_name, right.encounter_name);
+    });
+}
+
+function buildServerComparePayload(entries, encounterStats, generatedAtIso, latestRankingUpdatedAt) {
+  const encounterStatsByKey = new Map((encounterStats || []).map((encounter) => [encounter.encounter_key, encounter]));
+  const servers = Array.from(groupEntriesBy(entries, (entry) => entry.server).entries())
+    .map(([server, serverEntries]) => {
+      const distribution = collectScopeDistribution(serverEntries, (entry) => entry.encounter_key);
+      const uniquePlayerCount = new Set(serverEntries.map((entry) => characterServerKey(entry.character_name, entry.server))).size;
+      const bestEntry = pickBestEntry(serverEntries);
+      const fastestEntry = pickFastestEntry(serverEntries);
+      const rdpsStats = buildDamageMetricStats(
+        serverEntries.filter(isDamageComparisonEntry).map((entry) => entry.rdps ?? entry.dps),
+      );
+
+      return {
+        server,
+        unique_player_count: uniquePlayerCount,
+        encounter_clear_count: distribution.character_count,
+        role_record_count: distribution.role_record_count,
+        job_record_count: distribution.job_record_count,
+        entry_count: distribution.entry_count,
+        encounter_count: new Set(serverEntries.map((entry) => entry.encounter_key).filter(Boolean)).size,
+        role_stats: distribution.role_stats,
+        job_stats: distribution.job_stats,
+        damage_stats: buildJobDamageStats(serverEntries),
+        rdps_stats: rdpsStats,
+        best_entry: bestEntry ? buildEntrySummary(bestEntry) : null,
+        fastest_entry: fastestEntry ? buildEntrySummary(fastestEntry) : null,
+        encounters: buildServerEncounterCompareRows(serverEntries, encounterStatsByKey),
+      };
+    })
+    .sort((left, right) => {
+      if (left.encounter_clear_count !== right.encounter_clear_count) {
+        return right.encounter_clear_count - left.encounter_clear_count;
+      }
+      return compareByLocale(left.server, right.server);
+    });
+
+  const topRdpsServer = servers
+    .filter((server) => server.rdps_stats?.median !== null)
+    .sort((left, right) => (right.rdps_stats?.median || 0) - (left.rdps_stats?.median || 0))[0] || null;
+  const fastestServer = servers
+    .filter((server) => server.fastest_entry?.clear_time_seconds)
+    .sort((left, right) => (left.fastest_entry?.clear_time_seconds || Infinity) - (right.fastest_entry?.clear_time_seconds || Infinity))[0] || null;
+
+  return {
+    schema_version: 1,
+    generated_at_iso: generatedAtIso,
+    rankings_updated_at_iso: latestRankingUpdatedAt,
+    summary: {
+      server_count: servers.length,
+      top_clear_server: servers[0] || null,
+      top_rdps_server: topRdpsServer,
+      fastest_server: fastestServer,
+    },
+    servers,
+  };
+}
+
 async function main() {
   assertInside(path.join(rootDir, "public", "data"), outputDir);
   assertInside(publicDataDir, globalStatsPath);
   assertInside(publicDataDir, activityPath);
   assertInside(publicDataDir, teamRankingsPath);
+  assertInside(publicDataDir, serverComparePath);
 
   const encounters = await loadEncounters();
   const usersByName = new Map();
@@ -1519,16 +1740,19 @@ async function main() {
     savage_damage_comparison_encounter_keys: savageDamageComparisonEncounterKeys,
     savage_damage_stats: buildJobDamageStats(savageDamageComparisonEntries),
     savage_server_damage_stats: buildServerDamageStats(savageDamageComparisonEntries),
+    job_profiles: buildJobProfiles(allEntries, normalizedEncounterStats),
     encounters: normalizedEncounterStats,
   });
 
   await writeJson(activityPath, buildActivityPayload(allEntries, generatedAtIso, latestRankingUpdatedAt));
   await writeJson(teamRankingsPath, buildTeamRankingsPayload(teamRecordsByEncounter, generatedAtIso, latestRankingUpdatedAt));
+  await writeJson(serverComparePath, buildServerComparePayload(allEntries, normalizedEncounterStats, generatedAtIso, latestRankingUpdatedAt));
 
   console.log(`Built ${indexUsers.length} user data files in ${path.relative(rootDir, outputDir)}.`);
   console.log(`Built global stats in ${path.relative(rootDir, globalStatsPath)}.`);
   console.log(`Built activity feed in ${path.relative(rootDir, activityPath)}.`);
   console.log(`Built team rankings in ${path.relative(rootDir, teamRankingsPath)}.`);
+  console.log(`Built server compare data in ${path.relative(rootDir, serverComparePath)}.`);
 }
 
 main().catch((error) => {

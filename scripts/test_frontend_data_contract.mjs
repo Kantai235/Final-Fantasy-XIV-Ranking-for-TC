@@ -196,6 +196,7 @@ async function validateFrontendFetchBoundary() {
 async function validatePublicDataForFrontend() {
   const encounters = await readJson(path.join(publicDataDir, "encounters.json"), "public/data/encounters.json");
   const globalStats = await readJson(path.join(publicDataDir, "global_stats.json"), "public/data/global_stats.json");
+  const serverCompare = await readJson(path.join(publicDataDir, "server_compare.json"), "public/data/server_compare.json");
   const userIndex = await readJson(path.join(publicDataDir, "users", "index.json"), "public/data/users/index.json");
 
   assert(Array.isArray(encounters) && encounters.length > 0, "public/data/encounters.json 必須提供前端副本清單");
@@ -204,7 +205,10 @@ async function validatePublicDataForFrontend() {
   assert(Array.isArray(globalStats?.role_stats), "public/data/global_stats.json 必須包含 role_stats");
   assert(Array.isArray(globalStats?.job_stats), "public/data/global_stats.json 必須包含 job_stats");
   assert(Array.isArray(globalStats?.damage_stats), "public/data/global_stats.json 必須包含 damage_stats");
+  assert(Array.isArray(globalStats?.job_profiles), "public/data/global_stats.json 必須包含 job_profiles");
   assert(Array.isArray(globalStats?.encounters), "public/data/global_stats.json 必須包含 encounters");
+  assert(serverCompare?.schema_version === 1, "public/data/server_compare.json schema_version 必須是 1");
+  assert(Array.isArray(serverCompare?.servers), "public/data/server_compare.json 必須包含 servers");
   assert(Array.isArray(userIndex?.users) && userIndex.users.length > 0, "public/data/users/index.json 必須包含 users");
   assert(userIndex?.total_users === userIndex?.users?.length, "public/data/users/index.json total_users 必須等於 users 長度");
 

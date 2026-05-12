@@ -130,18 +130,24 @@ async function createFixture(tempRoot) {
   });
 }
 
-async function assertFixtureOutput(tempRoot, expectedGlobalStatsText) {
+async function assertFixtureOutput(tempRoot, expectedGlobalStatsText, expectedServerCompareText) {
   const usersIndexPath = path.join(tempRoot, "public", "data", "users", "index.json");
   const globalStatsPath = path.join(tempRoot, "public", "data", "global_stats.json");
+  const serverComparePath = path.join(tempRoot, "public", "data", "server_compare.json");
   const usersIndex = await readJson(usersIndexPath);
   const globalStatsText = await readFile(globalStatsPath, "utf8");
   const globalStats = JSON.parse(globalStatsText);
+  const serverCompareText = await readFile(serverComparePath, "utf8");
+  const serverCompare = JSON.parse(serverCompareText);
 
   assert(usersIndex.generated_at_iso === "2026-01-02T03:04:05.000Z", "使用者索引應使用 ranking 更新時間作為 generated_at_iso。");
   assert(globalStats.generated_at_iso === "2026-01-02T03:04:05.000Z", "全服統計應使用 ranking 更新時間作為 generated_at_iso。");
   assert(usersIndex.total_users === 2, "fixture 應產生兩位使用者。");
   assert(globalStats.total_character_count === 2, "全服角色數應包含同場兩位玩家。");
   assert(globalStats.total_entry_count === 2, "全服 entry 數應包含兩筆玩家成績。");
+  assert(Array.isArray(globalStats.job_profiles) && globalStats.job_profiles.length === 2, "全服統計應產生職業專頁資料。");
+  assert(serverCompare.summary.server_count === 2, "伺服器對比應包含兩個伺服器。");
+  assert(serverCompare.servers.some((server) => server.server === "鳳凰"), "伺服器對比應包含鳳凰。");
 
   const mainUser = usersIndex.users.find((user) => user.character_name === "測試角色");
   assert(mainUser, "使用者索引應包含測試角色。");
@@ -152,8 +158,14 @@ async function assertFixtureOutput(tempRoot, expectedGlobalStatsText) {
   if (expectedGlobalStatsText !== null) {
     assert(globalStatsText === expectedGlobalStatsText, "同一批 ranking 重建時 global_stats.json 應完全一致。");
   }
+  if (expectedServerCompareText !== null) {
+    assert(serverCompareText === expectedServerCompareText, "同一批 ranking 重建時 server_compare.json 應完全一致。");
+  }
 
-  return globalStatsText;
+  return {
+    globalStatsText,
+    serverCompareText,
+  };
 }
 
 async function main() {
@@ -161,9 +173,9 @@ async function main() {
   try {
     await createFixture(tempRoot);
     runBuild(tempRoot);
-    const firstGlobalStatsText = await assertFixtureOutput(tempRoot, null);
+    const firstOutput = await assertFixtureOutput(tempRoot, null, null);
     runBuild(tempRoot);
-    await assertFixtureOutput(tempRoot, firstGlobalStatsText);
+    await assertFixtureOutput(tempRoot, firstOutput.globalStatsText, firstOutput.serverCompareText);
     console.log("build_user_data fixture test passed.");
   } finally {
     await rm(tempRoot, { recursive: true, force: true });

@@ -14,6 +14,7 @@ let checkedSourceReports = 0;
 let checkedUserFiles = 0;
 let checkedActivityItems = 0;
 let checkedTeamRecords = 0;
+let checkedServerCompareRows = 0;
 
 function reportIssue(message) {
   issues.push(message);
@@ -301,6 +302,41 @@ async function validateTeamRankings() {
   }
 }
 
+async function validateServerCompare() {
+  const serverComparePath = path.join(publicDataDir, "server_compare.json");
+  if (!existsSync(serverComparePath)) {
+    reportIssue("缺少 public/data/server_compare.json，請先執行 npm run build:user-data");
+    return;
+  }
+
+  const serverCompare = await readJson(serverComparePath, "public/data/server_compare.json");
+  if (serverCompare?.schema_version !== 1) {
+    reportIssue("public/data/server_compare.json 的 schema_version 必須是 1");
+  }
+  if (!isObjectRecord(serverCompare?.summary)) {
+    reportIssue("public/data/server_compare.json 缺少 summary");
+  }
+  if (!Array.isArray(serverCompare?.servers)) {
+    reportIssue("public/data/server_compare.json 的 servers 必須是陣列");
+    return;
+  }
+  if (serverCompare?.summary?.server_count !== serverCompare.servers.length) {
+    reportIssue(`public/data/server_compare.json 的 summary.server_count=${serverCompare?.summary?.server_count} 與 servers 長度 ${serverCompare.servers.length} 不一致`);
+  }
+
+  ensureUniqueKeys(serverCompare.servers, "server", "public/data/server_compare.json servers");
+  for (const server of serverCompare.servers) {
+    checkedServerCompareRows += 1;
+    if (!server?.server || !isFiniteNumber(server?.unique_player_count) || !isFiniteNumber(server?.encounter_clear_count)) {
+      reportIssue("public/data/server_compare.json 有伺服器缺少 server、unique_player_count 或 encounter_clear_count");
+      continue;
+    }
+    if (!Array.isArray(server.role_stats) || !Array.isArray(server.job_stats) || !Array.isArray(server.encounters)) {
+      reportIssue(`伺服器對比 ${server.server} 缺少 role_stats、job_stats 或 encounters 陣列`);
+    }
+  }
+}
+
 async function validateUsers() {
   const usersDir = path.join(publicDataDir, "users");
   const userIndexPath = path.join(usersDir, "index.json");
@@ -340,6 +376,7 @@ async function main() {
   await validateGlobalStats();
   await validateActivity();
   await validateTeamRankings();
+  await validateServerCompare();
   await validateUsers();
 
   if (issues.length > 0) {
@@ -354,7 +391,7 @@ async function main() {
   }
 
   console.log(
-    `資料驗證通過：${publicEncounters.length} 個公開副本、${checkedSourceReports} 份來源 report、${checkedUserFiles} 份使用者檔案、${checkedActivityItems} 筆近期動態項目、${checkedTeamRecords} 筆隊伍榜紀錄。`,
+    `資料驗證通過：${publicEncounters.length} 個公開副本、${checkedSourceReports} 份來源 report、${checkedUserFiles} 份使用者檔案、${checkedActivityItems} 筆近期動態項目、${checkedTeamRecords} 筆隊伍榜紀錄、${checkedServerCompareRows} 筆伺服器對比資料。`,
   );
 }
 

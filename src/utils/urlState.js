@@ -1,4 +1,4 @@
-export const 可分享頁面模式 = new Set(["ranking", "stats", "user", "compare", "jobs", "activity", "teams"]);
+export const 可分享頁面模式 = new Set(["ranking", "stats", "user", "compare", "jobs", "activity", "teams", "servers"]);
 
 const 頁面路徑片段 = {
   ranking: "",
@@ -8,6 +8,7 @@ const 頁面路徑片段 = {
   jobs: "jobs",
   activity: "activity",
   teams: "teams",
+  servers: "servers",
 };
 
 const 路徑片段頁面 = new Map(
@@ -175,6 +176,12 @@ function 寫入頁面專屬參數(參數, 狀態) {
 
   if (狀態.page === "teams") {
     寫入參數(參數, "encounter", 狀態.encounter);
+    return;
+  }
+
+  if (狀態.page === "servers") {
+    寫入參數(參數, "left", 狀態.left);
+    寫入參數(參數, "right", 狀態.right);
   }
 }
 

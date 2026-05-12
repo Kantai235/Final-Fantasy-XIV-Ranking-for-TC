@@ -4,8 +4,8 @@ Final Fantasy XIV 繁中服排行榜是一個以 FFLogs 公開資料為來源的
 
 專案包含兩個主要部分：
 
-- 前端網站：瀏覽排行榜、全服統計、個人成績單、玩家比較、隊伍榜、職業分析與近期動態。
-- 資料管線：透過 FFLogs API 抓取報告，篩選繁中服玩家，產生排行榜、個人成績單、全服統計、近期動態與隊伍榜資料。
+- 前端網站：瀏覽排行榜、全服統計、個人成績單、玩家比較、隊伍榜、伺服器對比、職業分析與近期動態。
+- 資料管線：透過 FFLogs API 抓取報告，篩選繁中服玩家，產生排行榜、個人成績單、全服統計、近期動態、隊伍榜與伺服器對比資料。
 
 > 這是非官方社群工具，資料來自 FFLogs 公開報告；顯示結果不代表遊戲內完整人口或所有通關紀錄。
 
@@ -17,8 +17,9 @@ Final Fantasy XIV 繁中服排行榜是一個以 FFLogs 公開資料為來源的
 - 個人成績單會顯示同副本同職業 rDPS 分位、樣本排名、中位數差距與個人分位亮點。
 - 玩家比較可選擇防護、治療、近戰、遠程物理或遠程魔法職業，並排比較兩名玩家的公開成績。
 - 隊伍榜可查看同場 8 人公開紀錄的副本最速通關、隊伍 rDPS 與成員組成。
+- 伺服器對比可並排查看兩個伺服器的收錄玩家、副本通關、職能比例、熱門職業與副本落點。
 - 全服統計可查看伺服器分布、職業分布、零式進度概覽與資料狀態，職業範圍選擇沿用排行榜的職業選單。
-- 職業分析可查看特定職業在副本與伺服器中的分布。
+- 職業分析可查看特定職業在副本、伺服器、副本別 rDPS 與代表紀錄中的分布。
 - 近期動態可查看最新公開成績、刷新個人最佳、新收錄玩家、伺服器活躍與副本活躍。
 - 支援深色 / 亮色主題，並依目前頁面的職業或職能篩選切換主色調。
 - GitHub Actions 可定時抓取 FFLogs 並提交更新後的資料。
@@ -46,7 +47,7 @@ Final Fantasy XIV 繁中服排行榜是一個以 FFLogs 公開資料為來源的
 │   └── main.js                # Vue 入口
 ├── scripts/
 │   ├── fetch_fflogs.py        # 抓取並整理 FFLogs 排行榜資料
-│   ├── build_user_data.mjs    # 產生個人成績單、全服統計、近期動態與隊伍榜資料
+│   ├── build_user_data.mjs    # 產生個人成績單、全服統計、近期動態、隊伍榜與伺服器對比資料
 │   ├── validate_data.mjs      # 驗證公開資料、分片與使用者索引完整性
 │   ├── test_build_user_data.mjs # 使用 fixture 驗證資料建置規則
 │   ├── test_frontend_data_contract.mjs # 驗證前端資料讀取契約與 useRankingApp 匯出
@@ -71,7 +72,7 @@ Final Fantasy XIV 繁中服排行榜是一個以 FFLogs 公開資料為來源的
 這個專案最重要的邊界是「抓取、建置、呈現」三層分離：
 
 1. `scripts/fetch_fflogs.py` 是 Data Fetching Layer。它查 FFLogs GraphQL、處理限流與重試、用 `masterData.actors` 判斷是否有繁中服玩家，並把可重建排行榜的 report/fight/player 脈絡寫入 `data/rankings/`。
-2. `scripts/build_user_data.mjs` 是 Data Building Layer。它讀取 `data/rankings/` 與 `public/data/rankings/`，產生 `public/data/users/`、`public/data/users/index.json`、`public/data/global_stats.json`、`public/data/activity.json` 與 `public/data/team_rankings.json`。
+2. `scripts/build_user_data.mjs` 是 Data Building Layer。它讀取 `data/rankings/` 與 `public/data/rankings/`，產生 `public/data/users/`、`public/data/users/index.json`、`public/data/global_stats.json`、`public/data/activity.json`、`public/data/team_rankings.json` 與 `public/data/server_compare.json`。
 3. `src/` 是 UI Presentation Layer。Vue 只讀 `public/data/` 靜態 JSON，不能直接呼叫 FFLogs API，也不能在元件內重做全服統計或資料聚合。
 
 容易誤判的資料契約：
@@ -90,7 +91,7 @@ Final Fantasy XIV 繁中服排行榜是一個以 FFLogs 公開資料為來源的
 - 修改前先檢查 `git status`。本專案常有資料管線產物處於未提交狀態，不要回復或清掉非本次任務造成的資料差異。
 - 不要擅自啟動 `npm run dev` 或 Vite 開發伺服器；需要瀏覽器驗證時先取得使用者同意。
 - 驗證資料聚合優先跑 `npm run build:user-data`。若只是重建公開排行榜 JSON，可跑 `python scripts/fetch_fflogs.py --rebuild-public`，這個模式不會呼叫 FFLogs API。
-- 驗證公開資料完整性可跑 `npm run validate:data`；它會檢查公開副本是否都有 ranking 檔案、來源分片是否存在、raw 欄位是否回流，以及使用者索引是否可讀。
+- 驗證公開資料完整性可跑 `npm run validate:data`；它會檢查公開副本是否都有 ranking 檔案、來源分片是否存在、raw 欄位是否回流，以及全服統計、近期動態、隊伍榜、伺服器對比與使用者索引是否可讀。
 - 需要同步本機與 GitHub Actions 產生的資料時，先跑 `npm run sync:data -- --dry-run`，確認沒有 `REMOVAL` 或 `CONFLICT` 再真正同步。
 
 ## 快速開始
@@ -168,7 +169,7 @@ VITE_GA_ENABLE_IN_DEV=false
 npm run dev
 ```
 
-產生個人成績單、全服統計、近期動態與隊伍榜資料：
+產生個人成績單、全服統計、近期動態、隊伍榜與伺服器對比資料：
 
 ```bash
 npm run build:user-data
@@ -225,12 +226,13 @@ npm run build
 - 個人成績單：`./user?name=玩家名稱&server=伺服器`
 - 玩家比較：`./compare?left=玩家A%20@%20伺服器&right=玩家B%20@%20伺服器`
 - 隊伍榜：`./teams?encounter=savage_m1s`
+- 伺服器對比：`./servers?left=陸行鳥&right=莫古力`
 - 職業分析：`./jobs?job=Paladin`
 - 近期動態：`./activity`
 
 例如排行榜預設副本、全服統計的「全部副本」、玩家比較的預設防護職能，都不會寫入 URL。職業分析只保存 `job`，職能會由職業對應表反推，不會額外寫入 `jobType`。舊版 `?page=user&user=玩家名稱` 或 `?user=玩家名稱&server=伺服器` 連結仍會自動導向個人成績單頁，避免既有分享連結失效。
 
-`npm run build` 會在 Vite 建置完成後複製 `dist/index.html` 為 `dist/404.html`，讓 GitHub Pages 重新整理 `./stats`、`./user` 等路徑時仍可交回 Vue SPA 解析。
+`npm run build` 會在 Vite 建置完成後複製 `dist/index.html` 為 `dist/404.html`，讓 GitHub Pages 重新整理 `./stats`、`./user`、`./servers` 等路徑時仍可交回 Vue SPA 解析。
 
 ## 同步 GitHub Actions 與本機資料
 
@@ -277,11 +279,12 @@ python scripts/fetch_fflogs.py
    - 產生 `public/data/global_stats.json`。
    - 產生 `public/data/activity.json`。
    - 產生 `public/data/team_rankings.json`。
+   - 產生 `public/data/server_compare.json`。
 
 3. `npm run build`
    - 先自動執行 `build:public-rankings`，確保 `public/data/rankings/*.json` 與目前原始排行榜資料同步。
    - 接著自動執行 `build:user-data`。
-   - 執行 `validate:data`，確認公開副本、排行榜分片、全服統計、近期動態、隊伍榜與使用者索引完整。
+   - 執行 `validate:data`，確認公開副本、排行榜分片、全服統計、近期動態、隊伍榜、伺服器對比與使用者索引完整。
    - 再由 Vite 建置靜態網站到 `dist/`。
 
 ## 設定副本
@@ -326,7 +329,7 @@ npm run build:user-data
 3. 使用 GitHub Secrets 中的 FFLogs 憑證執行抓取腳本。
 4. 執行 `scripts/backfill_missing_fflogs_data.py --limit 250` 補齊缺漏的 FFLogs 戰鬥資料。
 5. 執行 `python scripts/fetch_fflogs.py --split-rankings`，將完整排行榜資料拆分成適合 Git 追蹤的檔案。
-6. 產生個人成績單、全服統計、近期動態、隊伍榜資料與 `data/update_status.json`。
+6. 產生個人成績單、全服統計、近期動態、隊伍榜、伺服器對比資料與 `data/update_status.json`。
 7. 執行 `npm run build`，在提交前完成公開資料驗證與 Vite 建置。
 8. 若 `data` 或 `public/data` 有變更，提交並推送更新。
 9. 上傳 `dist/` 並部署到 GitHub Pages。

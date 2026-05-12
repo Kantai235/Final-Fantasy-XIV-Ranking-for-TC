@@ -39,6 +39,7 @@ import {
   使用者索引網址,
   近期動態網址,
   隊伍榜網址,
+  伺服器對比網址,
   建立公開資料網址,
 } from "../utils/publicData";
 import {
@@ -132,6 +133,11 @@ const 隊伍榜資料 = ref(null);
 const 隊伍榜讀取中 = ref(false);
 const 隊伍榜錯誤訊息 = ref("");
 const 隊伍榜副本鍵值 = ref("all");
+const 伺服器對比資料 = ref(null);
+const 伺服器對比讀取中 = ref(false);
+const 伺服器對比錯誤訊息 = ref("");
+const 伺服器對比左伺服器 = ref("");
+const 伺服器對比右伺服器 = ref("");
 let 正在套用網址狀態 = false;
 
 const 目前副本 = computed(() => {
@@ -214,7 +220,7 @@ function 目前頁面主色() {
   if (頁面模式.value === "jobs") {
     return 主色由職業選擇(職業分析目前職業代碼.value, 職業分析目前類型代碼.value);
   }
-  if (頁面模式.value === "activity") {
+  if (頁面模式.value === "activity" || 頁面模式.value === "teams" || 頁面模式.value === "servers") {
     return "default";
   }
 
@@ -1088,7 +1094,7 @@ const 統計詞彙說明 = {
   公開玩家覆蓋率: "單一副本的通關玩家數除以目前公開資料中出現過的唯一玩家數。",
   伺服器佔比: "在目前副本與職業範圍下，各伺服器佔全部符合條件紀錄的比例。",
   職業佔比: "在目前副本與伺服器範圍下，各職業或職業類型佔全部符合條件紀錄的比例。",
-  隊友關係: "依公開通關同場資料整理常同場隊友、職能組成與副本聚集；不等同實際固定隊名單。",
+  隊友關係: "依公開通關同場資料整理常同場隊友、職能組成與副本聚集；不等同實際長期組隊名單。",
   同場副本聚集: "把此玩家與隊友一起出現在同一筆公開通關紀錄的資料依副本彙整；場數是同場通關次數，隊友數是曾在該副本同場的不同玩家數，用來看同場關係主要集中在哪些副本。",
   伺服器生態比較: "以各伺服器內部的職能通關紀錄比例呈現，顏色越深代表該職能在該伺服器占比越高。",
   通關紀錄: "套用職業範圍時，以符合職業條件的通關紀錄計算。",
@@ -1382,6 +1388,65 @@ const 職業分析概要 = computed(() => {
   ];
 });
 
+const 職業分析詳細 = computed(() => {
+  const 職業 = 職業分析目前職業代碼.value;
+  return (全服統計資料.value?.job_profiles || []).find((項目) => 項目.job === 職業) || null;
+});
+
+function 建立職業副本輸出項(副本) {
+  const 指標統計 = 副本?.damage_profile?.rdps;
+  if (!指標統計?.count) {
+    return null;
+  }
+
+  return {
+    key: 副本.encounter_key,
+    名稱: 副本.encounter_name,
+    分類: 副本.encounter_category || "副本",
+    樣本數: 指標統計.count,
+    中位數: 指標統計.median,
+    上四分位: 指標統計.q3,
+    最高值: 指標統計.max,
+  };
+}
+
+const 職業分析副本輸出列 = computed(() => {
+  const 詳細 = 職業分析詳細.value;
+  if (!詳細) {
+    return [];
+  }
+
+  const 列表 = (詳細.encounters || []).map(建立職業副本輸出項).filter(Boolean);
+  const 最高中位數 = Math.max(...列表.map((項目) => 轉為數字(項目.中位數) || 0), 0);
+
+  return 列表.map((項目) => ({
+    ...項目,
+    強度: 最高中位數 > 0 ? Number((((轉為數字(項目.中位數) || 0) / 最高中位數) * 100).toFixed(2)) : 0,
+  }));
+});
+
+const 職業分析代表紀錄 = computed(() => {
+  const 詳細 = 職業分析詳細.value;
+  if (!詳細) {
+    return [];
+  }
+
+  return [
+    {
+      標籤: "最高 rDPS",
+      成績: 詳細.best_entry,
+      主要數值: 格式化傷害數值(詳細.best_entry?.rdps),
+      補充: 詳細.best_entry ? `${詳細.best_entry.character_name} @ ${詳細.best_entry.server}` : "-",
+    },
+    {
+      標籤: "最速通關",
+      成績: 詳細.fastest_entry,
+      主要數值: 格式化通關時間(詳細.fastest_entry?.clear_time_seconds),
+      補充: 詳細.fastest_entry ? `${詳細.fastest_entry.server || "未知伺服器"}・該職業公開紀錄` : "-",
+    },
+  ].filter((項目) => 項目.成績);
+});
+
 const 資料狀態列表 = computed(() => {
   const 副本列表 = 目前統計副本.value ? [目前統計副本.value] : 全服統計副本列表.value;
 
@@ -1561,6 +1626,140 @@ const 隊伍榜概要 = computed(() => {
   ];
 });
 
+const 伺服器對比伺服器列表 = computed(() => {
+  return Array.isArray(伺服器對比資料.value?.servers) ? 伺服器對比資料.value.servers : [];
+});
+
+const 伺服器對比選項 = computed(() => 伺服器對比伺服器列表.value.map((項目) => 項目.server).filter(Boolean));
+
+const 伺服器對比左資料 = computed(() => {
+  return 伺服器對比伺服器列表.value.find((項目) => 項目.server === 伺服器對比左伺服器.value) || null;
+});
+
+const 伺服器對比右資料 = computed(() => {
+  return 伺服器對比伺服器列表.value.find((項目) => 項目.server === 伺服器對比右伺服器.value) || null;
+});
+
+const 伺服器對比已完成 = computed(() => Boolean(伺服器對比左資料.value && 伺服器對比右資料.value));
+
+function 判斷對比勝方(左值, 右值, 越低越好 = false) {
+  const 左數值 = 轉為數字(左值);
+  const 右數值 = 轉為數字(右值);
+  if (左數值 === null || 右數值 === null || 左數值 === 右數值) {
+    return "平手";
+  }
+  const 左勝 = 越低越好 ? 左數值 < 右數值 : 左數值 > 右數值;
+  return 左勝 ? "left" : "right";
+}
+
+function 建立伺服器對比指標({ 標籤, 左值, 右值, 格式化 = 格式化整數, 越低越好 = false }) {
+  const 勝方 = 判斷對比勝方(左值, 右值, 越低越好);
+  return {
+    標籤,
+    左值,
+    右值,
+    左文字: 格式化(左值),
+    右文字: 格式化(右值),
+    勝方,
+  };
+}
+
+const 伺服器對比概要 = computed(() => {
+  const 左 = 伺服器對比左資料.value;
+  const 右 = 伺服器對比右資料.value;
+  if (!左 || !右) {
+    return [];
+  }
+
+  return [
+    建立伺服器對比指標({ 標籤: "收錄玩家", 左值: 左.unique_player_count, 右值: 右.unique_player_count }),
+    建立伺服器對比指標({ 標籤: "副本通關", 左值: 左.encounter_clear_count, 右值: 右.encounter_clear_count }),
+    建立伺服器對比指標({ 標籤: "職業紀錄", 左值: 左.job_record_count, 右值: 右.job_record_count }),
+    建立伺服器對比指標({
+      標籤: "rDPS 中位",
+      左值: 左.rdps_stats?.median,
+      右值: 右.rdps_stats?.median,
+      格式化: 格式化傷害數值,
+    }),
+    建立伺服器對比指標({
+      標籤: "最快通關",
+      左值: 左.fastest_entry?.clear_time_seconds,
+      右值: 右.fastest_entry?.clear_time_seconds,
+      格式化: 格式化通關時間,
+      越低越好: true,
+    }),
+  ];
+});
+
+const 伺服器對比職能列 = computed(() => {
+  const 左 = 伺服器對比左資料.value;
+  const 右 = 伺服器對比右資料.value;
+  if (!左 || !右) {
+    return [];
+  }
+
+  return 職業群組設定
+    .map((群組) => {
+      const 左職能 = (左.role_stats || []).find((項目) => 項目.role === 群組.代碼);
+      const 右職能 = (右.role_stats || []).find((項目) => 項目.role === 群組.代碼);
+      const 左比例 = 轉為數字(左職能?.percentage) || 0;
+      const 右比例 = 轉為數字(右職能?.percentage) || 0;
+      return {
+        role: 群組.代碼,
+        名稱: 群組.名稱,
+        色彩: 群組.色彩,
+        左數量: 轉為數字(左職能?.clear_count) || 0,
+        右數量: 轉為數字(右職能?.clear_count) || 0,
+        左比例,
+        右比例,
+        勝方: 判斷對比勝方(左比例, 右比例),
+      };
+    })
+    .filter((項目) => 項目.左數量 > 0 || 項目.右數量 > 0);
+});
+
+function 建立伺服器職業亮點(伺服器資料) {
+  return (伺服器資料?.job_stats || []).slice(0, 5).map((職業) => ({
+    ...職業,
+    名稱: 顯示職業名稱(職業.job),
+    色彩: 職業代碼色彩(職業.job),
+  }));
+}
+
+const 伺服器對比職業亮點 = computed(() => ({
+  left: 建立伺服器職業亮點(伺服器對比左資料.value),
+  right: 建立伺服器職業亮點(伺服器對比右資料.value),
+}));
+
+const 伺服器對比副本列 = computed(() => {
+  const 左 = 伺服器對比左資料.value;
+  const 右 = 伺服器對比右資料.value;
+  if (!左 || !右) {
+    return [];
+  }
+
+  const 副本索引 = new Map();
+  for (const 副本 of 左.encounters || []) {
+    副本索引.set(副本.encounter_key, { encounter_key: 副本.encounter_key, encounter_name: 副本.encounter_name, encounter_category: 副本.encounter_category, left: 副本, right: null });
+  }
+  for (const 副本 of 右.encounters || []) {
+    const 目前 = 副本索引.get(副本.encounter_key) || {
+      encounter_key: 副本.encounter_key,
+      encounter_name: 副本.encounter_name,
+      encounter_category: 副本.encounter_category,
+      left: null,
+      right: null,
+    };
+    目前.right = 副本;
+    副本索引.set(副本.encounter_key, 目前);
+  }
+
+  return Array.from(副本索引.values()).sort((前一個, 後一個) => {
+    const 順序差 = 取得副本排序值(前一個.encounter_key) - 取得副本排序值(後一個.encounter_key);
+    return 順序差 || 前一個.encounter_name.localeCompare(後一個.encounter_name, "zh-Hant-TW");
+  });
+});
+
 function 取得成績職業總數(成績) {
   if (!成績?.encounter_key || !成績?.job) {
     return null;
@@ -1734,6 +1933,11 @@ const 更新時間文字 = computed(() => {
     return 更新時間 ? `資料更新時間 ${格式化紀錄時間(更新時間)}` : "隊伍榜資料";
   }
 
+  if (頁面模式.value === "servers") {
+    const 更新時間 = 伺服器對比資料.value?.rankings_updated_at_iso || 伺服器對比資料.value?.generated_at_iso;
+    return 更新時間 ? `資料更新時間 ${格式化紀錄時間(更新時間)}` : "伺服器對比資料";
+  }
+
   const 更新時間 = 排行榜資料.value?.updated_at_iso;
   return 更新時間 ? `更新時間 ${格式化紀錄時間(更新時間)}` : "尚未取得更新時間";
 });
@@ -1761,6 +1965,10 @@ const 頁面副標 = computed(() => {
 
   if (頁面模式.value === "teams") {
     return "Final Fantasy XIV 繁中服・隊伍榜";
+  }
+
+  if (頁面模式.value === "servers") {
+    return "Final Fantasy XIV 繁中服・伺服器對比";
   }
 
   return 目前副本.value?.category ? `Final Fantasy XIV 繁中服・${目前副本.value.category}` : "Final Fantasy XIV 繁中服";
@@ -1792,6 +2000,10 @@ const 頁面標題 = computed(() => {
 
   if (頁面模式.value === "teams") {
     return 目前隊伍榜副本.value ? `${目前隊伍榜副本.value.encounter_name} 隊伍榜` : "隊伍榜";
+  }
+
+  if (頁面模式.value === "servers") {
+    return 伺服器對比已完成.value ? `${伺服器對比左資料.value.server} vs ${伺服器對比右資料.value.server}` : "伺服器對比";
   }
 
   return 目前副本.value?.name ? `${目前副本.value.name} 排行榜` : "排行榜";
@@ -2248,7 +2460,7 @@ const 隊友關係摘要 = computed(() => {
     說明 = "有少數玩家重複出現，但還不到穩定名單，更適合用副本聚集與職能分布判讀。";
   } else if (主要副本?.teammate_count >= 7) {
     關係型態 = "副本聚集";
-    說明 = "隊友主要集中在特定副本，代表該場公開紀錄對目前關係圖的影響較高。";
+    說明 = "隊友主要集中在特定副本，代表該場公開紀錄對目前隊友關係的影響較高。";
   }
 
   return {
@@ -2495,6 +2707,43 @@ async function 讀取隊伍榜資料() {
   }
 }
 
+function 套用伺服器對比預設值() {
+  const 選項 = 伺服器對比選項.value;
+  if (選項.length === 0) {
+    伺服器對比左伺服器.value = "";
+    伺服器對比右伺服器.value = "";
+    return;
+  }
+
+  if (!選項.includes(伺服器對比左伺服器.value)) {
+    伺服器對比左伺服器.value = 選項[0] || "";
+  }
+  if (!選項.includes(伺服器對比右伺服器.value) || (選項.length > 1 && 伺服器對比右伺服器.value === 伺服器對比左伺服器.value)) {
+    伺服器對比右伺服器.value = 選項.find((伺服器) => 伺服器 !== 伺服器對比左伺服器.value) || 選項[0] || "";
+  }
+}
+
+async function 讀取伺服器對比資料() {
+  if (伺服器對比資料.value) {
+    套用伺服器對比預設值();
+    return 伺服器對比資料.value;
+  }
+
+  伺服器對比讀取中.value = true;
+  伺服器對比錯誤訊息.value = "";
+
+  try {
+    伺服器對比資料.value = await 讀取Json(伺服器對比網址, "讀取伺服器對比失敗");
+    套用伺服器對比預設值();
+    return 伺服器對比資料.value;
+  } catch (錯誤) {
+    伺服器對比錯誤訊息.value = 錯誤 instanceof Error ? 錯誤.message : "無法讀取伺服器對比資料";
+    return null;
+  } finally {
+    伺服器對比讀取中.value = false;
+  }
+}
+
 function 尋找使用者索引條目(角色名稱) {
   return 尋找使用者索引條目於列表(使用者索引列表.value, 角色名稱);
 }
@@ -2583,6 +2832,13 @@ function 更新網址為近期動態(選項 = {}) {
 function 更新網址為隊伍榜(選項 = {}) {
   更新分享網址("teams", {
     encounter: 非預設分享值(隊伍榜副本鍵值.value, "all"),
+  }, 選項);
+}
+
+function 更新網址為伺服器對比(選項 = {}) {
+  更新分享網址("servers", {
+    left: 伺服器對比左伺服器.value,
+    right: 伺服器對比右伺服器.value,
   }, 選項);
 }
 
@@ -2711,10 +2967,25 @@ function 切換到隊伍榜() {
   讀取隊伍榜資料();
 }
 
+function 切換到伺服器對比() {
+  頁面模式.value = "servers";
+  更新網址為伺服器對比();
+  讀取伺服器對比資料();
+}
+
 function 選擇隊伍榜副本(副本鍵值) {
   隊伍榜副本鍵值.value = 副本鍵值 || "all";
   if (頁面模式.value === "teams") {
     更新網址為隊伍榜({ replace: true });
+  }
+}
+
+function 交換伺服器對比() {
+  const 原左 = 伺服器對比左伺服器.value;
+  伺服器對比左伺服器.value = 伺服器對比右伺服器.value;
+  伺服器對比右伺服器.value = 原左;
+  if (頁面模式.value === "servers") {
+    更新網址為伺服器對比({ replace: true });
   }
 }
 
@@ -2822,6 +3093,14 @@ async function 套用隊伍榜網址狀態(網址狀態) {
   更新網址為隊伍榜({ replace: true, 強制: true });
 }
 
+async function 套用伺服器對比網址狀態(網址狀態) {
+  頁面模式.value = "servers";
+  伺服器對比左伺服器.value = 網址狀態.left || "";
+  伺服器對比右伺服器.value = 網址狀態.right || "";
+  await 讀取伺服器對比資料();
+  更新網址為伺服器對比({ replace: true, 強制: true });
+}
+
 async function 套用網址狀態(網址狀態 = 讀取目前網址狀態()) {
   // URL 是分享入口，也是瀏覽器上一頁/下一頁的狀態來源。套用期間暫停寫回，
   // 避免 popstate 讀取舊網址後又立刻 push 一筆新歷史紀錄。
@@ -2839,6 +3118,8 @@ async function 套用網址狀態(網址狀態 = 讀取目前網址狀態()) {
       await 套用近期動態網址狀態();
     } else if (網址狀態.page === "teams") {
       await 套用隊伍榜網址狀態(網址狀態);
+    } else if (網址狀態.page === "servers") {
+      await 套用伺服器對比網址狀態(網址狀態);
     } else {
       套用排行榜網址狀態(網址狀態);
     }
@@ -2965,6 +3246,16 @@ watch(隊伍榜副本鍵值, () => {
   }
 });
 
+watch([伺服器對比左伺服器, 伺服器對比右伺服器], () => {
+  if (伺服器對比左伺服器.value === 伺服器對比右伺服器.value && 伺服器對比選項.value.length > 1) {
+    伺服器對比右伺服器.value = 伺服器對比選項.value.find((伺服器) => 伺服器 !== 伺服器對比左伺服器.value) || "";
+    return;
+  }
+  if (頁面模式.value === "servers") {
+    更新網址為伺服器對比({ replace: true });
+  }
+});
+
 onMounted(() => {
   初始化主題();
   if (typeof window !== "undefined") {
@@ -3047,11 +3338,17 @@ onUnmounted(() => {
     隊伍榜讀取中,
     隊伍榜錯誤訊息,
     隊伍榜副本鍵值,
+    伺服器對比資料,
+    伺服器對比讀取中,
+    伺服器對比錯誤訊息,
+    伺服器對比左伺服器,
+    伺服器對比右伺服器,
     副本清單網址,
     使用者索引網址,
     全服統計網址,
     近期動態網址,
     隊伍榜網址,
+    伺服器對比網址,
     目前副本,
     資料網址,
     傷害比較指標選項,
@@ -3206,6 +3503,9 @@ onUnmounted(() => {
     職業分析副本列,
     職業分析伺服器列,
     職業分析概要,
+    職業分析詳細,
+    職業分析副本輸出列,
+    職業分析代表紀錄,
     資料狀態列表,
     資料狀態分組,
     近期動態來源,
@@ -3221,6 +3521,15 @@ onUnmounted(() => {
     目前隊伍榜副本,
     隊伍榜列,
     隊伍榜概要,
+    伺服器對比伺服器列表,
+    伺服器對比選項,
+    伺服器對比左資料,
+    伺服器對比右資料,
+    伺服器對比已完成,
+    伺服器對比概要,
+    伺服器對比職能列,
+    伺服器對比職業亮點,
+    伺服器對比副本列,
     取得成績職業總數,
     取得最高伺服器,
     取得最高職業,
@@ -3287,12 +3596,14 @@ onUnmounted(() => {
     讀取全服統計,
     讀取近期動態資料,
     讀取隊伍榜資料,
+    讀取伺服器對比資料,
     尋找使用者索引條目,
     格式化使用者搜尋文字,
     解析使用者搜尋輸入,
     更新網址為使用者,
     更新網址為排行榜,
     更新網址為隊伍榜,
+    更新網址為伺服器對比,
     載入使用者成績,
     載入比較角色資料,
     提交角色比較,
@@ -3303,7 +3614,9 @@ onUnmounted(() => {
     切換到職業分析,
     切換到近期動態,
     切換到隊伍榜,
+    切換到伺服器對比,
     選擇隊伍榜副本,
+    交換伺服器對比,
     提交使用者搜尋,
     開啟個人成績單,
     開啟隊友成績單,
