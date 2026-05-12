@@ -63,7 +63,7 @@ Final Fantasy XIV 繁中服排行榜是一個以 FFLogs 公開資料為來源的
 
 這個專案最重要的邊界是「抓取、建置、呈現」三層分離：
 
-1. `scripts/fetch_fflogs.py` 是 Data Fetching Layer。它查 FFLogs GraphQL、處理限流與重試、用 `masterData.actors` 判斷是否有繁中服玩家，並把可追溯的 report/fight/player 原始脈絡寫入 `data/rankings/`。
+1. `scripts/fetch_fflogs.py` 是 Data Fetching Layer。它查 FFLogs GraphQL、處理限流與重試、用 `masterData.actors` 判斷是否有繁中服玩家，並把可重建排行榜的 report/fight/player 脈絡寫入 `data/rankings/`。
 2. `scripts/build_user_data.mjs` 是 Data Building Layer。它讀取 `data/rankings/` 與 `public/data/rankings/`，產生 `public/data/users/`、`public/data/users/index.json` 與 `public/data/global_stats.json`。
 3. `src/` 是 UI Presentation Layer。Vue 只讀 `public/data/` 靜態 JSON，不能直接呼叫 FFLogs API，也不能在元件內重做全服統計或資料聚合。
 
@@ -73,6 +73,7 @@ Final Fantasy XIV 繁中服排行榜是一個以 FFLogs 公開資料為來源的
 - `public/data/encounters.json` 才是前端選單來源。已經有歷史排行榜資料的副本即使暫停掃描，仍會保留在公開清單，避免既有排行榜與個人成績單消失。
 - `data/rankings/*.json` 主檔通常只保留 `ranking_entries` 與 `report_shards`；完整 report 會在同名的 `*.reports/*.json` 分片中。
 - `ranking_entries` 是去重後的扁平索引；完整追溯請讀 `reports -> fights -> players`。
+- 新資料不再保存 `fflogs_raw`、`master_data` 與 `matched_players`，避免可重查的 FFLogs raw table 讓 repo 容量快速膨脹；若需要重新推導 raw 層欄位，應以 report code 重新查 FFLogs API。
 - 同一角色同一副本同一職業的最佳成績排序規則為 rDPS 優先，平手看通關時間，再看 aDPS。
 - `data/state.json` 的 `checked_reports` 是跨輪快取，`processed_reports` 是單輪 checkpoint；兩者和 `data/rankings/` 都不能用硬刪或覆蓋方式整理。
 
@@ -154,6 +155,15 @@ npm run dev
 ```bash
 npm run build:user-data
 ```
+
+清理既有 `data/rankings/*.reports/*.json` 裡可重查的大型 FFLogs raw 欄位時，先預覽再正式執行：
+
+```bash
+npm run compact:rankings -- --dry-run
+npm run compact:rankings
+```
+
+這個指令只移除 `fflogs_raw`、`master_data`、`matched_players` 與 fight 層 raw payload，並重新分片；不會刪除 report、fight 或 player 紀錄。
 
 建置靜態網站：
 

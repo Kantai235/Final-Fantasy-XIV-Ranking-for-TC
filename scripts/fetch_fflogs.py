@@ -148,7 +148,8 @@ def 布林設定(名稱: str) -> bool:
 }
 無效來源類型 = {"Boss", "LimitBreak", "Pet"}
 # public/data/rankings/*.json 只輸出這些欄位，避免把 FFLogs 原始資料、上傳者、公會等資訊帶到前端。
-# 完整 report/fight/player 原始脈絡仍保存在 data/rankings/*.reports/*.json，供回溯與補抓使用。
+# data/rankings/*.reports/*.json 保留已計算完成的 report/fight/player 脈絡；大型 GraphQL raw table
+# 不再落地，避免 masterData、damageDone 等可重查資料讓 Git repo 持續膨脹。
 公開排行榜條目欄位 = (
     "id",
     "character_name",
@@ -402,27 +403,6 @@ query ReportFightList($code: String!, $encounterID: Int!, $difficulty: Int!) {
         claimed
         server {
           ...ServerFields
-        }
-      }
-      masterData {
-        logVersion
-        gameVersion
-        lang
-        abilities {
-          gameID
-          icon
-          name
-          type
-        }
-        actors {
-          gameID
-          icon
-          id
-          name
-          petOwner
-          server
-          subType
-          type
         }
       }
       phases {
@@ -2282,8 +2262,9 @@ def 建立報告成績(
     淺層報告: dict[str, Any],
     繁中服玩家: list[dict[str, Any]],
 ) -> dict[str, Any] | None:
-    # 一份 report 可能含同 zone 多個 encounter，且 FFLogs revision/visibility/masterData 都需要保留以便日後追查。
-    # 這裡保存完整 report 與 fight 脈絡，但不產生個人成績單或全服統計，避免資料層混進 UI 格式。
+    # 一份 report 可能含同 zone 多個 encounter；這裡保存完成排名建置所需的 report/fight/player 脈絡。
+    # GraphQL 原始表格可從 FFLogs 依 report code 重查，若全部落地會讓 repo 以 GB 級成長。
+    # 因此只保留已計算出的玩家列、傷害時間分母與追溯用 report code，不保存 fflogs_raw/masterData。
     報告代碼 = 淺層報告["code"]
     報告 = 查詢通關戰鬥(session, 認證池, 副本設定, 報告代碼)
     if not 報告:
@@ -2350,12 +2331,6 @@ def 建立報告成績(
                 "average_item_level": 戰鬥.get("averageItemLevel"),
                 "boss_percentage": 戰鬥.get("bossPercentage"),
                 "damage_done_summary": 建立傷害表格摘要(原始成績),
-                "fflogs_raw": {
-                    "fight": 戰鬥,
-                    "player_details": 原始成績.get("player_details"),
-                    "damage_done": 原始成績.get("damage_done"),
-                    "rankings": 原始成績.get("rankings"),
-                },
                 "players": 從原始成績整理玩家_dps(原始成績, 傷害計算時間毫秒),
             }
         )
@@ -2364,7 +2339,6 @@ def 建立報告成績(
         return None
 
     區域 = 報告.get("region") or 淺層報告.get("region") or {}
-    報告原始資料 = {鍵: 值 for 鍵, 值 in 報告.items() if 鍵 != "fights"}
     return {
         "report_code": 報告代碼,
         "title": 報告.get("title") or 淺層報告.get("title"),
@@ -2385,7 +2359,6 @@ def 建立報告成績(
         "guild_tag": 報告.get("guildTag"),
         "owner": 報告.get("owner"),
         "ranked_characters": 報告.get("rankedCharacters"),
-        "master_data": 報告.get("masterData"),
         "phases": 報告.get("phases"),
         "report_start_time": 報告起始時間戳記,
         "report_start_time_iso": 毫秒轉_iso(報告起始時間戳記),
@@ -2394,11 +2367,7 @@ def 建立報告成績(
         "matched_traditional_chinese_servers": sorted(
             {玩家.get("server") for 玩家 in 繁中服玩家 if 玩家.get("server")}
         ),
-        "matched_players": 繁中服玩家,
         "fights": 整理後戰鬥列表,
-        "fflogs_raw": {
-            "report": 報告原始資料,
-        },
         "fetched_at": 現在毫秒(),
         "fetched_at_iso": 毫秒轉_iso(現在毫秒()),
     }

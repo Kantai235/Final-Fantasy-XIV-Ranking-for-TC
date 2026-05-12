@@ -117,23 +117,33 @@ def load_all_encounters() -> dict[str, dict[str, Any]]:
 
 
 def fight_needs_backfill(fight: dict[str, Any]) -> bool:
-    # 舊資料可能只有 clear_time_ms，沒有 damage_time_ms 或 damageDone raw table。
-    # 缺這些欄位時，職業箱型圖與 aDPS/rDPS 說明會失去可追溯分母，因此列入補抓候選。
-    raw = fight.get("fflogs_raw") if isinstance(fight.get("fflogs_raw"), dict) else {}
-    raw_damage_done = raw.get("damage_done") if isinstance(raw, dict) else None
+    # compact report 不再保存 fflogs_raw.damage_done，因此補抓條件只能看建置層真正需要的欄位。
+    # players 是個人成績單、隊友統計與排行榜去重的來源；damage_time_ms 則是 rDPS/aDPS 分母脈絡。
+    players = fight.get("players")
+    has_rankable_players = isinstance(players, list) and any(
+        isinstance(player, dict)
+        and player.get("server")
+        and player.get("job")
+        and player.get("dps") is not None
+        for player in players
+    )
     return (
-        fight.get("damage_time_ms") is None
-        or not isinstance(raw_damage_done, dict)
+        fight.get("clear_time_ms") is None
+        or fight.get("damage_time_ms") is None
+        or not has_rankable_players
     )
 
 
 def report_needs_backfill(report: dict[str, Any]) -> tuple[bool, int]:
-    raw = report.get("fflogs_raw") if isinstance(report.get("fflogs_raw"), dict) else {}
-    raw_report = raw.get("report") if isinstance(raw, dict) else None
-    needs_report_metadata = not isinstance(raw_report, dict) or not isinstance(report.get("master_data"), dict)
+    # raw metadata 已不再是資料契約的一部分；只要 report/fight/player 足以重建 public/data，
+    # 就不應把它送回 FFLogs 補抓，否則 backfill 會把大型 raw 欄位重新寫進 repo。
+    fights = report.get("fights")
+    needs_report_metadata = report.get("report_start_time") is None or report.get("report_end_time") is None
+    if not isinstance(fights, list) or not fights:
+        return True, 0
 
     need_fights = 0
-    for fight in report.get("fights") or []:
+    for fight in fights:
         if isinstance(fight, dict) and fight_needs_backfill(fight):
             need_fights += 1
 
@@ -141,8 +151,8 @@ def report_needs_backfill(report: dict[str, Any]) -> tuple[bool, int]:
 
 
 def locally_fill_damage_time_fields(report: dict[str, Any]) -> int:
-    # 若既有 raw damageDone 已足夠，就先在本機補衍生欄位，不浪費 FFLogs API 配額。
-    # 只有 raw 不完整的 report 才會進入後面的 API backfill。
+    # 舊資料若仍保有 raw damageDone，可先在本機補衍生欄位，不浪費 FFLogs API 配額。
+    # compact report 不再保存 raw；沒有 raw 且缺必要欄位時，後續才會進入 API backfill。
     changed = 0
     for fight in report.get("fights") or []:
         if not isinstance(fight, dict):
@@ -343,7 +353,7 @@ def get_existing_matched_players(candidate: BackfillCandidate) -> list[dict[str,
 
 def parse_args() -> argparse.Namespace:
     default_limit = int(os.environ.get("FFLOGS_BACKFILL_LIMIT", "500"))
-    parser = argparse.ArgumentParser(description="Backfill existing FFLogs reports that miss newly stored raw fields.")
+    parser = argparse.ArgumentParser(description="Backfill existing FFLogs reports that miss build-critical fields.")
     parser.add_argument("--limit", type=int, default=default_limit, help="Maximum unique report codes to update.")
     parser.add_argument("--dry-run", action="store_true", help="Only print the selected reports.")
     return parser.parse_args()
