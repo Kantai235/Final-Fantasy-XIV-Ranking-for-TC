@@ -125,7 +125,10 @@ jobs:
       - name: 檢查排行榜資料是否有變動
         id: data-changes
         run: |
-          if [ -n "$(git status --porcelain data public/data/encounters.json public/data/global_stats.json)" ]; then
+          # build_user_data.mjs 會產生多個 public/data/*.json。這裡與下方 git add 必須使用同一批路徑，
+          # 否則 commit 後仍可能留下未暫存變更，導致後續 rebase 被 Git 拒絕。
+          DATA_PATHS=(data public/data/*.json)
+          if [ -n "$(git status --porcelain -- "${DATA_PATHS[@]}")" ]; then
             echo "changed=true" >> "$GITHUB_OUTPUT"
           else
             echo "changed=false" >> "$GITHUB_OUTPUT"
@@ -136,12 +139,20 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data public/data/encounters.json public/data/global_stats.json
+          DATA_PATHS=(data public/data/*.json)
+          git add -- "${DATA_PATHS[@]}"
           git commit \
             -m "chore(data): 自動更新排行榜資料" \
             -m "原因：GitHub Actions 定時同步 FFLogs 公開報告，讓靜態網站資料保持最新。" \
             -m "主要變更：更新 data 與 public/data 內的排行榜、個人成績單、全服統計或更新狀態產物。" \
             -m "測試/驗證：本 workflow 已完成 fetch_fflogs.py、backfill_missing_fflogs_data.py、validate:data 與 npm run build。"
+          # rebase 前工作樹必須乾淨；若未來資料建置新增了已追蹤產物但忘記納入 DATA_PATHS，
+          # 這裡會列出漏掉的檔案，避免只看到 Git 的「cannot rebase: You have unstaged changes」。
+          if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
+            echo "::error::資料提交後仍有未提交的已追蹤檔案，請確認 DATA_PATHS 是否漏掉新的資料產物。"
+            git status --short --untracked-files=no
+            exit 1
+          fi
           for attempt in 1 2 3; do
             git fetch origin "${{ github.ref_name }}"
             git rebase "origin/${{ github.ref_name }}"
