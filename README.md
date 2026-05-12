@@ -52,11 +52,11 @@ Final Fantasy XIV 繁中服排行榜是一個以 FFLogs 公開資料為來源的
 │   ├── test_build_user_data.mjs # 使用 fixture 驗證資料建置規則
 │   ├── test_frontend_data_contract.mjs # 驗證前端資料讀取契約與 useRankingApp 匯出
 │   ├── compact_state.py       # 壓縮 state.json 中重複 checkpoint
-│   └── build_spa_fallback.mjs # 為 GitHub Pages 產生 History API fallback
+│   └── build_spa_fallback.mjs # 為 GitHub Pages 產生 History API fallback、靜態 SEO/OG 頁與 sitemap
 ├── config/
 │   ├── encounters.json        # 副本、FFLogs ID 與掃描起始日期
 │   ├── fflogs.json            # 抓取範圍、限流、重試與手動補抓設定
-│   └── site.json              # Vite base path 與允許 host
+│   └── site.json              # 站台網址、Vite base path 與允許 host
 ├── data/
 │   ├── rankings/              # 原始排行榜資料
 │   └── state.json             # 掃描進度與處理狀態
@@ -193,6 +193,8 @@ npm run check
 npm test
 ```
 
+其中 `npm run test:frontend-data` 會檢查前端資料讀取邊界、`useRankingApp()` 回傳物件的 shorthand 變數，以及分享網址狀態的相容性。它會覆蓋舊版 query 連結、`/user/{玩家}`、`/stats/{副本 key}`、`/jobs/{職業}`、`/servers/{左}/vs/{右}` 與子路徑部署情境，避免 SEO/OG 路徑調整時讓既有分享連結失效。
+
 清理既有 `data/rankings/*.reports/*.json` 裡可重查的大型 FFLogs raw 欄位時，先預覽再正式執行：
 
 ```bash
@@ -222,15 +224,21 @@ npm run build
 前端維持靜態網站架構，不使用後端路由；頁面以 History API 路徑表示，只有偏離預設值的篩選條件才會寫入 query string，讓分享連結盡量短。
 
 - 排行榜：`./`
-- 全服統計：`./stats`
-- 個人成績單：`./user?name=玩家名稱&server=伺服器`
+- 全服統計：`./stats`、`./stats/savage_m1s`
+- 個人成績單：`./user/玩家名稱?server=伺服器`
 - 玩家比較：`./compare?left=玩家A%20@%20伺服器&right=玩家B%20@%20伺服器`
 - 隊伍榜：`./teams?encounter=savage_m1s`
-- 伺服器對比：`./servers?left=陸行鳥&right=莫古力`
-- 職業分析：`./jobs?job=Paladin`
+- 伺服器對比：`./servers/陸行鳥/vs/莫古力`
+- 職業分析：`./jobs/Paladin`
 - 近期動態：`./activity`
 
-例如排行榜預設副本、全服統計的「全部副本」、玩家比較的預設防護職能，都不會寫入 URL。職業分析只保存 `job`，職能會由職業對應表反推，不會額外寫入 `jobType`。舊版 `?page=user&user=玩家名稱` 或 `?user=玩家名稱&server=伺服器` 連結仍會自動導向個人成績單頁，避免既有分享連結失效。
+例如排行榜預設副本、全服統計的「全部副本」、玩家比較的預設防護職能，都不會寫入 URL。全服統計的副本、職業分析的職業、伺服器對比的左右伺服器會寫入乾淨路徑，讓社群爬蟲可以讀到對應的靜態 SEO/OG；額外的指標、分群、伺服器篩選等細部條件仍保留為 query，由前端載入後同步動態 meta。舊版 `?page=user&user=玩家名稱`、`?user=玩家名稱&server=伺服器`、`./user?name=玩家名稱`、`./jobs?job=Paladin` 或 `./servers?left=陸行鳥&right=莫古力` 連結仍會自動套用到對應頁面，避免既有分享連結失效；但需要社群爬蟲讀到專屬 OG 時，應使用 `./user/玩家名稱`、`./stats/{副本 key}`、`./jobs/{職業}` 或 `./servers/{左}/vs/{右}` 這類乾淨路徑。
+
+`index.html` 提供站台層級 SEO、Open Graph、Twitter Card 與 JSON-LD 結構化資料，社群預覽圖位於 `public/og-image.png`。`npm run build` 後會由 `scripts/build_spa_fallback.mjs` 產生 `/stats/`、`/user/`、`/compare/`、`/teams/`、`/servers/`、`/jobs/` 與 `/activity/` 的 route 專屬 HTML，讓不執行 JavaScript 的社群爬蟲也能讀到各頁預設標題、描述、canonical 與 OG/Twitter meta。
+
+同一個 postbuild 也會依 `public/data/global_stats.json`、`public/data/server_compare.json` 與 `public/data/users/index.json` 產生每個副本統計的 `dist/stats/{副本 key}/index.html`、每個職業的 `dist/jobs/{職業}/index.html`、每組有序伺服器配對的 `dist/servers/{左}/vs/{右}/index.html`、每位玩家的 `dist/user/{玩家名稱}/index.html`，以及對應的 `dist/og/stats/*.svg`、`dist/og/jobs/*.svg`、`dist/og/servers/*.svg`、`dist/og/users/*.svg`、`dist/sitemap.xml` 與 `dist/robots.txt`。這些 OG 圖採 SVG 是為了避免為數千名玩家與多種分析入口生成大型 PNG；建置產物只存在於 `dist/`，不會寫回 `data/` 或 `public/data/`，也不會改變 `config/encounters.json`、`data/rankings/` 或個人成績單 JSON schema。
+
+前端載入後會由 `src/utils/shareMeta.js` 依目前頁面狀態同步 `document.title`、description、canonical、OG 與 Twitter meta；頁首的「分享」按鈕會優先使用瀏覽器 Web Share API，無法使用時改為複製目前分享連結。因為部署目標是靜態 SPA，沒有伺服器端依每一組 query 產生 HTML；不執行 JavaScript 的社群爬蟲會讀到 route 或玩家預設分享資訊，執行 JavaScript 的搜尋或瀏覽器環境則會看到目前篩選、玩家或比較條件的動態標題與描述。
 
 `npm run build` 會在 Vite 建置完成後複製 `dist/index.html` 為 `dist/404.html`，讓 GitHub Pages 重新整理 `./stats`、`./user`、`./servers` 等路徑時仍可交回 Vue SPA 解析。
 
@@ -353,7 +361,7 @@ npm run build:user-data
 npm run build
 ```
 
-若部署到子路徑，請調整 `config/site.json` 的 `base_path`。本機開發或預覽需要額外允許 host 時，也可在同一個檔案調整 `allowed_hosts`。
+若部署到子路徑，請調整 `config/site.json` 的 `site_url` 與 `base_path`。`site_url` 會用於 canonical、OG URL 與建置後 route 專屬 HTML 的 `<base href>`；本機開發或預覽需要額外允許 host 時，也可在同一個檔案調整 `allowed_hosts`。
 
 ## 注意事項
 

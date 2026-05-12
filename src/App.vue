@@ -11,11 +11,13 @@ import ServerComparePage from "./pages/ServerComparePage.vue";
 import TeamRankingsPage from "./pages/TeamRankingsPage.vue";
 import UserProfilePage from "./pages/UserProfilePage.vue";
 import { rankingAppKey, useRankingApp } from "./composables/useRankingApp";
+import { useShareMeta } from "./utils/shareMeta";
 
 const rankingApp = useRankingApp();
 const view = proxyRefs(rankingApp);
 
 provide(rankingAppKey, rankingApp);
+useShareMeta(rankingApp.分享資訊);
 </script>
 
 <template>

@@ -42,6 +42,7 @@ import {
   伺服器對比網址,
   建立公開資料網址,
 } from "../utils/publicData";
+import { 建立目前分享網址, 正規化分享描述, 預設分享標題 } from "../utils/shareMeta";
 import {
   尋找使用者索引條目 as 尋找使用者索引條目於列表,
   格式化使用者搜尋文字,
@@ -138,7 +139,10 @@ const 伺服器對比讀取中 = ref(false);
 const 伺服器對比錯誤訊息 = ref("");
 const 伺服器對比左伺服器 = ref("");
 const 伺服器對比右伺服器 = ref("");
+const 分享狀態訊息 = ref("");
+const 正在分享 = ref(false);
 let 正在套用網址狀態 = false;
+let 分享狀態計時器 = null;
 
 const 目前副本 = computed(() => {
   return 副本清單.value.find((副本) => 副本.key === 副本鍵值.value) || 副本清單.value[0] || null;
@@ -2009,6 +2013,146 @@ const 頁面標題 = computed(() => {
   return 目前副本.value?.name ? `${目前副本.value.name} 排行榜` : "排行榜";
 });
 
+function 分享數量文字(數值, 單位) {
+  const 數字 = 轉為數字(數值);
+  return 數字 && 數字 > 0 ? `${格式化整數(數字)} ${單位}` : "";
+}
+
+function 排行榜分享條件文字() {
+  const 條件 = [];
+  if (伺服器篩選.value) {
+    條件.push(`${伺服器篩選.value}伺服器`);
+  }
+  if (職業篩選.value) {
+    條件.push(顯示職業名稱(職業篩選.value));
+  } else if (目前職業類型.value?.名稱) {
+    條件.push(目前職業類型.value.名稱);
+  }
+  if (搜尋關鍵字.value.trim()) {
+    條件.push(`關鍵字「${搜尋關鍵字.value.trim()}」`);
+  }
+
+  return 條件.length > 0 ? `（${條件.join("、")}）` : "";
+}
+
+function 全服統計分享描述() {
+  const 統計 = 全服統計資料.value;
+  const 範圍 = 統計範圍文字.value;
+  const 角色數 = 分享數量文字(統計?.total_character_count, "名玩家");
+  const 成績數 = 分享數量文字(統計?.total_entry_count, "筆公開成績");
+  const 基礎 = [角色數, 成績數].filter(Boolean).join("、");
+  const 篩選 = `${統計伺服器文字.value}、${取得職業範圍文字()}、${傷害比較指標標籤.value}`;
+
+  return 正規化分享描述(
+    `${範圍}全服統計${基礎 ? `，目前收錄 ${基礎}` : ""}，可查看伺服器分布、職業分布、零式進度與 ${篩選} 分析。`,
+  );
+}
+
+function 個人成績單分享描述() {
+  if (!使用者資料.value) {
+    return "搜尋 FFXIV 繁中服玩家個人成績單，查看各副本最佳 rDPS、aDPS、分位表現、歷史紀錄與常同場隊友。";
+  }
+
+  const 伺服器文字 = 使用者伺服器篩選.value ? `（${使用者伺服器篩選.value}）` : "";
+  const 副本數 = 分享數量文字(使用者統計.value.副本數, "個副本");
+  const 成績數 = 分享數量文字(使用者統計.value.公開成績數, "筆公開成績");
+  const 最佳職業 = 使用者統計.value.最佳成績?.job ? 顯示職業名稱(使用者統計.value.最佳成績.job) : "";
+  const 最佳描述 = 最佳職業 ? `，最佳紀錄職業為 ${最佳職業}` : "";
+
+  return 正規化分享描述(
+    `${使用者資料.value.character_name}${伺服器文字}的 FFXIV 繁中服個人成績單，收錄 ${[副本數, 成績數].filter(Boolean).join("、") || "公開成績"}${最佳描述}，並整理分位表現與常同場隊友。`,
+  );
+}
+
+function 玩家比較分享描述() {
+  if (角色比較已完成.value) {
+    return 正規化分享描述(
+      `比較 ${比較角色左.value.character_name} 與 ${比較角色右.value.character_name} 在${目前比較職能.value?.名稱 || "指定職能"}的公開成績，並排查看各副本最佳紀錄、rDPS 與通關表現。`,
+    );
+  }
+
+  return "輸入兩名 FFXIV 繁中服玩家，依防護、治療、近戰、遠程物理或遠程魔法職能比較公開成績。";
+}
+
+function 職業分析分享描述() {
+  const 職業名稱 = 職業分析目前職業代碼.value ? 顯示職業名稱(職業分析目前職業代碼.value) : "指定職業";
+  const 代表紀錄數 = 分享數量文字(職業分析代表紀錄.value.length, "筆代表紀錄");
+
+  return 正規化分享描述(
+    `${職業名稱}職業分析整理各副本、伺服器與 rDPS 分布${代表紀錄數 ? `，目前列出 ${代表紀錄數}` : ""}，協助查看繁中服公開紀錄中的職業落點。`,
+  );
+}
+
+function 近期動態分享描述() {
+  const 最新數 = 分享數量文字(近期動態最新成績列表.value.length, "筆最新成績");
+  const 刷新數 = 分享數量文字(近期刷新紀錄列表.value.length, "筆刷新紀錄");
+  return 正規化分享描述(
+    `近期動態整理 FFXIV 繁中服最新公開成績、新收錄玩家、伺服器活躍與副本活躍${[最新數, 刷新數].filter(Boolean).length ? `，目前顯示 ${[最新數, 刷新數].filter(Boolean).join("、")}` : ""}。`,
+  );
+}
+
+function 隊伍榜分享描述() {
+  const 範圍 = 目前隊伍榜副本.value?.encounter_name || "全部副本";
+  const 隊伍數 = 分享數量文字(隊伍榜列.value.length, "組隊伍紀錄");
+  return 正規化分享描述(
+    `${範圍}隊伍榜整理同場 8 人公開紀錄的通關時間、隊伍 rDPS 與成員組成${隊伍數 ? `，目前收錄 ${隊伍數}` : ""}。`,
+  );
+}
+
+function 伺服器對比分享描述() {
+  if (伺服器對比已完成.value) {
+    return 正規化分享描述(
+      `比較 ${伺服器對比左資料.value.server} 與 ${伺服器對比右資料.value.server} 的收錄玩家、副本通關、職能比例、熱門職業與副本落點。`,
+    );
+  }
+
+  return "並排比較兩個 FFXIV 繁中服伺服器的收錄玩家、副本通關、職能比例、熱門職業與副本落點。";
+}
+
+const 分享標題 = computed(() => {
+  const 標題 = 頁面標題.value || 預設分享標題;
+  if (標題 === "排行榜" || 標題 === 預設分享標題) {
+    return 預設分享標題;
+  }
+  return `${標題} | ${預設分享標題}`;
+});
+
+const 分享描述 = computed(() => {
+  if (頁面模式.value === "stats") {
+    return 全服統計分享描述();
+  }
+  if (頁面模式.value === "user") {
+    return 個人成績單分享描述();
+  }
+  if (頁面模式.value === "compare") {
+    return 玩家比較分享描述();
+  }
+  if (頁面模式.value === "jobs") {
+    return 職業分析分享描述();
+  }
+  if (頁面模式.value === "activity") {
+    return 近期動態分享描述();
+  }
+  if (頁面模式.value === "teams") {
+    return 隊伍榜分享描述();
+  }
+  if (頁面模式.value === "servers") {
+    return 伺服器對比分享描述();
+  }
+
+  const 副本名稱 = 目前副本.value?.name || "高難度副本";
+  const 成績數 = 分享數量文字(所有排行列.value.length, "筆公開成績");
+  return 正規化分享描述(
+    `${副本名稱}${排行榜分享條件文字()}排行榜${成績數 ? `，目前收錄 ${成績數}` : ""}，可查看 rDPS、aDPS、Active、通關時間與 FFLogs 來源紀錄。`,
+  );
+});
+
+const 分享資訊 = computed(() => ({
+  title: 分享標題.value,
+  description: 分享描述.value,
+  url: 建立目前分享網址(),
+}));
+
 const 使用者索引列表 = computed(() => {
   return Array.isArray(使用者索引.value?.users) ? 使用者索引.value.users : [];
 });
@@ -2842,6 +2986,59 @@ function 更新網址為伺服器對比(選項 = {}) {
   }, 選項);
 }
 
+function 設定分享狀態(訊息) {
+  分享狀態訊息.value = 訊息;
+  if (typeof window !== "undefined" && 分享狀態計時器) {
+    window.clearTimeout(分享狀態計時器);
+    分享狀態計時器 = null;
+  }
+
+  if (typeof window !== "undefined" && 訊息) {
+    分享狀態計時器 = window.setTimeout(() => {
+      分享狀態訊息.value = "";
+      分享狀態計時器 = null;
+    }, 2600);
+  }
+}
+
+async function 分享目前頁面() {
+  if (正在分享.value) {
+    return;
+  }
+
+  const 分享內容 = {
+    title: 分享資訊.value.title,
+    text: 分享資訊.value.description,
+    url: 建立目前分享網址(),
+  };
+
+  正在分享.value = true;
+  try {
+    if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
+      await navigator.share(分享內容);
+      設定分享狀態("已開啟系統分享面板");
+      return;
+    }
+
+    if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(分享內容.url);
+      設定分享狀態("已複製分享連結");
+      return;
+    }
+
+    if (typeof window !== "undefined") {
+      window.prompt("複製分享連結", 分享內容.url);
+      設定分享狀態("已開啟複製視窗");
+    }
+  } catch (錯誤) {
+    if (錯誤?.name !== "AbortError") {
+      設定分享狀態("無法自動分享，請手動複製網址");
+    }
+  } finally {
+    正在分享.value = false;
+  }
+}
+
 async function 載入使用者成績(角色名稱, 伺服器 = "", 選項 = {}) {
   const 查詢名稱 = String(角色名稱 || "").trim();
   if (!查詢名稱) {
@@ -3276,6 +3473,10 @@ onMounted(() => {
 onUnmounted(() => {
   if (typeof window !== "undefined") {
     window.removeEventListener("popstate", 處理瀏覽紀錄變更);
+    if (分享狀態計時器) {
+      window.clearTimeout(分享狀態計時器);
+      分享狀態計時器 = null;
+    }
   }
 });
 
@@ -3343,6 +3544,8 @@ onUnmounted(() => {
     伺服器對比錯誤訊息,
     伺服器對比左伺服器,
     伺服器對比右伺服器,
+    分享狀態訊息,
+    正在分享,
     副本清單網址,
     使用者索引網址,
     全服統計網址,
@@ -3543,6 +3746,7 @@ onUnmounted(() => {
     更新時間文字,
     頁面副標,
     頁面標題,
+    分享資訊,
     使用者索引列表,
     建立使用者搜尋建議列表,
     使用者搜尋建議,
@@ -3604,6 +3808,7 @@ onUnmounted(() => {
     更新網址為排行榜,
     更新網址為隊伍榜,
     更新網址為伺服器對比,
+    分享目前頁面,
     載入使用者成績,
     載入比較角色資料,
     提交角色比較,

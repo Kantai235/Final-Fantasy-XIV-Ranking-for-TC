@@ -176,6 +176,7 @@ async function validateFrontendFetchBoundary() {
     "domain/jobs.js",
     "utils/fetchJson.js",
     "utils/publicData.js",
+    "utils/shareMeta.js",
     "utils/urlState.js",
     "utils/userData.js",
     "utils/viewHelpers.js",
@@ -236,10 +237,124 @@ async function validatePublicDataForFrontend() {
   }
 }
 
+async function loadUrlStateTestModule() {
+  const filePath = path.join(srcDir, "utils", "urlState.js");
+  let source = await readText(filePath);
+  const importMatch = source.match(/import\s*\{\s*([^}]+?)\s*\}\s*from\s*["']\.\/shareMeta(?:\.js)?["'];\n/);
+  const exportedFunctions = [...source.matchAll(/export function\s+([^\s(]+)\s*\(/g)].map((match) => match[1]);
+
+  assert(Boolean(importMatch), "urlState.js 必須明確匯入分享網址變更事件，讓網址寫入後可同步 SEO/OG meta");
+  assert(exportedFunctions.length >= 2, "urlState.js 必須匯出讀取與寫入網址狀態函式");
+  if (!importMatch || exportedFunctions.length < 2) {
+    return null;
+  }
+
+  const importedEventName = importMatch[1].trim();
+  source = source.replace(importMatch[0], 'const shareUrlChangeEvent = "ffxivtc:urlchange";\n');
+  source = source.split(importedEventName).join("shareUrlChangeEvent");
+  source = source.replace(/export const /g, "const ");
+  source = source.replace(/export function /g, "function ");
+  source += `\nexport { ${exportedFunctions[0]} as readState, ${exportedFunctions[1]} as writeState };\n`;
+
+  const moduleUrl = `data:text/javascript;base64,${Buffer.from(source, "utf8").toString("base64")}`;
+  return import(moduleUrl);
+}
+
+function installUrlStateWindow(href, events) {
+  globalThis.CustomEvent = class CustomEvent {
+    constructor(type) {
+      this.type = type;
+    }
+  };
+  globalThis.window = {
+    location: new URL(href),
+    history: {
+      replaceState(_state, _title, nextUrl) {
+        globalThis.window.location = new URL(nextUrl, globalThis.window.location.href);
+      },
+      pushState(_state, _title, nextUrl) {
+        globalThis.window.location = new URL(nextUrl, globalThis.window.location.href);
+      },
+    },
+    dispatchEvent(event) {
+      events.push(event.type);
+    },
+  };
+}
+
+async function validateShareUrlStateCompatibility() {
+  const module = await loadUrlStateTestModule();
+  if (!module) {
+    return;
+  }
+
+  const cases = [
+    {
+      label: "舊版個人成績單 query",
+      href: "https://ranking.init.engineer/?user=Aa&server=%E5%A5%A7%E6%B1%80",
+      expected: { page: "user", user: "Aa", server: "奧汀" },
+    },
+    {
+      label: "個人成績單乾淨路徑",
+      href: "https://ranking.init.engineer/user/Aa?server=%E5%A5%A7%E6%B1%80",
+      expected: { page: "user", user: "Aa", server: "奧汀" },
+    },
+    {
+      label: "副本全服統計乾淨路徑",
+      href: "https://ranking.init.engineer/stats/savage_m1s?server=%E9%B3%B3%E5%87%B0&metric=rdps",
+      expected: { page: "stats", encounter: "savage_m1s", server: "鳳凰", metric: "rdps" },
+    },
+    {
+      label: "職業分析乾淨路徑",
+      href: "https://ranking.init.engineer/jobs/Paladin",
+      expected: { page: "jobs", job: "Paladin" },
+    },
+    {
+      label: "伺服器對比乾淨路徑",
+      href: "https://ranking.init.engineer/servers/%E9%B3%B3%E5%87%B0/vs/%E4%BC%8A%E5%BC%97%E5%88%A9%E7%89%B9",
+      expected: { page: "servers", left: "鳳凰", right: "伊弗利特" },
+    },
+    {
+      label: "舊版伺服器對比 query",
+      href: "https://ranking.init.engineer/servers?left=%E9%B3%B3%E5%87%B0&right=%E4%BC%8A%E5%BC%97%E5%88%A9%E7%89%B9",
+      expected: { page: "servers", left: "鳳凰", right: "伊弗利特" },
+    },
+  ];
+
+  const events = [];
+  for (const testCase of cases) {
+    installUrlStateWindow(testCase.href, events);
+    const state = module.readState();
+    for (const [key, value] of Object.entries(testCase.expected)) {
+      assert(state[key] === value, `${testCase.label} 解析失敗：${key} 應為 ${value}，實際為 ${state[key]}`);
+    }
+  }
+
+  installUrlStateWindow("https://example.test/repo/stats/savage_m1s?server=x", events);
+  module.writeState({ page: "jobs", job: "Paladin" }, { replace: true });
+  assert(
+    globalThis.window.location.href === "https://example.test/repo/jobs/Paladin",
+    "子路徑部署下從 /stats/{副本} 寫入 /jobs/{職業} 時，必須保留部署基底路徑",
+  );
+  assert(events.includes("ffxivtc:urlchange"), "寫入分享網址後必須送出自訂事件，讓 SEO/OG meta 同步更新");
+
+  installUrlStateWindow("https://ranking.init.engineer/servers?left=a&right=b", events);
+  module.writeState({ page: "servers", left: "鳳凰", right: "伊弗利特" }, { replace: true });
+  assert(
+    globalThis.window.location.href ===
+      "https://ranking.init.engineer/servers/%E9%B3%B3%E5%87%B0/vs/%E4%BC%8A%E5%BC%97%E5%88%A9%E7%89%B9",
+    "伺服器對比分享網址必須寫成 /servers/{left}/vs/{right}",
+  );
+
+  delete globalThis.window;
+  delete globalThis.CustomEvent;
+}
+
 async function main() {
   await validateUseRankingAppReturnBindings();
   await validateFrontendFetchBoundary();
   await validatePublicDataForFrontend();
+  await validateShareUrlStateCompatibility();
 
   if (issues.length > 0) {
     console.error(`前端資料契約測試失敗：${issues.length} 個問題`);

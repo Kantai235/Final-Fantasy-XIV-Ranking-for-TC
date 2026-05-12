@@ -1,4 +1,5 @@
 {
+  "site_url": "https://ranking.init.engineer/",
   "base_path": "./",
   "allowed_hosts": ["ranking.init.engineer"]
 }

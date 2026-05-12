@@ -1,3 +1,5 @@
+import { 分享網址變更事件 } from "./shareMeta";
+
 export const 可分享頁面模式 = new Set(["ranking", "stats", "user", "compare", "jobs", "activity", "teams", "servers"]);
 
 const 頁面路徑片段 = {
@@ -17,6 +19,8 @@ const 路徑片段頁面 = new Map(
     .map(([頁面, 片段]) => [片段, 頁面]),
 );
 
+// 這份清單是分享網址的「可寫入狀態」白名單。寫入新網址前會先清掉這些舊參數，
+// 再依頁面重新寫入需要的欄位，避免使用者從排行榜切到職業分析時殘留無關 query。
 const 可分享參數 = [
   "page",
   "encounter",
@@ -50,25 +54,49 @@ function 讀取參數文字(參數, 名稱) {
 }
 
 function 最後路徑片段(pathname) {
-  const 片段列表 = String(pathname || "")
+  return 解析路徑片段(pathname).at(-1) || "";
+}
+
+function 安全解碼路徑片段(片段) {
+  try {
+    return decodeURIComponent(片段);
+  } catch {
+    return 片段;
+  }
+}
+
+function 解析路徑片段(pathname) {
+  return String(pathname || "")
     .split("/")
-    .map((片段) => decodeURIComponent(片段))
+    .map((片段) => 安全解碼路徑片段(片段))
     .filter(Boolean);
-  return 片段列表.at(-1) || "";
+}
+
+function 尋找路徑頁面索引(pathname) {
+  const 片段列表 = 解析路徑片段(pathname);
+  const 頁面索引 = 片段列表.findIndex((片段) => 路徑片段頁面.has(片段));
+
+  return {
+    片段列表,
+    頁面索引,
+  };
 }
 
 function 取得目前路由基底(pathname) {
   const 路徑 = String(pathname || "/");
-  const 末段 = 最後路徑片段(路徑);
-  if (路徑片段頁面.has(末段)) {
-    const 去除尾端斜線 = 路徑.replace(/\/+$/, "");
-    return 去除尾端斜線.slice(0, 去除尾端斜線.lastIndexOf("/") + 1) || "/";
+  const { 片段列表, 頁面索引 } = 尋找路徑頁面索引(路徑);
+  if (頁面索引 >= 0) {
+    // GitHub Pages 可能部署在子路徑，例如 /repo/stats/savage_m1s。
+    // 這裡保留 route 片段以前的路徑，後續寫入 /jobs/Paladin 時才不會跳回根目錄。
+    const 基底片段 = 片段列表.slice(0, 頁面索引).map((片段) => encodeURIComponent(片段));
+    return 基底片段.length > 0 ? `/${基底片段.join("/")}/` : "/";
   }
 
   if (路徑.endsWith("/")) {
     return 路徑;
   }
 
+  const 末段 = 最後路徑片段(路徑);
   // 若使用者直接開 index.html，後續切頁仍應回到同一個資料夾底下。
   if (末段.toLocaleLowerCase("en-US") === "index.html") {
     return 路徑.slice(0, 路徑.lastIndexOf("/") + 1) || "/";
@@ -78,8 +106,46 @@ function 取得目前路由基底(pathname) {
 }
 
 function 讀取路徑頁面(網址) {
-  const 末段 = 最後路徑片段(網址?.pathname || "");
-  return 路徑片段頁面.get(末段) || "";
+  const { 片段列表, 頁面索引 } = 尋找路徑頁面索引(網址?.pathname || "");
+  if (頁面索引 >= 0) {
+    return 路徑片段頁面.get(片段列表[頁面索引]) || "";
+  }
+
+  return "";
+}
+
+function 讀取路徑使用者(網址) {
+  const { 片段列表, 頁面索引 } = 尋找路徑頁面索引(網址?.pathname || "");
+  if (頁面索引 < 0 || 路徑片段頁面.get(片段列表[頁面索引]) !== "user") {
+    return "";
+  }
+
+  return String(片段列表[頁面索引 + 1] || "").trim();
+}
+
+function 讀取路徑單一選項(網址, 頁面模式) {
+  const { 片段列表, 頁面索引 } = 尋找路徑頁面索引(網址?.pathname || "");
+  if (頁面索引 < 0 || 路徑片段頁面.get(片段列表[頁面索引]) !== 頁面模式) {
+    return "";
+  }
+
+  return String(片段列表[頁面索引 + 1] || "").trim();
+}
+
+function 讀取路徑伺服器對比(網址) {
+  const { 片段列表, 頁面索引 } = 尋找路徑頁面索引(網址?.pathname || "");
+  if (頁面索引 < 0 || 路徑片段頁面.get(片段列表[頁面索引]) !== "servers") {
+    return { left: "", right: "" };
+  }
+
+  const left = String(片段列表[頁面索引 + 1] || "").trim();
+  const vs = String(片段列表[頁面索引 + 2] || "").trim().toLocaleLowerCase("en-US");
+  const right = String(片段列表[頁面索引 + 3] || "").trim();
+  if (vs !== "vs") {
+    return { left: "", right: "" };
+  }
+
+  return { left, right };
 }
 
 function 正規化頁面模式(頁面模式, 參數 = null) {
@@ -104,20 +170,24 @@ export function 讀取目前網址狀態() {
   const 網址 = 讀取瀏覽器網址();
   const 參數 = 網址?.searchParams || new URLSearchParams();
   const 頁面 = 正規化頁面模式(讀取路徑頁面(網址), 參數);
+  const 路徑使用者 = 讀取路徑使用者(網址);
+  const 路徑副本 = 讀取路徑單一選項(網址, "stats");
+  const 路徑職業 = 讀取路徑單一選項(網址, "jobs");
+  const 路徑伺服器對比 = 讀取路徑伺服器對比(網址);
 
   return {
     page: 頁面,
-    encounter: 讀取參數文字(參數, "encounter"),
+    encounter: 路徑副本 || 讀取參數文字(參數, "encounter"),
     server: 讀取參數文字(參數, "server"),
     jobType: 讀取參數文字(參數, "jobType"),
-    job: 讀取參數文字(參數, "job"),
+    job: 路徑職業 || 讀取參數文字(參數, "job"),
     q: 讀取參數文字(參數, "q"),
     sort: 讀取參數文字(參數, "sort"),
     order: 讀取參數文字(參數, "order"),
     pageNo: 讀取參數文字(參數, "pageNo"),
-    user: 讀取參數文字(參數, "name") || 讀取參數文字(參數, "user"),
-    left: 讀取參數文字(參數, "left"),
-    right: 讀取參數文字(參數, "right"),
+    user: 路徑使用者 || 讀取參數文字(參數, "name") || 讀取參數文字(參數, "user"),
+    left: 路徑伺服器對比.left || 讀取參數文字(參數, "left"),
+    right: 路徑伺服器對比.right || 讀取參數文字(參數, "right"),
     role: 讀取參數文字(參數, "role"),
     jobScope: 讀取參數文字(參數, "jobScope"),
     split: 讀取參數文字(參數, "split"),
@@ -146,7 +216,7 @@ function 寫入頁面專屬參數(參數, 狀態) {
   }
 
   if (狀態.page === "stats") {
-    寫入參數(參數, "encounter", 狀態.encounter);
+    // encounter 會寫入 /stats/{encounterKey}，query 只保留伺服器、分群與指標等細部篩選。
     寫入參數(參數, "server", 狀態.server);
     寫入參數(參數, "jobScope", 狀態.jobScope);
     寫入參數(參數, "split", 狀態.split);
@@ -155,7 +225,7 @@ function 寫入頁面專屬參數(參數, 狀態) {
   }
 
   if (狀態.page === "user") {
-    寫入參數(參數, "name", 狀態.user);
+    // 玩家名稱放在 /user/{characterName}，server 保留 query 是為了處理同名或跨伺服器角色。
     寫入參數(參數, "server", 狀態.server);
     return;
   }
@@ -170,7 +240,6 @@ function 寫入頁面專屬參數(參數, 狀態) {
   if (狀態.page === "jobs") {
     // 職業分析只有「職業」是可分享的選擇；職能可由職業反推，
     // 不寫入 jobType 可避免 /jobs 連結出現重複語意的 query。
-    寫入參數(參數, "job", 狀態.job);
     return;
   }
 
@@ -180,15 +249,39 @@ function 寫入頁面專屬參數(參數, 狀態) {
   }
 
   if (狀態.page === "servers") {
-    寫入參數(參數, "left", 狀態.left);
-    寫入參數(參數, "right", 狀態.right);
+    // 伺服器左右欄位放在 /servers/{left}/vs/{right}，讓社群爬蟲能讀到配對專屬 HTML。
+    return;
   }
 }
 
-function 建立頁面路徑(目前路徑, 頁面) {
+function 編碼路徑值(值) {
+  return encodeURIComponent(String(值 || "").trim());
+}
+
+function 建立頁面路徑(目前路徑, 狀態) {
   const 基底 = 取得目前路由基底(目前路徑);
-  const 片段 = 頁面路徑片段[頁面] || "";
-  return 片段 ? `${基底}${片段}` : 基底;
+  const 片段 = 頁面路徑片段[狀態.page] || "";
+  if (!片段) {
+    return 基底;
+  }
+
+  if (狀態.page === "user" && String(狀態.user || "").trim()) {
+    return `${基底}${片段}/${編碼路徑值(狀態.user)}`;
+  }
+
+  if (狀態.page === "stats" && String(狀態.encounter || "").trim()) {
+    return `${基底}${片段}/${編碼路徑值(狀態.encounter)}`;
+  }
+
+  if (狀態.page === "jobs" && String(狀態.job || "").trim()) {
+    return `${基底}${片段}/${編碼路徑值(狀態.job)}`;
+  }
+
+  if (狀態.page === "servers" && String(狀態.left || "").trim() && String(狀態.right || "").trim()) {
+    return `${基底}${片段}/${編碼路徑值(狀態.left)}/vs/${編碼路徑值(狀態.right)}`;
+  }
+
+  return `${基底}${片段}`;
 }
 
 export function 寫入網址狀態(下一個狀態, 選項 = {}) {
@@ -206,7 +299,7 @@ export function 寫入網址狀態(下一個狀態, 選項 = {}) {
     網址.searchParams.delete(名稱);
   }
 
-  網址.pathname = 建立頁面路徑(網址.pathname, 狀態.page);
+  網址.pathname = 建立頁面路徑(網址.pathname, 狀態);
   寫入頁面專屬參數(網址.searchParams, 狀態);
 
   const 目前網址 = `${window.location.pathname}${window.location.search}${window.location.hash}`;
@@ -217,4 +310,6 @@ export function 寫入網址狀態(下一個狀態, 選項 = {}) {
 
   const 方法 = 選項.replace ? "replaceState" : "pushState";
   window.history[方法](null, "", 網址);
+  // History API 不會自動送出 popstate；自訂事件讓 SEO/OG meta 與分享按鈕能同步到最新網址。
+  window.dispatchEvent(new CustomEvent(分享網址變更事件));
 }

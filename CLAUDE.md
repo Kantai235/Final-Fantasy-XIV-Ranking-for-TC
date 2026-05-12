@@ -91,3 +91,4 @@
 6. `npm run compact:state` 只可移除已由 `checked_reports` 完整保留的 `processed_reports` 重複 checkpoint；執行正式壓縮前必須先跑 `npm run compact:state -- --dry-run`。
 7. `build_user_data.mjs` 預設以最新 `rankings_updated_at_iso` 作為 `generated_at_iso`，讓同一批排行榜重建時輸出穩定；可用 `FFXIV_TC_GENERATED_AT_ISO` 覆寫，`npm test` 會用 fixture 驗證這個規則。
 8. `npm run test:frontend-data` 會檢查前端資料讀取邊界、`useRankingApp()` 匯出的 shorthand 是否都有定義，以及公開 JSON 是否具備頁面會讀取的必要欄位。
+9. SEO/OG 分享網址的乾淨路徑需同時維持舊版 query 相容性；`npm run test:frontend-data` 會覆蓋 `/user/{玩家}`、`/stats/{副本 key}`、`/jobs/{職業}`、`/servers/{左}/vs/{右}`、舊版 query 與子路徑部署情境。
