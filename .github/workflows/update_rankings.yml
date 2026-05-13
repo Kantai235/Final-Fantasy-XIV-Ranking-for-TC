@@ -58,6 +58,24 @@ jobs:
       - name: 安裝 Node.js 依賴套件
         run: npm ci
 
+      - name: 同步 Cloudflare CDN 規則
+        env:
+          CLOUDFLARE_ZONE_ID: ${{ secrets.CLOUDFLARE_ZONE_ID }}
+          CLOUDFLARE_RULES_API_TOKEN: ${{ secrets.CLOUDFLARE_RULES_API_TOKEN }}
+          CLOUDFLARE_HOSTNAME: ${{ vars.CLOUDFLARE_HOSTNAME }}
+          CLOUDFLARE_MANAGE_RATE_LIMIT: ${{ vars.CLOUDFLARE_MANAGE_RATE_LIMIT }}
+        run: |
+          if [ -z "$CLOUDFLARE_RULES_API_TOKEN" ]; then
+            echo "未設定 CLOUDFLARE_RULES_API_TOKEN，略過 Cloudflare Cache Rules / Rate Limiting Rules 同步。"
+            exit 0
+          fi
+
+          if [ "$CLOUDFLARE_MANAGE_RATE_LIMIT" = "false" ]; then
+            npm run cloudflare:apply -- --skip-rate-limit
+          else
+            npm run cloudflare:apply
+          fi
+
       - name: 執行 FFLogs 排行榜抓取腳本
         env:
           FFLOGS_CLIENT_ID: ${{ secrets.FFLOGS_CLIENT_ID }}
@@ -178,3 +196,10 @@ jobs:
       - name: 部署 GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+
+      - name: 清除 Cloudflare CDN 快取
+        env:
+          CLOUDFLARE_ZONE_ID: ${{ secrets.CLOUDFLARE_ZONE_ID }}
+          CLOUDFLARE_PURGE_API_TOKEN: ${{ secrets.CLOUDFLARE_PURGE_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_HOSTNAME: ${{ vars.CLOUDFLARE_HOSTNAME }}
+        run: npm run cloudflare:purge

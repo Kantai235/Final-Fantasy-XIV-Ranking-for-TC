@@ -6,7 +6,7 @@
 
 - `encounters.json`：副本名稱、FFLogs ID、啟用狀態與起掃日期。
 - `fflogs.json`：FFLogs 爬蟲的掃描、限流、重試與手動補抓參數。
-- `site.json`：Vite base path 與本機開發/預覽允許的 host。
+- `site.json`：正式站台網址、Vite base path 與本機開發/預覽允許的 host。Cloudflare 規則腳本也會以 `site_url` 推導預設 hostname。
 
 ## `encounters.json` 的判讀重點
 

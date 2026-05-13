@@ -363,6 +363,32 @@ npm run build
 
 若部署到子路徑，請調整 `config/site.json` 的 `site_url` 與 `base_path`。`site_url` 會用於 canonical、OG URL 與建置後 route 專屬 HTML 的 `<base href>`；本機開發或預覽需要額外允許 host 時，也可在同一個檔案調整 `allowed_hosts`。
 
+### Cloudflare CDN 與節流
+
+為降低 GitHub Pages origin 流量，正式網域建議放在 Cloudflare 橘雲代理後方，並套用本專案的 Cache Rules、部署後 purge 與 Rate Limiting Rules。Cloudflare 預設不快取 JSON，因此 `/data/*` 必須明確設定快取；否則排行榜與個人成績單資料仍會直接打到 GitHub Pages。
+
+檢查將套用的規則：
+
+```bash
+npm run cloudflare:apply -- --dry-run
+```
+
+正式套用前需在本機環境設定 `CLOUDFLARE_ZONE_ID`、`CLOUDFLARE_RULES_API_TOKEN` 與 `CLOUDFLARE_HOSTNAME`，再執行：
+
+```bash
+npm run cloudflare:apply
+```
+
+GitHub Actions 每次執行時會先嘗試用 `CLOUDFLARE_RULES_API_TOKEN` 同步 Cloudflare Cache Rules / Rate Limiting Rules；若這個 secret 沒設定，會自動略過。部署成功後會再用 `CLOUDFLARE_PURGE_API_TOKEN` 或相容的 `CLOUDFLARE_API_TOKEN` 執行 `npm run cloudflare:purge` 清除會變動的快取。
+
+估算目前 `dist/` 在不同 Cloudflare HIT ratio 下，大約能承載多少頁面載入：
+
+```bash
+npm run cloudflare:estimate
+```
+
+完整 DNS、權限、TTL 與驗證方式請看 `docs/cloudflare-github-pages.md`。
+
 ## 注意事項
 
 - `data/state.json` 是抓取進度狀態，手動修改前請先確認目前掃描狀態。
