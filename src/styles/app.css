@@ -23,6 +23,10 @@
   --作者色深: #2c8ee8;
   --作者色柔和: rgba(91, 184, 255, 0.18);
   --作者文字: #ffffff;
+  --Telegram色: #229ed9;
+  --Telegram色深: #1688bd;
+  --Telegram文字: #ffffff;
+  --Telegram焦點陰影: rgba(34, 158, 217, 0.28);
   --錯誤文字: #ff8176;
   --停用背景: #252c2a;
   --停用文字: #7f877f;
@@ -189,6 +193,142 @@ h1 {
 .分享按鈕,
 .主題切換 {
   min-width: 94px;
+}
+.Telegram交流按鈕 {
+  min-width: 138px;
+  border-color: var(--Telegram色);
+  color: var(--Telegram文字);
+  background: var(--Telegram色);
+}
+
+.Telegram交流按鈕:hover:not(:disabled) {
+  border-color: var(--Telegram色深);
+  background: var(--Telegram色深);
+}
+
+.Telegram交流按鈕:focus {
+  outline: 3px solid var(--Telegram焦點陰影);
+}
+
+.Telegram視窗遮罩 {
+  position: fixed;
+  z-index: 120;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.62);
+}
+
+.Telegram視窗 {
+  position: relative;
+  width: min(440px, 100%);
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+  display: grid;
+  gap: 18px;
+  border: 1px solid var(--邊框色);
+  border-radius: 8px;
+  padding: 24px;
+  color: var(--主要文字);
+  background: var(--表面背景);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.36);
+}
+
+.Telegram視窗關閉 {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 34px;
+  min-width: 0;
+  height: 34px;
+  min-height: 0;
+  border-color: var(--邊框色);
+  border-radius: 999px;
+  padding: 0;
+  color: var(--次要文字);
+  background: var(--表面背景柔和);
+  font-size: 1.35rem;
+  line-height: 1;
+}
+
+.Telegram視窗關閉:hover:not(:disabled) {
+  border-color: var(--Telegram色);
+  color: var(--Telegram文字);
+  background: var(--Telegram色);
+}
+
+.Telegram視窗關閉:focus {
+  border-color: var(--Telegram色);
+  outline: 3px solid var(--Telegram焦點陰影);
+}
+
+.Telegram視窗標頭 {
+  display: grid;
+  gap: 8px;
+  padding-right: 38px;
+}
+
+.Telegram視窗副標,
+.Telegram視窗標頭 p {
+  margin: 0;
+  color: var(--次要文字);
+  font-size: 0.92rem;
+  line-height: 1.55;
+}
+
+.Telegram視窗副標 {
+  color: var(--Telegram色);
+  font-weight: 780;
+}
+
+.Telegram視窗 h2 {
+  margin: 0;
+  color: var(--主要文字);
+  font-size: 1.5rem;
+  line-height: 1.2;
+}
+
+.TelegramQRCode {
+  display: grid;
+  justify-items: center;
+  margin: 0;
+}
+
+.TelegramQRCode圖片 {
+  width: min(250px, 100%);
+  height: auto;
+}
+
+.Telegram視窗行動列 {
+  display: grid;
+  gap: 10px;
+}
+
+.Telegram主要連結 {
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--Telegram色);
+  border-radius: 8px;
+  padding: 0 16px;
+  color: var(--Telegram文字);
+  background: var(--Telegram色);
+  font-weight: 780;
+  line-height: 1.35;
+  text-align: center;
+  text-decoration: none;
+}
+
+.Telegram主要連結:hover {
+  border-color: var(--Telegram色深);
+  background: var(--Telegram色深);
+}
+
+.Telegram主要連結:focus {
+  outline: 3px solid var(--Telegram焦點陰影);
+  outline-offset: 2px;
 }
 
 .頁面切換 {
@@ -3812,6 +3952,29 @@ td a:hover {
 
   .標題操作 {
     justify-content: flex-start;
+  }
+  .Telegram視窗遮罩 {
+    align-items: start;
+    overflow-y: auto;
+    padding: 10px;
+  }
+
+  .Telegram視窗 {
+    max-height: none;
+    margin: 12px 0;
+    padding: 20px;
+  }
+
+  .Telegram視窗標頭 {
+    padding-right: 34px;
+  }
+
+  .Telegram視窗 h2 {
+    font-size: 1.3rem;
+  }
+
+  .TelegramQRCode圖片 {
+    width: min(220px, 100%);
   }
 
   h1 {
