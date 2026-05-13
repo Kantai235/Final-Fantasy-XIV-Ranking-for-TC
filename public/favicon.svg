@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">FFXIV TC Rankings icon</title>
+  <desc id="desc">A dark app icon with a simple gold trophy for rankings.</desc>
+  <defs>
+    <linearGradient id="trophyGold" x1="142" x2="370" y1="92" y2="430" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffe59c" />
+      <stop offset="0.42" stop-color="#d6a354" />
+      <stop offset="1" stop-color="#94611f" />
+    </linearGradient>
+    <linearGradient id="rimGold" x1="72" x2="440" y1="72" y2="440" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#d6a354" stop-opacity="0.82" />
+      <stop offset="1" stop-color="#6f491b" stop-opacity="0.9" />
+    </linearGradient>
+    <radialGradient id="centerGlow" cx="50%" cy="44%" r="64%">
+      <stop offset="0" stop-color="#d6a354" stop-opacity="0.18" />
+      <stop offset="0.58" stop-color="#d6a354" stop-opacity="0.04" />
+      <stop offset="1" stop-color="#d6a354" stop-opacity="0" />
+    </radialGradient>
+    <filter id="trophyShadow" x="-22%" y="-22%" width="144%" height="150%">
+      <feDropShadow dx="0" dy="14" stdDeviation="14" flood-color="#000000" flood-opacity="0.38" />
+    </filter>
+  </defs>
+
+  <rect width="512" height="512" rx="92" fill="#101214" />
+  <rect width="512" height="512" rx="92" fill="url(#centerGlow)" />
+  <rect x="64" y="64" width="384" height="384" rx="78" fill="#171b1f" stroke="url(#rimGold)" stroke-width="14" />
+
+  <g filter="url(#trophyShadow)">
+    <path
+      d="M166 126h180v68c0 70-38 122-90 122s-90-52-90-122v-68Z"
+      fill="url(#trophyGold)"
+    />
+    <path
+      d="M166 162h-44v34c0 54 32 90 82 96"
+      fill="none"
+      stroke="url(#trophyGold)"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      stroke-width="32"
+    />
+    <path
+      d="M346 162h44v34c0 54-32 90-82 96"
+      fill="none"
+      stroke="url(#trophyGold)"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      stroke-width="32"
+    />
+    <path d="M256 298v66" fill="none" stroke="url(#trophyGold)" stroke-linecap="round" stroke-width="42" />
+    <path d="M202 386h108" fill="none" stroke="url(#trophyGold)" stroke-linecap="round" stroke-width="42" />
+    <path d="M164 424h184" fill="none" stroke="#f4f1ea" stroke-linecap="round" stroke-width="18" opacity="0.94" />
+    <path d="M206 148h100" fill="none" stroke="#fff1bf" stroke-linecap="round" stroke-width="18" opacity="0.42" />
+    <path d="M230 182v74" fill="none" stroke="#fff1bf" stroke-linecap="round" stroke-width="14" opacity="0.24" />
+  </g>
+</svg>

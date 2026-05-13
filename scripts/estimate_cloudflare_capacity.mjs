@@ -134,7 +134,16 @@ const allFiles = listFiles(DistPath);
 const allRelativeFiles = allFiles.map((file) => relative(DistPath, file).split(sep).join("/"));
 const assetFiles = allRelativeFilesUnder("assets");
 const iconFiles = allRelativeFilesUnder("icons/jobs");
-const appShellFiles = ["index.html", ...assetFiles, ...iconFiles];
+const siteIconFiles = [
+  "favicon.svg",
+  "favicon.ico",
+  "favicon-16x16.png",
+  "favicon-32x32.png",
+  "apple-touch-icon.png",
+  "site.webmanifest",
+  ...allRelativeFilesUnder("icons/site"),
+];
+const appShellFiles = ["index.html", ...assetFiles, ...iconFiles, ...siteIconFiles];
 const userFiles = allRelativeFilesUnder("data/users").filter((file) => file !== "data/users/index.json");
 const medianUserFile = percentileFile(userFiles, 0.5);
 const p95UserFile = percentileFile(userFiles, 0.95);

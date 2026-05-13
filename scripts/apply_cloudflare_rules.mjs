@@ -140,11 +140,17 @@ function buildCacheRules() {
     ),
     cacheRule(
       "ffxiv_tc_media_cache",
-      "職業圖示與 OG 圖快取",
+      "網站圖示、職業圖示與 OG 圖快取",
       [
         `starts_with(http.request.uri.path, "/icons/")`,
         `starts_with(http.request.uri.path, "/og/")`,
         `http.request.uri.path eq "/og-image.png"`,
+        `http.request.uri.path eq "/favicon.svg"`,
+        `http.request.uri.path eq "/favicon.ico"`,
+        `http.request.uri.path eq "/favicon-16x16.png"`,
+        `http.request.uri.path eq "/favicon-32x32.png"`,
+        `http.request.uri.path eq "/apple-touch-icon.png"`,
+        `http.request.uri.path eq "/site.webmanifest"`,
       ].join(" or "),
       MediaEdgeTtlSeconds,
       MediaBrowserTtlSeconds,

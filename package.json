@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "build:public-rankings": "python scripts/fetch_fflogs.py --rebuild-public",
+    "build:icons": "node scripts/generate_site_icons.mjs",
     "compact:rankings": "python scripts/compact_ranking_data.py",
     "compact:state": "python scripts/compact_state.py",
     "backfill:fflogs": "python scripts/backfill_missing_fflogs_data.py --limit 500",

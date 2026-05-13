@@ -34,6 +34,12 @@ const FilesToPurge = [
   `${SiteOrigin}/sitemap.xml`,
   `${SiteOrigin}/robots.txt`,
   `${SiteOrigin}/og-image.png`,
+  `${SiteOrigin}/favicon.svg`,
+  `${SiteOrigin}/favicon.ico`,
+  `${SiteOrigin}/favicon-16x16.png`,
+  `${SiteOrigin}/favicon-32x32.png`,
+  `${SiteOrigin}/apple-touch-icon.png`,
+  `${SiteOrigin}/site.webmanifest`,
 ];
 
 function loadLocalEnv() {

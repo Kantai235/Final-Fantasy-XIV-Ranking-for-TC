@@ -34,7 +34,7 @@ GitHub Pages 自訂網域仍需在 repository Settings → Pages 設定。因本
 | 路徑 | Edge TTL | Browser TTL | 原因 |
 | --- | ---: | ---: | --- |
 | `/assets/*` | 365 天 | 365 天 | Vite 產物檔名含 hash，可長效快取。 |
-| `/icons/*`、`/og/*`、`/og-image.png` | 6 小時 | 1 小時 | 圖示與 OG 圖可快取，但 OG 圖會隨資料建置更新。 |
+| `/icons/*`、favicon、`site.webmanifest`、`/og/*`、`/og-image.png` | 6 小時 | 1 小時 | 網站圖示、職業圖示與 OG 圖可快取，但 OG 圖會隨資料建置更新。 |
 | `/data/*` | 2 小時 | 5 分鐘 | 排行榜 JSON 每半小時排程更新；Edge TTL 撐高 HIT ratio，部署成功後由 workflow purge 變動路徑。 |
 | SPA HTML、route fallback、`robots.txt`、`sitemap.xml` | 2 小時 | 5 分鐘 | HTML 是靜態產物；部署後 purge 讓 SEO/OG fallback 快速更新。 |
 
@@ -51,7 +51,7 @@ npm run cloudflare:purge
 這支腳本會用兩個 Cloudflare Purge API 請求處理會隨半小時資料更新變動的內容：
 
 - Prefix purge：`/data`、`/stats`、`/user`、`/compare`、`/teams`、`/servers`、`/jobs`、`/activity`、`/og`
-- File purge：首頁、`index.html`、`404.html`、`sitemap.xml`、`robots.txt`、`og-image.png`
+- File purge：首頁、`index.html`、`404.html`、`sitemap.xml`、`robots.txt`、`og-image.png`、favicon、Apple touch icon 與 `site.webmanifest`
 
 這比每半小時 purge everything 更適合本專案，因為 Vite hashed assets 和職業圖示可以繼續長效命中 Cloudflare，不必每次資料更新都讓所有靜態資源重新冷啟動。
 
