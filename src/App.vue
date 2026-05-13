@@ -1,5 +1,6 @@
 <script setup>
 import { provide, proxyRefs } from "vue";
+import AppFooter from "./components/AppFooter.vue";
 import AppHeader from "./components/AppHeader.vue";
 import PageNavigation from "./components/PageNavigation.vue";
 import ActivityPage from "./pages/ActivityPage.vue";
@@ -33,6 +34,8 @@ useShareMeta(rankingApp.分享資訊);
     <ComparePage v-else-if="view.頁面模式 === 'compare'" />
     <TeamRankingsPage v-else-if="view.頁面模式 === 'teams'" />
     <ServerComparePage v-else-if="view.頁面模式 === 'servers'" />
+
+    <AppFooter />
   </main>
 </template>
 

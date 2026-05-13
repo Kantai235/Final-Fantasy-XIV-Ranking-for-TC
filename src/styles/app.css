@@ -211,6 +211,314 @@ h1 {
   background: var(--重點色);
 }
 
+.頁尾宣告 {
+  display: grid;
+  gap: 6px;
+  margin-top: 42px;
+  border-top: 1px solid var(--邊框色);
+  padding-top: 18px;
+  color: var(--靜音文字);
+  font-size: 0.78rem;
+  line-height: 1.55;
+}
+
+.頁尾宣告 p {
+  margin: 0;
+}
+
+.頁尾宣告 p:first-child {
+  color: var(--次要文字);
+  font-weight: 680;
+}
+
+.頁尾作者列 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+}
+
+.頁尾作者互動 {
+  display: inline-flex;
+}
+
+.頁尾作者按鈕 {
+  min-width: 0;
+  min-height: 0;
+  border: 0;
+  border-radius: 4px;
+  padding: 0 2px;
+  color: var(--作者色);
+  background: transparent;
+  font: inherit;
+  font-weight: 780;
+  line-height: inherit;
+}
+
+.頁尾作者按鈕:hover:not(:disabled) {
+  color: var(--作者色深);
+  background: transparent;
+}
+
+.頁尾作者按鈕:focus {
+  outline: 2px solid var(--作者色);
+  outline-offset: 3px;
+}
+
+.作者浮出面板 {
+  position: fixed;
+  z-index: 80;
+  right: max(20px, calc((100vw - 1120px) / 2));
+  bottom: 72px;
+  width: min(500px, calc(100vw - 40px));
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(126px, 164px);
+  align-items: end;
+  gap: 14px;
+  opacity: 0;
+  pointer-events: none;
+  overflow: visible;
+  transition: opacity 0.12s ease;
+}
+
+.作者浮出面板.顯示,
+.作者浮出面板.收回 {
+  opacity: 1;
+}
+
+.作者浮出面板.顯示 {
+  pointer-events: auto;
+}
+
+.作者形象區 {
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: end;
+  width: 100%;
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  margin: 0;
+  opacity: 0;
+  transform: translateX(150%) translateY(28px) rotate(28deg) scale(0.72);
+  transform-origin: 100% 90%;
+}
+
+.作者浮出面板.顯示 .作者形象區 {
+  animation: 作者形象跳出 0.72s cubic-bezier(0.21, 1.28, 0.34, 1) both;
+}
+
+.作者浮出面板.收回 .作者形象區 {
+  animation: 作者形象收回 0.42s cubic-bezier(0.64, 0, 0.78, 0) both;
+}
+
+.作者形象圖 {
+  width: 100%;
+  max-height: 230px;
+  object-fit: contain;
+  filter: drop-shadow(0 16px 24px rgba(0, 0, 0, 0.34));
+}
+
+.作者圖片署名 {
+  max-width: 100%;
+  overflow: hidden;
+  border: 1px solid var(--邊框柔和色);
+  border-radius: 999px;
+  padding: 3px 9px;
+  color: var(--次要文字);
+  background: var(--表面背景);
+  font-size: 0.72rem;
+  font-weight: 760;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.24);
+}
+
+.作者圖片署名 a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.作者圖片署名 a:hover {
+  color: var(--作者色);
+}
+
+.作者圖片署名 a:focus {
+  outline: 2px solid var(--作者色);
+  outline-offset: 3px;
+}
+
+.作者對話框 {
+  position: relative;
+  grid-column: 1;
+  grid-row: 1;
+  border: 1px solid var(--邊框色);
+  border-radius: 8px;
+  padding: 14px 16px;
+  color: var(--主要文字);
+  background: var(--表面背景);
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.32);
+  opacity: 0;
+  transform: translateX(14px) translateY(6px) scale(0.98);
+}
+
+.作者浮出面板.顯示 .作者對話框 {
+  animation: 作者對話浮現 0.28s ease 0.22s both;
+}
+
+.作者浮出面板.收回 .作者對話框 {
+  animation: 作者對話收起 0.18s ease both;
+}
+
+.作者對話框::before {
+  content: "";
+  position: absolute;
+  right: -7px;
+  bottom: 30px;
+  width: 12px;
+  height: 12px;
+  border-top: 1px solid var(--邊框色);
+  border-right: 1px solid var(--邊框色);
+  background: var(--表面背景);
+  transform: rotate(45deg);
+}
+
+.作者對話框 p {
+  margin: 0;
+  font-size: 0.92rem;
+  font-weight: 680;
+  line-height: 1.65;
+}
+
+.作者行動列 {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.作者行動按鈕 {
+  min-width: 0;
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--邊框色);
+  border-radius: 8px;
+  padding: 7px 10px;
+  color: var(--主要文字);
+  background: var(--表面背景柔和);
+  font-size: 0.82rem;
+  font-weight: 780;
+  line-height: 1.35;
+  text-align: center;
+  text-decoration: none;
+  white-space: normal;
+}
+
+.作者行動按鈕:hover {
+  border-color: var(--作者色);
+  color: var(--作者色);
+  background: var(--作者色柔和);
+}
+
+.作者行動按鈕:focus {
+  border-color: var(--作者色);
+  outline: 3px solid var(--作者色柔和);
+  outline-offset: 2px;
+}
+
+@keyframes 作者形象跳出 {
+  0% {
+    opacity: 0;
+    transform: translateX(150%) translateY(28px) rotate(28deg) scale(0.72);
+  }
+
+  48% {
+    opacity: 1;
+    transform: translateX(-16px) translateY(-18px) rotate(-13deg) scale(1.08);
+  }
+
+  66% {
+    opacity: 1;
+    transform: translateX(8px) translateY(8px) rotate(6deg) scale(0.97);
+  }
+
+  82% {
+    opacity: 1;
+    transform: translateX(-4px) translateY(-5px) rotate(-3deg) scale(1.02);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateX(0) translateY(0) rotate(0deg) scale(1);
+  }
+}
+
+@keyframes 作者對話浮現 {
+  from {
+    opacity: 0;
+    transform: translateX(14px) translateY(6px) scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0) translateY(0) scale(1);
+  }
+}
+
+@keyframes 作者形象收回 {
+  0% {
+    opacity: 1;
+    transform: translateX(0) translateY(0) rotate(0deg) scale(1);
+  }
+
+  28% {
+    opacity: 1;
+    transform: translateX(-10px) translateY(-8px) rotate(-6deg) scale(1.03);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateX(155%) translateY(26px) rotate(26deg) scale(0.72);
+  }
+}
+
+@keyframes 作者對話收起 {
+  from {
+    opacity: 1;
+    transform: translateX(0) translateY(0) scale(1);
+  }
+
+  to {
+    opacity: 0;
+    transform: translateX(14px) translateY(6px) scale(0.98);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .作者浮出面板 {
+    transition: none;
+  }
+
+  .作者浮出面板.顯示 .作者形象區,
+  .作者浮出面板.顯示 .作者對話框,
+  .作者浮出面板.收回 .作者形象區,
+  .作者浮出面板.收回 .作者對話框 {
+    animation: none;
+  }
+
+  .作者浮出面板.顯示 .作者形象區,
+  .作者浮出面板.顯示 .作者對話框 {
+    opacity: 1;
+    transform: none;
+  }
+
+  .作者浮出面板.收回 .作者形象區,
+  .作者浮出面板.收回 .作者對話框 {
+    opacity: 0;
+  }
+}
+
 .工具列 {
   display: grid;
   grid-template-columns: minmax(210px, 1.25fr) minmax(145px, 0.85fr) minmax(170px, 1fr) minmax(220px, 1.25fr);
@@ -3471,6 +3779,44 @@ td a:hover {
     min-height: 42px;
     padding: 0 8px;
     font-size: 0.9rem;
+  }
+
+  .作者浮出面板 {
+    right: 10px;
+    bottom: 20px;
+    width: calc(100vw - 20px);
+    grid-template-columns: minmax(0, 1fr) minmax(86px, 112px);
+    gap: 10px;
+  }
+
+  .作者形象圖 {
+    max-height: 168px;
+  }
+
+  .作者圖片署名 {
+    max-width: 112px;
+    padding: 3px 7px;
+    font-size: 0.66rem;
+  }
+
+  .作者對話框 {
+    padding: 12px;
+  }
+
+  .作者對話框 p {
+    font-size: 0.82rem;
+    line-height: 1.55;
+  }
+
+  .作者行動列 {
+    gap: 6px;
+    margin-top: 10px;
+  }
+
+  .作者行動按鈕 {
+    min-height: 34px;
+    padding: 6px 8px;
+    font-size: 0.74rem;
   }
 
   .使用者搜尋表單 {
