@@ -19,6 +19,7 @@
 
 - `report_page_limit`、`report_max_pages` 與 `scan_window_hours` 控制淺層 reports 掃描範圍；報告太多時 `fetch_fflogs.py` 會自動切半查詢。
 - `rate_limit_requests`、`rate_limit_window_seconds`、`rate_limit_padding_seconds` 與 `rate_limited_cooldown_seconds` 控制 FFLogs API 限流與多憑證輪替。
+- `player_stats_batch_size` 控制同一份 report、同一副本內一次 GraphQL request 會合併查詢幾場通關戰鬥的 playerDetails / damageDone；每場 fight 仍用獨立 alias 查詢，避免多場戰鬥的輸出數值被 FFLogs 聚合。
 - `retry_report_codes` 會在一般掃描中強制重抓指定 report code。
 - `only_report_codes` 只處理指定 report code，且不推進掃描點，適合手動補抓或除錯。
 - 手動補抓完成後應清空 `retry_report_codes` 與 `only_report_codes`，避免排程重複處理同一批 report。

@@ -56,6 +56,7 @@ FFLogs執行設定預設值: dict[str, Any] = {
     "json_write_retries": 10,
     "json_write_retry_seconds": 0.5,
     "ranking_flush_reports": 25,
+    "player_stats_batch_size": 10,
     "retry_report_codes": [],
     "only_report_codes": [],
 }
@@ -206,6 +207,7 @@ def 布林設定(名稱: str) -> bool:
 json寫入重試次數 = max(1, 整數設定("json_write_retries"))
 json寫入重試等待秒數 = max(0.1, 浮點設定("json_write_retry_seconds"))
 排行榜批次寫入報告數 = max(1, 整數設定("ranking_flush_reports"))
+玩家成績批次查詢戰鬥數 = max(1, 整數設定("player_stats_batch_size"))
 台灣時區 = timezone(timedelta(hours=8))
 
 
@@ -1660,6 +1662,118 @@ def 查詢玩家成績(
     }
 
 
+def 建立玩家成績批次查詢(戰鬥_id清單: list[int]) -> str:
+    # playerDetails 與 damageDone 必須維持「單一 fight」語意，否則多場通關會被 FFLogs 聚合成同一張表，
+    # rDPS/aDPS 分母、停手時間與玩家列表都會失去逐場可追溯性。這裡用 GraphQL alias 把多個單 fight
+    # 查詢包進同一個 HTTP request，降低 workflow 遇到多場戰鬥 report 時的 API request 數量。
+    欄位片段: list[str] = []
+    for 索引, 戰鬥_id in enumerate(戰鬥_id清單):
+        欄位片段.append(
+            f"""
+      playerDetails_{索引}: playerDetails(
+        fightIDs: [{戰鬥_id}],
+        encounterID: $encounterID,
+        difficulty: $difficulty,
+        killType: Kills,
+        translate: true,
+        includeCombatantInfo: false
+      )
+      damageDone_{索引}: table(
+        dataType: DamageDone,
+        fightIDs: [{戰鬥_id}],
+        encounterID: $encounterID,
+        difficulty: $difficulty,
+        killType: Kills,
+        hostilityType: Friendlies,
+        viewBy: Source,
+        translate: true
+      )
+      rankings_{索引}: rankings(
+        fightIDs: [{戰鬥_id}],
+        encounterID: $encounterID,
+        difficulty: $difficulty,
+        playerMetric: dps,
+        timeframe: Historical
+      )
+"""
+        )
+
+    return f"""
+query FightPlayerStatsBatch($code: String!, $encounterID: Int!, $difficulty: Int!) {{
+  reportData {{
+    report(code: $code) {{
+{''.join(欄位片段)}
+    }}
+  }}
+}}
+"""
+
+
+def 查詢多場玩家成績(
+    session: requests.Session,
+    認證池: FFLogs認證池,
+    副本設定: dict[str, Any],
+    報告代碼: str,
+    戰鬥_id清單: list[int],
+) -> dict[int, dict[str, Any]]:
+    def 查詢批次(批次戰鬥_id清單: list[int]) -> dict[int, dict[str, Any]]:
+        資料 = 執行_graphql(
+            session,
+            認證池,
+            建立玩家成績批次查詢(批次戰鬥_id清單),
+            {
+                "code": 報告代碼,
+                "encounterID": 副本設定["encounter_id"],
+                "difficulty": 副本設定["difficulty"],
+            },
+        )
+        報告 = ((資料.get("reportData") or {}).get("report")) or {}
+        批次成績索引: dict[int, dict[str, Any]] = {}
+        for 索引, 戰鬥_id in enumerate(批次戰鬥_id清單):
+            批次成績索引[戰鬥_id] = {
+                "player_details": 報告.get(f"playerDetails_{索引}"),
+                "damage_done": 報告.get(f"damageDone_{索引}"),
+                "rankings": 報告.get(f"rankings_{索引}"),
+            }
+        return 批次成績索引
+
+    def 安全查詢批次(批次戰鬥_id清單: list[int]) -> dict[int, dict[str, Any]]:
+        try:
+            return 查詢批次(批次戰鬥_id清單)
+        except FFLogs報告存取錯誤:
+            raise
+        except FFLogsGraphQL錯誤 as 錯誤:
+            if len(批次戰鬥_id清單) <= 1:
+                raise
+
+            # 若 FFLogs 拒絕較大的 alias 查詢，改切半重試；這保留「能省 request 就省」，
+            # 也避免一次大型批次失敗時整份 report 無法整理。
+            中間 = len(批次戰鬥_id清單) // 2
+            print(
+                f"{報告代碼} 玩家成績批次查詢失敗，改切半重試："
+                f"{批次戰鬥_id清單}（{錯誤}）",
+                file=sys.stderr,
+            )
+            前半段 = 安全查詢批次(批次戰鬥_id清單[:中間])
+            後半段 = 安全查詢批次(批次戰鬥_id清單[中間:])
+            return {**前半段, **後半段}
+
+    有效戰鬥_id清單: list[int] = []
+    已加入戰鬥_id: set[int] = set()
+    for 戰鬥_id in 戰鬥_id清單:
+        if type(戰鬥_id) is not int or 戰鬥_id in 已加入戰鬥_id:
+            continue
+        已加入戰鬥_id.add(戰鬥_id)
+        有效戰鬥_id清單.append(戰鬥_id)
+
+    成績索引: dict[int, dict[str, Any]] = {}
+    for 起點 in range(0, len(有效戰鬥_id清單), 玩家成績批次查詢戰鬥數):
+        批次戰鬥_id清單 = 有效戰鬥_id清單[起點 : 起點 + 玩家成績批次查詢戰鬥數]
+        成績索引.update(安全查詢批次(批次戰鬥_id清單))
+
+    return 成績索引
+
+
 def 遞迴尋找字典(內容: Any) -> list[dict[str, Any]]:
     if isinstance(內容, dict):
         結果 = [內容]
@@ -2276,9 +2390,11 @@ def 建立報告成績(
 
     整理後戰鬥列表: list[dict[str, Any]] = []
     報告起始時間戳記 = 報告.get("startTime") or 淺層報告.get("startTime")
+    戰鬥_id清單 = [戰鬥.get("id") for 戰鬥 in 戰鬥列表 if type(戰鬥.get("id")) is int]
+    玩家成績索引 = 查詢多場玩家成績(session, 認證池, 副本設定, 報告代碼, 戰鬥_id清單)
     for 戰鬥 in 戰鬥列表:
         戰鬥_id = 戰鬥.get("id")
-        if not isinstance(戰鬥_id, int):
+        if type(戰鬥_id) is not int:
             continue
 
         戰鬥時間毫秒 = 轉_float(戰鬥.get("combatTime"))
@@ -2288,7 +2404,10 @@ def 建立報告成績(
             if 戰鬥開始 is not None and 戰鬥結束 is not None:
                 戰鬥時間毫秒 = 戰鬥結束 - 戰鬥開始
 
-        原始成績 = 查詢玩家成績(session, 認證池, 副本設定, 報告代碼, 戰鬥_id)
+        原始成績 = 玩家成績索引.get(
+            戰鬥_id,
+            {"player_details": None, "damage_done": None, "rankings": None},
+        )
         傷害時間資訊 = 計算傷害時間資訊(原始成績, 戰鬥時間毫秒)
         傷害計算時間毫秒 = 轉_float(傷害時間資訊.get("damage_time_ms")) or 戰鬥時間毫秒
         紀錄時間戳記 = 相對戰鬥時間轉實際時間(報告起始時間戳記, 戰鬥.get("startTime"))

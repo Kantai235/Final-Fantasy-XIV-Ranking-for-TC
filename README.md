@@ -187,13 +187,13 @@ npm run validate:data
 npm run check
 ```
 
-執行資料建置與前端資料契約測試：
+執行資料管線、資料建置與前端資料契約測試：
 
 ```bash
 npm test
 ```
 
-其中 `npm run test:frontend-data` 會檢查前端資料讀取邊界、`useRankingApp()` 回傳物件的 shorthand 變數，以及分享網址狀態的相容性。它會覆蓋舊版 query 連結、`/user/{玩家}`、`/stats/{副本 key}`、`/jobs/{職業}`、`/servers/{左}/vs/{右}` 與子路徑部署情境，避免 SEO/OG 路徑調整時讓既有分享連結失效。
+其中 `npm run test:fetch-fflogs` 會確認單一 report 內多場通關戰鬥會以 GraphQL alias 批次查詢玩家成績，避免每場 fight 各自增加一個 API request。`npm run test:frontend-data` 會檢查前端資料讀取邊界、`useRankingApp()` 回傳物件的 shorthand 變數，以及分享網址狀態的相容性。它會覆蓋舊版 query 連結、`/user/{玩家}`、`/stats/{副本 key}`、`/jobs/{職業}`、`/servers/{左}/vs/{右}` 與子路徑部署情境，避免 SEO/OG 路徑調整時讓既有分享連結失效。
 
 清理既有 `data/rankings/*.reports/*.json` 裡可重查的大型 FFLogs raw 欄位時，先預覽再正式執行：
 
@@ -394,5 +394,5 @@ npm run cloudflare:estimate
 - `data/state.json` 是抓取進度狀態，手動修改前請先確認目前掃描狀態。
 - `public/data/users/` 是由 `scripts/build_user_data.mjs` 重新產生的資料。
 - `public/data/rankings/` 是由 `fetch_fflogs.py --rebuild-public` 或 `--split-rankings` 重新產生的公開排行榜資料；若副本列在 `public/data/encounters.json`，就必須有對應公開 ranking 檔案。
-- FFLogs API 有限流，`config/fflogs.json` 可調整請求限制、重試與冷卻時間。
+- FFLogs API 有限流，`config/fflogs.json` 可調整請求限制、重試、冷卻時間與單一 report 多 fight 的玩家成績批次大小。
 - 排行榜只統計公開報告中可解析且符合繁中服條件的資料。
