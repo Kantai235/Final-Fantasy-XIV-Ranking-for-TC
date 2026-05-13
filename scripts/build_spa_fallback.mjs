@@ -642,6 +642,23 @@ ${uniqueUrls.map((url) => `  <url><loc>${escapeXml(url)}</loc></url>`).join("\n"
 `;
 }
 
+function buildRobotsTxt() {
+  const sitemapUrl = new URL("sitemap.xml", siteUrl).href;
+  // Facebook 分享偵錯工具會把 robots.txt 內沒有明確 allowlist 視為可能阻擋爬取。
+  // 這裡保留全站允許，同時明列 Facebook 的兩個常見社群預覽 crawler。
+  return `User-agent: facebookexternalhit
+Allow: /
+
+User-agent: Facebot
+Allow: /
+
+User-agent: *
+Allow: /
+
+Sitemap: ${sitemapUrl}
+`;
+}
+
 const indexHtml = readFileSync(indexPath, "utf8");
 const sitemapUrls = [];
 
@@ -705,13 +722,7 @@ for (const user of users) {
 await writeQueuedOgPngImages();
 
 writeTextFile(join(distDir, "sitemap.xml"), buildSitemap(sitemapUrls));
-writeTextFile(
-  join(distDir, "robots.txt"),
-  `User-agent: *
-Allow: /
-Sitemap: ${new URL("sitemap.xml", siteUrl).href}
-`,
-);
+writeTextFile(join(distDir, "robots.txt"), buildRobotsTxt());
 
 console.log(
   `Built SPA fallback at dist/404.html, ${routePages.length - 1} route meta pages, ${statsEncounterPages.length} stats pages, ${jobPages.length} job pages, ${serverComparePages.length} server compare pages, ${userPageCount} user share pages and ${queuedOgPngImages.length} PNG OG images.`,
