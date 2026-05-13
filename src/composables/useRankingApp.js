@@ -143,6 +143,7 @@ const 隊伍榜資料 = ref(null);
 const 隊伍榜讀取中 = ref(false);
 const 隊伍榜錯誤訊息 = ref("");
 const 隊伍榜副本鍵值 = ref(預設隊伍榜副本鍵值);
+const 隊伍榜副本選單開啟 = ref(false);
 const 隊伍榜版本範圍 = ref(預設版本紀錄範圍);
 const 伺服器對比資料 = ref(null);
 const 伺服器對比讀取中 = ref(false);
@@ -370,6 +371,7 @@ function 選擇職業(職業代碼) {
 function 切換職業選單() {
   副本選單開啟.value = false;
   統計副本選單開啟.value = false;
+  隊伍榜副本選單開啟.value = false;
   統計職業選單開啟.value = false;
   職業分析選單開啟.value = false;
   使用者職業選單開啟.value = false;
@@ -401,6 +403,7 @@ function 選擇使用者職業(職業代碼) {
 function 切換使用者職業選單() {
   副本選單開啟.value = false;
   統計副本選單開啟.value = false;
+  隊伍榜副本選單開啟.value = false;
   統計職業選單開啟.value = false;
   職業選單開啟.value = false;
   職業分析選單開啟.value = false;
@@ -417,6 +420,7 @@ function 切換副本選單() {
   職業選單開啟.value = false;
   使用者職業選單開啟.value = false;
   統計副本選單開啟.value = false;
+  隊伍榜副本選單開啟.value = false;
   統計職業選單開啟.value = false;
   職業分析選單開啟.value = false;
   副本選單開啟.value = !副本選單開啟.value;
@@ -441,6 +445,7 @@ function 切換統計副本選單() {
   副本選單開啟.value = false;
   職業選單開啟.value = false;
   使用者職業選單開啟.value = false;
+  隊伍榜副本選單開啟.value = false;
   統計職業選單開啟.value = false;
   職業分析選單開啟.value = false;
   統計副本選單開啟.value = !統計副本選單開啟.value;
@@ -454,6 +459,22 @@ function 選擇統計副本(副本) {
 function 處理統計副本選單失焦(event) {
   if (!event.currentTarget.contains(event.relatedTarget)) {
     統計副本選單開啟.value = false;
+  }
+}
+
+function 切換隊伍榜副本選單() {
+  副本選單開啟.value = false;
+  職業選單開啟.value = false;
+  使用者職業選單開啟.value = false;
+  統計副本選單開啟.value = false;
+  統計職業選單開啟.value = false;
+  職業分析選單開啟.value = false;
+  隊伍榜副本選單開啟.value = !隊伍榜副本選單開啟.value;
+}
+
+function 處理隊伍榜副本選單失焦(event) {
+  if (!event.currentTarget.contains(event.relatedTarget)) {
+    隊伍榜副本選單開啟.value = false;
   }
 }
 
@@ -474,6 +495,7 @@ function 選擇統計職業(職業代碼) {
 function 切換統計職業選單() {
   副本選單開啟.value = false;
   統計副本選單開啟.value = false;
+  隊伍榜副本選單開啟.value = false;
   職業選單開啟.value = false;
   使用者職業選單開啟.value = false;
   職業分析選單開啟.value = false;
@@ -489,6 +511,7 @@ function 處理統計職業選單失焦(event) {
 function 切換職業分析選單() {
   副本選單開啟.value = false;
   統計副本選單開啟.value = false;
+  隊伍榜副本選單開啟.value = false;
   統計職業選單開啟.value = false;
   職業選單開啟.value = false;
   使用者職業選單開啟.value = false;
@@ -1730,9 +1753,34 @@ const 隊伍榜副本列表 = computed(() => {
   return Array.isArray(隊伍榜資料.value?.encounters) ? 隊伍榜資料.value.encounters : [];
 });
 
+const 隊伍榜副本分組 = computed(() => {
+  const 分組索引 = new Map();
+
+  for (const 分類 of 副本分類順序) {
+    分組索引.set(分類, []);
+  }
+
+  for (const 副本 of 隊伍榜副本列表.value) {
+    const 分類 = 副本.encounter_category || "其他";
+    if (!分組索引.has(分類)) {
+      分組索引.set(分類, []);
+    }
+    分組索引.get(分類).push(副本);
+  }
+
+  return Array.from(分組索引.entries())
+    .map(([分類, 副本列表]) => ({
+      分類,
+      副本列表,
+    }))
+    .filter((分組) => 分組.副本列表.length > 0);
+});
+
 const 目前隊伍榜副本 = computed(() => {
   return 隊伍榜副本列表.value.find((副本) => 副本.encounter_key === 隊伍榜副本鍵值.value) || null;
 });
+
+const 隊伍榜副本選單文字 = computed(() => 目前隊伍榜副本.value?.encounter_name || "選擇副本");
 
 const 顯示隊伍榜版本篩選 = computed(() => 副本支援版本篩選(目前隊伍榜副本.value));
 const 有效隊伍榜版本範圍 = computed(() => 取得有效版本紀錄範圍(目前隊伍榜副本.value, 隊伍榜版本範圍.value));
@@ -3403,6 +3451,7 @@ function 切換到伺服器對比() {
 
 function 選擇隊伍榜副本(副本鍵值) {
   隊伍榜副本鍵值.value = 副本鍵值 || 預設隊伍榜副本鍵值;
+  隊伍榜副本選單開啟.value = false;
   if (隊伍榜資料.value) {
     套用隊伍榜有效副本鍵值();
   }
@@ -3813,6 +3862,7 @@ onUnmounted(() => {
     隊伍榜讀取中,
     隊伍榜錯誤訊息,
     隊伍榜副本鍵值,
+    隊伍榜副本選單開啟,
     隊伍榜版本範圍,
     伺服器對比資料,
     伺服器對比讀取中,
@@ -4003,7 +4053,9 @@ onUnmounted(() => {
     近期動態角色列表,
     近期動態概要,
     隊伍榜副本列表,
+    隊伍榜副本分組,
     目前隊伍榜副本,
+    隊伍榜副本選單文字,
     顯示隊伍榜版本篩選,
     有效隊伍榜版本範圍,
     目前隊伍榜來源,
@@ -4110,6 +4162,8 @@ onUnmounted(() => {
     切換到近期動態,
     切換到隊伍榜,
     切換到伺服器對比,
+    切換隊伍榜副本選單,
+    處理隊伍榜副本選單失焦,
     選擇隊伍榜副本,
     交換伺服器對比,
     提交使用者搜尋,

@@ -11,14 +11,37 @@ export default {
 
 <template>
   <section class="隊伍榜工具列" aria-label="隊伍榜篩選">
-    <label class="欄位">
+    <div class="欄位 副本選單欄位" @focusout="處理隊伍榜副本選單失焦">
       <span>副本</span>
-      <select :value="隊伍榜副本鍵值" @change="選擇隊伍榜副本($event.target.value)">
-        <option v-for="副本 in 隊伍榜副本列表" :key="副本.encounter_key" :value="副本.encounter_key">
-          {{ 副本.encounter_name }}
-        </option>
-      </select>
-    </label>
+      <div class="副本選單">
+        <button
+          class="副本選單按鈕"
+          type="button"
+          :aria-expanded="隊伍榜副本選單開啟"
+          aria-haspopup="true"
+          @click="切換隊伍榜副本選單"
+        >
+          <span class="副本選單目前值">{{ 隊伍榜副本選單文字 }}</span>
+          <span class="選單箭頭">▾</span>
+        </button>
+
+        <div v-if="隊伍榜副本選單開啟" class="副本選單面板" role="menu" aria-label="隊伍榜副本">
+          <section v-for="分組 in 隊伍榜副本分組" :key="分組.分類" class="副本分類群">
+            <p class="副本分類標題">{{ 分組.分類 }}</p>
+            <button
+              v-for="副本 in 分組.副本列表"
+              :key="副本.encounter_key"
+              class="副本選單項"
+              type="button"
+              :class="{ 已選取: 隊伍榜副本鍵值 === 副本.encounter_key }"
+              @click="選擇隊伍榜副本(副本.encounter_key)"
+            >
+              {{ 副本.encounter_name }}
+            </button>
+          </section>
+        </div>
+      </div>
+    </div>
     <label v-if="顯示隊伍榜版本篩選" class="欄位">
       <span>版本紀錄</span>
       <select v-model="隊伍榜版本範圍">
