@@ -10,6 +10,7 @@
 - Cloudflare 預設會依副檔名快取靜態資源，但不會預設快取 HTML 或 JSON。本專案最大的流量壓力正是 `public/data/**/*.json`，所以必須用 Cache Rules 明確設定。
 - Cloudflare Free 方案可設定 Edge Cache TTL，但最短 Edge TTL 是 2 小時；本專案每半小時更新資料，因此不能只靠 TTL 自然過期，必須在 GitHub Pages 部署成功後透過 Purge API 主動清除會變動的路徑。
 - Cloudflare Rate Limiting Rules 可在邊緣節點對超量請求回應 429；Free 方案目前只有 1 條規則、10 秒計數週期，因此本專案採用保守的單條全站節流規則。
+- Facebook 分享偵錯工具若回 403，通常不是 GitHub Pages 靜態檔本身，而是 Cloudflare 的 Security Level、Under Attack mode、國家/ASN 自訂規則或節流擋到 Meta 爬蟲；Meta 常用 ASN 為 `AS32934` 與 `AS63293`。
 
 參考文件：
 
@@ -57,6 +58,8 @@ npm run cloudflare:purge
 
 ## 建議節流策略
 
+`scripts/apply_cloudflare_rules.mjs` 會先在 `http_request_firewall_custom` phase 建立 Facebook 分享爬蟲例外規則。這條規則只套用於本 hostname 的 GET/HEAD 請求，條件是來源 ASN 為 `32934` / `63293`，或 Cloudflare 已驗證的 Facebook bot，並跳過後續自訂規則、Rate Limiting、Super Bot Fight Mode、WAF Managed Rules、Security Level、User Agent Blocking 與 Browser Integrity Check。這是為了避免 Facebook 分享偵錯工具讀不到靜態 HTML 與 OG 圖而回報 403；一般使用者與未驗證的仿冒 User-Agent 不會因這條規則直接放行。
+
 `scripts/apply_cloudflare_rules.mjs` 預設也會建立 `http_ratelimit` phase 的單條規則：
 
 - 條件：非 verified bot，且路徑不是 `/robots.txt`。
@@ -84,8 +87,8 @@ CLOUDFLARE_HOSTNAME=ranking.init.engineer
 規則管理 token 最小權限：
 
 - `Zone > Cache Rules > Edit`（新版介面可能顯示為 `Cache Settings Write`）
-- Rate Limiting 若要由腳本套用，另需 `Zone WAF Edit`（新版介面可能顯示為 `Zone WAF Write`）
-- 若只想讓 workflow 管理 Cache Rules，可在 GitHub Variables 設定 `CLOUDFLARE_MANAGE_RATE_LIMIT=false`，此時 token 不需要 WAF 權限。
+- Facebook 分享爬蟲例外與 Rate Limiting 若要由腳本套用，另需 `Zone WAF Edit`（新版介面可能顯示為 `Zone WAF Write`）
+- 若只想讓 workflow 管理 Cache Rules 與 Facebook 分享爬蟲例外、不要管理 Rate Limiting，可在 GitHub Variables 設定 `CLOUDFLARE_MANAGE_RATE_LIMIT=false`；此時 token 仍需要 WAF 權限，因為 Facebook 例外屬於 WAF Custom Rules。
 - GitHub Actions 部署後清除快取另需一組較低權限的 `CLOUDFLARE_PURGE_API_TOKEN`，權限只要 `Cache Purge`。
 
 正式套用：
@@ -108,7 +111,7 @@ CLOUDFLARE_RULES_API_TOKEN
 CLOUDFLARE_PURGE_API_TOKEN
 ```
 
-workflow 會在安裝依賴後先執行 `npm run cloudflare:apply`，確保 `/data/*`、HTML route、OG 圖、assets 與 Rate Limiting 規則存在；部署成功後再執行 `npm run cloudflare:purge`。如果不想讓 workflow 管理 Rate Limiting Rules，可在 repository variables 設定：
+workflow 會在安裝依賴後先執行 `npm run cloudflare:apply`，確保 `/data/*`、HTML route、OG 圖、assets、Facebook 分享爬蟲例外與 Rate Limiting 規則存在；部署成功後再執行 `npm run cloudflare:purge`。如果不想讓 workflow 管理 Rate Limiting Rules，可在 repository variables 設定：
 
 ```text
 CLOUDFLARE_MANAGE_RATE_LIMIT=false

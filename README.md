@@ -373,7 +373,7 @@ npm run build
 
 ### Cloudflare CDN 與節流
 
-為降低 GitHub Pages origin 流量，正式網域建議放在 Cloudflare 橘雲代理後方，並套用本專案的 Cache Rules、部署後 purge 與 Rate Limiting Rules。Cloudflare 預設不快取 JSON，因此 `/data/*` 必須明確設定快取；否則排行榜與個人成績單資料仍會直接打到 GitHub Pages。
+為降低 GitHub Pages origin 流量，正式網域建議放在 Cloudflare 橘雲代理後方，並套用本專案的 Cache Rules、部署後 purge、Rate Limiting Rules 與 Facebook 分享爬蟲例外規則。Cloudflare 預設不快取 JSON，因此 `/data/*` 必須明確設定快取；否則排行榜與個人成績單資料仍會直接打到 GitHub Pages。
 
 檢查將套用的規則：
 
@@ -387,7 +387,7 @@ npm run cloudflare:apply -- --dry-run
 npm run cloudflare:apply
 ```
 
-GitHub Actions 每次執行時會先嘗試用 `CLOUDFLARE_RULES_API_TOKEN` 同步 Cloudflare Cache Rules / Rate Limiting Rules；若這個 secret 沒設定，會自動略過。部署成功後會再用 `CLOUDFLARE_PURGE_API_TOKEN` 或相容的 `CLOUDFLARE_API_TOKEN` 執行 `npm run cloudflare:purge` 清除會變動的快取。
+GitHub Actions 每次執行時會先嘗試用 `CLOUDFLARE_RULES_API_TOKEN` 同步 Cloudflare Cache Rules、Facebook 分享爬蟲例外與 Rate Limiting Rules；若這個 secret 沒設定，會自動略過。部署成功後會再用 `CLOUDFLARE_PURGE_API_TOKEN` 或相容的 `CLOUDFLARE_API_TOKEN` 執行 `npm run cloudflare:purge` 清除會變動的快取。
 
 估算目前 `dist/` 在不同 Cloudflare HIT ratio 下，大約能承載多少頁面載入：
 

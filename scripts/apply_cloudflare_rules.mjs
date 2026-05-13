@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 
 const CloudflareApiBase = "https://api.cloudflare.com/client/v4";
 const CacheRulesPhase = "http_request_cache_settings";
+const FirewallCustomPhase = "http_request_firewall_custom";
 const RateLimitPhase = "http_ratelimit";
 const ManagedRuleRefPrefix = "ffxiv_tc_";
 const ManagedRuleDescriptionPrefix = "FFXIV TC - ";
@@ -208,15 +209,44 @@ function buildRateLimitRule() {
   };
 }
 
+function buildFacebookCrawlerSkipRule() {
+  const metaCrawlerExpression = [
+    `ip.geoip.asnum in {32934 63293}`,
+    `(cf.client.bot and lower(http.user_agent) contains "facebook")`,
+  ].join(" or ");
+
+  return {
+    ref: "ffxiv_tc_facebook_crawler_skip",
+    description: `${ManagedRuleDescriptionPrefix}Facebook 分享預覽爬蟲例外`,
+    // Facebook 分享偵錯工具會由 Meta ASN 抓取頁面；Cloudflare 官方建議對 AS32934 / AS63293 建立 skip rule。
+    // 這條規則只放行本靜態站的 GET/HEAD 預覽請求，避免社群爬蟲被 Security Level、BIC 或後續自訂規則擋成 403。
+    expression: [
+      `(http.host eq "${SiteHostname}")`,
+      `(http.request.method in {"GET" "HEAD"})`,
+      `(${metaCrawlerExpression})`,
+    ].join(" and "),
+    action: "skip",
+    action_parameters: {
+      ruleset: "current",
+      phases: ["http_ratelimit", "http_request_sbfm", "http_request_firewall_managed"],
+      products: ["securityLevel", "uaBlock", "bic"],
+    },
+    logging: {
+      enabled: true,
+    },
+    enabled: true,
+  };
+}
+
 function isManagedRule(rule) {
   const ref = String(rule?.ref || "");
   const description = String(rule?.description || "");
   return ref.startsWith(ManagedRuleRefPrefix) || description.startsWith(ManagedRuleDescriptionPrefix);
 }
 
-function mergeRules(existingRules, managedRules) {
+function mergeRules(existingRules, managedRules, { managedFirst = false } = {}) {
   const unmanagedRules = Array.isArray(existingRules) ? existingRules.filter((rule) => !isManagedRule(rule)) : [];
-  return [...unmanagedRules, ...managedRules];
+  return managedFirst ? [...managedRules, ...unmanagedRules] : [...unmanagedRules, ...managedRules];
 }
 
 async function cloudflareRequest(path, options = {}) {
@@ -247,11 +277,11 @@ async function getEntrypointRuleset(phase) {
   return cloudflareRequest(`/zones/${ZoneId}/rulesets/phases/${phase}/entrypoint`);
 }
 
-async function upsertEntrypointRuleset(phase, name, managedRules) {
+async function upsertEntrypointRuleset(phase, name, managedRules, options = {}) {
   const existingRuleset = await getEntrypointRuleset(phase);
-  const rules = mergeRules(existingRuleset?.rules || [], managedRules);
+  const rules = mergeRules(existingRuleset?.rules || [], managedRules, options);
   const payload = {
-    name,
+    name: existingRuleset?.name || name,
     description: "由 scripts/apply_cloudflare_rules.mjs 管理的 FFXIV TC 靜態站台規則",
     kind: "zone",
     phase,
@@ -276,9 +306,11 @@ async function upsertEntrypointRuleset(phase, name, managedRules) {
 
 async function main() {
   const cacheRules = buildCacheRules();
+  const facebookCrawlerSkipRule = buildFacebookCrawlerSkipRule();
   const rateLimitRule = buildRateLimitRule();
   const preview = {
     hostname: SiteHostname,
+    facebook_crawler_skip_rule: facebookCrawlerSkipRule,
     cache_rules: cacheRules,
     rate_limit_rule: SkipRateLimit ? null : rateLimitRule,
   };
@@ -292,6 +324,9 @@ async function main() {
     throw new Error("請先設定 CLOUDFLARE_ZONE_ID 與 CLOUDFLARE_API_TOKEN，或加上 --dry-run 檢視將套用的規則。");
   }
 
+  await upsertEntrypointRuleset(FirewallCustomPhase, "FFXIV TC WAF Custom Rules", [facebookCrawlerSkipRule], {
+    managedFirst: true,
+  });
   await upsertEntrypointRuleset(CacheRulesPhase, "FFXIV TC Cache Rules", cacheRules);
   if (!SkipRateLimit) {
     await upsertEntrypointRuleset(RateLimitPhase, "FFXIV TC Rate Limiting Rules", [rateLimitRule]);
