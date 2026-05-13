@@ -27,6 +27,7 @@ const minimumDamageActivePercent = 50;
 const activityWindowDays = 7;
 const recentActivityLimit = 40;
 const teamRecordsPerEncounterLimit = 50;
+const versionRecordModes = ["all", "valid", "obsolete"];
 
 const jobRoleGroups = [
   {
@@ -281,6 +282,57 @@ function entryRecordedAtMs(entry) {
   return Number.isNaN(time) ? 0 : time;
 }
 
+function getEncounterVersionCutoff(encounter) {
+  const rule = encounter?.version_cutoff;
+  if (!rule || typeof rule !== "object" || !rule.obsolete_after_iso) {
+    return null;
+  }
+
+  const cutoffTime = new Date(rule.obsolete_after_iso).getTime();
+  if (Number.isNaN(cutoffTime)) {
+    return null;
+  }
+
+  return {
+    ...rule,
+    obsolete_after_iso: new Date(cutoffTime).toISOString(),
+  };
+}
+
+function isObsoleteRecord(entry, encounter) {
+  const cutoff = getEncounterVersionCutoff(encounter);
+  if (!cutoff) {
+    return false;
+  }
+
+  const recordedAt = entryRecordedAtMs(entry);
+  const cutoffAt = new Date(cutoff.obsolete_after_iso).getTime();
+  return recordedAt > 0 && !Number.isNaN(cutoffAt) && recordedAt >= cutoffAt;
+}
+
+function attachVersionState(entry, encounter) {
+  const cutoff = getEncounterVersionCutoff(encounter);
+  if (!cutoff) {
+    return entry;
+  }
+
+  const isObsolete = isObsoleteRecord(entry, encounter);
+  entry.is_obsolete_record = isObsolete;
+  entry.version_status = isObsolete ? "obsolete" : "valid";
+  entry.version_cutoff_iso = cutoff.obsolete_after_iso;
+  return entry;
+}
+
+function filterEntriesByVersionMode(entries, versionMode) {
+  if (versionMode === "obsolete") {
+    return entries.filter((entry) => entry.is_obsolete_record);
+  }
+  if (versionMode === "valid") {
+    return entries.filter((entry) => !entry.is_obsolete_record);
+  }
+  return entries;
+}
+
 function buildEntrySummary(entry) {
   return {
     id: entry.id,
@@ -301,6 +353,9 @@ function buildEntrySummary(entry) {
     rank: entry.rank,
     job_rank: entry.job_rank,
     performance: entry.performance || null,
+    is_obsolete_record: Boolean(entry.is_obsolete_record),
+    version_status: entry.version_status || null,
+    version_cutoff_iso: entry.version_cutoff_iso || null,
   };
 }
 
@@ -314,8 +369,12 @@ function attachRdpsPerformance(entries) {
       qualified: false,
       active_threshold: minimumDamageActivePercent,
       sample_count: 0,
-      reason: "active_low_or_missing",
+      reason: entry.is_obsolete_record ? "obsolete_record" : "active_low_or_missing",
     };
+
+    if (entry.is_obsolete_record) {
+      continue;
+    }
 
     if (!entry?.encounter_key || !entry?.job || toNumber(entry.rdps) === null || !isDamageComparisonEntry(entry)) {
       continue;
@@ -581,7 +640,7 @@ function collectScopeDistribution(entries, scopeKeyForEntry) {
   };
 }
 
-function collectEncounterStats(encounter, entries, updatedAtIso) {
+function collectEncounterStatsCore(encounter, entries, updatedAtIso) {
   const distribution = collectScopeDistribution(entries, encounter.key);
 
   return {
@@ -596,6 +655,29 @@ function collectEncounterStats(encounter, entries, updatedAtIso) {
     top_server: distribution.server_stats[0] || null,
     top_job: distribution.job_stats[0] || null,
   };
+}
+
+function collectEncounterStats(encounter, entries, updatedAtIso) {
+  const stats = collectEncounterStatsCore(encounter, entries, updatedAtIso);
+  const versionCutoff = getEncounterVersionCutoff(encounter);
+  if (!versionCutoff) {
+    return stats;
+  }
+
+  // 過版切片在 Data Building Layer 預先算好，讓 Vue 只切換已完成的統計結果。
+  // 這能避免前端為了「有效版本」重做去重、職業分布、伺服器分布與傷害統計，降低頁面間規則分歧。
+  stats.version_cutoff = versionCutoff;
+  stats.version_slices = Object.fromEntries(
+    versionRecordModes.map((versionMode) => [
+      versionMode,
+      {
+        ...collectEncounterStatsCore(encounter, filterEntriesByVersionMode(entries, versionMode), updatedAtIso),
+        version_cutoff: versionCutoff,
+        version_mode: versionMode,
+      },
+    ]),
+  );
+  return stats;
 }
 
 function buildJobRankIndex(rankingEntries) {
@@ -630,6 +712,44 @@ function buildJobRankIndex(rankingEntries) {
   }
 
   return rankIndex;
+}
+
+function clearRankMetadata(entry) {
+  entry.rank = null;
+  entry.job_rank = null;
+  entry.overall_rank = null;
+}
+
+function assignValidVersionJobRanks(entries) {
+  // 個人成績單的職業 Rank 代表「副本仍屬當版本難度時」的排名。
+  // 過版後的裝備品級與可跳過機制會改變成績意義，因此過版紀錄不參與排名，也不保留舊 rank。
+  const bestValidByCharacterJob = new Map();
+
+  for (const entry of entries || []) {
+    clearRankMetadata(entry);
+    if (entry.is_obsolete_record) {
+      continue;
+    }
+
+    const key = characterJobKey(entry);
+    if (isBetterEntry(entry, bestValidByCharacterJob.get(key))) {
+      bestValidByCharacterJob.set(key, entry);
+    }
+  }
+
+  const bestValidEntries = Array.from(bestValidByCharacterJob.values());
+  for (const jobEntries of groupEntriesBy(bestValidEntries, (entry) => entry.job).values()) {
+    jobEntries.sort(compareEntriesByBestScore);
+    jobEntries.forEach((entry, index) => {
+      const rank = index + 1;
+      entry.rank = rank;
+      entry.job_rank = rank;
+    });
+  }
+}
+
+function indexToRank(index) {
+  return index >= 0 ? index + 1 : null;
 }
 
 function normalizeFileBaseName(characterName, usedNames) {
@@ -687,7 +807,7 @@ function makePublicEntry({ encounter, report, reportCode, fight, player, fightPl
     damage_time_ms: damageTimeMs,
   };
 
-  return {
+  const entry = {
     id: createId(signature),
     encounter_key: encounter.key,
     encounter_name: encounter.name,
@@ -729,6 +849,7 @@ function makePublicEntry({ encounter, report, reportCode, fight, player, fightPl
         job: teammate.job,
       })),
   };
+  return attachVersionState(entry, encounter);
 }
 
 function collectEntriesFromReports({ ranking, encounter }) {
@@ -807,7 +928,7 @@ function collectEntriesFromRankingEntries({ ranking, encounter }) {
   return (ranking.ranking_entries || [])
     .map((entry) => {
       const ranks = rankIndex.get(characterJobKey(entry)) || {};
-      return {
+      const normalizedEntry = {
         id: entry.id || createId({ encounter_key: encounter.key, entry }),
         encounter_key: encounter.key,
         encounter_name: encounter.name,
@@ -839,6 +960,7 @@ function collectEntriesFromRankingEntries({ ranking, encounter }) {
         overall_rank: ranks.overall_rank ?? entry.rank ?? null,
         duplicate_count: toNumber(entry.duplicate_count) || 1,
       };
+      return attachVersionState(normalizedEntry, encounter);
     })
     .filter((entry) => entry.character_name && entry.server && entry.job && entry.dps !== null);
 }
@@ -912,7 +1034,7 @@ function buildTeamRecord({ encounter, report, reportCode, fight }) {
     players: players.map((player) => `${player.character_name}@${player.server}:${player.job}`),
   };
 
-  return {
+  const record = {
     id: createId(identity),
     encounter_key: encounter.key,
     encounter_name: encounter.name,
@@ -929,6 +1051,7 @@ function buildTeamRecord({ encounter, report, reportCode, fight }) {
     total_dps: roundDamageStat(totalDps),
     players,
   };
+  return attachVersionState(record, encounter);
 }
 
 function collectTeamRecordsFromReports({ ranking, encounter }) {
@@ -1045,7 +1168,9 @@ function addEntry(usersByName, entry) {
   if ((Number.isNaN(lastRecordedAt) ? 0 : lastRecordedAt) < (Number.isNaN(recordedAt) ? 0 : recordedAt)) {
     user.last_recorded_at_iso = entry.recorded_at_iso;
   }
-  if (isBetterEntry(entry, user.best_entry)) {
+  // 個人成績單的最佳紀錄代表玩家在副本仍屬當版本難度時的表現；
+  // 過版後裝備品級與可跳過機制會改變分數意義，因此只用有效版本紀錄更新 best_entry。
+  if (!entry.is_obsolete_record && isBetterEntry(entry, user.best_entry)) {
     user.best_entry = entry;
   }
 
@@ -1141,8 +1266,9 @@ function buildUserPayload(user, generatedAtIso, updatedAtIsoByEncounter) {
       entries.sort(compareEntriesByTimeThenScore);
       const bestByJob = new Map();
       let bestEntry = null;
+      const validEntries = entries.filter((entry) => !entry.is_obsolete_record);
 
-      for (const entry of entries) {
+      for (const entry of validEntries) {
         if (isBetterEntry(entry, bestEntry)) {
           bestEntry = entry;
         }
@@ -1153,8 +1279,8 @@ function buildUserPayload(user, generatedAtIso, updatedAtIsoByEncounter) {
 
       return {
         encounter_key: encounterKey,
-        encounter_name: bestEntry?.encounter_name || encounterKey,
-        encounter_category: bestEntry?.encounter_category || null,
+        encounter_name: bestEntry?.encounter_name || entries[0]?.encounter_name || encounterKey,
+        encounter_category: bestEntry?.encounter_category || entries[0]?.encounter_category || null,
         updated_at_iso: updatedAtIsoByEncounter.get(encounterKey) || null,
         best_entry: bestEntry ? buildEntryPayload(bestEntry) : null,
         best_by_job: Array.from(bestByJob.values())
@@ -1384,23 +1510,47 @@ function buildActivityPayload(entries, generatedAtIso, latestRankingUpdatedAt) {
   };
 }
 
+function buildTeamEncounterPayload(encounterKey, records, versionMode = "all") {
+  const filteredRecords = filterEntriesByVersionMode(records, versionMode);
+  const sortedRecords = filteredRecords.slice().sort(compareTeamRecords);
+  const firstRecord = sortedRecords[0] || null;
+  const fallbackRecord = records[0] || null;
+  return {
+    encounter_key: encounterKey,
+    encounter_name: firstRecord?.encounter_name || fallbackRecord?.encounter_name || encounterKey,
+    encounter_category: firstRecord?.encounter_category || fallbackRecord?.encounter_category || null,
+    record_count: sortedRecords.length,
+    fastest_clear_seconds: firstRecord?.clear_time_seconds ?? null,
+    fastest_record: firstRecord,
+    records: sortedRecords.slice(0, teamRecordsPerEncounterLimit).map((record, index) => ({
+      ...record,
+      rank: index + 1,
+    })),
+  };
+}
+
 function buildTeamRankingsPayload(teamRecordsByEncounter, generatedAtIso, latestRankingUpdatedAt) {
   const encounters = Array.from(teamRecordsByEncounter.entries())
     .map(([encounterKey, records]) => {
-      const sortedRecords = records.slice().sort(compareTeamRecords);
-      const firstRecord = sortedRecords[0] || null;
-      return {
-        encounter_key: encounterKey,
-        encounter_name: firstRecord?.encounter_name || encounterKey,
-        encounter_category: firstRecord?.encounter_category || null,
-        record_count: sortedRecords.length,
-        fastest_clear_seconds: firstRecord?.clear_time_seconds ?? null,
-        fastest_record: firstRecord,
-        records: sortedRecords.slice(0, teamRecordsPerEncounterLimit).map((record, index) => ({
-          ...record,
-          rank: index + 1,
-        })),
-      };
+      const payload = buildTeamEncounterPayload(encounterKey, records);
+      const versionCutoff = records.find((record) => record.version_cutoff_iso)?.version_cutoff_iso;
+      if (versionCutoff) {
+        payload.version_cutoff = records.find((record) => record.version_cutoff_iso)
+          ? {
+              obsolete_after_iso: versionCutoff,
+            }
+          : null;
+        payload.version_slices = Object.fromEntries(
+          versionRecordModes.map((versionMode) => [
+            versionMode,
+            {
+              ...buildTeamEncounterPayload(encounterKey, records, versionMode),
+              version_mode: versionMode,
+            },
+          ]),
+        );
+      }
+      return payload;
     })
     .sort((left, right) => compareByLocale(left.encounter_category || "", right.encounter_category || "") || compareByLocale(left.encounter_name, right.encounter_name));
   const allRecords = encounters.flatMap((encounter) => encounter.records.map((record) => ({ ...record, encounter_name: encounter.encounter_name })));
@@ -1526,9 +1676,9 @@ function buildJobProfiles(entries, encounterStats) {
         job_record_count: distribution.job_record_count,
         entry_count: distribution.entry_count,
         encounter_count: encounters.length,
-        role_peer_rank: rolePeers.findIndex((item) => item.job === job) + 1 || null,
+        role_peer_rank: indexToRank(rolePeers.findIndex((item) => item.job === job)),
         role_peer_count: rolePeers.length,
-        rdps_peer_rank: damagePeers.findIndex((item) => item.job === job) + 1 || null,
+        rdps_peer_rank: indexToRank(damagePeers.findIndex((item) => item.job === job)),
         rdps_peer_count: damagePeers.length,
         damage_profile: buildDamageProfile(jobEntries),
         savage_damage_profile: buildDamageProfile(jobEntries.filter((entry) => savageDamageComparisonEncounterKeySet.has(entry.encounter_key))),
@@ -1632,6 +1782,27 @@ function buildServerComparePayload(entries, encounterStats, generatedAtIso, late
   };
 }
 
+function normalizeEncounterShare(encounterStatsItem, totalCharacterCount) {
+  const normalized = {
+    ...encounterStatsItem,
+    clear_share_percent: toPercent(encounterStatsItem.character_count, totalCharacterCount),
+  };
+
+  if (encounterStatsItem.version_slices && typeof encounterStatsItem.version_slices === "object") {
+    normalized.version_slices = Object.fromEntries(
+      Object.entries(encounterStatsItem.version_slices).map(([versionMode, versionStats]) => [
+        versionMode,
+        {
+          ...versionStats,
+          clear_share_percent: toPercent(versionStats.character_count, totalCharacterCount),
+        },
+      ]),
+    );
+  }
+
+  return normalized;
+}
+
 async function main() {
   assertInside(path.join(rootDir, "public", "data"), outputDir);
   assertInside(publicDataDir, globalStatsPath);
@@ -1660,6 +1831,7 @@ async function main() {
     const entries = ranking.reports
       ? collectEntriesFromReports({ ranking, encounter })
       : collectEntriesFromRankingEntries({ ranking, encounter });
+    assignValidVersionJobRanks(entries);
     const teamRecords = ranking.reports ? collectTeamRecordsFromReports({ ranking, encounter }) : [];
 
     encounterStats.push(collectEncounterStats(encounter, entries, ranking.updated_at_iso));
@@ -1710,10 +1882,9 @@ async function main() {
   const savageDamageComparisonEntries = allEntries.filter((entry) => savageDamageComparisonEncounterKeySet.has(entry.encounter_key));
   const totalEncounterClearCount = globalDistribution.character_count;
   const totalJobClearCount = globalDistribution.job_record_count;
-  const normalizedEncounterStats = encounterStats.map((encounter) => ({
-    ...encounter,
-    clear_share_percent: toPercent(encounter.character_count, overallCharacterKeys.size),
-  }));
+  const normalizedEncounterStats = encounterStats.map((encounter) =>
+    normalizeEncounterShare(encounter, overallCharacterKeys.size),
+  );
 
   await writeJson(path.join(outputDir, "index.json"), {
     schema_version: 1,

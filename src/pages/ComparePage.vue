@@ -38,6 +38,24 @@ export default {
         </div>
       </fieldset>
 
+      <label class="欄位">
+        <span>統計範圍</span>
+        <select v-model="比較副本鍵值">
+          <option v-for="副本 in 比較副本列表" :key="副本.key" :value="副本.key">
+            {{ 副本.name }}
+          </option>
+        </select>
+      </label>
+
+      <label v-if="顯示比較版本篩選" class="欄位">
+        <span>版本紀錄</span>
+        <select v-model="比較版本範圍">
+          <option v-for="選項 in 版本紀錄範圍選項" :key="選項.value" :value="選項.value">
+            {{ 選項.label }}
+          </option>
+        </select>
+      </label>
+
       <label class="欄位 使用者搜尋欄位">
         <span>玩家 A</span>
         <input
@@ -111,7 +129,10 @@ export default {
       <section class="統計面板 統計面板寬" aria-label="副本成績比較">
         <header class="統計面板標題">
           <h2>{{ 目前比較職能?.名稱 || "職能" }}成績比較</h2>
-          <span>{{ 比較角色左.character_name }}・{{ 比較角色右.character_name }}</span>
+          <span>
+            {{ 比較角色左.character_name }}・{{ 比較角色右.character_name }}・{{ 比較範圍文字 }}
+            <template v-if="顯示比較版本篩選">・{{ 取得版本紀錄範圍文字(有效比較版本範圍) }}</template>
+          </span>
         </header>
         <div class="統計表格外框">
           <table class="統計表格 比較表格">
@@ -132,7 +153,7 @@ export default {
                   </span>
                 </td>
                 <td>
-                  <div v-if="列.左" class="比較成績格">
+                  <div v-if="列.左" class="比較成績格" :class="{ 過版紀錄列: 列.左.best_entry.is_obsolete_record }">
                     <span class="職業標籤" :class="職業色彩類別(職業代碼色彩(列.左.best_entry.job))">
                       <img
                         v-if="職業Icon路徑(列.左.best_entry.job)"
@@ -145,12 +166,13 @@ export default {
                       <span>{{ 顯示職業名稱(列.左.best_entry.job) }}</span>
                     </span>
                     <strong>{{ 格式化傷害數值(列.左.best_entry.rdps) }}</strong>
+                    <span v-if="列.左.best_entry.is_obsolete_record" class="版本紀錄標籤">過版紀錄</span>
                     <small>Active {{ 格式化Active(列.左.best_entry.active_percent) }}・{{ 格式化排名(列.左.best_entry.job_rank ?? 列.左.best_entry.rank) }}</small>
                   </div>
                   <span v-else>-</span>
                 </td>
                 <td>
-                  <div v-if="列.右" class="比較成績格">
+                  <div v-if="列.右" class="比較成績格" :class="{ 過版紀錄列: 列.右.best_entry.is_obsolete_record }">
                     <span class="職業標籤" :class="職業色彩類別(職業代碼色彩(列.右.best_entry.job))">
                       <img
                         v-if="職業Icon路徑(列.右.best_entry.job)"
@@ -163,6 +185,7 @@ export default {
                       <span>{{ 顯示職業名稱(列.右.best_entry.job) }}</span>
                     </span>
                     <strong>{{ 格式化傷害數值(列.右.best_entry.rdps) }}</strong>
+                    <span v-if="列.右.best_entry.is_obsolete_record" class="版本紀錄標籤">過版紀錄</span>
                     <small>Active {{ 格式化Active(列.右.best_entry.active_percent) }}・{{ 格式化排名(列.右.best_entry.job_rank ?? 列.右.best_entry.rank) }}</small>
                   </div>
                   <span v-else>-</span>

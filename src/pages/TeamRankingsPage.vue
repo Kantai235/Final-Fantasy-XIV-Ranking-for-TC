@@ -19,6 +19,14 @@ export default {
         </option>
       </select>
     </label>
+    <label v-if="顯示隊伍榜版本篩選" class="欄位">
+      <span>版本紀錄</span>
+      <select v-model="隊伍榜版本範圍">
+        <option v-for="選項 in 版本紀錄範圍選項" :key="選項.value" :value="選項.value">
+          {{ 選項.label }}
+        </option>
+      </select>
+    </label>
   </section>
 
   <section class="隊伍榜區" aria-live="polite">
@@ -38,7 +46,10 @@ export default {
       <section class="統計面板 統計面板寬" aria-label="隊伍通關紀錄">
         <header class="統計面板標題">
           <h2>{{ 目前隊伍榜副本?.encounter_name || "隊伍榜" }}</h2>
-          <span>依通關時間排序，同場 8 人公開紀錄</span>
+          <span>
+            依通關時間排序，同場 8 人公開紀錄
+            <template v-if="顯示隊伍榜版本篩選">・{{ 取得版本紀錄範圍文字(有效隊伍榜版本範圍) }}</template>
+          </span>
         </header>
         <div class="統計表格外框">
           <table class="統計表格 隊伍榜表格">
@@ -46,14 +57,15 @@ export default {
               <tr>
                 <th scope="col" class="數字">排名</th>
                 <th scope="col">副本</th>
-                <th scope="col" class="數字">通關時間</th>
                 <th scope="col" class="數字">隊伍 rDPS</th>
                 <th scope="col">隊伍成員</th>
+                <th scope="col" class="數字">通關時間</th>
+                <th scope="col">紀錄時間</th>
                 <th scope="col">報告</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="紀錄 in 隊伍榜列" :key="紀錄.id">
+              <tr v-for="紀錄 in 隊伍榜列" :key="紀錄.id" :class="{ 過版紀錄列: 紀錄.is_obsolete_record }">
                 <td class="數字">{{ 格式化排名(紀錄.顯示排名) }}</td>
                 <td>
                   <span class="比較副本">
@@ -61,7 +73,6 @@ export default {
                     <strong>{{ 紀錄.encounter_name }}</strong>
                   </span>
                 </td>
-                <td class="數字">{{ 格式化通關時間(紀錄.clear_time_seconds) }}</td>
                 <td class="數字">{{ 格式化傷害數值(紀錄.total_rdps) }}</td>
                 <td class="隊伍成員欄位">
                   <div class="隊伍成員列表">
@@ -84,6 +95,13 @@ export default {
                       <small>{{ 成員.server }}</small>
                     </button>
                   </div>
+                </td>
+                <td class="數字">{{ 格式化通關時間(紀錄.clear_time_seconds) }}</td>
+                <td>
+                  <span class="緊湊紀錄時間">
+                    <span>{{ 格式化紀錄日期(紀錄.recorded_at_iso) }}</span>
+                    <span>{{ 格式化紀錄時刻(紀錄.recorded_at_iso) }}</span>
+                  </span>
                 </td>
                 <td>
                   <a v-if="紀錄.report_url" :href="紀錄.report_url" target="_blank" rel="noreferrer">FFLogs</a>

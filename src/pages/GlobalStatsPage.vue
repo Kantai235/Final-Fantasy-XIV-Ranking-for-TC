@@ -53,6 +53,14 @@ export default {
         </div>
       </div>
     </div>
+    <label v-if="顯示統計版本篩選" class="欄位">
+      <span>版本紀錄</span>
+      <select v-model="統計版本範圍">
+        <option v-for="選項 in 版本紀錄範圍選項" :key="選項.value" :value="選項.value">
+          {{ 選項.label }}
+        </option>
+      </select>
+    </label>
     <label class="欄位">
       <span>伺服器</span>
       <select v-model="統計伺服器篩選">

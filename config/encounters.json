@@ -47,7 +47,15 @@
     "encounter_id": 1071,
     "difficulty": 100,
     "enabled": true,
-    "scan_start_date": "2025-11-27"
+    "scan_start_date": "2025-11-27",
+    "version_cutoff": {
+      "patch": "7.1",
+      "obsolete_after_iso": "2026-04-21T10:00:00.000Z",
+      "obsolete_after_local": "2026-04-21 18:00",
+      "timezone": "Asia/Taipei",
+      "valid_label": "7.1 改版前",
+      "obsolete_label": "7.1 改版後"
+    }
   },
   {
     "key": "extreme_zoraal_ja",
@@ -57,7 +65,15 @@
     "encounter_id": 1072,
     "difficulty": 100,
     "enabled": true,
-    "scan_start_date": "2025-11-27"
+    "scan_start_date": "2025-11-27",
+    "version_cutoff": {
+      "patch": "7.1",
+      "obsolete_after_iso": "2026-04-21T10:00:00.000Z",
+      "obsolete_after_local": "2026-04-21 18:00",
+      "timezone": "Asia/Taipei",
+      "valid_label": "7.1 改版前",
+      "obsolete_label": "7.1 改版後"
+    }
   },
   {
     "key": "extreme_queen_eternal",

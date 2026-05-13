@@ -43,6 +43,15 @@ export default {
     </div>
   </div>
 
+  <label v-if="顯示排行榜版本篩選" class="欄位">
+    <span>版本紀錄</span>
+    <select v-model="排行榜版本範圍">
+      <option v-for="選項 in 版本紀錄範圍選項" :key="選項.value" :value="選項.value">
+        {{ 選項.label }}
+      </option>
+    </select>
+  </label>
+
   <label class="欄位">
     <span>伺服器</span>
     <select v-model="伺服器篩選">
@@ -138,6 +147,8 @@ export default {
     <input v-model="搜尋關鍵字" type="search" placeholder="搜尋玩家名稱" />
   </label>
 </section>
+
+<p v-if="排行榜版本說明文字" class="版本紀錄說明">{{ 排行榜版本說明文字 }}</p>
 
 <section class="表格區" aria-live="polite">
   <div v-if="讀取中" class="狀態列">讀取排行榜資料中</div>
@@ -294,7 +305,7 @@ export default {
         </tr>
       </thead>
       <tbody>
-        <tr v-for="(列, index) in 當頁排行列" :key="列.id">
+        <tr v-for="(列, index) in 當頁排行列" :key="列.id" :class="{ 過版紀錄列: 列.過版紀錄 }">
           <td class="排名" :class="排名色彩類別(排行列顯示排名(index))">
             {{ 格式化排名(排行列顯示排名(index)) }}
           </td>
@@ -302,6 +313,7 @@ export default {
             <button class="文字連結" type="button" @click="開啟個人成績單(列)">
               {{ 列.角色名稱 }}
             </button>
+            <span v-if="列.過版紀錄" class="版本紀錄標籤">過版紀錄</span>
             <span v-if="是網站作者(列.角色名稱)" class="說明提示 作者提示">
               <button class="說明提示按鈕 作者勾勾按鈕" type="button" aria-label="網站作者說明">✓</button>
               <span class="說明提示內容" role="tooltip">{{ 作者說明文字 }}</span>
@@ -324,6 +336,7 @@ export default {
                     <button class="文字連結 手機排行角色名稱" type="button" @click="開啟個人成績單(列)">
                       {{ 列.角色名稱 }}
                     </button>
+                    <span v-if="列.過版紀錄" class="版本紀錄標籤">過版紀錄</span>
                     <span v-if="是網站作者(列.角色名稱)" class="說明提示 作者提示">
                       <button class="說明提示按鈕 作者勾勾按鈕" type="button" aria-label="網站作者說明">✓</button>
                       <span class="說明提示內容" role="tooltip">{{ 作者說明文字 }}</span>

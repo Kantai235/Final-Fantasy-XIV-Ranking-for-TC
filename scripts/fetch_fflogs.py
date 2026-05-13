@@ -176,7 +176,12 @@ def 布林設定(名稱: str) -> bool:
     "fight_id",
     "duplicate_count",
     "rank",
+    "is_obsolete_record",
+    "version_status",
+    "version_cutoff_iso",
 )
+
+版本紀錄範圍清單 = ("all", "valid", "obsolete")
 
 每頁報告數量 = 整數設定("report_page_limit")
 報告查詢最大頁數 = 整數設定("report_max_pages")
@@ -946,29 +951,31 @@ def 寫入公開副本清單(副本清單: list[dict[str, Any]]) -> None:
         if 副本鍵值 not in 啟用鍵值 and not 已有排行榜檔案:
             continue
 
-        公開清單.append(
-            {
-                "key": 副本鍵值,
-                "name": 副本["name"],
-                "category": 副本.get("category"),
-                "enabled": True,
-                "data_path": f"data/rankings/{副本鍵值}.json",
-            }
-        )
+        公開副本 = {
+            "key": 副本鍵值,
+            "name": 副本["name"],
+            "category": 副本.get("category"),
+            "enabled": True,
+            "data_path": f"data/rankings/{副本鍵值}.json",
+        }
+        if isinstance(副本.get("version_cutoff"), dict):
+            公開副本["version_cutoff"] = 副本["version_cutoff"]
+        公開清單.append(公開副本)
         已加入鍵值.add(副本鍵值)
 
     for 副本 in 副本清單:
         if 副本["key"] in 已加入鍵值:
             continue
-        公開清單.append(
-            {
-                "key": 副本["key"],
-                "name": 副本["name"],
-                "category": 副本.get("category"),
-                "enabled": True,
-                "data_path": f"data/rankings/{副本['key']}.json",
-            }
-        )
+        公開副本 = {
+            "key": 副本["key"],
+            "name": 副本["name"],
+            "category": 副本.get("category"),
+            "enabled": True,
+            "data_path": f"data/rankings/{副本['key']}.json",
+        }
+        if isinstance(副本.get("version_cutoff"), dict):
+            公開副本["version_cutoff"] = 副本["version_cutoff"]
+        公開清單.append(公開副本)
 
     寫入_json(公開副本清單路徑, 公開清單)
 
@@ -2080,6 +2087,66 @@ def 成績是否優先(候選: dict[str, Any], 目前最佳: dict[str, Any] | No
     return (候選.get("adps") or 候選.get("dps") or 0) > (目前最佳.get("adps") or 目前最佳.get("dps") or 0)
 
 
+def 解析_iso_時間毫秒(時間文字: Any) -> int | None:
+    if not isinstance(時間文字, str) or not 時間文字.strip():
+        return None
+
+    try:
+        時間 = datetime.fromisoformat(時間文字.strip().replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+    if 時間.tzinfo is None:
+        時間 = 時間.replace(tzinfo=timezone.utc)
+    return int(時間.timestamp() * 1000)
+
+
+def 取得副本版本截止設定(副本資料: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not isinstance(副本資料, dict):
+        return None
+
+    設定 = 副本資料.get("version_cutoff")
+    if not isinstance(設定, dict):
+        return None
+
+    截止時間 = 設定.get("obsolete_after_iso")
+    截止毫秒 = 解析_iso_時間毫秒(截止時間)
+    if 截止毫秒 is None:
+        return None
+
+    # 版本 cutoff 是公開資料 schema 的一部分；保留原本標籤可以讓前端直接顯示 7.1 與台灣時間，
+    # 但實際判定一律使用 UTC ISO，避免本機時區不同導致同一筆 FFLogs 紀錄被分到不同版本。
+    return {
+        **設定,
+        "obsolete_after_iso": datetime.fromtimestamp(截止毫秒 / 1000, tz=timezone.utc).isoformat().replace("+00:00", "Z"),
+    }
+
+
+def 標記成績版本狀態(成績: dict[str, Any], 版本設定: dict[str, Any] | None) -> dict[str, Any]:
+    if not 版本設定:
+        return 成績
+
+    紀錄毫秒 = 解析_iso_時間毫秒(成績.get("recorded_at_iso") or 成績.get("report_start_time_iso"))
+    截止毫秒 = 解析_iso_時間毫秒(版本設定.get("obsolete_after_iso"))
+    是否過版 = 紀錄毫秒 is not None and 截止毫秒 is not None and 紀錄毫秒 >= 截止毫秒
+    成績["is_obsolete_record"] = 是否過版
+    成績["version_status"] = "obsolete" if 是否過版 else "valid"
+    成績["version_cutoff_iso"] = 版本設定["obsolete_after_iso"]
+    return 成績
+
+
+def 成績符合版本範圍(成績: dict[str, Any], 版本範圍: str, 版本設定: dict[str, Any] | None) -> bool:
+    if not 版本設定 or 版本範圍 == "all":
+        return True
+
+    是否過版 = bool(成績.get("is_obsolete_record"))
+    if 版本範圍 == "obsolete":
+        return 是否過版
+    if 版本範圍 == "valid":
+        return not 是否過版
+    return True
+
+
 def 標準化排行榜條目(條目: dict[str, Any]) -> dict[str, Any] | None:
     if not isinstance(條目, dict):
         return None
@@ -2126,7 +2193,6 @@ def 標準化排行榜條目(條目: dict[str, Any]) -> dict[str, Any] | None:
 def 登記排行榜條目(
     成績: dict[str, Any],
     精確成績索引: dict[str, dict[str, Any]],
-    最佳成績索引: dict[str, dict[str, Any]],
 ) -> None:
     標準成績 = 標準化排行榜條目(成績)
     if not 標準成績:
@@ -2147,20 +2213,17 @@ def 登記排行榜條目(
     else:
         精確成績索引[精確成績鍵值] = 標準成績
 
-    角色鍵值 = 標準成績["character_key"]
-    if 成績是否優先(標準成績, 最佳成績索引.get(角色鍵值)):
-        最佳成績索引[角色鍵值] = 標準成績
 
-
-def 建立排行榜條目(排行榜: dict[str, Any]) -> list[dict[str, Any]]:
+def 建立排行榜條目(排行榜: dict[str, Any], 版本範圍: str = "all") -> list[dict[str, Any]]:
     # ranking_entries 是給前端快速讀取的扁平索引；reports/fights/players 才是可追溯歷史。
     # 重建時會同時讀兩種來源，確保舊資料、分片資料與新資料都能用同一套去重規則整理。
     精確成績索引: dict[str, dict[str, Any]] = {}
     最佳成績索引: dict[str, dict[str, Any]] = {}
+    版本設定 = 取得副本版本截止設定(排行榜.get("encounter"))
 
     for 條目 in 排行榜.get("ranking_entries") or []:
         if isinstance(條目, dict):
-            登記排行榜條目(條目, 精確成績索引, 最佳成績索引)
+            登記排行榜條目(條目, 精確成績索引)
 
     for 報告代碼, 報告 in (排行榜.get("reports") or {}).items():
         if not isinstance(報告, dict):
@@ -2226,7 +2289,16 @@ def 建立排行榜條目(排行榜: dict[str, Any]) -> list[dict[str, Any]]:
                     "source_reports": [報告代碼],
                     "duplicate_count": 1,
                 }
-                登記排行榜條目(成績, 精確成績索引, 最佳成績索引)
+                登記排行榜條目(成績, 精確成績索引)
+
+    for 成績 in 精確成績索引.values():
+        標記成績版本狀態(成績, 版本設定)
+        if not 成績符合版本範圍(成績, 版本範圍, 版本設定):
+            continue
+
+        角色鍵值 = 成績["character_key"]
+        if 成績是否優先(成績, 最佳成績索引.get(角色鍵值)):
+            最佳成績索引[角色鍵值] = 成績
 
     排行榜條目 = sorted(
         最佳成績索引.values(),
@@ -2242,12 +2314,25 @@ def 建立公開排行榜條目(條目: dict[str, Any]) -> dict[str, Any]:
     return {欄位: 條目.get(欄位) for 欄位 in 公開排行榜條目欄位 if 欄位 in 條目}
 
 
-def 建立公開排行榜(排行榜: dict[str, Any]) -> dict[str, Any]:
-    排行榜條目 = 排行榜.get("ranking_entries")
-    if not isinstance(排行榜條目, list):
-        排行榜條目 = 建立排行榜條目(排行榜)
+def 建立版本排行榜條目(排行榜: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
+    版本設定 = 取得副本版本截止設定(排行榜.get("encounter"))
+    if not 版本設定:
+        return {}
 
     return {
+        版本範圍: [
+            建立公開排行榜條目(條目)
+            for 條目 in 建立排行榜條目(排行榜, 版本範圍)
+            if isinstance(條目, dict)
+        ]
+        for 版本範圍 in 版本紀錄範圍清單
+    }
+
+
+def 建立公開排行榜(排行榜: dict[str, Any]) -> dict[str, Any]:
+    排行榜條目 = 建立排行榜條目(排行榜)
+    版本設定 = 取得副本版本截止設定(排行榜.get("encounter"))
+    公開排行榜 = {
         "schema_version": 排行榜.get("schema_version", 1),
         "encounter": 排行榜.get("encounter"),
         "updated_at": 排行榜.get("updated_at"),
@@ -2258,6 +2343,12 @@ def 建立公開排行榜(排行榜: dict[str, Any]) -> dict[str, Any]:
             if isinstance(條目, dict)
         ],
     }
+
+    if 版本設定:
+        公開排行榜["version_cutoff"] = 版本設定
+        公開排行榜["version_ranking_entries"] = 建立版本排行榜條目(排行榜)
+
+    return 公開排行榜
 
 
 排行榜報告分片目標大小 = 45 * 1024 * 1024
@@ -2493,7 +2584,7 @@ def 建立報告成績(
 
 
 def 建立副本摘要(副本設定: dict[str, Any]) -> dict[str, Any]:
-    return {
+    副本摘要 = {
         "key": 副本設定["key"],
         "name": 副本設定["name"],
         "category": 副本設定.get("category"),
@@ -2501,6 +2592,9 @@ def 建立副本摘要(副本設定: dict[str, Any]) -> dict[str, Any]:
         "encounter_id": 副本設定["encounter_id"],
         "difficulty": 副本設定["difficulty"],
     }
+    if isinstance(副本設定.get("version_cutoff"), dict):
+        副本摘要["version_cutoff"] = 副本設定["version_cutoff"]
+    return 副本摘要
 
 
 def 正規化排行榜(原始內容: Any, 副本設定: dict[str, Any]) -> dict[str, Any]:
@@ -2508,7 +2602,8 @@ def 正規化排行榜(原始內容: Any, 副本設定: dict[str, Any]) -> dict[
         if isinstance(原始內容.get("reports"), dict) or isinstance(原始內容.get("ranking_entries"), list):
             排行榜 = dict(原始內容)
             排行榜.setdefault("schema_version", 1)
-            排行榜.setdefault("encounter", 建立副本摘要(副本設定))
+            既有副本摘要 = 排行榜.get("encounter") if isinstance(排行榜.get("encounter"), dict) else {}
+            排行榜["encounter"] = {**既有副本摘要, **建立副本摘要(副本設定)}
             return 排行榜
 
     報告索引: dict[str, Any] = {}
@@ -2557,7 +2652,7 @@ def 寫入排行榜檔案(副本設定: dict[str, Any], 排行榜: dict[str, Any
         儲存內容["reports"] = {}
 
     寫入_json(排行榜檔案路徑(副本設定), 儲存內容, 緊湊格式=True)
-    寫入_json(排行榜檔案路徑(副本設定, public=True), 建立公開排行榜(儲存內容), 緊湊格式=True)
+    寫入_json(排行榜檔案路徑(副本設定, public=True), 建立公開排行榜(排行榜), 緊湊格式=True)
 
 
 def 重建公開排行榜檔案() -> None:
@@ -2577,8 +2672,7 @@ def 重建公開排行榜檔案() -> None:
         排行榜 = 讀取排行榜檔案(副本設定)
         排行榜.setdefault("schema_version", 1)
         排行榜.setdefault("encounter", 建立副本摘要(副本設定))
-        儲存內容 = 建立排行榜基礎儲存內容(副本設定, 排行榜)
-        寫入_json(排行榜檔案路徑(副本設定, public=True), 建立公開排行榜(儲存內容), 緊湊格式=True)
+        寫入_json(排行榜檔案路徑(副本設定, public=True), 建立公開排行榜(排行榜), 緊湊格式=True)
         print(f"已重建公開排行榜：{副本設定['key']}")
 
 
@@ -2602,7 +2696,7 @@ def 分割排行榜儲存檔案() -> None:
         else:
             儲存內容["reports"] = {}
         寫入_json(路徑, 儲存內容, 緊湊格式=True)
-        寫入_json(排行榜檔案路徑(副本設定, public=True), 建立公開排行榜(儲存內容), 緊湊格式=True)
+        寫入_json(排行榜檔案路徑(副本設定, public=True), 建立公開排行榜(排行榜), 緊湊格式=True)
         print(f"已分割完整排行榜儲存檔案：{副本設定['key']}")
 
 

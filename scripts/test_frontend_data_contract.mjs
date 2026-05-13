@@ -199,6 +199,7 @@ async function validatePublicDataForFrontend() {
   const globalStats = await readJson(path.join(publicDataDir, "global_stats.json"), "public/data/global_stats.json");
   const serverCompare = await readJson(path.join(publicDataDir, "server_compare.json"), "public/data/server_compare.json");
   const userIndex = await readJson(path.join(publicDataDir, "users", "index.json"), "public/data/users/index.json");
+  const versionedEncounterKeys = new Set((encounters || []).filter((encounter) => encounter?.version_cutoff).map((encounter) => encounter.key));
 
   assert(Array.isArray(encounters) && encounters.length > 0, "public/data/encounters.json 必須提供前端副本清單");
   assert(globalStats?.schema_version === 1, "public/data/global_stats.json schema_version 必須是 1");
@@ -223,6 +224,31 @@ async function validatePublicDataForFrontend() {
     assert(ranking?.schema_version === 1, `${key} 公開排行榜 schema_version 必須是 1`);
     assert(Array.isArray(ranking?.ranking_entries), `${key} 公開排行榜必須包含 ranking_entries`);
     assert(!ranking?.reports && !ranking?.report_shards, `${key} 公開排行榜不可包含 reports 或 report_shards`);
+    if (encounter?.version_cutoff) {
+      assert(ranking?.version_cutoff?.obsolete_after_iso, `${key} 公開排行榜必須保留 version_cutoff.obsolete_after_iso`);
+      for (const versionMode of ["all", "valid", "obsolete"]) {
+        assert(
+          Array.isArray(ranking?.version_ranking_entries?.[versionMode]),
+          `${key} 公開排行榜必須包含 version_ranking_entries.${versionMode}`,
+        );
+      }
+      assert(
+        ranking.ranking_entries.some((entry) => typeof entry.is_obsolete_record === "boolean"),
+        `${key} 公開排行榜條目必須標記 is_obsolete_record`,
+      );
+    }
+  }
+
+  for (const encounter of globalStats?.encounters || []) {
+    if (!encounter?.version_cutoff) {
+      continue;
+    }
+    for (const versionMode of ["all", "valid", "obsolete"]) {
+      assert(
+        encounter.version_slices?.[versionMode]?.version_mode === versionMode,
+        `${encounter.encounter_key} 全服統計必須包含 version_slices.${versionMode}`,
+      );
+    }
   }
 
   for (const user of (userIndex?.users || []).slice(0, 20)) {
@@ -234,6 +260,39 @@ async function validatePublicDataForFrontend() {
     assert(Array.isArray(userData?.encounters), `${user.file_path} 必須包含 encounters`);
     assert(Array.isArray(userData?.frequent_teammates), `${user.file_path} 必須包含 frequent_teammates`);
     assert(userData?.summary && typeof userData.summary === "object", `${user.file_path} 必須包含 summary`);
+  }
+
+  for (const user of userIndex?.users || []) {
+    const userPath = path.join(rootDir, "public", user.file_path || "");
+    if (!existsSync(userPath)) {
+      continue;
+    }
+
+    const userData = await readJson(userPath, `使用者檔案 ${user.file_path}`);
+    for (const encounter of userData?.encounters || []) {
+      if (!versionedEncounterKeys.has(encounter?.encounter_key)) {
+        continue;
+      }
+
+      const entries = Array.isArray(encounter.public_entries) ? encounter.public_entries : [];
+      const validEntries = entries.filter((entry) => !entry.is_obsolete_record);
+      const obsoleteEntries = entries.filter((entry) => entry.is_obsolete_record);
+      if (obsoleteEntries.length === 0) {
+        continue;
+      }
+
+      for (const entry of obsoleteEntries) {
+        assert(entry.rank === null && entry.job_rank === null, `${user.file_path} 的過版紀錄不可保留職業 Rank`);
+        assert(entry.performance?.reason === "obsolete_record", `${user.file_path} 的過版紀錄同職分位必須標記 obsolete_record`);
+      }
+
+      if (validEntries.length > 0) {
+        assert(encounter.best_entry && !encounter.best_entry.is_obsolete_record, `${user.file_path} 混合有效與過版紀錄時，最佳紀錄必須取有效版本`);
+        assert(Number(encounter.best_entry?.job_rank) > 0, `${user.file_path} 的有效最佳紀錄必須有正數職業 Rank`);
+      } else {
+        assert(encounter.best_entry === null, `${user.file_path} 只有過版紀錄時不可標示最佳紀錄`);
+      }
+    }
   }
 }
 
@@ -301,8 +360,18 @@ async function validateShareUrlStateCompatibility() {
     },
     {
       label: "副本全服統計乾淨路徑",
-      href: "https://ranking.init.engineer/stats/savage_m1s?server=%E9%B3%B3%E5%87%B0&metric=rdps",
-      expected: { page: "stats", encounter: "savage_m1s", server: "鳳凰", metric: "rdps" },
+      href: "https://ranking.init.engineer/stats/savage_m1s?server=%E9%B3%B3%E5%87%B0&metric=rdps&version=valid",
+      expected: { page: "stats", encounter: "savage_m1s", server: "鳳凰", metric: "rdps", version: "valid" },
+    },
+    {
+      label: "玩家比較版本 query",
+      href: "https://ranking.init.engineer/compare?left=Aa&right=Bb&encounter=extreme_zoraal_ja&version=obsolete",
+      expected: { page: "compare", left: "Aa", right: "Bb", encounter: "extreme_zoraal_ja", version: "obsolete" },
+    },
+    {
+      label: "隊伍榜版本 query",
+      href: "https://ranking.init.engineer/teams?encounter=extreme_valigarmanda&version=valid",
+      expected: { page: "teams", encounter: "extreme_valigarmanda", version: "valid" },
     },
     {
       label: "職業分析乾淨路徑",
@@ -337,6 +406,14 @@ async function validateShareUrlStateCompatibility() {
     "子路徑部署下從 /stats/{副本} 寫入 /jobs/{職業} 時，必須保留部署基底路徑",
   );
   assert(events.includes("ffxivtc:urlchange"), "寫入分享網址後必須送出自訂事件，讓 SEO/OG meta 同步更新");
+
+  installUrlStateWindow("https://ranking.init.engineer/?encounter=savage_m1s&version=valid", events);
+  module.writeState({ page: "ranking", encounter: "extreme_zoraal_ja", version: "obsolete" }, { replace: true });
+  assert(
+    globalThis.window.location.href ===
+      "https://ranking.init.engineer/?encounter=extreme_zoraal_ja&version=obsolete",
+    "排行榜分享網址必須保留版本篩選 query",
+  );
 
   installUrlStateWindow("https://ranking.init.engineer/servers?left=a&right=b", events);
   module.writeState({ page: "servers", left: "鳳凰", right: "伊弗利特" }, { replace: true });

@@ -121,7 +121,7 @@ export function 格式化紀錄時刻(iso時間) {
 
 export function 格式化排名(排名) {
   const 排名數值 = 轉為數字(排名);
-  return 排名數值 === null ? "-" : `#${排名數值}`;
+  return 排名數值 === null || 排名數值 <= 0 ? "-" : `#${排名數值}`;
 }
 
 export function 計算Active百分比(activeTimeMs, 通關秒數) {

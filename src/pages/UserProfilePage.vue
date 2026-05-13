@@ -206,7 +206,7 @@ export default {
             </header>
             <div class="趨勢摘要">
               <span>最新 {{ 格式化傷害數值(趨勢.最新?.rdps) }}</span>
-              <span>最佳 {{ 格式化傷害數值(趨勢.最佳?.rdps) }}</span>
+              <span>最佳 {{ 趨勢.最佳 ? 格式化傷害數值(趨勢.最佳?.rdps) : "-" }}</span>
               <span>{{ 趨勢.點列表.length }} 筆</span>
             </div>
             <div class="趨勢圖" role="img" :aria-label="`${趨勢.encounter_name} rDPS 趨勢`">
@@ -214,16 +214,29 @@ export default {
                 <line class="趨勢格線" x1="0" y1="10" x2="100" y2="10"></line>
                 <line class="趨勢格線" x1="0" y1="26" x2="100" y2="26"></line>
                 <line class="趨勢格線" x1="0" y1="42" x2="100" y2="42"></line>
-                <path v-if="趨勢.填色路徑" class="趨勢面積" :d="趨勢.填色路徑"></path>
-                <path v-if="趨勢.折線路徑" class="趨勢折線" :d="趨勢.折線路徑"></path>
+                <path
+                  v-for="區塊 in 趨勢.填色區塊列表"
+                  :key="區塊.key"
+                  class="趨勢面積"
+                  :class="{ 過版: 區塊.過版紀錄 }"
+                  :d="區塊.path"
+                ></path>
+                <path
+                  v-for="線段 in 趨勢.線段列表"
+                  :key="線段.key"
+                  class="趨勢折線"
+                  :class="{ 過版: 線段.過版紀錄 }"
+                  :d="線段.path"
+                ></path>
               </svg>
               <span class="趨勢點層" aria-hidden="true">
                 <span
                   v-for="點 in 趨勢.點列表"
                   :key="點.id"
                   class="趨勢點"
+                  :class="{ 過版: 點.過版紀錄 }"
                   :style="趨勢點樣式(點)"
-                  :title="`${格式化紀錄時間(點.recorded_at_iso)}・${顯示職業名稱(點.job)}・rDPS ${格式化傷害數值(點.rdps)}`"
+                  :title="`${格式化紀錄時間(點.recorded_at_iso)}・${顯示職業名稱(點.job)}・rDPS ${格式化傷害數值(點.rdps)}${點.過版紀錄 ? '・過版紀錄' : ''}`"
                 ></span>
               </span>
               <div class="趨勢刻度" aria-hidden="true">
@@ -366,7 +379,7 @@ export default {
               <small>{{ 副本.encounter_category || "副本" }}</small>
               <strong>{{ 副本.encounter_name }}</strong>
             </span>
-            <span class="職業標籤 成績列職業" :class="職業色彩類別(職業代碼色彩(副本.best_entry.job))">
+            <span v-if="副本.best_entry" class="職業標籤 成績列職業" :class="職業色彩類別(職業代碼色彩(副本.best_entry.job))">
               <img
                 v-if="職業Icon路徑(副本.best_entry.job)"
                 class="職業圖示 職業標籤圖示"
@@ -377,15 +390,16 @@ export default {
               />
               <span>{{ 顯示職業名稱(副本.best_entry.job) }}</span>
             </span>
+            <span v-else class="版本紀錄標籤">無有效最佳紀錄</span>
             <span class="成績列數值">
               <small>職業 Rank</small>
-              <strong>{{ 格式化排名(副本.best_entry.job_rank ?? 副本.best_entry.rank) }}</strong>
-              <em>{{ 格式化前段百分位(副本.best_entry.job_rank ?? 副本.best_entry.rank, 取得成績職業總數(副本.best_entry)) }}</em>
+              <strong>{{ 副本.best_entry ? 格式化排名(副本.best_entry.job_rank ?? 副本.best_entry.rank) : "無法參考" }}</strong>
+              <em v-if="副本.best_entry">{{ 格式化前段百分位(副本.best_entry.job_rank ?? 副本.best_entry.rank, 取得成績職業總數(副本.best_entry)) }}</em>
             </span>
             <span class="成績列數值">
               <small>同職分位</small>
-              <strong>{{ 格式化前段百分位(副本.best_entry.performance?.rank, 副本.best_entry.performance?.sample_count) }}</strong>
-              <em>中位 {{ 格式化帶號整數(副本.best_entry.performance?.delta_to_median) }}</em>
+              <strong>{{ 副本.best_entry ? 格式化前段百分位(副本.best_entry.performance?.rank, 副本.best_entry.performance?.sample_count) : "過時紀錄" }}</strong>
+              <em v-if="副本.best_entry">中位 {{ 格式化帶號整數(副本.best_entry.performance?.delta_to_median) }}</em>
             </span>
             <span class="成績列數值">
               <small class="說明標籤">
@@ -395,7 +409,7 @@ export default {
                   <span class="說明提示內容" role="tooltip">{{ 統計說明文字("Active") }}</span>
                 </span>
               </small>
-              <strong>{{ 格式化Active(副本.best_entry.active_percent) }}</strong>
+              <strong>{{ 副本.best_entry ? 格式化Active(副本.best_entry.active_percent) : "-" }}</strong>
             </span>
             <span class="成績列數值">
               <small class="說明標籤">
@@ -405,7 +419,7 @@ export default {
                   <span class="說明提示內容" role="tooltip">{{ 統計說明文字("DPS") }}</span>
                 </span>
               </small>
-              <strong>{{ 格式化傷害數值(副本.best_entry.dps) }}</strong>
+              <strong>{{ 副本.best_entry ? 格式化傷害數值(副本.best_entry.dps) : "-" }}</strong>
             </span>
             <span class="成績列數值">
               <small class="說明標籤">
@@ -415,7 +429,7 @@ export default {
                   <span class="說明提示內容" role="tooltip">{{ 統計說明文字("rDPS") }}</span>
                 </span>
               </small>
-              <strong>{{ 格式化傷害數值(副本.best_entry.rdps) }}</strong>
+              <strong>{{ 副本.best_entry ? 格式化傷害數值(副本.best_entry.rdps) : "-" }}</strong>
             </span>
             <span class="成績列數值">
               <small class="說明標籤">
@@ -425,7 +439,7 @@ export default {
                   <span class="說明提示內容" role="tooltip">{{ 統計說明文字("aDPS") }}</span>
                 </span>
               </small>
-              <strong>{{ 格式化傷害數值(副本.best_entry.adps) }}</strong>
+              <strong>{{ 副本.best_entry ? 格式化傷害數值(副本.best_entry.adps) : "-" }}</strong>
             </span>
             <span class="成績列展開">{{ 副本.public_entries.length }} 筆</span>
           </summary>
@@ -478,7 +492,7 @@ export default {
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="成績 in 副本.public_entries" :key="成績.id">
+                <tr v-for="成績 in 副本.public_entries" :key="成績.id" :class="{ 過版紀錄列: 成績.is_obsolete_record }">
                   <td>{{ 格式化紀錄時間(成績.recorded_at_iso) }}</td>
                   <td>
                     <span class="職業標籤" :class="職業色彩類別(職業代碼色彩(成績.job))">
@@ -497,7 +511,7 @@ export default {
                     <a v-if="成績.report_url" :href="成績.report_url" target="_blank" rel="noreferrer">FFLogs</a>
                     <span v-else>-</span>
                   </td>
-                  <td class="數字">{{ 格式化前段百分位(成績.performance?.rank, 成績.performance?.sample_count) }}</td>
+                  <td class="數字">{{ 成績.is_obsolete_record ? "過時紀錄" : 格式化前段百分位(成績.performance?.rank, 成績.performance?.sample_count) }}</td>
                   <td class="數字">{{ 格式化Active(成績.active_percent) }}</td>
                   <td class="數字">{{ 格式化傷害數值(成績.dps) }}</td>
                   <td class="數字">{{ 格式化傷害數值(成績.rdps) }}</td>

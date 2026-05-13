@@ -73,6 +73,8 @@ const 預設副本鍵值 = "savage_m4s";
 const 預設排序欄位 = "rdps";
 const 預設排序方向 = "desc";
 const 預設比較職能 = "role:tank";
+const 預設比較副本鍵值 = "all";
+const 預設版本紀錄範圍 = "all";
 const 預設統計副本鍵值 = "all";
 const 預設統計職業範圍 = "all";
 const 預設伺服器拆分模式 = "none";
@@ -93,6 +95,7 @@ const 職業選單開啟 = ref(false);
 const 搜尋關鍵字 = ref("");
 const 排序欄位 = ref(預設排序欄位);
 const 排序方向 = ref(預設排序方向);
+const 排行榜版本範圍 = ref(預設版本紀錄範圍);
 const 目前頁碼 = ref(1);
 const 每頁筆數 = 100;
 const { 主題模式, 主題儲存鍵, 主題按鈕文字, 目前主題文字, 初始化主題, 套用主題, 切換主題 } = useTheme();
@@ -113,6 +116,8 @@ const 比較角色右資料 = ref(null);
 const 比較角色左伺服器 = ref("");
 const 比較角色右伺服器 = ref("");
 const 比較職能篩選 = ref(預設比較職能);
+const 比較副本鍵值 = ref(預設比較副本鍵值);
+const 比較版本範圍 = ref(預設版本紀錄範圍);
 const 比較讀取中 = ref(false);
 const 比較錯誤訊息 = ref("");
 const 全服統計資料 = ref(null);
@@ -120,6 +125,7 @@ const 全服統計讀取中 = ref(false);
 const 全服統計錯誤訊息 = ref("");
 const 統計副本鍵值 = ref(預設統計副本鍵值);
 const 統計副本選單開啟 = ref(false);
+const 統計版本範圍 = ref(預設版本紀錄範圍);
 const 統計伺服器篩選 = ref("");
 const 統計職業範圍 = ref(預設統計職業範圍);
 const 統計職業選單開啟 = ref(false);
@@ -137,6 +143,7 @@ const 隊伍榜資料 = ref(null);
 const 隊伍榜讀取中 = ref(false);
 const 隊伍榜錯誤訊息 = ref("");
 const 隊伍榜副本鍵值 = ref(預設隊伍榜副本鍵值);
+const 隊伍榜版本範圍 = ref(預設版本紀錄範圍);
 const 伺服器對比資料 = ref(null);
 const 伺服器對比讀取中 = ref(false);
 const 伺服器對比錯誤訊息 = ref("");
@@ -160,6 +167,99 @@ const 傷害比較指標選項 = [
   { value: "rdps", label: "rDPS" },
   { value: "adps", label: "aDPS" },
 ];
+
+const 版本紀錄範圍選項 = [
+  { value: "all", label: "全部版本" },
+  { value: "obsolete", label: "過時版本紀錄" },
+  { value: "valid", label: "有效版本紀錄" },
+];
+
+function 正規化版本紀錄範圍(版本範圍) {
+  return 版本紀錄範圍選項.some((選項) => 選項.value === 版本範圍) ? 版本範圍 : 預設版本紀錄範圍;
+}
+
+function 取得版本紀錄範圍文字(版本範圍) {
+  return 版本紀錄範圍選項.find((選項) => 選項.value === 正規化版本紀錄範圍(版本範圍))?.label || "全部版本";
+}
+
+function 取得副本版本規則(副本) {
+  if (副本?.version_cutoff?.obsolete_after_iso) {
+    return 副本.version_cutoff;
+  }
+
+  if (副本?.version_rule?.obsolete_after_iso) {
+    return 副本.version_rule;
+  }
+
+  const 副本鍵值 = 副本?.key || 副本?.encounter_key;
+  return 副本清單.value.find((項目) => 項目.key === 副本鍵值)?.version_cutoff || null;
+}
+
+function 副本支援版本篩選(副本) {
+  const 規則 = 取得副本版本規則(副本);
+  return Boolean(規則?.obsolete_after_iso && !Number.isNaN(new Date(規則.obsolete_after_iso).getTime()));
+}
+
+function 取得有效版本紀錄範圍(副本, 版本範圍) {
+  return 副本支援版本篩選(副本) ? 正規化版本紀錄範圍(版本範圍) : 預設版本紀錄範圍;
+}
+
+function 取得紀錄版本狀態(紀錄, 副本) {
+  if (typeof 紀錄?.is_obsolete_record === "boolean") {
+    return {
+      is_obsolete_record: 紀錄.is_obsolete_record,
+      version_status: 紀錄.version_status || (紀錄.is_obsolete_record ? "obsolete" : "valid"),
+      version_cutoff_iso: 紀錄.version_cutoff_iso || 取得副本版本規則(副本)?.obsolete_after_iso || null,
+    };
+  }
+
+  const 規則 = 取得副本版本規則(副本);
+  if (!規則?.obsolete_after_iso) {
+    return {
+      is_obsolete_record: false,
+      version_status: null,
+      version_cutoff_iso: null,
+    };
+  }
+
+  const 紀錄時間 = new Date(紀錄?.recorded_at_iso || 紀錄?.紀錄時間 || 0).getTime();
+  const 截止時間 = new Date(規則.obsolete_after_iso).getTime();
+  const 是否過版 = 紀錄時間 > 0 && !Number.isNaN(截止時間) && 紀錄時間 >= 截止時間;
+  return {
+    is_obsolete_record: 是否過版,
+    version_status: 是否過版 ? "obsolete" : "valid",
+    version_cutoff_iso: 規則.obsolete_after_iso,
+  };
+}
+
+function 紀錄符合版本範圍(紀錄, 版本範圍) {
+  const 範圍 = 正規化版本紀錄範圍(版本範圍);
+  if (範圍 === "all") {
+    return true;
+  }
+
+  return 範圍 === "obsolete" ? Boolean(紀錄?.is_obsolete_record) : !紀錄?.is_obsolete_record;
+}
+
+function 取得版本切片來源(來源, 版本範圍) {
+  const 範圍 = 取得有效版本紀錄範圍(來源, 版本範圍);
+  if (範圍 === "all") {
+    return 來源;
+  }
+
+  return 來源?.version_slices?.[範圍] || 來源;
+}
+
+function 版本紀錄說明文字(副本) {
+  if (!副本支援版本篩選(副本)) {
+    return "";
+  }
+
+  const 規則 = 取得副本版本規則(副本);
+  const 本地切點 = 規則?.obsolete_after_local || "04/21 18:00";
+  const 改版文字 = `${規則?.patch || "改版"} 改版後（${本地切點}）`;
+  return `全部版本紀錄會納入所有的紀錄資訊，因此排名可能並不準確。過時版本紀錄為 ${改版文字} 的紀錄；因玩家裝備品級提升，可能存在跳過機制的可能性，較難準確反映玩家當時的副本實力。有效版本紀錄為 ${規則?.patch || "改版"} 改版前的紀錄。`;
+}
 
 const 副本分類順序 = ["零式", "極", "幻", "絕"];
 
@@ -189,6 +289,10 @@ const 副本分組 = computed(() => {
 const 副本選單文字 = computed(() => {
   return 目前副本.value?.name || "選擇副本";
 });
+
+const 顯示排行榜版本篩選 = computed(() => 副本支援版本篩選(目前副本.value));
+const 有效排行榜版本範圍 = computed(() => 取得有效版本紀錄範圍(目前副本.value, 排行榜版本範圍.value));
+const 排行榜版本說明文字 = computed(() => 版本紀錄說明文字(目前副本.value));
 
 function 主色由職業選擇(職業代碼, 類型代碼) {
   if (職業代碼) {
@@ -546,10 +650,11 @@ function 比較排行列(前一筆, 後一筆) {
 // 1. ranking_entries：Node 建置後供前端直接使用的扁平列。
 // 2. reports/fights/players：較舊或原始的 report 結構。
 // 這個正規化步驟讓 UI 後續只面對同一個欄位集合，避免每個頁面都理解資料來源差異。
-function 建立排行列(條目) {
+function 建立排行列(條目, 副本 = 目前副本.value) {
   const 職業代碼 = 條目.job || "-";
   const 通關秒數 = 轉為數字(條目.clear_time_seconds);
   const active = 轉為數字(條目.active_percent) ?? 計算Active百分比(條目.active_time_ms, 通關秒數);
+  const 版本狀態 = 取得紀錄版本狀態(條目, 副本);
 
   return {
     id: 條目.id || `${條目.report_code}-${條目.fight_id}-${條目.character_name}-${條目.server}`,
@@ -569,6 +674,9 @@ function 建立排行列(條目) {
     重複來源數: 轉為數字(條目.duplicate_count) || 1,
     原始排名: 轉為數字(條目.rank),
     職業排名: 轉為數字(條目.job_rank ?? 條目.rank),
+    過版紀錄: 版本狀態.is_obsolete_record,
+    versionStatus: 版本狀態.version_status,
+    versionCutoffIso: 版本狀態.version_cutoff_iso,
   };
 }
 
@@ -595,6 +703,9 @@ function 成績是否較佳(候選, 目前最佳) {
 // 個人成績單內的「最佳」要以 rDPS 優先，平手才比較通關時間與 aDPS。
 // 這和排行榜去重規則保持一致，讓玩家頁、比較頁和排行榜對最佳成績的判斷一致。
 function 使用者成績是否較佳(候選, 目前最佳) {
+  if (!候選) {
+    return false;
+  }
   if (!目前最佳) {
     return true;
   }
@@ -639,9 +750,17 @@ function 只保留角色最佳成績(排行列) {
 
 // 讀取舊格式時會把 report -> fight -> player 攤平成排行榜列。
 // 這段邏輯只做呈現用正規化，不改寫 append-only 歷史資料。
-function 展開排行榜列(原始資料) {
+function 展開排行榜列(原始資料, 副本 = 目前副本.value, 版本範圍 = 預設版本紀錄範圍) {
+  const 有效版本範圍 = 取得有效版本紀錄範圍(副本, 版本範圍);
+  const 版本排行榜條目 = 原始資料?.version_ranking_entries?.[有效版本範圍];
+  if (Array.isArray(版本排行榜條目)) {
+    return 版本排行榜條目.map((條目) => 建立排行列(條目, 副本));
+  }
+
   if (Array.isArray(原始資料?.ranking_entries)) {
-    return 原始資料.ranking_entries.map(建立排行列);
+    return 原始資料.ranking_entries
+      .map((條目) => 建立排行列(條目, 副本))
+      .filter((列) => 紀錄符合版本範圍({ is_obsolete_record: 列.過版紀錄 }, 有效版本範圍));
   }
 
   const 報告集合 = 原始資料?.reports ?? {};
@@ -654,7 +773,14 @@ function 展開排行榜列(原始資料) {
       const 玩家列表 = Array.isArray(戰鬥?.players) ? 戰鬥.players : [];
       const 通關秒數 = 轉為數字(戰鬥?.clear_time_seconds);
 
-      return 玩家列表.map((玩家) => ({
+      return 玩家列表.map((玩家) => {
+        const 版本狀態 = 取得紀錄版本狀態(
+          {
+            recorded_at_iso: 戰鬥.recorded_at_iso || 報告.report_start_time_iso,
+          },
+          副本,
+        );
+        return {
         id: `${報告.report_code}-${戰鬥.fight_id}-${玩家.name}-${玩家.server}`,
         reportCode: 報告.report_code,
         reportUrl: 報告.url,
@@ -670,15 +796,21 @@ function 展開排行榜列(原始資料) {
         通關秒數,
         紀錄時間: 戰鬥.recorded_at_iso || 報告.report_start_time_iso,
         重複來源數: 1,
-      }));
+        過版紀錄: 版本狀態.is_obsolete_record,
+        versionStatus: 版本狀態.version_status,
+        versionCutoffIso: 版本狀態.version_cutoff_iso,
+      };
+      });
     });
   });
 
-  return 只保留角色最佳成績(攤平排行列);
+  return 只保留角色最佳成績(攤平排行列).filter((列) =>
+    紀錄符合版本範圍({ is_obsolete_record: 列.過版紀錄 }, 有效版本範圍),
+  );
 }
 
 const 所有排行列 = computed(() => {
-  return 展開排行榜列(排行榜資料.value).sort(比較排行列);
+  return 展開排行榜列(排行榜資料.value, 目前副本.value, 有效排行榜版本範圍.value).sort(比較排行列);
 });
 
 const 伺服器選項 = computed(() => {
@@ -782,6 +914,9 @@ const 統計副本選單文字 = computed(() => {
   return 統計範圍文字.value;
 });
 
+const 顯示統計版本篩選 = computed(() => 副本支援版本篩選(目前統計副本.value));
+const 有效統計版本範圍 = computed(() => 取得有效版本紀錄範圍(目前統計副本.value, 統計版本範圍.value));
+
 const 顯示零式進度漏斗 = computed(() => {
   return !目前統計副本.value || 目前統計副本.value.encounter_category === "零式";
 });
@@ -791,7 +926,11 @@ const 顯示副本通關概覽 = computed(() => {
 });
 
 const 目前統計來源 = computed(() => {
-  return 目前統計副本.value || 全服統計資料.value || null;
+  if (目前統計副本.value) {
+    return 取得版本切片來源(目前統計副本.value, 有效統計版本範圍.value);
+  }
+
+  return 全服統計資料.value || null;
 });
 
 const 傷害比較指標標籤 = computed(() => {
@@ -806,10 +945,11 @@ const 職業傷害比較資料來源 = computed(() => {
   const 伺服器 = 統計伺服器篩選.value;
 
   if (目前統計副本.value) {
+    const 來源 = 目前統計來源.value;
     if (伺服器) {
-      return (目前統計副本.value.server_stats || []).find((項目) => 項目.server === 伺服器)?.damage_stats || [];
+      return (來源?.server_stats || []).find((項目) => 項目.server === 伺服器)?.damage_stats || [];
     }
-    return 目前統計副本.value.damage_stats || [];
+    return 來源?.damage_stats || [];
   }
 
   if (伺服器) {
@@ -823,7 +963,8 @@ const 職業傷害比較資料來源 = computed(() => {
 // 保留這個邊界很重要：排序、分位數與樣本統計都應在 Data Building Layer 完成。
 const 職業傷害比較條件文字 = computed(() => {
   const 範圍 = 目前統計副本.value ? 統計範圍文字.value : "零式 M1S-M4S";
-  return `${範圍}・${統計伺服器文字.value}`;
+  const 版本文字 = 顯示統計版本篩選.value ? `・${取得版本紀錄範圍文字(有效統計版本範圍.value)}` : "";
+  return `${範圍}${版本文字}・${統計伺服器文字.value}`;
 });
 
 const 職業傷害比較基礎列 = computed(() => {
@@ -1064,12 +1205,13 @@ const 統計伺服器文字 = computed(() => {
 });
 
 const 統計條件文字 = computed(() => {
-  return `${統計範圍文字.value}・${統計伺服器文字.value}・${取得職業範圍文字()}`;
+  const 版本文字 = 顯示統計版本篩選.value ? `・${取得版本紀錄範圍文字(有效統計版本範圍.value)}` : "";
+  return `${統計範圍文字.value}${版本文字}・${統計伺服器文字.value}・${取得職業範圍文字()}`;
 });
 
 const 全服概要項目 = computed(() => {
   const 統計 = 全服統計資料.value;
-  const 副本 = 目前統計副本.value;
+  const 副本 = 目前統計副本.value ? 目前統計來源.value : null;
   if (!統計) {
     return [];
   }
@@ -1173,7 +1315,8 @@ const 職業佔比來源 = computed(() => {
 });
 
 const 職業佔比標題文字 = computed(() => {
-  return `${統計範圍文字.value}・${統計伺服器文字.value}`;
+  const 版本文字 = 顯示統計版本篩選.value ? `・${取得版本紀錄範圍文字(有效統計版本範圍.value)}` : "";
+  return `${統計範圍文字.value}${版本文字}・${統計伺服器文字.value}`;
 });
 
 const 職業佔比分組 = computed(() => {
@@ -1591,15 +1734,19 @@ const 目前隊伍榜副本 = computed(() => {
   return 隊伍榜副本列表.value.find((副本) => 副本.encounter_key === 隊伍榜副本鍵值.value) || null;
 });
 
+const 顯示隊伍榜版本篩選 = computed(() => 副本支援版本篩選(目前隊伍榜副本.value));
+const 有效隊伍榜版本範圍 = computed(() => 取得有效版本紀錄範圍(目前隊伍榜副本.value, 隊伍榜版本範圍.value));
+const 目前隊伍榜來源 = computed(() => 取得版本切片來源(目前隊伍榜副本.value, 有效隊伍榜版本範圍.value));
+
 const 隊伍榜列 = computed(() => {
-  return (目前隊伍榜副本.value?.records || []).map((紀錄, 索引) => ({
+  return (目前隊伍榜來源.value?.records || []).map((紀錄, 索引) => ({
     ...紀錄,
-    顯示排名: 紀錄.rank || 索引 + 1,
+    顯示排名: 索引 + 1,
   }));
 });
 
 const 隊伍榜概要 = computed(() => {
-  const 副本 = 目前隊伍榜副本.value;
+  const 副本 = 目前隊伍榜來源.value || 目前隊伍榜副本.value;
   const 最速 = 隊伍榜列.value[0] || null;
 
   return [
@@ -1762,7 +1909,8 @@ function 取得成績職業總數(成績) {
   }
 
   const 副本 = (全服統計資料.value?.encounters || []).find((項目) => 項目.encounter_key === 成績.encounter_key);
-  const 職業 = (副本?.job_stats || []).find((項目) => 項目.job === 成績.job);
+  const 統計來源 = 副本支援版本篩選(副本) && !成績.is_obsolete_record ? 取得版本切片來源(副本, "valid") : 副本;
+  const 職業 = (統計來源?.job_stats || []).find((項目) => 項目.job === 成績.job);
   return 轉為數字(職業?.clear_count);
 }
 
@@ -2023,13 +2171,17 @@ function 排行榜分享條件文字() {
   if (搜尋關鍵字.value.trim()) {
     條件.push(`關鍵字「${搜尋關鍵字.value.trim()}」`);
   }
+  if (顯示排行榜版本篩選.value && 有效排行榜版本範圍.value !== "all") {
+    條件.push(取得版本紀錄範圍文字(有效排行榜版本範圍.value));
+  }
 
   return 條件.length > 0 ? `（${條件.join("、")}）` : "";
 }
 
 function 全服統計分享描述() {
   const 統計 = 全服統計資料.value;
-  const 範圍 = 統計範圍文字.value;
+  const 版本文字 = 顯示統計版本篩選.value ? `（${取得版本紀錄範圍文字(有效統計版本範圍.value)}）` : "";
+  const 範圍 = `${統計範圍文字.value}${版本文字}`;
   const 角色數 = 分享數量文字(統計?.total_character_count, "名玩家");
   const 成績數 = 分享數量文字(統計?.total_entry_count, "筆公開成績");
   const 基礎 = [角色數, 成績數].filter(Boolean).join("、");
@@ -2058,8 +2210,9 @@ function 個人成績單分享描述() {
 
 function 玩家比較分享描述() {
   if (角色比較已完成.value) {
+    const 版本文字 = 顯示比較版本篩選.value ? `、${取得版本紀錄範圍文字(有效比較版本範圍.value)}` : "";
     return 正規化分享描述(
-      `比較 ${比較角色左.value.character_name} 與 ${比較角色右.value.character_name} 在${目前比較職能.value?.名稱 || "指定職能"}的公開成績，並排查看各副本最佳紀錄、rDPS 與通關表現。`,
+      `比較 ${比較角色左.value.character_name} 與 ${比較角色右.value.character_name} 在${比較範圍文字.value}${版本文字}、${目前比較職能.value?.名稱 || "指定職能"}的公開成績，並排查看最佳紀錄、rDPS 與通關表現。`,
     );
   }
 
@@ -2085,9 +2238,10 @@ function 近期動態分享描述() {
 
 function 隊伍榜分享描述() {
   const 範圍 = 目前隊伍榜副本.value?.encounter_name || "指定副本";
+  const 版本文字 = 顯示隊伍榜版本篩選.value ? `（${取得版本紀錄範圍文字(有效隊伍榜版本範圍.value)}）` : "";
   const 隊伍數 = 分享數量文字(隊伍榜列.value.length, "組隊伍紀錄");
   return 正規化分享描述(
-    `${範圍}隊伍榜整理同場 8 人公開紀錄的通關時間、隊伍 rDPS 與成員組成${隊伍數 ? `，目前收錄 ${隊伍數}` : ""}。`,
+    `${範圍}${版本文字}隊伍榜整理同場 8 人公開紀錄的通關時間、隊伍 rDPS 與成員組成${隊伍數 ? `，目前收錄 ${隊伍數}` : ""}。`,
   );
 }
 
@@ -2191,6 +2345,28 @@ const 比較角色右搜尋建議 = computed(() => {
   return 建立使用者搜尋建議列表(比較角色右輸入.value);
 });
 
+const 比較副本列表 = computed(() => [
+  { key: "all", name: "全部副本", category: "全部" },
+  ...副本清單.value.map((副本) => ({
+    key: 副本.key,
+    name: 副本.name,
+    category: 副本.category || "副本",
+    version_cutoff: 副本.version_cutoff || null,
+  })),
+]);
+
+const 目前比較副本 = computed(() => {
+  if (比較副本鍵值.value === "all") {
+    return null;
+  }
+
+  return 比較副本列表.value.find((副本) => 副本.key === 比較副本鍵值.value) || null;
+});
+
+const 比較範圍文字 = computed(() => 目前比較副本.value?.name || "全部副本");
+const 顯示比較版本篩選 = computed(() => 副本支援版本篩選(目前比較副本.value));
+const 有效比較版本範圍 = computed(() => 取得有效版本紀錄範圍(目前比較副本.value, 比較版本範圍.value));
+
 function 取得使用者副本成績(資料, 伺服器 = "", 成績篩選 = () => true) {
   const 副本列表 = Array.isArray(資料?.encounters) ? 資料.encounters : [];
 
@@ -2201,7 +2377,8 @@ function 取得使用者副本成績(資料, 伺服器 = "", 成績篩選 = () =
         return null;
       }
 
-      const 最佳成績 = 公開成績.reduce((目前最佳, 成績) => (使用者成績是否較佳(成績, 目前最佳) ? 成績 : 目前最佳), null);
+      const 有效成績 = 公開成績.filter((成績) => !成績.is_obsolete_record);
+      const 最佳成績 = 有效成績.reduce((目前最佳, 成績) => (使用者成績是否較佳(成績, 目前最佳) ? 成績 : 目前最佳), null);
       return {
         ...副本,
         best_entry: 最佳成績,
@@ -2334,7 +2511,8 @@ function 建立使用者成績趨勢項(副本, 職能, 成績列表) {
   const 最高 = Math.max(...數值列表);
   const 第一筆 = 成績列表[0];
   const 最新 = 成績列表.at(-1);
-  const 最佳 = 成績列表.reduce((目前最佳, 成績) => (使用者成績是否較佳(成績, 目前最佳) ? 成績 : 目前最佳), null);
+  const 有效成績列表 = 成績列表.filter((成績) => !成績.is_obsolete_record);
+  const 最佳 = 有效成績列表.reduce((目前最佳, 成績) => (使用者成績是否較佳(成績, 目前最佳) ? 成績 : 目前最佳), null);
   const 點列表 = 成績列表.map((成績, index) => {
     const rdps = 轉為數字(成績.rdps) || 0;
     const x = 成績列表.length === 1 ? 50 : (index / (成績列表.length - 1)) * 100;
@@ -2344,12 +2522,31 @@ function 建立使用者成績趨勢項(副本, 職能, 成績列表) {
       job: 成績.job,
       rdps,
       recorded_at_iso: 成績.recorded_at_iso,
+      過版紀錄: Boolean(成績.is_obsolete_record),
       x: Number(x.toFixed(2)),
       y: Number(y.toFixed(2)),
     };
   });
   const 折線路徑 = 點列表.length > 1 ? 點列表.map((點, index) => `${index === 0 ? "M" : "L"} ${點.x} ${點.y}`).join(" ") : "";
-  const 填色路徑 = 點列表.length > 1 ? `${折線路徑} L ${點列表.at(-1).x} 46 L ${點列表[0].x} 46 Z` : "";
+  const 線段列表 = 點列表.slice(1).map((點, index) => {
+    const 前一點 = 點列表[index];
+    return {
+      key: `${前一點.id}-${點.id}`,
+      path: `M ${前一點.x} ${前一點.y} L ${點.x} ${點.y}`,
+      過版紀錄: 前一點.過版紀錄 || 點.過版紀錄,
+    };
+  });
+  // 面積填色跟折線使用同一個版本判定：有效版本維持原色，碰到過版點的區段改用灰色。
+  // 這讓混合有效/過版紀錄的趨勢圖仍保有面積色塊，不會只剩幾條線而難以掃讀。
+  const 填色區塊列表 = 線段列表.map((線段, index) => {
+    const 起點 = 點列表[index];
+    const 終點 = 點列表[index + 1];
+    return {
+      key: `area-${線段.key}`,
+      path: `M ${起點.x} ${起點.y} L ${終點.x} ${終點.y} L ${終點.x} 46 L ${起點.x} 46 Z`,
+      過版紀錄: 線段.過版紀錄,
+    };
+  });
 
   return {
     key: `${副本.encounter_key}::${職能.代碼}`,
@@ -2363,7 +2560,8 @@ function 建立使用者成績趨勢項(副本, 職能, 成績列表) {
     最低,
     最高,
     折線路徑,
-    填色路徑,
+    填色區塊列表,
+    線段列表,
     點列表,
   };
 }
@@ -2428,14 +2626,21 @@ function 取得副本排序值(副本鍵值) {
   return 清單索引 >= 0 ? 清單索引 : Number.MAX_SAFE_INTEGER;
 }
 
-function 建立比較副本職能索引(副本成績列表, 職能代碼) {
+function 建立比較副本職能索引(副本成績列表, 職能代碼, 副本鍵值 = "all", 版本範圍 = 預設版本紀錄範圍) {
   const 索引 = new Map();
 
   for (const 副本 of 副本成績列表) {
+    if (副本鍵值 !== "all" && 副本.encounter_key !== 副本鍵值) {
+      continue;
+    }
+
     const 公開成績 = Array.isArray(副本.public_entries) ? 副本.public_entries : [];
     for (const 成績 of 公開成績) {
       const 職能 = 取得比較職能(成績.job);
       if (!職能 || 職能.代碼 !== 職能代碼) {
+        continue;
+      }
+      if (!紀錄符合版本範圍(成績, 版本範圍)) {
         continue;
       }
 
@@ -2460,8 +2665,18 @@ const 角色比較列 = computed(() => {
   }
 
   const 職能 = 目前比較職能.value;
-  const 左副本 = 建立比較副本職能索引(比較角色左.value.副本成績, 職能?.代碼);
-  const 右副本 = 建立比較副本職能索引(比較角色右.value.副本成績, 職能?.代碼);
+  const 左副本 = 建立比較副本職能索引(
+    比較角色左.value.副本成績,
+    職能?.代碼,
+    比較副本鍵值.value,
+    有效比較版本範圍.value,
+  );
+  const 右副本 = 建立比較副本職能索引(
+    比較角色右.value.副本成績,
+    職能?.代碼,
+    比較副本鍵值.value,
+    有效比較版本範圍.value,
+  );
   const 副本鍵值列表 = Array.from(new Set([...左副本.keys(), ...右副本.keys()]));
 
   return 副本鍵值列表
@@ -2953,6 +3168,7 @@ function 更新網址為排行榜(選項 = {}) {
     q: 搜尋關鍵字.value,
     ...排行榜排序分享狀態(),
     pageNo: 目前頁碼.value > 1 ? 目前頁碼.value : "",
+    version: 非預設分享值(有效排行榜版本範圍.value, 預設版本紀錄範圍),
   }, 選項);
 }
 
@@ -2963,6 +3179,7 @@ function 更新網址為全服統計(選項 = {}) {
     jobScope: 非預設分享值(統計職業範圍.value, 預設統計職業範圍),
     split: 非預設分享值(伺服器拆分模式.value, 預設伺服器拆分模式),
     metric: 非預設分享值(統計傷害指標.value, 預設統計傷害指標),
+    version: 非預設分享值(有效統計版本範圍.value, 預設版本紀錄範圍),
   }, 選項);
 }
 
@@ -2971,6 +3188,8 @@ function 更新網址為角色比較(選項 = {}) {
     left: 比較角色左輸入.value,
     right: 比較角色右輸入.value,
     role: 非預設分享值(比較職能篩選.value, 預設比較職能),
+    encounter: 非預設分享值(比較副本鍵值.value, 預設比較副本鍵值),
+    version: 非預設分享值(有效比較版本範圍.value, 預設版本紀錄範圍),
   }, 選項);
 }
 
@@ -2987,6 +3206,7 @@ function 更新網址為近期動態(選項 = {}) {
 function 更新網址為隊伍榜(選項 = {}) {
   更新分享網址("teams", {
     encounter: 非預設分享值(隊伍榜副本鍵值.value, 預設隊伍榜副本鍵值),
+    version: 非預設分享值(有效隊伍榜版本範圍.value, 預設版本紀錄範圍),
   }, 選項);
 }
 
@@ -3224,6 +3444,7 @@ function 套用排行榜網址狀態(網址狀態) {
   職業類型篩選.value = 網址狀態.jobType || "";
   職業篩選.value = 網址狀態.job || "";
   搜尋關鍵字.value = 網址狀態.q || "";
+  排行榜版本範圍.value = 正規化版本紀錄範圍(網址狀態.version);
 
   if (排序欄位標籤[網址狀態.sort]) {
     排序欄位.value = 網址狀態.sort;
@@ -3240,6 +3461,7 @@ function 套用排行榜網址狀態(網址狀態) {
 async function 套用統計網址狀態(網址狀態) {
   頁面模式.value = "stats";
   統計副本鍵值.value = 網址狀態.encounter || 預設統計副本鍵值;
+  統計版本範圍.value = 正規化版本紀錄範圍(網址狀態.version);
   統計伺服器篩選.value = 網址狀態.server || "";
   統計職業範圍.value = 網址狀態.jobScope || 預設統計職業範圍;
   伺服器拆分模式.value = ["none", "role", "job"].includes(網址狀態.split) ? 網址狀態.split : 預設伺服器拆分模式;
@@ -3263,6 +3485,8 @@ async function 套用角色比較網址狀態(網址狀態) {
   頁面模式.value = "compare";
   比較角色左輸入.value = 網址狀態.left || "";
   比較角色右輸入.value = 網址狀態.right || "";
+  比較副本鍵值.value = 網址狀態.encounter || 預設比較副本鍵值;
+  比較版本範圍.value = 正規化版本紀錄範圍(網址狀態.version);
   if (比較職能索引.has(網址狀態.role)) {
     比較職能篩選.value = 網址狀態.role;
   } else {
@@ -3301,6 +3525,7 @@ async function 套用近期動態網址狀態() {
 async function 套用隊伍榜網址狀態(網址狀態) {
   頁面模式.value = "teams";
   隊伍榜副本鍵值.value = 網址狀態.encounter || 預設隊伍榜副本鍵值;
+  隊伍榜版本範圍.value = 正規化版本紀錄範圍(網址狀態.version);
   await 讀取隊伍榜資料();
   套用隊伍榜有效副本鍵值();
   更新網址為隊伍榜({ replace: true, 強制: true });
@@ -3352,10 +3577,22 @@ watch(副本鍵值, () => {
     職業類型篩選.value = "";
     職業篩選.value = "";
     搜尋關鍵字.value = "";
+    if (!副本支援版本篩選(目前副本.value)) {
+      排行榜版本範圍.value = 預設版本紀錄範圍;
+    }
     目前頁碼.value = 1;
   }
   if (副本清單.value.length > 0) {
     讀取排行榜資料();
+  }
+  if (頁面模式.value === "ranking") {
+    更新網址為排行榜({ replace: true });
+  }
+});
+
+watch(排行榜版本範圍, () => {
+  if (!正在套用網址狀態) {
+    目前頁碼.value = 1;
   }
   if (頁面模式.value === "ranking") {
     更新網址為排行榜({ replace: true });
@@ -3413,6 +3650,10 @@ watch([使用者職業類型篩選, 使用者職業選項], () => {
 });
 
 watch([統計副本鍵值, 全服統計資料], () => {
+  if (!正在套用網址狀態 && !副本支援版本篩選(目前統計副本.value)) {
+    統計版本範圍.value = 預設版本紀錄範圍;
+  }
+
   if (統計伺服器篩選.value && !統計伺服器選項.value.includes(統計伺服器篩選.value)) {
     統計伺服器篩選.value = "";
   }
@@ -3426,7 +3667,7 @@ watch([統計副本鍵值, 全服統計資料], () => {
   }
 });
 
-watch([統計副本鍵值, 統計伺服器篩選, 統計職業範圍, 伺服器拆分模式, 統計傷害指標], () => {
+watch([統計副本鍵值, 統計版本範圍, 統計伺服器篩選, 統計職業範圍, 伺服器拆分模式, 統計傷害指標], () => {
   if (頁面模式.value === "stats") {
     更新網址為全服統計({ replace: true });
   }
@@ -3441,7 +3682,10 @@ watch([全服統計資料, 職業分析職業選項], () => {
   }
 });
 
-watch(比較職能篩選, () => {
+watch([比較職能篩選, 比較副本鍵值, 比較版本範圍], () => {
+  if (!正在套用網址狀態 && !副本支援版本篩選(目前比較副本.value)) {
+    比較版本範圍.value = 預設版本紀錄範圍;
+  }
   if (頁面模式.value === "compare") {
     更新網址為角色比較({ replace: true });
   }
@@ -3454,6 +3698,15 @@ watch(職業分析職業, () => {
 });
 
 watch(隊伍榜副本鍵值, () => {
+  if (!正在套用網址狀態 && !副本支援版本篩選(目前隊伍榜副本.value)) {
+    隊伍榜版本範圍.value = 預設版本紀錄範圍;
+  }
+  if (頁面模式.value === "teams") {
+    更新網址為隊伍榜({ replace: true });
+  }
+});
+
+watch(隊伍榜版本範圍, () => {
   if (頁面模式.value === "teams") {
     更新網址為隊伍榜({ replace: true });
   }
@@ -3511,6 +3764,7 @@ onUnmounted(() => {
     搜尋關鍵字,
     排序欄位,
     排序方向,
+    排行榜版本範圍,
     目前頁碼,
     每頁筆數,
     主題模式,
@@ -3533,6 +3787,8 @@ onUnmounted(() => {
     比較角色左伺服器,
     比較角色右伺服器,
     比較職能篩選,
+    比較副本鍵值,
+    比較版本範圍,
     比較讀取中,
     比較錯誤訊息,
     全服統計資料,
@@ -3540,6 +3796,7 @@ onUnmounted(() => {
     全服統計錯誤訊息,
     統計副本鍵值,
     統計副本選單開啟,
+    統計版本範圍,
     統計伺服器篩選,
     統計職業範圍,
     統計職業選單開啟,
@@ -3556,6 +3813,7 @@ onUnmounted(() => {
     隊伍榜讀取中,
     隊伍榜錯誤訊息,
     隊伍榜副本鍵值,
+    隊伍榜版本範圍,
     伺服器對比資料,
     伺服器對比讀取中,
     伺服器對比錯誤訊息,
@@ -3572,9 +3830,14 @@ onUnmounted(() => {
     目前副本,
     資料網址,
     傷害比較指標選項,
+    版本紀錄範圍選項,
     副本分類順序,
     副本分組,
     副本選單文字,
+    顯示排行榜版本篩選,
+    有效排行榜版本範圍,
+    排行榜版本說明文字,
+    取得版本紀錄範圍文字,
     套用主題,
     切換主題,
     主題按鈕文字,
@@ -3668,6 +3931,8 @@ onUnmounted(() => {
     目前統計副本,
     統計範圍文字,
     統計副本選單文字,
+    顯示統計版本篩選,
+    有效統計版本範圍,
     顯示零式進度漏斗,
     顯示副本通關概覽,
     目前統計來源,
@@ -3739,6 +4004,9 @@ onUnmounted(() => {
     近期動態概要,
     隊伍榜副本列表,
     目前隊伍榜副本,
+    顯示隊伍榜版本篩選,
+    有效隊伍榜版本範圍,
+    目前隊伍榜來源,
     隊伍榜列,
     隊伍榜概要,
     伺服器對比伺服器列表,
@@ -3769,6 +4037,11 @@ onUnmounted(() => {
     使用者搜尋建議,
     比較角色左搜尋建議,
     比較角色右搜尋建議,
+    比較副本列表,
+    目前比較副本,
+    比較範圍文字,
+    顯示比較版本篩選,
+    有效比較版本範圍,
     取得使用者副本成績,
     使用者完整副本成績,
     使用者可用職業列表,

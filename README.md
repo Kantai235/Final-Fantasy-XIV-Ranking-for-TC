@@ -404,3 +404,10 @@ npm run cloudflare:estimate
 - `public/data/rankings/` 是由 `fetch_fflogs.py --rebuild-public` 或 `--split-rankings` 重新產生的公開排行榜資料；若副本列在 `public/data/encounters.json`，就必須有對應公開 ranking 檔案。
 - FFLogs API 有限流，`config/fflogs.json` 可調整請求限制、重試、冷卻時間與單一 report 多 fight 的玩家成績批次大小。
 - 排行榜只統計公開報告中可解析且符合繁中服條件的資料。
+
+## 版本切點與過版紀錄
+
+- `極 佐拉加` 與 `極 豔翼蛇鳥` 目前有版本切點設定；台灣時間 2026-04-21 18:00 後的紀錄會被標記為過版紀錄。
+- 公開排行榜會輸出 `is_obsolete_record`、`version_status`、`version_cutoff_iso` 與 `version_ranking_entries`，讓前端可以切換全部版本、有效版本紀錄、過時版本紀錄。
+- `scripts/build_user_data.mjs` 會讓全服統計、個人成績單與隊伍榜輸出版本切片；個人最佳紀錄與同職分位只採計有效版本紀錄，過版紀錄保留在歷史紀錄中供追溯。
+- 若要驗證這些切片，請執行 `npm run build:public-rankings`、`npm run build:user-data`、`npm run validate:data`，正式發佈前仍以 `npm run build` 做完整檢查。

@@ -521,7 +521,7 @@ h1 {
 
 .工具列 {
   display: grid;
-  grid-template-columns: minmax(210px, 1.25fr) minmax(145px, 0.85fr) minmax(170px, 1fr) minmax(220px, 1.25fr);
+  grid-template-columns: minmax(210px, 1.25fr) minmax(160px, 0.85fr) minmax(145px, 0.8fr) minmax(170px, 1fr) minmax(220px, 1.25fr);
   gap: 16px;
   margin-bottom: 18px;
 }
@@ -875,6 +875,49 @@ button:disabled {
   background: var(--輸出色柔和);
 }
 
+.版本紀錄說明 {
+  max-width: 980px;
+  margin: -4px 0 18px;
+  color: var(--次要文字);
+  font-size: 0.9rem;
+  font-weight: 650;
+  line-height: 1.55;
+}
+
+.版本紀錄標籤 {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  border: 1px solid var(--邊框色);
+  border-radius: 999px;
+  padding: 2px 8px;
+  color: var(--靜音文字);
+  background: var(--表面背景柔和);
+  font-size: 0.72rem;
+  font-weight: 760;
+  line-height: 1.2;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.過版紀錄列,
+.過版紀錄列 td,
+.過版紀錄列 small,
+.過版紀錄列 em,
+.過版紀錄列 strong,
+.過版紀錄列 .文字連結,
+.過版紀錄列 .緊湊紀錄時間,
+.過版紀錄列 .緊湊紀錄時間 span,
+.過版紀錄列 .比較副本 small,
+.過版紀錄列 .比較副本 strong {
+  color: var(--靜音文字);
+}
+
+.過版紀錄列 .職業標籤 {
+  color: var(--靜音文字);
+  background: var(--表面背景柔和);
+}
+
 .表格區 {
   overflow-x: auto;
   border: 1px solid var(--邊框色);
@@ -899,7 +942,7 @@ button:disabled {
 }
 
 .比較搜尋表單 {
-  grid-template-columns: minmax(220px, 1fr) minmax(220px, 1fr) auto;
+  grid-template-columns: minmax(180px, 0.75fr) minmax(170px, 0.65fr) minmax(220px, 1fr) minmax(220px, 1fr) auto;
 }
 
 .比較職能選擇 {
@@ -966,7 +1009,7 @@ button:disabled {
 
 .統計工具列 {
   display: grid;
-  grid-template-columns: minmax(220px, 1.2fr) minmax(150px, 0.8fr) minmax(220px, 1.1fr) minmax(170px, 0.8fr);
+  grid-template-columns: minmax(220px, 1.2fr) minmax(160px, 0.85fr) minmax(150px, 0.8fr) minmax(220px, 1.1fr) minmax(170px, 0.8fr);
   gap: 16px;
   margin-bottom: 18px;
 }
@@ -1250,7 +1293,10 @@ button:disabled {
 }
 
 .隊伍榜工具列 {
-  width: min(320px, 100%);
+  width: min(540px, 100%);
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(170px, 0.8fr);
+  gap: 16px;
   margin-bottom: 18px;
 }
 
@@ -1260,7 +1306,7 @@ button:disabled {
 }
 
 .隊伍榜表格 {
-  min-width: 980px;
+  min-width: 1120px;
 }
 
 .隊伍成員欄位 {
@@ -2704,6 +2750,10 @@ button:disabled {
   fill: color-mix(in srgb, var(--重點色) 18%, transparent);
 }
 
+.趨勢面積.過版 {
+  fill: color-mix(in srgb, var(--靜音文字) 20%, transparent);
+}
+
 .趨勢折線 {
   fill: none;
   stroke: var(--重點色);
@@ -2711,6 +2761,10 @@ button:disabled {
   stroke-linejoin: round;
   stroke-width: 2.1;
   vector-effect: non-scaling-stroke;
+}
+
+.趨勢折線.過版 {
+  stroke: var(--靜音文字);
 }
 
 .趨勢點層 {
@@ -2728,6 +2782,11 @@ button:disabled {
   border-radius: 999px;
   background: var(--表面背景);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--表面背景) 70%, transparent);
+}
+
+.趨勢點.過版 {
+  border-color: var(--靜音文字);
+  background: var(--表面背景柔和);
 }
 
 .趨勢刻度 {
@@ -3766,6 +3825,10 @@ td a:hover {
   }
 
   .工具列 {
+    grid-template-columns: 1fr;
+  }
+
+  .隊伍榜工具列 {
     grid-template-columns: 1fr;
   }
 
@@ -5286,7 +5349,7 @@ td a:hover {
 
   .統計表格:not(.近期動態表格):not(.比較表格):not(.隊伍榜表格):not(.伺服器對比表格) td:nth-child(1),
   .比較表格 td:nth-child(1),
-  .隊伍榜表格 td:nth-child(5) {
+  .隊伍榜表格 td:nth-child(4) {
     grid-column: 1 / -1;
   }
 
@@ -5367,18 +5430,22 @@ td a:hover {
   }
 
   .隊伍榜表格 td:nth-child(3)::before {
-    content: "通關時間";
-  }
-
-  .隊伍榜表格 td:nth-child(4)::before {
     content: "隊伍 rDPS";
   }
 
-  .隊伍榜表格 td:nth-child(5)::before {
+  .隊伍榜表格 td:nth-child(4)::before {
     content: "隊伍成員";
   }
 
+  .隊伍榜表格 td:nth-child(5)::before {
+    content: "通關時間";
+  }
+
   .隊伍榜表格 td:nth-child(6)::before {
+    content: "紀錄時間";
+  }
+
+  .隊伍榜表格 td:nth-child(7)::before {
     content: "報告";
   }
 
@@ -5452,19 +5519,19 @@ td a:hover {
   }
 
   .歷史表格 td:nth-child(4)::before {
-    content: "Active";
+    content: "同職分位";
   }
 
   .歷史表格 td:nth-child(5)::before {
-    content: "DPS";
+    content: "Active";
   }
 
   .歷史表格 td:nth-child(6)::before {
-    content: "rDPS";
+    content: "DPS";
   }
 
   .歷史表格 td:nth-child(7)::before {
-    content: "同職分位";
+    content: "rDPS";
   }
 
   .歷史表格 td:nth-child(8)::before {

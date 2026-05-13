@@ -39,6 +39,7 @@ const 可分享參數 = [
   "jobScope",
   "split",
   "metric",
+  "version",
 ];
 
 function 讀取瀏覽器網址() {
@@ -192,6 +193,7 @@ export function 讀取目前網址狀態() {
     jobScope: 讀取參數文字(參數, "jobScope"),
     split: 讀取參數文字(參數, "split"),
     metric: 讀取參數文字(參數, "metric"),
+    version: 讀取參數文字(參數, "version"),
   };
 }
 
@@ -212,6 +214,7 @@ function 寫入頁面專屬參數(參數, 狀態) {
     寫入參數(參數, "sort", 狀態.sort);
     寫入參數(參數, "order", 狀態.order);
     寫入參數(參數, "pageNo", 狀態.pageNo);
+    寫入參數(參數, "version", 狀態.version);
     return;
   }
 
@@ -221,6 +224,7 @@ function 寫入頁面專屬參數(參數, 狀態) {
     寫入參數(參數, "jobScope", 狀態.jobScope);
     寫入參數(參數, "split", 狀態.split);
     寫入參數(參數, "metric", 狀態.metric);
+    寫入參數(參數, "version", 狀態.version);
     return;
   }
 
@@ -234,6 +238,8 @@ function 寫入頁面專屬參數(參數, 狀態) {
     寫入參數(參數, "left", 狀態.left);
     寫入參數(參數, "right", 狀態.right);
     寫入參數(參數, "role", 狀態.role);
+    寫入參數(參數, "encounter", 狀態.encounter);
+    寫入參數(參數, "version", 狀態.version);
     return;
   }
 
@@ -245,6 +251,7 @@ function 寫入頁面專屬參數(參數, 狀態) {
 
   if (狀態.page === "teams") {
     寫入參數(參數, "encounter", 狀態.encounter);
+    寫入參數(參數, "version", 狀態.version);
     return;
   }
 
