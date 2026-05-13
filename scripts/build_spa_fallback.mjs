@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { dirname, join } from "node:path";
+import sharp from "sharp";
 
 const distDir = "dist";
 const indexPath = join(distDir, "index.html");
@@ -17,7 +18,7 @@ const defaultDescription =
   "整理 FFLogs 公開報告中的 FFXIV 繁中服零式、極、幻與絕本成績，提供排行榜、全服統計、個人成績單、玩家比較與近期動態。";
 const genericOgImageUrl = new URL("og-image.png", siteUrl).href;
 
-// postbuild 只讀取 public/data 的靜態聚合結果，輸出 dist/ 內的 HTML、SVG、sitemap 與 robots。
+// postbuild 只讀取 public/data 的靜態聚合結果，輸出 dist/ 內的 HTML、PNG OG 圖、sitemap 與 robots。
 // 這一層不得回寫 data/ 或 public/data/，避免 SEO 分享頁生成影響排行榜歷史資料或前端資料契約。
 const jobNames = {
   Paladin: "騎士",
@@ -200,7 +201,7 @@ function userPath(characterName) {
 
 function hashFileName(value) {
   const hash = createHash("sha1").update(String(value || ""), "utf8").digest("hex").slice(0, 16);
-  return `${hash}.svg`;
+  return `${hash}.png`;
 }
 
 function ogImageUrlForPath(imagePath) {
@@ -268,8 +269,11 @@ function buildJsonLd(page, canonicalUrl) {
 
 function replaceHeadMetadata(html, page) {
   const canonicalUrl = routeUrl(page.path);
+  // 社群爬蟲對 SVG 的 OG 圖支援不一致，因此所有靜態分享頁都輸出實體 PNG。
+  // page.imageUrl 仍由各頁資料決定，避免玩家頁、職業頁或伺服器比較退回首頁預覽圖。
   const imageUrl = page.imageUrl || genericOgImageUrl;
-  const imageType = page.imageType || (imageUrl.endsWith(".svg") ? "image/svg+xml" : "image/png");
+  const imageType = page.imageType || (imageUrl.endsWith(".png") ? "image/png" : "image/svg+xml");
+  const imageAlt = page.imageAlt || `${page.title} 社群分享預覽圖`;
   const jsonLd = buildJsonLd(page, canonicalUrl);
 
   let nextHtml = html
@@ -304,6 +308,9 @@ function replaceHeadMetadata(html, page) {
     `<meta property="og:image:secure_url" content="${escapeHtml(imageUrl)}" />`,
   );
   nextHtml = upsertMeta(nextHtml, "property=og:image:type", `<meta property="og:image:type" content="${escapeHtml(imageType)}" />`);
+  nextHtml = upsertMeta(nextHtml, "property=og:image:width", `<meta property="og:image:width" content="1200" />`);
+  nextHtml = upsertMeta(nextHtml, "property=og:image:height", `<meta property="og:image:height" content="630" />`);
+  nextHtml = upsertMeta(nextHtml, "property=og:image:alt", `<meta property="og:image:alt" content="${escapeHtml(imageAlt)}" />`);
   nextHtml = upsertMeta(nextHtml, "name=twitter:card", `<meta name="twitter:card" content="summary_large_image" />`);
   nextHtml = upsertMeta(nextHtml, "name=twitter:title", `<meta name="twitter:title" content="${escapeHtml(page.title)}" />`);
   nextHtml = upsertMeta(
@@ -312,6 +319,7 @@ function replaceHeadMetadata(html, page) {
     `<meta name="twitter:description" content="${escapeHtml(page.description)}" />`,
   );
   nextHtml = upsertMeta(nextHtml, "name=twitter:image", `<meta name="twitter:image" content="${escapeHtml(imageUrl)}" />`);
+  nextHtml = upsertMeta(nextHtml, "name=twitter:image:alt", `<meta name="twitter:image:alt" content="${escapeHtml(imageAlt)}" />`);
 
   return nextHtml;
 }
@@ -357,6 +365,35 @@ function writeTextFile(path, content) {
   writeFileSync(path, content, "utf8");
 }
 
+const queuedOgPngImages = [];
+
+function queueOgPng(path, svgContent) {
+  queuedOgPngImages.push({ path, svgContent });
+}
+
+async function writeOgPng(path, svgContent) {
+  mkdirSync(dirname(path), { recursive: true });
+  await sharp(Buffer.from(svgContent))
+    .resize(1200, 630, { fit: "fill" })
+    .png({ compressionLevel: 9, effort: 8, palette: true })
+    .toFile(path);
+}
+
+async function writeQueuedOgPngImages(concurrency = 6) {
+  let nextIndex = 0;
+  const workerCount = Math.min(concurrency, queuedOgPngImages.length);
+
+  await Promise.all(
+    Array.from({ length: workerCount }, async () => {
+      while (nextIndex < queuedOgPngImages.length) {
+        const item = queuedOgPngImages[nextIndex];
+        nextIndex += 1;
+        await writeOgPng(item.path, item.svgContent);
+      }
+    }),
+  );
+}
+
 function writeGeneratedPage(page, rootHtml) {
   writeTextFile(pageOutputPath(page.path), addRouteBaseHref(replaceHeadMetadata(rootHtml, page)));
   return routeUrl(page.path);
@@ -395,7 +432,7 @@ function buildUserPage(user, rootHtml) {
     title: `${user.character_name} 個人成績單 | ${siteName}`,
     description: buildUserDescription(user),
     imageUrl: ogImageUrlForPath(imagePath),
-    imageType: "image/svg+xml",
+    imageType: "image/png",
     schemaType: "ProfilePage",
     about: {
       "@type": "Thing",
@@ -410,7 +447,7 @@ function buildUserPage(user, rootHtml) {
     user.best_rdps ? `最佳 rDPS ${formatNumber(user.best_rdps, 2)}` : `${formatNumber(user.public_entry_count)} 筆公開成績`,
   ];
 
-  writeTextFile(
+  queueOgPng(
     join(distDir, imagePath),
     buildOgSvg({
       title: user.character_name,
@@ -450,11 +487,11 @@ function buildStatsEncounterPages(globalStats) {
   return encounters
     .filter((encounter) => encounter?.encounter_key && encounter?.encounter_name)
     .map((encounter) => {
-      const imagePath = `og/stats/${encodePathSegment(encounter.encounter_key)}.svg`;
+      const imagePath = `og/stats/${encodePathSegment(encounter.encounter_key)}.png`;
       const topServer = encounter.server_stats?.[0]?.server;
       const topJob = displayJobName(encounter.job_stats?.[0]?.job);
 
-      writeTextFile(
+      queueOgPng(
         join(distDir, imagePath),
         buildOgSvg({
           title: encounter.encounter_name,
@@ -474,7 +511,7 @@ function buildStatsEncounterPages(globalStats) {
         title: `${encounter.encounter_name} 全服統計 | ${siteName}`,
         description: buildEncounterDescription(encounter),
         imageUrl: ogImageUrlForPath(imagePath),
-        imageType: "image/svg+xml",
+        imageType: "image/png",
         schemaType: "Dataset",
         about: {
           "@type": "Thing",
@@ -503,11 +540,11 @@ function buildJobPages(globalStats) {
   return profiles
     .filter((profile) => profile?.job)
     .map((profile) => {
-      const imagePath = `og/jobs/${encodePathSegment(profile.job)}.svg`;
+      const imagePath = `og/jobs/${encodePathSegment(profile.job)}.png`;
       const rdpsMedian = profile.damage_profile?.rdps?.median ?? profile.savage_damage_profile?.rdps?.median;
       const jobName = displayJobName(profile.job);
 
-      writeTextFile(
+      queueOgPng(
         join(distDir, imagePath),
         buildOgSvg({
           title: `${jobName} 職業分析`,
@@ -527,7 +564,7 @@ function buildJobPages(globalStats) {
         title: `${jobName} 職業分析 | ${siteName}`,
         description: buildJobDescription(profile),
         imageUrl: ogImageUrlForPath(imagePath),
-        imageType: "image/svg+xml",
+        imageType: "image/png",
         about: {
           "@type": "Thing",
           name: `${displayJobLabel(profile.job)} FFXIV 職業`,
@@ -564,7 +601,7 @@ function buildServerComparePages(serverCompare) {
       const imagePath = `og/servers/${hashFileName(pairKey)}`;
       const medianDiff = Number(left.rdps_stats?.median) - Number(right.rdps_stats?.median);
 
-      writeTextFile(
+      queueOgPng(
         join(distDir, imagePath),
         buildOgSvg({
           title: `${left.server} vs ${right.server}`,
@@ -584,7 +621,7 @@ function buildServerComparePages(serverCompare) {
         title: `${left.server} vs ${right.server} 伺服器對比 | ${siteName}`,
         description: buildServerPairDescription(left, right),
         imageUrl: ogImageUrlForPath(imagePath),
-        imageType: "image/svg+xml",
+        imageType: "image/png",
         about: {
           "@type": "Thing",
           name: `${left.server} 與 ${right.server} 伺服器公開成績比較`,
@@ -610,8 +647,8 @@ const sitemapUrls = [];
 
 for (const page of routePages) {
   const imageFileName = page.path || "home";
-  const imagePath = `og/pages/${imageFileName}.svg`;
-  writeTextFile(
+  const imagePath = `og/pages/${imageFileName}.png`;
+  queueOgPng(
     join(distDir, imagePath),
     buildOgSvg({
       title: page.imageTitle || page.title,
@@ -620,7 +657,7 @@ for (const page of routePages) {
     }),
   );
   page.imageUrl = page.path ? ogImageUrlForPath(imagePath) : genericOgImageUrl;
-  page.imageType = page.path ? "image/svg+xml" : "image/png";
+  page.imageType = "image/png";
 }
 
 const rootHtml = replaceHeadMetadata(indexHtml, routePages[0]);
@@ -665,6 +702,8 @@ for (const user of users) {
   userPageCount += 1;
 }
 
+await writeQueuedOgPngImages();
+
 writeTextFile(join(distDir, "sitemap.xml"), buildSitemap(sitemapUrls));
 writeTextFile(
   join(distDir, "robots.txt"),
@@ -675,5 +714,5 @@ Sitemap: ${new URL("sitemap.xml", siteUrl).href}
 );
 
 console.log(
-  `Built SPA fallback at dist/404.html, ${routePages.length - 1} route meta pages, ${statsEncounterPages.length} stats pages, ${jobPages.length} job pages, ${serverComparePages.length} server compare pages and ${userPageCount} user share pages.`,
+  `Built SPA fallback at dist/404.html, ${routePages.length - 1} route meta pages, ${statsEncounterPages.length} stats pages, ${jobPages.length} job pages, ${serverComparePages.length} server compare pages, ${userPageCount} user share pages and ${queuedOgPngImages.length} PNG OG images.`,
 );

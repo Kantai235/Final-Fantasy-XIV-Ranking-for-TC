@@ -92,3 +92,4 @@
 7. `build_user_data.mjs` 預設以最新 `rankings_updated_at_iso` 作為 `generated_at_iso`，讓同一批排行榜重建時輸出穩定；可用 `FFXIV_TC_GENERATED_AT_ISO` 覆寫，`npm test` 會用 fixture 驗證這個規則。
 8. `npm run test:frontend-data` 會檢查前端資料讀取邊界、`useRankingApp()` 匯出的 shorthand 是否都有定義，以及公開 JSON 是否具備頁面會讀取的必要欄位。
 9. SEO/OG 分享網址的乾淨路徑需同時維持舊版 query 相容性；`npm run test:frontend-data` 會覆蓋 `/user/{玩家}`、`/stats/{副本 key}`、`/jobs/{職業}`、`/servers/{左}/vs/{右}`、舊版 query 與子路徑部署情境。
+10. `scripts/build_spa_fallback.mjs` 會為 route、個人成績單、副本統計、職業分析與伺服器對比產生各自的 1200x630 PNG OG 圖；內部可用 SVG 模板繪製，但公開 `og:image` / `twitter:image` 必須指向 crawler-safe PNG。
