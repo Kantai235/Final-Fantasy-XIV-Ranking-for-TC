@@ -1082,7 +1082,11 @@ button:disabled {
 }
 
 .比較搜尋表單 {
-  grid-template-columns: minmax(180px, 0.75fr) minmax(170px, 0.65fr) minmax(220px, 1fr) minmax(220px, 1fr) auto;
+  grid-template-columns: minmax(180px, 0.75fr) repeat(2, minmax(220px, 1fr)) auto;
+}
+
+.比較搜尋表單.比較搜尋表單含版本 {
+  grid-template-columns: minmax(180px, 0.75fr) minmax(170px, 0.65fr) repeat(2, minmax(220px, 1fr)) auto;
 }
 
 .比較職能選擇 {
@@ -2382,6 +2386,19 @@ button:disabled {
 
 .比較表格 {
   min-width: 940px;
+  table-layout: fixed;
+}
+
+.比較表格副本欄 {
+  width: 32%;
+}
+
+.比較表格玩家欄 {
+  width: 26%;
+}
+
+.比較表格差異欄 {
+  width: 16%;
 }
 
 .統計表格 th,
@@ -4050,6 +4067,10 @@ td a:hover {
   }
 
   .使用者搜尋表單 {
+    grid-template-columns: 1fr;
+  }
+
+  .比較搜尋表單.比較搜尋表單含版本 {
     grid-template-columns: 1fr;
   }
 

@@ -11,7 +11,7 @@ export default {
 
 <template>
   <section class="使用者搜尋區" aria-label="玩家比較查詢">
-    <form class="使用者搜尋表單 比較搜尋表單" @submit.prevent="提交角色比較">
+    <form class="使用者搜尋表單 比較搜尋表單" :class="{ 比較搜尋表單含版本: 顯示比較版本篩選 }" @submit.prevent="提交角色比較">
       <fieldset class="比較職能選擇">
         <legend>比較職能</legend>
         <div class="比較職能按鈕列" role="radiogroup" aria-label="比較職能">
@@ -136,6 +136,12 @@ export default {
         </header>
         <div class="統計表格外框">
           <table class="統計表格 比較表格">
+            <colgroup>
+              <col class="比較表格副本欄" />
+              <col class="比較表格玩家欄" />
+              <col class="比較表格玩家欄" />
+              <col class="比較表格差異欄" />
+            </colgroup>
             <thead>
               <tr>
                 <th scope="col">副本</th>
