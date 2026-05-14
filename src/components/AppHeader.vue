@@ -1,6 +1,7 @@
 <script>
 import { nextTick, ref } from "vue";
 import { injectRankingApp } from "../composables/useRankingApp";
+import { 顯示社群連結 } from "../utils/siteFeatures";
 
 const Telegram連結 = "https://t.me/ffxiv_tc";
 const TelegramQrCode網址 = `${import.meta.env.BASE_URL}telegram.png`;
@@ -13,6 +14,10 @@ export default {
     const 顯示Telegram交流視窗 = ref(false);
 
     function 開啟Telegram交流視窗() {
+      if (!顯示社群連結) {
+        return;
+      }
+
       顯示Telegram交流視窗.value = true;
       nextTick(() => Telegram關閉按鈕.value?.focus());
     }
@@ -30,6 +35,7 @@ export default {
       ...injectRankingApp(),
       Telegram連結,
       TelegramQrCode網址,
+      顯示社群連結,
       Telegram開啟按鈕,
       Telegram關閉按鈕,
       顯示Telegram交流視窗,
@@ -52,6 +58,7 @@ export default {
     </p>
     <div class="標題操作">
       <button
+        v-if="顯示社群連結"
         ref="Telegram開啟按鈕"
         class="Telegram交流按鈕"
         type="button"
@@ -75,7 +82,7 @@ export default {
 </section>
 <Teleport to="body">
   <div
-    v-if="顯示Telegram交流視窗"
+    v-if="顯示社群連結 && 顯示Telegram交流視窗"
     class="Telegram視窗遮罩"
     @click.self="關閉Telegram交流視窗並回焦"
     @keydown.escape="關閉Telegram交流視窗並回焦"

@@ -51,6 +51,7 @@ import {
   讀取使用者資料檔,
 } from "../utils/userData";
 import { 建立職業佔比分組, 職業範圍類型 } from "../utils/statsDisplay";
+import { 顯示作者相關標示 } from "../utils/siteFeatures";
 import { 寫入網址狀態, 讀取目前網址狀態 } from "../utils/urlState";
 import { 排名色彩類別, 比例條樣式, 熱力格樣式, 趨勢點樣式, 隱藏載入失敗圖片 } from "../utils/viewHelpers";
 import { useTheme } from "./useTheme";
@@ -2928,7 +2929,7 @@ const 使用者徽章 = computed(() => {
   const 最後紀錄時間 = new Date(使用者統計.value.最後紀錄時間 || 0).getTime();
   const 徽章 = [];
 
-  if (是網站作者(使用者資料.value.character_name)) {
+  if (顯示作者相關標示 && 是網站作者(使用者資料.value.character_name)) {
     徽章.push({ 名稱: "網站作者", 說明: 作者說明文字, 樣式類別: "作者徽章" });
   }
   if (["savage_m1s", "savage_m2s", "savage_m3s", "savage_m4s"].every((副本) => 副本集合.has(副本))) {
@@ -3855,6 +3856,7 @@ onUnmounted(() => {
     主題模式,
     主題儲存鍵,
     頁面模式,
+    顯示作者相關標示,
     作者說明文字,
     使用者索引,
     使用者資料,

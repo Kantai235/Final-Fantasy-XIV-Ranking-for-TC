@@ -178,6 +178,7 @@ async function validateFrontendFetchBoundary() {
     "utils/fetchJson.js",
     "utils/publicData.js",
     "utils/shareMeta.js",
+    "utils/siteFeatures.js",
     "utils/statsDisplay.js",
     "utils/urlState.js",
     "utils/userData.js",
