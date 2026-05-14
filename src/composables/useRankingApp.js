@@ -648,6 +648,17 @@ function 排序按鈕標籤(欄位) {
   return `以${標籤}${排序方向文字(欄位, 下一方向)}排序`;
 }
 
+function 保留目前文字選項(選項列表, 目前值) {
+  const 選項集合 = new Set(選項列表.filter(Boolean));
+  const 目前文字 = String(目前值 || "").trim();
+  if (目前文字) {
+    // 副本切換後可能暫時沒有這個伺服器的成績；仍保留選項，讓使用者知道篩選條件沒有被悄悄重設。
+    選項集合.add(目前文字);
+  }
+
+  return Array.from(選項集合).sort((前一個, 後一個) => 前一個.localeCompare(後一個, "zh-Hant-TW"));
+}
+
 function 排序數值(列, 欄位) {
   if (欄位 === "rank") {
     return 列.原始排名 ?? 列.職業排名 ?? null;
@@ -868,11 +879,8 @@ const 所有排行列 = computed(() => {
 });
 
 const 伺服器選項 = computed(() => {
-  const 名稱集合 = new Set(
-    所有排行列.value.map((列) => 列.伺服器).filter((伺服器) => 伺服器 && 伺服器 !== "未知伺服器"),
-  );
-
-  return Array.from(名稱集合).sort((前一個, 後一個) => 前一個.localeCompare(後一個, "zh-Hant-TW"));
+  const 名稱列表 = 所有排行列.value.map((列) => 列.伺服器).filter((伺服器) => 伺服器 && 伺服器 !== "未知伺服器");
+  return 保留目前文字選項(名稱列表, 伺服器篩選.value);
 });
 
 const 職業選項 = computed(() => {
@@ -889,7 +897,9 @@ const 職業選項 = computed(() => {
       代碼: 群組.代碼,
       名稱: 群組.名稱,
       色彩: 群組.色彩,
-      職業: 群組.職業.filter((職業代碼) => 目前有資料職業.has(職業代碼)).map((職業代碼) => ({
+      職業: 群組.職業.filter((職業代碼) => {
+        return 目前有資料職業.has(職業代碼) || (職業類型篩選.value === 群組.代碼 && 職業篩選.value === 職業代碼);
+      }).map((職業代碼) => ({
         代碼: 職業代碼,
         名稱: 顯示職業名稱(職業代碼),
         色彩: 群組.色彩,
@@ -914,7 +924,7 @@ const 職業類型選項 = computed(() => {
   }
 
   return 職業群組設定
-    .filter((群組) => 群組.職業.some((職業代碼) => 目前有資料職業.has(職業代碼)))
+    .filter((群組) => 群組.職業.some((職業代碼) => 目前有資料職業.has(職業代碼)) || 職業類型篩選.value === 群組.代碼)
     .map((群組) => ({
       代碼: 群組.代碼,
       名稱: 群組.名稱,
@@ -1175,10 +1185,8 @@ const 伺服器佔比單位 = computed(() => {
 });
 
 const 統計伺服器選項 = computed(() => {
-  return (目前統計來源.value?.server_stats || [])
-    .map((項目) => 項目.server)
-    .filter(Boolean)
-    .sort((前一個, 後一個) => 前一個.localeCompare(後一個, "zh-Hant-TW"));
+  const 名稱列表 = (目前統計來源.value?.server_stats || []).map((項目) => 項目.server).filter(Boolean);
+  return 保留目前文字選項(名稱列表, 統計伺服器篩選.value);
 });
 
 const 統計職業範圍選項 = computed(() => {
@@ -1216,7 +1224,7 @@ const 統計職業類型選項 = computed(() => {
   const 來源 = 目前統計來源.value || 全服統計資料.value;
   const 可用類型 = new Set((來源?.role_stats || []).map((項目) => 項目.role).filter(Boolean));
   return 職業群組設定
-    .filter((群組) => 可用類型.has(群組.代碼))
+    .filter((群組) => 可用類型.has(群組.代碼) || 統計職業範圍類型代碼.value === 群組.代碼)
     .map((群組) => ({
       ...群組,
       clear_count: 轉為數字((來源?.role_stats || []).find((項目) => 項目.role === 群組.代碼)?.clear_count) || 0,
@@ -1230,7 +1238,7 @@ const 統計職業選項 = computed(() => {
     return [];
   }
 
-  return (來源?.job_stats || [])
+  const 選項列表 = (來源?.job_stats || [])
     .filter((項目) => 項目.role === 類型代碼)
     .map((項目) => ({
       代碼: 項目.job,
@@ -1238,7 +1246,40 @@ const 統計職業選項 = computed(() => {
       色彩: 職業代碼色彩(項目.job),
       clear_count: 轉為數字(項目.clear_count) || 0,
     }));
+
+  const 目前職業 = 統計職業範圍職業代碼.value;
+  if (目前職業 && 職業所屬類型(目前職業)?.代碼 === 類型代碼 && !選項列表.some((選項) => 選項.代碼 === 目前職業)) {
+    選項列表.push({
+      代碼: 目前職業,
+      名稱: 顯示職業名稱(目前職業),
+      色彩: 職業代碼色彩(目前職業),
+      clear_count: 0,
+    });
+  }
+
+  return 選項列表;
 });
+
+function 統計伺服器可識別(伺服器) {
+  const 伺服器名稱 = String(伺服器 || "").trim();
+  if (!伺服器名稱 || !全服統計資料.value) {
+    return true;
+  }
+
+  return (全服統計資料.value.server_stats || []).some((項目) => 項目.server === 伺服器名稱);
+}
+
+function 統計職業範圍可識別(範圍) {
+  const 類型 = 職業範圍類型(範圍);
+  if (類型 === "all") {
+    return true;
+  }
+  if (類型 === "role") {
+    return 職業群組設定.some((群組) => 群組.代碼 === 範圍);
+  }
+
+  return Boolean(職業所屬類型(範圍));
+}
 
 const 統計職業選單文字 = computed(() => 取得職業範圍文字());
 
@@ -3657,13 +3698,10 @@ function 處理瀏覽紀錄變更() {
 
 watch(副本鍵值, () => {
   if (!正在套用網址狀態) {
-    伺服器篩選.value = "";
-    職業類型篩選.value = "";
-    職業篩選.value = "";
-    搜尋關鍵字.value = "";
     if (!副本支援版本篩選(目前副本.value)) {
       排行榜版本範圍.value = 預設版本紀錄範圍;
     }
+    // 伺服器與職業是玩家刻意設定的跨副本觀察條件，切副本時只回到第一頁，不主動清空篩選。
     目前頁碼.value = 1;
   }
   if (副本清單.value.length > 0) {
@@ -3738,11 +3776,11 @@ watch([統計副本鍵值, 全服統計資料], () => {
     統計版本範圍.value = 預設版本紀錄範圍;
   }
 
-  if (統計伺服器篩選.value && !統計伺服器選項.value.includes(統計伺服器篩選.value)) {
+  if (統計伺服器篩選.value && !統計伺服器可識別(統計伺服器篩選.value)) {
     統計伺服器篩選.value = "";
   }
 
-  if (!統計職業範圍選項.value.some((選項) => 選項.value === 統計職業範圍.value)) {
+  if (!統計職業範圍可識別(統計職業範圍.value)) {
     統計職業範圍.value = "all";
   }
 

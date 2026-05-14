@@ -242,6 +242,8 @@ npm run build
 
 例如排行榜預設副本與隊伍榜預設副本目前都是 `savage_m4s`（零式 M4S / 狡雷），全服統計的「全部副本」、玩家比較的預設防護職能，也都不會寫入 URL。全服統計的副本、職業分析的職業、伺服器對比的左右伺服器會寫入乾淨路徑，讓社群爬蟲可以讀到對應的靜態 SEO/OG；額外的指標、分群、伺服器篩選等細部條件仍保留為 query，由前端載入後同步動態 meta。舊版 `?page=user&user=玩家名稱`、`?user=玩家名稱&server=伺服器`、`./user?name=玩家名稱`、`./jobs?job=Paladin` 或 `./servers?left=陸行鳥&right=莫古力` 連結仍會自動套用到對應頁面，避免既有分享連結失效；但需要社群爬蟲讀到專屬 OG 時，應使用 `./user/玩家名稱`、`./stats/{副本 key}`、`./jobs/{職業}` 或 `./servers/{左}/vs/{右}` 這類乾淨路徑。
 
+排行榜與全服統計切換副本時會保留已選的伺服器與職業條件，讓使用者可以沿用同一組 query 在多個副本間比較；只有副本本身不支援版本切點時，版本篩選會自動回到 `all`。
+
 `index.html` 提供站台層級 SEO、Open Graph、Twitter Card、JSON-LD 結構化資料，以及 favicon / Apple touch icon / web app manifest 引用。網站 icon 的設計來源是 `public/favicon.svg`，實際 PNG 與 ICO 由 `npm run build:icons` 產生；社群預覽圖位於 `public/og-image.png`。`npm run build` 後會由 `scripts/build_spa_fallback.mjs` 產生 `/stats/`、`/user/`、`/compare/`、`/teams/`、`/servers/`、`/jobs/` 與 `/activity/` 的 route 專屬 HTML，讓不執行 JavaScript 的社群爬蟲也能讀到各頁預設標題、描述、canonical 與 OG/Twitter meta。
 
 同一個 postbuild 也會依 `public/data/global_stats.json`、`public/data/server_compare.json` 與 `public/data/users/index.json` 產生每個副本統計的 `dist/stats/{副本 key}/index.html`、每個職業的 `dist/jobs/{職業}/index.html`、每組有序伺服器配對的 `dist/servers/{左}/vs/{右}/index.html`、每位玩家的 `dist/user/{玩家名稱}/index.html`，以及對應的 `dist/og/stats/*.png`、`dist/og/jobs/*.png`、`dist/og/servers/*.png`、`dist/og/users/*.png`、`dist/sitemap.xml` 與 `dist/robots.txt`。因 LINE、Facebook 與多數 OG 檢查器對 SVG 支援不一致，postbuild 會用 `sharp` 將內部 SVG 模板轉成 1200x630 PNG，讓各頁 `og:image` 與 `twitter:image` 都指向自己的實體預覽圖；`robots.txt` 會明確允許 `facebookexternalhit` 與 `Facebot` 抓取分享預覽，首頁仍使用 `public/og-image.png` 作為站台層級預覽圖。建置產物只存在於 `dist/`，不會寫回 `data/` 或 `public/data/`，也不會改變 `config/encounters.json`、`data/rankings/` 或個人成績單 JSON schema。
