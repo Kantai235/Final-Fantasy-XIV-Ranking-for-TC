@@ -213,7 +213,7 @@ npm run backfill:gcd -- --dry-run
 npm run backfill:gcd
 ```
 
-`backfill_gcd_coverage.py` 會依通關時間由新到舊挑選缺少 `gcd_coverage` key 的玩家，預設每輪 2000 筆。執行時會先輸出待補筆數、已為 null 的筆數與本輪選取筆數，更新過程也會逐筆顯示 `[目前/本輪總數]` 進度。若 FFLogs report 已無法存取，該玩家會寫入 `gcd_coverage: null` 與 `gcd_coverage_status.reason = "private_or_deleted"`；暫時性錯誤會保留缺 key 狀態，留待下次重試。
+`backfill_gcd_coverage.py` 會依通關時間由新到舊挑選缺少 `gcd_coverage` key，或仍停在舊版 `calculation_version` 的玩家，預設每輪 2000 筆。執行時會先輸出待補筆數、需重算筆數、已為 null 的筆數與本輪選取筆數，更新過程也會逐筆顯示 `[目前/本輪總數]` 進度。若 FFLogs report 已無法存取，該玩家會寫入 `gcd_coverage: null` 與 `gcd_coverage_status.reason = "private_or_deleted"`；暫時性錯誤會保留缺 key 或舊版狀態，留待下次重試。
 
 清理既有 `data/rankings/*.reports/*.json` 裡可重查的大型 FFLogs raw 欄位時，先預覽再正式執行：
 
@@ -361,7 +361,7 @@ npm run build:user-data
 2. 安裝 Python 與 Node.js 依賴。
 3. 使用 GitHub Secrets 中的 FFLogs 憑證執行抓取腳本。
 4. 執行 `scripts/backfill_missing_fflogs_data.py --limit 250` 補齊缺漏的 FFLogs 戰鬥資料。
-5. 執行 `scripts/backfill_gcd_coverage.py --limit 2000`，由最新通關紀錄往舊紀錄逐批補齊玩家 GCD 覆蓋率。
+5. 執行 `scripts/backfill_gcd_coverage.py --limit 2000`，由最新通關紀錄往舊紀錄逐批補齊或重算玩家 GCD 覆蓋率。
 6. 執行 `python scripts/fetch_fflogs.py --split-rankings`，將完整排行榜資料拆分成適合 Git 追蹤的檔案。
 7. 產生個人成績單、全服統計、近期動態、隊伍榜、伺服器對比資料與 `data/update_status.json`。
 8. 執行 `npm run build`，在提交前完成公開資料驗證與 Vite 建置。
@@ -424,7 +424,7 @@ npm run cloudflare:estimate
 - 排行榜只統計公開報告中可解析且符合繁中服條件的資料。
 - 單場 FFLogs `playerDetails` / `damageDone` 查詢會同時帶 `fightIDs` 與 fight 的相對 `startTime` / `endTime`，避免少數舊報告只用 `fightIDs` 時拿到 partial damage table，造成 rDPS/aDPS 異常放大。
 - `active_percent` 對齊 FFLogs Damage Done CSV 的 Active%，使用 `fflogs_total_time_ms` 作為優先分母；DPS/rDPS/aDPS 仍使用 `damage_time_ms`。
-- GCD 覆蓋率以 FFLogs `Casts` graph 為來源，會使用 graph 內的 downtime 視窗同時扣除分母與分子；技能的 GCD 分類與基礎 cast/recast 來自 XIVAPI datamining 的 `Action.csv`，只在腳本執行時讀入記憶體，不會保存 raw Casts events。
+- GCD 覆蓋率以 FFLogs `Casts` graph 為來源，會使用 graph 內的 downtime 視窗同時扣除分母與分子；技能的 GCD 分類與基礎 cast/recast 來自 XIVAPI datamining 的 `Action.csv`，只在腳本執行時讀入記憶體，不會保存 raw Casts events。實際 recast 會從同玩家相鄰 GCD 的緊貼施放間隔取偏高分位估計，避免 FFLogs 較短的 cast packet 間隔讓高施放密度職業被低估。
 
 ## 版本切點與過版紀錄
 

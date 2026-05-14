@@ -70,6 +70,27 @@ class GcdCoverageBackfillTest(unittest.TestCase):
         self.assertEqual(result["gcd_cast_count"], 4)
         self.assertEqual(result["percent"], 83.33)
 
+    def test_recast_estimate_uses_upper_tight_delta_cluster(self) -> None:
+        metadata = gcd.ActionMetadata(
+            action_id=100,
+            name="測試 GCD",
+            action_category_id=2,
+            cast_ms=0,
+            recast_ms=2500,
+        )
+        timestamp = 0
+        attempts: list[dict[str, Any]] = []
+        for delta in [2400, 2404, 2410, 2420, 2450, 2450, 2450, 2450, 3000]:
+            attempts.append({"timestamp": timestamp, "metadata": metadata})
+            timestamp += delta
+        attempts.append({"timestamp": timestamp, "metadata": metadata})
+
+        multipliers = gcd.infer_recast_multiplier_by_base(attempts)
+
+        # FFLogs 的 cast packet timestamp 偶爾會比實際可重按時間早一點；取偏高的緊貼分位，
+        # 再由下一個 GCD timestamp 夾住覆蓋範圍，可避免把低端 timestamp 抖動套到整場。
+        self.assertEqual(multipliers[2500], 0.98)
+
     def test_scan_candidates_counts_missing_and_null_gcd_keys(self) -> None:
         encounter = {"key": "fixture", "name": "測試副本", "zone_id": 1, "encounter_id": 2, "difficulty": 100}
         ranking = {
@@ -99,12 +120,23 @@ class GcdCoverageBackfillTest(unittest.TestCase):
                                     "gcd_coverage": None,
                                 },
                                 {
-                                    "name": "已完成角色",
+                                    "name": "舊版角色",
                                     "server": "利維坦",
                                     "job": "Samurai",
                                     "dps": 80,
                                     "fflogs_id": 12,
-                                    "gcd_coverage": {"percent": 99.0},
+                                    "gcd_coverage": {"percent": 99.0, "calculation_version": 1},
+                                },
+                                {
+                                    "name": "新版角色",
+                                    "server": "莫古力",
+                                    "job": "BlackMage",
+                                    "dps": 70,
+                                    "fflogs_id": 13,
+                                    "gcd_coverage": {
+                                        "percent": 98.0,
+                                        "calculation_version": gcd.GCD_CALCULATION_VERSION,
+                                    },
                                 },
                             ],
                         }
@@ -120,12 +152,15 @@ class GcdCoverageBackfillTest(unittest.TestCase):
                 patch.object(gcd, "ranking_path", return_value=marker),
                 patch.object(gcd, "load_ranking_file", return_value=ranking),
             ):
-                candidates, missing_count, null_count, rankings_by_key = gcd.scan_candidates({"fixture": encounter})
+                candidates, missing_count, stale_count, null_count, rankings_by_key = gcd.scan_candidates(
+                    {"fixture": encounter}
+                )
 
         self.assertEqual(missing_count, 1)
+        self.assertEqual(stale_count, 1)
         self.assertEqual(null_count, 1)
-        self.assertEqual(len(candidates), 1)
-        self.assertEqual(candidates[0].player["name"], "待補角色")
+        self.assertEqual(len(candidates), 2)
+        self.assertEqual({candidate.player["name"] for candidate in candidates}, {"待補角色", "舊版角色"})
         self.assertIs(rankings_by_key["fixture"], ranking)
 
     def test_mark_unavailable_writes_null_key_and_status(self) -> None:

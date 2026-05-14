@@ -25,10 +25,12 @@ import fetch_fflogs as fflogs  # noqa: E402
 # cast、recast 與分類，避免整份遊戲資料落地造成 repo 膨脹。
 ACTION_CSV_URL = "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/master/csv/en/Action.csv"
 GCD_ACTION_CATEGORY_IDS = {2, 3}  # 2=Spell, 3=Weaponskill
-GCD_CALCULATION_VERSION = 1
+GCD_CALCULATION_VERSION = 2
 GCD_SOURCE = "fflogs_casts_graph"
 MIN_REASONABLE_EPOCH_MS = 946684800000
-RECAST_TIGHT_DELTA_PERCENTILE = 0.075
+RECAST_TIGHT_DELTA_MIN_RATIO = 0.9
+RECAST_TIGHT_DELTA_MAX_RATIO = 1.05
+RECAST_TIGHT_DELTA_PERCENTILE = 0.7
 
 read_json = getattr(fflogs, "\u8b80\u53d6_json")
 ranking_path = getattr(fflogs, "\u6392\u884c\u699c\u6a94\u6848\u8def\u5f91")
@@ -211,11 +213,19 @@ def player_has_query_context(fight: dict[str, Any], player: dict[str, Any]) -> b
     )
 
 
+def gcd_coverage_version(player: dict[str, Any]) -> int | None:
+    coverage = player.get("gcd_coverage")
+    if not isinstance(coverage, dict):
+        return None
+    return to_int(coverage.get("calculation_version"))
+
+
 def scan_candidates(
     encounters: dict[str, dict[str, Any]],
-) -> tuple[list[GcdCandidate], int, int, dict[str, dict[str, Any]]]:
+) -> tuple[list[GcdCandidate], int, int, int, dict[str, dict[str, Any]]]:
     candidates: list[GcdCandidate] = []
     missing_key_count = 0
+    stale_key_count = 0
     null_key_count = 0
     rankings_by_key: dict[str, dict[str, Any]] = {}
 
@@ -260,9 +270,25 @@ def scan_candidates(
                         )
                     elif player.get("gcd_coverage") is None:
                         null_key_count += 1
+                    elif gcd_coverage_version(player) != GCD_CALCULATION_VERSION:
+                        if not player_has_query_context(fight, player):
+                            continue
+                        stale_key_count += 1
+                        candidates.append(
+                            GcdCandidate(
+                                encounter_key=key,
+                                encounter=encounter,
+                                ranking=ranking,
+                                report_code=report_code,
+                                report=report,
+                                fight=fight,
+                                player=player,
+                                sort_time=candidate_sort_time(report, fight),
+                            )
+                        )
 
     candidates.sort(key=lambda candidate: (candidate.sort_time, candidate.report_code), reverse=True)
-    return candidates, missing_key_count, null_key_count, rankings_by_key
+    return candidates, missing_key_count, stale_key_count, null_key_count, rankings_by_key
 
 
 def query_casts_graph(session: Any, auth_pool: Any, candidate: GcdCandidate) -> dict[str, Any]:
@@ -394,7 +420,7 @@ def median_default_speed_multiplier(attempts: list[dict[str, Any]]) -> float:
     return statistics.median(ratios)
 
 
-def low_percentile(values: list[float], percentile: float) -> float:
+def percentile_value(values: list[float], percentile: float) -> float:
     if not values:
         return 1.0
     sorted_values = sorted(values)
@@ -405,8 +431,10 @@ def low_percentile(values: list[float], percentile: float) -> float:
 
 def infer_recast_multiplier_by_base(attempts: list[dict[str, Any]]) -> dict[int, float]:
     # Cast duration 和 recast 會經過不同的遊戲端取整流程；只用 hardcast duration 推 recast
-    # 會讓 GCD 覆蓋時間偏高。這裡改從相鄰 GCD 的緊貼施放間隔取低分位，排除玩家延遲後，
-    # 作為同一種 base recast 在該 report 中的實際冷卻估計。
+    # 會讓 GCD 覆蓋時間偏高。不過 FFLogs 的 cast packet timestamp 也可能略早於真正可重按的時間，
+    # 若取低分位會把偏短間隔套到整場，導致像黑魔這類高施放密度職業被低估。這裡先只保留
+    # 緊貼施放區間，再取偏高分位作為同一種 base recast 的估計；後續仍會用下一個 GCD timestamp
+    # 夾住覆蓋區間，因此短窗加速或即刻詠唱不會被這個偏高估計直接灌水。
     ratios_by_recast: dict[int, list[float]] = {}
     for index, attempt in enumerate(attempts[:-1]):
         metadata = attempt.get("metadata")
@@ -420,11 +448,11 @@ def infer_recast_multiplier_by_base(attempts: list[dict[str, Any]]) -> dict[int,
 
         delta = next_timestamp - timestamp
         ratio = delta / metadata.recast_ms
-        if 0.9 <= ratio <= 1.05:
+        if RECAST_TIGHT_DELTA_MIN_RATIO <= ratio <= RECAST_TIGHT_DELTA_MAX_RATIO:
             ratios_by_recast.setdefault(metadata.recast_ms, []).append(ratio)
 
     return {
-        recast_ms: low_percentile(ratios, RECAST_TIGHT_DELTA_PERCENTILE)
+        recast_ms: percentile_value(ratios, RECAST_TIGHT_DELTA_PERCENTILE)
         for recast_ms, ratios in ratios_by_recast.items()
         if ratios
     }
@@ -557,11 +585,12 @@ def candidate_matches_filters(candidate: GcdCandidate, args: argparse.Namespace)
 def main() -> int:
     args = parse_args()
     encounters = load_all_encounters()
-    candidates, missing_key_count, null_key_count, rankings_by_key = scan_candidates(encounters)
+    candidates, missing_key_count, stale_key_count, null_key_count, rankings_by_key = scan_candidates(encounters)
     candidates = [candidate for candidate in candidates if candidate_matches_filters(candidate, args)]
     selected = candidates[: max(args.limit, 0)]
 
     print(f"需要更新 GCD 覆蓋率的玩家筆數：{missing_key_count}")
+    print(f"需要以 v{GCD_CALCULATION_VERSION} 重算 GCD 覆蓋率的玩家筆數：{stale_key_count}")
     print(f"已建立 gcd_coverage key 但值為 null 的玩家筆數：{null_key_count}")
     print(f"本輪選取更新筆數：{len(selected)}")
     if args.report_code or args.fight_id is not None or args.player_name:
