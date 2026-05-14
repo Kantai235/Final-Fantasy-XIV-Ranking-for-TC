@@ -668,15 +668,15 @@ h1 {
 }
 
 .工具列 > .欄位 {
-  flex: 1 1 150px;
+  flex: 1 1 118px;
 }
 
 .工具列 > .副本選單欄位 {
-  flex-basis: 210px;
+  flex-basis: 200px;
 }
 
 .工具列 > .搜尋欄位 {
-  flex: 2 1 260px;
+  flex: 2 1 210px;
 }
 
 .欄位 {
@@ -833,11 +833,16 @@ button:disabled {
   position: relative;
 }
 
-.工具列 > .職業選單欄位,
+.工具列 > .職業選單欄位 {
+  flex: 0 1 240px;
+  width: 240px;
+  min-width: 220px;
+}
+
 .統計工具列 > .職業選單欄位 {
-  flex: 0 0 auto;
-  width: max-content;
-  min-width: 300px;
+  flex: 0 1 300px;
+  width: 300px;
+  min-width: 260px;
 }
 
 .職業選單 {
@@ -871,7 +876,7 @@ button:disabled {
   flex: 1 1 auto;
   min-width: 0;
   max-width: 100%;
-  overflow: visible;
+  overflow: hidden;
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -880,8 +885,8 @@ button:disabled {
 .職業選單目前值 span {
   min-width: 0;
   display: block;
-  overflow: visible;
-  text-overflow: clip;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
