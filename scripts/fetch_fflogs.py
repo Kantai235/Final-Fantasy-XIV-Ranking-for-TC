@@ -163,6 +163,8 @@ def 布林設定(名稱: str) -> bool:
     "total_damage",
     "active_time_ms",
     "active_percent",
+    "gcd_coverage",
+    "gcd_coverage_status",
     "clear_time_ms",
     "clear_time_seconds",
     "damage_downtime_ms",
@@ -2334,6 +2336,12 @@ def 建立排行榜條目(排行榜: dict[str, Any], 版本範圍: str = "all") 
                     "source_reports": [報告代碼],
                     "duplicate_count": 1,
                 }
+                if "gcd_coverage" in 玩家:
+                    # GCD 覆蓋率由 backfill_gcd_coverage.py 依 Casts graph 後補。
+                    # key 不存在代表尚未嘗試；值為 null 代表已嘗試但 report 無法存取。
+                    成績["gcd_coverage"] = 玩家.get("gcd_coverage")
+                if "gcd_coverage_status" in 玩家:
+                    成績["gcd_coverage_status"] = 玩家.get("gcd_coverage_status")
                 登記排行榜條目(成績, 精確成績索引)
 
     for 成績 in 精確成績索引.values():

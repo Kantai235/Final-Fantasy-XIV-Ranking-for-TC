@@ -84,6 +84,9 @@
 5. `backfill_missing_fflogs_data.py` 只應補齊影響建置的欄位，例如 `fights[].players`、`clear_time_ms` 與 `damage_time_ms`；不得因缺少 raw 欄位而把大型原始資料補回 repo。
 6. 單場 `playerDetails` 與 `damageDone` GraphQL 查詢必須同時帶 `fightIDs` 以及該 fight 的相對 `startTime` / `endTime`。少數 FFLogs 舊報告的 `report.endTime` 可能停在 fight 中途；只用 `fightIDs` 會拿到 partial table，導致 rDPS/aDPS 異常放大。
 7. `active_percent` 對齊 FFLogs Damage Done CSV 的 Active%，優先使用 `fflogs_total_time_ms` 作為分母；DPS/rDPS/aDPS 仍使用 `damage_time_ms` 作為分母。
+8. `gcd_coverage` 只保存衍生結果，不保存 FFLogs Casts raw events。key 不存在代表尚未嘗試補齊；值為 `null` 代表已嘗試但 report 已轉為 Private、刪除或無權限。
+9. `scripts/backfill_gcd_coverage.py` 會以 FFLogs `Casts` graph 補算 GCD 覆蓋率，GraphQL 查詢必須帶 `fightIDs`、該 fight 的相對 `startTime` / `endTime` 與玩家 `sourceID`，並使用 graph downtime 視窗同時扣除分母與分子。
+10. GCD 技能分類與基礎 cast/recast 來自 XIVAPI datamining `Action.csv`；腳本只於執行時讀入記憶體，不落地完整遊戲資料。實際 recast 需以同玩家相鄰 GCD 的緊貼施放間隔低分位估計，避免把玩家延遲誤算成覆蓋時間。
 
 ### E. 驗證與同步
 1. 文件或註解變更仍需至少執行語法檢查與 `npm run build:user-data`，確認資料聚合可完成。
@@ -98,6 +101,7 @@
 10. `scripts/build_spa_fallback.mjs` 會為 route、個人成績單、副本統計、職業分析與伺服器對比產生各自的 1200x630 PNG OG 圖；內部可用 SVG 模板繪製，但公開 `og:image` / `twitter:image` 必須指向 crawler-safe PNG。
 11. `dist/robots.txt` 必須明確允許 `facebookexternalhit` 與 `Facebot`，避免 Facebook 分享偵錯工具把 robots 設定判定為可能阻擋 OG 抓取。
 12. `scripts/apply_cloudflare_rules.mjs` 必須維護 Meta/Facebook 分享爬蟲例外規則；`AS32934`、`AS63293` 與 Cloudflare verified Facebook bot 的 GET/HEAD 請求需跳過會造成 OG 抓取 403 的 Security Level、BIC、UA Blocking、Rate Limiting 與後續自訂規則。
+13. `npm run backfill:gcd -- --dry-run` 會列出待補 GCD 覆蓋率筆數、已為 null 的筆數與本輪候選；正式 `npm run backfill:gcd` 預設每輪更新 200 位玩家，並在 workflow log 中逐筆輸出 `[目前/本輪總數]` 進度。
 
 ### F. 版本切點與過版紀錄
 1. `config/encounters.json` 的 `version_cutoff` 用來描述副本版本有效期限；目前 `極 佐拉加` 與 `極 豔翼蛇鳥` 的過版切點是台灣時間 2026-04-21 18:00，對應 `2026-04-21T10:00:00.000Z`。

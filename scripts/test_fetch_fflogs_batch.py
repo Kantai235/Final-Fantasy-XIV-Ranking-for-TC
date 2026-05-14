@@ -353,6 +353,8 @@ class FetchFFLogsBatchTest(unittest.TestCase):
                                     "adps": 20000,
                                     "total_damage": 200000,
                                     "active_time_ms": 9900,
+                                    "gcd_coverage": {"percent": 98.76},
+                                    "gcd_coverage_status": {"state": "ok"},
                                 }
                             ],
                         }
@@ -366,6 +368,8 @@ class FetchFFLogsBatchTest(unittest.TestCase):
         self.assertEqual(len(條目), 1)
         self.assertEqual(條目[0]["rdps"], 21000)
         self.assertEqual(條目[0]["dps"], 20000)
+        self.assertEqual(條目[0]["gcd_coverage"]["percent"], 98.76)
+        self.assertEqual(條目[0]["gcd_coverage_status"]["state"], "ok")
 
 
 if __name__ == "__main__":

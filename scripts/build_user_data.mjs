@@ -346,6 +346,8 @@ function buildEntrySummary(entry) {
     rdps: entry.rdps,
     adps: entry.adps,
     active_percent: entry.active_percent,
+    gcd_coverage: entry.gcd_coverage,
+    gcd_coverage_status: entry.gcd_coverage_status,
     clear_time_seconds: entry.clear_time_seconds,
     recorded_at_iso: entry.recorded_at_iso,
     report_code: entry.report_code,
@@ -829,6 +831,8 @@ function makePublicEntry({ encounter, report, reportCode, fight, player, fightPl
     total_damage: toNumber(player.total_damage),
     active_time_ms: toNumber(player.active_time_ms),
     active_percent: activePercent,
+    ...(Object.hasOwn(player, "gcd_coverage") ? { gcd_coverage: player.gcd_coverage } : {}),
+    ...(Object.hasOwn(player, "gcd_coverage_status") ? { gcd_coverage_status: player.gcd_coverage_status } : {}),
     clear_time_ms: clearTimeMs,
     clear_time_seconds: clearTimeSeconds,
     damage_downtime_ms: damageDowntimeMs,
@@ -950,6 +954,8 @@ function collectEntriesFromRankingEntries({ ranking, encounter }) {
         total_damage: toNumber(entry.total_damage),
         active_time_ms: toNumber(entry.active_time_ms),
         active_percent: toNumber(entry.active_percent),
+        ...(Object.hasOwn(entry, "gcd_coverage") ? { gcd_coverage: entry.gcd_coverage } : {}),
+        ...(Object.hasOwn(entry, "gcd_coverage_status") ? { gcd_coverage_status: entry.gcd_coverage_status } : {}),
         clear_time_ms: toNumber(entry.clear_time_ms),
         clear_time_seconds: toNumber(entry.clear_time_seconds),
         damage_downtime_ms: toNumber(entry.damage_downtime_ms),
@@ -999,6 +1005,8 @@ function summarizeTeamPlayers(players) {
       rdps: toNumber(player.rdps ?? player.dps),
       adps: toNumber(player.adps),
       active_percent: toNumber(player.active_percent),
+      ...(Object.hasOwn(player, "gcd_coverage") ? { gcd_coverage: player.gcd_coverage } : {}),
+      ...(Object.hasOwn(player, "gcd_coverage_status") ? { gcd_coverage_status: player.gcd_coverage_status } : {}),
     }))
     .sort(compareTeamPlayers);
 }

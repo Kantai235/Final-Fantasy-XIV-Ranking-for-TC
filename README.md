@@ -47,6 +47,7 @@ Final Fantasy XIV 繁中服排行榜是一個以 FFLogs 公開資料為來源的
 │   └── main.js                # Vue 入口
 ├── scripts/
 │   ├── fetch_fflogs.py        # 抓取並整理 FFLogs 排行榜資料
+│   ├── backfill_gcd_coverage.py # 逐批補齊玩家 GCD 覆蓋率
 │   ├── build_user_data.mjs    # 產生個人成績單、全服統計、近期動態、隊伍榜與伺服器對比資料
 │   ├── validate_data.mjs      # 驗證公開資料、分片與使用者索引完整性
 │   ├── test_build_user_data.mjs # 使用 fixture 驗證資料建置規則
@@ -83,6 +84,7 @@ Final Fantasy XIV 繁中服排行榜是一個以 FFLogs 公開資料為來源的
 - `public/data/encounters.json` 才是前端選單來源。已經有歷史排行榜資料的副本即使暫停掃描，仍會保留在公開清單，避免既有排行榜與個人成績單消失。
 - `data/rankings/*.json` 主檔通常只保留 `ranking_entries` 與 `report_shards`；完整 report 會在同名的 `*.reports/*.json` 分片中。
 - `ranking_entries` 是去重後的扁平索引；完整追溯請讀 `reports -> fights -> players`。
+- `gcd_coverage` 會逐批補在 `reports -> fights -> players`。key 不存在代表尚未嘗試；`gcd_coverage: null` 代表已嘗試但 report 已轉為 Private、刪除或無權限，避免 workflow 反覆重抓同一筆不可用資料。
 - 新資料不再保存 `fflogs_raw`、`master_data` 與 `matched_players`，避免可重查的 FFLogs raw table 讓 repo 容量快速膨脹；若需要重新推導 raw 層欄位，應以 report code 重新查 FFLogs API。
 - 同一玩家同一副本同一職業的最佳成績排序規則為 rDPS 優先，平手看通關時間，再看 aDPS。
 - `build_user_data.mjs` 預設以最新 `rankings_updated_at_iso` 作為 `generated_at_iso`，避免同一批資料重建時讓 `global_stats.json` 產生無意義 diff；需要指定產物時間時可設定 `FFXIV_TC_GENERATED_AT_ISO`。
@@ -202,6 +204,15 @@ npm test
 ```
 
 其中 `npm run test:fetch-fflogs` 會確認單一 report 內多場通關戰鬥會以 GraphQL alias 批次查詢玩家成績，避免每場 fight 各自增加一個 API request。`npm run test:frontend-data` 會檢查前端資料讀取邊界、`useRankingApp()` 回傳物件的 shorthand 變數，以及分享網址狀態的相容性。它會覆蓋舊版 query 連結、`/user/{玩家}`、`/stats/{副本 key}`、`/jobs/{職業}`、`/servers/{左}/vs/{右}` 與子路徑部署情境，避免 SEO/OG 路徑調整時讓既有分享連結失效。
+
+逐批補齊 GCD 覆蓋率時，先預覽再正式執行：
+
+```bash
+npm run backfill:gcd -- --dry-run
+npm run backfill:gcd
+```
+
+`backfill_gcd_coverage.py` 會依通關時間由新到舊挑選缺少 `gcd_coverage` key 的玩家，預設每輪 200 筆。執行時會先輸出待補筆數、已為 null 的筆數與本輪選取筆數，更新過程也會逐筆顯示 `[目前/本輪總數]` 進度。若 FFLogs report 已無法存取，該玩家會寫入 `gcd_coverage: null` 與 `gcd_coverage_status.reason = "private_or_deleted"`；暫時性錯誤會保留缺 key 狀態，留待下次重試。
 
 清理既有 `data/rankings/*.reports/*.json` 裡可重查的大型 FFLogs raw 欄位時，先預覽再正式執行：
 
@@ -348,11 +359,12 @@ npm run build:user-data
 2. 安裝 Python 與 Node.js 依賴。
 3. 使用 GitHub Secrets 中的 FFLogs 憑證執行抓取腳本。
 4. 執行 `scripts/backfill_missing_fflogs_data.py --limit 250` 補齊缺漏的 FFLogs 戰鬥資料。
-5. 執行 `python scripts/fetch_fflogs.py --split-rankings`，將完整排行榜資料拆分成適合 Git 追蹤的檔案。
-6. 產生個人成績單、全服統計、近期動態、隊伍榜、伺服器對比資料與 `data/update_status.json`。
-7. 執行 `npm run build`，在提交前完成公開資料驗證與 Vite 建置。
-8. 若 `data` 或 `public/data` 有變更，提交並推送更新。
-9. 上傳 `dist/` 並部署到 GitHub Pages。
+5. 執行 `scripts/backfill_gcd_coverage.py --limit 200`，由最新通關紀錄往舊紀錄逐批補齊玩家 GCD 覆蓋率。
+6. 執行 `python scripts/fetch_fflogs.py --split-rankings`，將完整排行榜資料拆分成適合 Git 追蹤的檔案。
+7. 產生個人成績單、全服統計、近期動態、隊伍榜、伺服器對比資料與 `data/update_status.json`。
+8. 執行 `npm run build`，在提交前完成公開資料驗證與 Vite 建置。
+9. 若 `data` 或 `public/data` 有變更，提交並推送更新。
+10. 上傳 `dist/` 並部署到 GitHub Pages。
 
 需要在 GitHub Repository Secrets 設定至少一組：
 
@@ -410,6 +422,7 @@ npm run cloudflare:estimate
 - 排行榜只統計公開報告中可解析且符合繁中服條件的資料。
 - 單場 FFLogs `playerDetails` / `damageDone` 查詢會同時帶 `fightIDs` 與 fight 的相對 `startTime` / `endTime`，避免少數舊報告只用 `fightIDs` 時拿到 partial damage table，造成 rDPS/aDPS 異常放大。
 - `active_percent` 對齊 FFLogs Damage Done CSV 的 Active%，使用 `fflogs_total_time_ms` 作為優先分母；DPS/rDPS/aDPS 仍使用 `damage_time_ms`。
+- GCD 覆蓋率以 FFLogs `Casts` graph 為來源，會使用 graph 內的 downtime 視窗同時扣除分母與分子；技能的 GCD 分類與基礎 cast/recast 來自 XIVAPI datamining 的 `Action.csv`，只在腳本執行時讀入記憶體，不會保存 raw Casts events。
 
 ## 版本切點與過版紀錄
 
