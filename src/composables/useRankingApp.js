@@ -118,6 +118,7 @@ const 比較角色左伺服器 = ref("");
 const 比較角色右伺服器 = ref("");
 const 比較職能篩選 = ref(預設比較職能);
 const 比較副本鍵值 = ref(預設比較副本鍵值);
+const 比較副本選單開啟 = ref(false);
 const 比較版本範圍 = ref(預設版本紀錄範圍);
 const 比較讀取中 = ref(false);
 const 比較錯誤訊息 = ref("");
@@ -372,6 +373,7 @@ function 選擇職業(職業代碼) {
 function 切換職業選單() {
   副本選單開啟.value = false;
   統計副本選單開啟.value = false;
+  比較副本選單開啟.value = false;
   隊伍榜副本選單開啟.value = false;
   統計職業選單開啟.value = false;
   職業分析選單開啟.value = false;
@@ -404,6 +406,7 @@ function 選擇使用者職業(職業代碼) {
 function 切換使用者職業選單() {
   副本選單開啟.value = false;
   統計副本選單開啟.value = false;
+  比較副本選單開啟.value = false;
   隊伍榜副本選單開啟.value = false;
   統計職業選單開啟.value = false;
   職業選單開啟.value = false;
@@ -421,6 +424,7 @@ function 切換副本選單() {
   職業選單開啟.value = false;
   使用者職業選單開啟.value = false;
   統計副本選單開啟.value = false;
+  比較副本選單開啟.value = false;
   隊伍榜副本選單開啟.value = false;
   統計職業選單開啟.value = false;
   職業分析選單開啟.value = false;
@@ -446,6 +450,7 @@ function 切換統計副本選單() {
   副本選單開啟.value = false;
   職業選單開啟.value = false;
   使用者職業選單開啟.value = false;
+  比較副本選單開啟.value = false;
   隊伍榜副本選單開啟.value = false;
   統計職業選單開啟.value = false;
   職業分析選單開啟.value = false;
@@ -463,11 +468,34 @@ function 處理統計副本選單失焦(event) {
   }
 }
 
+function 切換比較副本選單() {
+  副本選單開啟.value = false;
+  職業選單開啟.value = false;
+  使用者職業選單開啟.value = false;
+  統計副本選單開啟.value = false;
+  隊伍榜副本選單開啟.value = false;
+  統計職業選單開啟.value = false;
+  職業分析選單開啟.value = false;
+  比較副本選單開啟.value = !比較副本選單開啟.value;
+}
+
+function 選擇比較副本(副本) {
+  比較副本鍵值.value = 副本?.key || "all";
+  比較副本選單開啟.value = false;
+}
+
+function 處理比較副本選單失焦(event) {
+  if (!event.currentTarget.contains(event.relatedTarget)) {
+    比較副本選單開啟.value = false;
+  }
+}
+
 function 切換隊伍榜副本選單() {
   副本選單開啟.value = false;
   職業選單開啟.value = false;
   使用者職業選單開啟.value = false;
   統計副本選單開啟.value = false;
+  比較副本選單開啟.value = false;
   統計職業選單開啟.value = false;
   職業分析選單開啟.value = false;
   隊伍榜副本選單開啟.value = !隊伍榜副本選單開啟.value;
@@ -496,6 +524,7 @@ function 選擇統計職業(職業代碼) {
 function 切換統計職業選單() {
   副本選單開啟.value = false;
   統計副本選單開啟.value = false;
+  比較副本選單開啟.value = false;
   隊伍榜副本選單開啟.value = false;
   職業選單開啟.value = false;
   使用者職業選單開啟.value = false;
@@ -512,6 +541,7 @@ function 處理統計職業選單失焦(event) {
 function 切換職業分析選單() {
   副本選單開啟.value = false;
   統計副本選單開啟.value = false;
+  比較副本選單開啟.value = false;
   隊伍榜副本選單開啟.value = false;
   統計職業選單開啟.value = false;
   職業選單開啟.value = false;
@@ -2413,6 +2443,7 @@ const 目前比較副本 = computed(() => {
 });
 
 const 比較範圍文字 = computed(() => 目前比較副本.value?.name || "全部副本");
+const 比較副本選單文字 = computed(() => 比較範圍文字.value);
 const 顯示比較版本篩選 = computed(() => 副本支援版本篩選(目前比較副本.value));
 const 有效比較版本範圍 = computed(() => 取得有效版本紀錄範圍(目前比較副本.value, 比較版本範圍.value));
 
@@ -3841,6 +3872,7 @@ onUnmounted(() => {
     比較角色右伺服器,
     比較職能篩選,
     比較副本鍵值,
+    比較副本選單開啟,
     比較版本範圍,
     比較讀取中,
     比較錯誤訊息,
@@ -3931,6 +3963,9 @@ onUnmounted(() => {
     切換統計副本選單,
     選擇統計副本,
     處理統計副本選單失焦,
+    切換比較副本選單,
+    選擇比較副本,
+    處理比較副本選單失焦,
     清除統計職業範圍,
     選擇統計職業類型,
     選擇統計職業,
@@ -4096,6 +4131,7 @@ onUnmounted(() => {
     比較副本列表,
     目前比較副本,
     比較範圍文字,
+    比較副本選單文字,
     顯示比較版本篩選,
     有效比較版本範圍,
     取得使用者副本成績,
