@@ -319,6 +319,48 @@ async function loadUrlStateTestModule() {
   return import(moduleUrl);
 }
 
+async function loadUserDataTestModule() {
+  const filePath = path.join(srcDir, "utils", "userData.js");
+  let source = await readText(filePath);
+  source = source.replace(
+    /import\s*\{[\s\S]*?\}\s*from\s*["']\.\/publicData(?:\.js)?["'];/,
+    `
+const 建立公開資料網址 = (相對路徑) => \`/mock/\${String(相對路徑)}\`;
+const 建立使用者預設資料網址 = (角色名稱) => \`/mock/data/users/\${String(角色名稱)}.json\`;
+`,
+  );
+
+  const moduleUrl = `data:text/javascript;base64,${Buffer.from(source, "utf8").toString("base64")}`;
+  return import(moduleUrl);
+}
+
+async function validateUserSearchResolution() {
+  const module = await loadUserDataTestModule();
+  const users = [
+    {
+      character_name: "Shibe柴",
+      servers: ["利維坦"],
+      file_path: "data/users/Shibe柴.json",
+    },
+  ];
+
+  const pureNameTarget = module.解析使用者搜尋目標("Shibe柴", users);
+  assert(pureNameTarget.角色名稱 === "Shibe柴", "純玩家名稱搜尋應解析到索引中的正式玩家名稱");
+  assert(pureNameTarget.伺服器 === "利維坦", "純玩家名稱搜尋應由使用者索引補上主要伺服器");
+  assert(
+    module.格式化使用者搜尋文字(pureNameTarget.角色名稱, pureNameTarget.伺服器) === "Shibe柴 @ 利維坦",
+    "純玩家名稱搜尋成功後應能正規化為「玩家 @ 伺服器」格式",
+  );
+
+  const formattedTarget = module.解析使用者搜尋目標("Shibe柴 @ 利維坦", users);
+  assert(formattedTarget.角色名稱 === "Shibe柴" && formattedTarget.伺服器 === "利維坦", "已含伺服器的搜尋文字仍應解析成功");
+  const compactTarget = module.解析使用者搜尋目標("Shibe柴@利維坦", users);
+  assert(compactTarget.角色名稱 === "Shibe柴" && compactTarget.伺服器 === "利維坦", "沒有空白的玩家伺服器格式仍應解析成功");
+
+  const indexEntry = module.尋找使用者索引條目(users, "shibe柴");
+  assert(indexEntry?.file_path === "data/users/Shibe柴.json", "使用者索引查找應支援純玩家名稱大小寫差異");
+}
+
 function installUrlStateWindow(href, events) {
   globalThis.CustomEvent = class CustomEvent {
     constructor(type) {
@@ -431,6 +473,7 @@ async function main() {
   await validateUseRankingAppReturnBindings();
   await validateFrontendFetchBoundary();
   await validatePublicDataForFrontend();
+  await validateUserSearchResolution();
   await validateShareUrlStateCompatibility();
 
   if (issues.length > 0) {

@@ -47,6 +47,7 @@ import {
   尋找使用者索引條目 as 尋找使用者索引條目於列表,
   格式化使用者搜尋文字,
   解析使用者搜尋輸入,
+  解析使用者搜尋目標,
   讀取使用者資料檔,
 } from "../utils/userData";
 import { 寫入網址狀態, 讀取目前網址狀態 } from "../utils/urlState";
@@ -3144,8 +3145,8 @@ async function 讀取伺服器對比資料() {
   }
 }
 
-function 尋找使用者索引條目(角色名稱) {
-  return 尋找使用者索引條目於列表(使用者索引列表.value, 角色名稱);
+function 尋找使用者索引條目(角色名稱, 伺服器 = "") {
+  return 尋找使用者索引條目於列表(使用者索引列表.value, 角色名稱, 伺服器);
 }
 
 function 更新分享網址(頁面, 額外狀態 = {}, 選項 = {}) {
@@ -3325,16 +3326,18 @@ async function 載入使用者成績(角色名稱, 伺服器 = "", 選項 = {}) 
     return;
   }
 
+  const 原始搜尋文字 = 伺服器 ? 格式化使用者搜尋文字(查詢名稱, 伺服器) : 查詢名稱;
   頁面模式.value = "user";
   使用者讀取中.value = true;
   使用者錯誤訊息.value = "";
-  使用者搜尋關鍵字.value = 查詢名稱;
+  使用者搜尋關鍵字.value = 原始搜尋文字;
 
   try {
     await 讀取使用者索引();
-    使用者資料.value = await 讀取使用者資料檔(查詢名稱, 使用者索引列表.value);
+    const 搜尋目標 = 解析使用者搜尋目標(原始搜尋文字, 使用者索引列表.value);
+    使用者資料.value = await 讀取使用者資料檔(搜尋目標.角色名稱, 使用者索引列表.value);
     const 伺服器列表 = Array.isArray(使用者資料.value?.servers) ? 使用者資料.value.servers : [];
-    使用者伺服器篩選.value = 伺服器列表.includes(伺服器) ? 伺服器 : 伺服器列表[0] || "";
+    使用者伺服器篩選.value = 伺服器列表.includes(搜尋目標.伺服器) ? 搜尋目標.伺服器 : 伺服器列表[0] || "";
     使用者搜尋關鍵字.value = 格式化使用者搜尋文字(使用者資料.value.character_name || 查詢名稱, 使用者伺服器篩選.value);
 
     if (選項.更新網址 !== false) {
@@ -3356,9 +3359,10 @@ async function 載入比較角色資料(輸入文字) {
   }
 
   await 讀取使用者索引();
-  const 資料 = await 讀取使用者資料檔(查詢.角色名稱, 使用者索引列表.value);
+  const 搜尋目標 = 解析使用者搜尋目標(輸入文字, 使用者索引列表.value);
+  const 資料 = await 讀取使用者資料檔(搜尋目標.角色名稱, 使用者索引列表.value);
   const 伺服器列表 = Array.isArray(資料?.servers) ? 資料.servers : [];
-  const 伺服器 = 伺服器列表.includes(查詢.伺服器) ? 查詢.伺服器 : 伺服器列表[0] || "";
+  const 伺服器 = 伺服器列表.includes(搜尋目標.伺服器) ? 搜尋目標.伺服器 : 伺服器列表[0] || "";
   return {
     資料,
     伺服器,
