@@ -101,7 +101,7 @@ jobs:
           FFLOGS_CLIENT_IDS: ${{ secrets.FFLOGS_CLIENT_IDS }}
           FFLOGS_CLIENT_SECRETS: ${{ secrets.FFLOGS_CLIENT_SECRETS }}
           FFLOGS_CLIENT_CREDENTIALS_JSON: ${{ secrets.FFLOGS_CLIENT_CREDENTIALS_JSON }}
-        run: python scripts/backfill_gcd_coverage.py --limit 200
+        run: python scripts/backfill_gcd_coverage.py --limit 2000
 
       - name: 分割完整排行榜資料供 Git 追蹤
         run: python scripts/fetch_fflogs.py --split-rankings

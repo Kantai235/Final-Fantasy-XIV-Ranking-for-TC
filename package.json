@@ -9,7 +9,7 @@
     "compact:rankings": "python scripts/compact_ranking_data.py",
     "compact:state": "python scripts/compact_state.py",
     "backfill:fflogs": "python scripts/backfill_missing_fflogs_data.py --limit 500",
-    "backfill:gcd": "python scripts/backfill_gcd_coverage.py --limit 200",
+    "backfill:gcd": "python scripts/backfill_gcd_coverage.py --limit 2000",
     "build:user-data": "node scripts/build_user_data.mjs",
     "validate:data": "node scripts/validate_data.mjs",
     "test:fetch-fflogs": "python scripts/test_fetch_fflogs_batch.py",

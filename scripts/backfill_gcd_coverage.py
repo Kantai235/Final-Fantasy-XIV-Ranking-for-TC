@@ -532,7 +532,7 @@ def apply_coverage(candidate: GcdCandidate, coverage: dict[str, Any], checked_at
 
 
 def parse_args() -> argparse.Namespace:
-    default_limit = int(os.environ.get("FFLOGS_GCD_BACKFILL_LIMIT", "200"))
+    default_limit = int(os.environ.get("FFLOGS_GCD_BACKFILL_LIMIT", "2000"))
     parser = argparse.ArgumentParser(description="Backfill missing FFLogs GCD coverage fields.")
     parser.add_argument("--limit", type=int, default=default_limit, help="本輪最多更新的玩家筆數。")
     parser.add_argument("--dry-run", action="store_true", help="只列出待補統計與本輪候選，不寫入也不呼叫 FFLogs。")

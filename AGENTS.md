@@ -101,7 +101,7 @@
 10. `scripts/build_spa_fallback.mjs` 會為 route、個人成績單、副本統計、職業分析與伺服器對比產生各自的 1200x630 PNG OG 圖；內部可用 SVG 模板繪製，但公開 `og:image` / `twitter:image` 必須指向 crawler-safe PNG。
 11. `dist/robots.txt` 必須明確允許 `facebookexternalhit` 與 `Facebot`，避免 Facebook 分享偵錯工具把 robots 設定判定為可能阻擋 OG 抓取。
 12. `scripts/apply_cloudflare_rules.mjs` 必須維護 Meta/Facebook 分享爬蟲例外規則；`AS32934`、`AS63293` 與 Cloudflare verified Facebook bot 的 GET/HEAD 請求需跳過會造成 OG 抓取 403 的 Security Level、BIC、UA Blocking、Rate Limiting 與後續自訂規則。
-13. `npm run backfill:gcd -- --dry-run` 會列出待補 GCD 覆蓋率筆數、已為 null 的筆數與本輪候選；正式 `npm run backfill:gcd` 預設每輪更新 200 位玩家，並在 workflow log 中逐筆輸出 `[目前/本輪總數]` 進度。
+13. `npm run backfill:gcd -- --dry-run` 會列出待補 GCD 覆蓋率筆數、已為 null 的筆數與本輪候選；正式 `npm run backfill:gcd` 預設每輪更新 2000 位玩家，並在 workflow log 中逐筆輸出 `[目前/本輪總數]` 進度。
 14. `scripts/fetch_fflogs.py` 遇到 FFLogs 暫時性 500/502/503/504 或連線逾時時，只延後受影響副本並保留該副本原掃描點；`active_scan.last_error_*` 會記錄錯誤摘要，已完成副本仍可推進掃描點，避免單一 API 波動中斷整輪資料更新。
 
 ### F. 版本切點與過版紀錄
