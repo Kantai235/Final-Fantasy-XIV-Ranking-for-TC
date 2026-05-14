@@ -5558,6 +5558,19 @@ td a:hover {
     grid-column: 1 / -1;
   }
 
+  .統計表格:not(.近期動態表格):not(.比較表格):not(.隊伍榜表格):not(.伺服器對比表格) td:nth-child(6) .職業標籤 {
+    width: fit-content;
+    max-width: 100%;
+    justify-self: start;
+  }
+
+  .統計表格:not(.近期動態表格):not(.比較表格):not(.隊伍榜表格):not(.伺服器對比表格) td:nth-child(6) .職業標籤 span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   .統計表格:not(.近期動態表格):not(.比較表格):not(.隊伍榜表格):not(.伺服器對比表格) td:nth-child(1)::before {
     content: "副本";
   }
