@@ -56,7 +56,7 @@ export default {
         </select>
       </label>
 
-      <label class="欄位 使用者搜尋欄位">
+      <label class="欄位 使用者搜尋欄位 比較玩家欄位">
         <span>玩家 A</span>
         <input
           v-model="比較角色左輸入"
@@ -71,7 +71,7 @@ export default {
         </datalist>
       </label>
 
-      <label class="欄位 使用者搜尋欄位">
+      <label class="欄位 使用者搜尋欄位 比較玩家欄位">
         <span>玩家 B</span>
         <input
           v-model="比較角色右輸入"
@@ -107,7 +107,15 @@ export default {
             <span>副本數 <strong>{{ 比較角色左.統計.副本數 }}</strong></span>
             <span>公開成績 <strong>{{ 比較角色左.統計.公開成績數 }}</strong></span>
             <span>最佳 rDPS <strong>{{ 格式化傷害數值(比較角色左.統計.最佳成績?.rdps) }}</strong></span>
-            <span>最後紀錄 <strong>{{ 格式化紀錄時間(比較角色左.統計.最後紀錄時間) }}</strong></span>
+            <span>
+              最後紀錄
+              <strong class="比較最後紀錄時間">
+                <span>{{ 格式化紀錄日期(比較角色左.統計.最後紀錄時間) }}</span>
+                <span v-if="格式化紀錄時刻(比較角色左.統計.最後紀錄時間)">
+                  {{ 格式化紀錄時刻(比較角色左.統計.最後紀錄時間) }}
+                </span>
+              </strong>
+            </span>
           </div>
         </article>
 
@@ -121,7 +129,15 @@ export default {
             <span>副本數 <strong>{{ 比較角色右.統計.副本數 }}</strong></span>
             <span>公開成績 <strong>{{ 比較角色右.統計.公開成績數 }}</strong></span>
             <span>最佳 rDPS <strong>{{ 格式化傷害數值(比較角色右.統計.最佳成績?.rdps) }}</strong></span>
-            <span>最後紀錄 <strong>{{ 格式化紀錄時間(比較角色右.統計.最後紀錄時間) }}</strong></span>
+            <span>
+              最後紀錄
+              <strong class="比較最後紀錄時間">
+                <span>{{ 格式化紀錄日期(比較角色右.統計.最後紀錄時間) }}</span>
+                <span v-if="格式化紀錄時刻(比較角色右.統計.最後紀錄時間)">
+                  {{ 格式化紀錄時刻(比較角色右.統計.最後紀錄時間) }}
+                </span>
+              </strong>
+            </span>
           </div>
         </article>
       </section>

@@ -11,7 +11,7 @@ export default {
 
 <template>
   <section class="伺服器對比工具列" aria-label="伺服器對比篩選">
-    <label class="欄位">
+    <label class="欄位 伺服器對比選擇欄位">
       <span>左側伺服器</span>
       <select v-model="伺服器對比左伺服器">
         <option v-for="伺服器 in 伺服器對比選項" :key="`left-${伺服器}`" :value="伺服器">
@@ -20,7 +20,7 @@ export default {
       </select>
     </label>
     <button class="伺服器交換按鈕" type="button" @click="交換伺服器對比">交換</button>
-    <label class="欄位">
+    <label class="欄位 伺服器對比選擇欄位">
       <span>右側伺服器</span>
       <select v-model="伺服器對比右伺服器">
         <option v-for="伺服器 in 伺服器對比選項" :key="`right-${伺服器}`" :value="伺服器">
@@ -77,8 +77,8 @@ export default {
               :class="{ 左領先: 指標.勝方 === 'left', 右領先: 指標.勝方 === 'right' }"
             >
               <span>{{ 指標.標籤 }}</span>
-              <strong>{{ 指標.左文字 }}</strong>
-              <em>{{ 指標.右文字 }}</em>
+              <strong :data-server-label="伺服器對比左資料.server">{{ 指標.左文字 }}</strong>
+              <em :data-server-label="伺服器對比右資料.server">{{ 指標.右文字 }}</em>
             </div>
           </div>
         </article>
@@ -114,7 +114,7 @@ export default {
         </article>
       </section>
 
-      <section class="統計版面" aria-label="熱門職業">
+      <section class="統計版面 伺服器熱門職業版面" aria-label="熱門職業">
         <article class="統計面板">
           <header class="統計面板標題">
             <h2>{{ 伺服器對比左資料.server }} 熱門職業</h2>
@@ -195,11 +195,19 @@ export default {
                     <strong>{{ 副本.encounter_name }}</strong>
                   </span>
                 </td>
-                <td class="數字">
+                <td
+                  class="數字"
+                  :class="{ 較低數值: (副本.left?.character_count || 0) < (副本.right?.character_count || 0) }"
+                  :data-mobile-label="伺服器對比左資料.server"
+                >
                   <strong>{{ 格式化整數(副本.left?.character_count) }}</strong>
                   <small>占比 {{ 格式化百分比(副本.left?.clear_share_percent) }}</small>
                 </td>
-                <td class="數字">
+                <td
+                  class="數字"
+                  :class="{ 較低數值: (副本.right?.character_count || 0) < (副本.left?.character_count || 0) }"
+                  :data-mobile-label="伺服器對比右資料.server"
+                >
                   <strong>{{ 格式化整數(副本.right?.character_count) }}</strong>
                   <small>占比 {{ 格式化百分比(副本.right?.clear_share_percent) }}</small>
                 </td>

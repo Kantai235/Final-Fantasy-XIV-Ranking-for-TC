@@ -2509,7 +2509,7 @@ button:disabled {
   background: var(--邊框柔和色);
 }
 
-.比較角色數據 span {
+.比較角色數據 > span {
   min-width: 0;
   display: grid;
   gap: 4px;
@@ -4082,6 +4082,21 @@ td a:hover {
     grid-template-columns: 1fr;
   }
 
+  .比較搜尋表單,
+  .比較搜尋表單.比較搜尋表單含版本 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .比較搜尋表單 > .比較職能選擇,
+  .比較搜尋表單 > .欄位:not(.比較玩家欄位),
+  .比較搜尋表單 > button[type="submit"] {
+    grid-column: 1 / -1;
+  }
+
+  .比較玩家欄位 {
+    grid-column: auto;
+  }
+
   .副本選單面板,
   .職業選單面板 {
     width: 100%;
@@ -4126,11 +4141,30 @@ td a:hover {
   }
 
   .角色比較概要 {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
   }
 
   .比較角色數據 {
     grid-template-columns: 1fr;
+  }
+
+  .比較角色卡 header {
+    padding: 11px 10px;
+  }
+
+  .比較角色卡 header strong {
+    font-size: 0.95rem;
+  }
+
+  .比較角色數據 > span {
+    padding: 10px;
+  }
+
+  .比較最後紀錄時間 {
+    display: grid;
+    gap: 2px;
+    line-height: 1.15;
   }
 
   .成績趨勢列表 {
@@ -4162,18 +4196,89 @@ td a:hover {
   .職業分析工具列,
   .職業分析概要,
   .職業深化版面,
-  .職業代表紀錄列,
-  .伺服器對比工具列,
-  .伺服器對比主卡列 {
+  .職業代表紀錄列 {
     grid-template-columns: 1fr;
   }
 
+  .伺服器對比工具列 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .伺服器對比選擇欄位 {
+    min-width: 0;
+  }
+
+  .伺服器對比選擇欄位 select {
+    min-width: 0;
+  }
+
+  .伺服器對比工具列 .伺服器對比選擇欄位:first-child {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .伺服器對比工具列 .伺服器對比選擇欄位:last-child {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
   .伺服器交換按鈕 {
+    grid-column: 1 / -1;
+    grid-row: 2;
     width: 100%;
+  }
+
+  .伺服器對比主卡列 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .伺服器對比主卡 header {
+    padding: 11px 10px;
+  }
+
+  .伺服器對比主卡 header strong {
+    font-size: 1rem;
+    overflow-wrap: anywhere;
   }
 
   .伺服器對比主數據 {
     grid-template-columns: 1fr;
+  }
+
+  .伺服器對比指標 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: stretch;
+    gap: 8px;
+    padding: 10px;
+  }
+
+  .伺服器對比指標 > span {
+    grid-column: 1 / -1;
+  }
+
+  .伺服器對比指標 strong,
+  .伺服器對比指標 em {
+    display: grid;
+    gap: 3px;
+    justify-items: start;
+    min-width: 0;
+    border: 1px solid var(--邊框柔和色);
+    border-radius: 6px;
+    padding: 8px;
+    background: var(--表面背景柔和);
+    text-align: left;
+    overflow-wrap: anywhere;
+  }
+
+  .伺服器對比指標 strong::before,
+  .伺服器對比指標 em::before {
+    content: attr(data-server-label);
+    color: var(--次要文字);
+    font-size: 0.66rem;
+    font-weight: 760;
+    line-height: 1.15;
   }
 
   .職業副本輸出項 {
@@ -4201,6 +4306,33 @@ td a:hover {
 
   .統計版面 {
     grid-template-columns: 1fr;
+  }
+
+  .伺服器熱門職業版面 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .伺服器熱門職業版面 .統計面板標題 {
+    align-items: flex-start;
+  }
+
+  .伺服器熱門職業版面 .統計面板標題 h2 {
+    font-size: 0.95rem;
+    overflow-wrap: anywhere;
+  }
+
+  .伺服器熱門職業版面 .統計面板標題 span {
+    font-size: 0.72rem;
+  }
+
+  .伺服器熱門職業版面 .分布列 {
+    display: grid;
+    gap: 4px;
+  }
+
+  .伺服器熱門職業版面 .分布列 > span:last-child {
+    justify-self: start;
   }
 
   .全服統計區,
@@ -5672,10 +5804,13 @@ td a:hover {
   }
 
   .伺服器對比表格 td:nth-child(2),
-  .伺服器對比表格 td:nth-child(3),
+  .伺服器對比表格 td:nth-child(3) {
+    justify-items: start;
+    text-align: left;
+  }
+
   .伺服器對比表格 td:nth-child(4) {
-    justify-items: center;
-    text-align: center;
+    display: none;
   }
 
   .伺服器對比表格 td:nth-child(1)::before {
@@ -5683,15 +5818,21 @@ td a:hover {
   }
 
   .伺服器對比表格 td:nth-child(2)::before {
-    content: "左側伺服器";
+    content: attr(data-mobile-label);
   }
 
   .伺服器對比表格 td:nth-child(3)::before {
-    content: "右側伺服器";
+    content: attr(data-mobile-label);
   }
 
   .伺服器對比表格 td:nth-child(4)::before {
     content: "差異";
+  }
+
+  .伺服器對比表格 td.較低數值,
+  .伺服器對比表格 td.較低數值 strong,
+  .伺服器對比表格 td.較低數值 small {
+    color: var(--靜音文字);
   }
 
   .比較表格 td:nth-child(1)::before {
