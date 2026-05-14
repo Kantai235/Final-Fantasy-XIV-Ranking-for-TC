@@ -300,6 +300,7 @@ python scripts/fetch_fflogs.py
    - 透過 FFLogs API 掃描中國區域公開報告。
    - 篩選繁中服伺服器玩家。
    - 更新 `data/rankings/*.json`、`public/data/rankings/*.json` 與 `data/state.json`。
+   - 若 FFLogs 暫時回傳 500/502/503/504 或連線逾時，該副本會保留原掃描點並在 `active_scan.last_error_*` 記錄錯誤摘要；已完成副本仍會更新掃描點，下一輪排程會自動補掃延後副本。
 
 2. `npm run build:user-data`
    - 讀取排行榜資料。

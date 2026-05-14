@@ -186,6 +186,7 @@ def 布林設定(名稱: str) -> bool:
 版本紀錄範圍清單 = ("all", "valid", "obsolete")
 報告尚未完整匯出狀態 = "deferred_incomplete_export"
 可重試報告處理狀態 = {報告尚未完整匯出狀態}
+暫時性HTTP狀態碼 = {500, 502, 503, 504}
 
 每頁報告數量 = 整數設定("report_page_limit")
 報告查詢最大頁數 = 整數設定("report_max_pages")
@@ -274,6 +275,32 @@ class 區間報告過多錯誤(RuntimeError):
         )
         self.起始時間戳記 = 起始時間戳記
         self.結束時間戳記 = 結束時間戳記
+
+
+def 截短文字(內容: Any, 最大長度: int = 500) -> str:
+    文字 = str(內容)
+    if len(文字) <= 最大長度:
+        return 文字
+    return f"{文字[:最大長度]}...（已截短）"
+
+
+class FFLogs暫時性API錯誤(RuntimeError):
+    def __init__(
+        self,
+        訊息: str,
+        *,
+        status_code: int | None = None,
+        response_text: str | None = None,
+    ) -> None:
+        self.status_code = status_code
+        self.response_text = response_text
+
+        訊息片段 = 訊息
+        if status_code is not None:
+            訊息片段 += f"：HTTP {status_code}"
+        if response_text:
+            訊息片段 += f" {截短文字(response_text)}"
+        super().__init__(訊息片段)
 
 
 class FFLogs限流錯誤(RuntimeError):
@@ -724,6 +751,12 @@ def 寫入_json(路徑: Path, 內容: Any, *, 緊湊格式: bool = False) -> Non
     "current_report_start_at",
     "current_report_start_at_iso",
     "processed_reports_in_checkpoint",
+    "scan_failed",
+    "failure_stage",
+    "last_error_type",
+    "last_error_message",
+    "last_error_at",
+    "last_error_at_iso",
 }
 
 
@@ -750,6 +783,29 @@ def 清除副本掃描進度(狀態: dict[str, Any], 副本設定: dict[str, Any
     副本狀態.pop("active_scan", None)
 
 
+def 記錄暫時性掃描失敗(
+    狀態: dict[str, Any],
+    副本設定: dict[str, Any],
+    錯誤: FFLogs暫時性API錯誤,
+) -> None:
+    現在時間戳記 = 現在毫秒()
+    副本狀態 = ((狀態.get("encounters") or {}).get(副本設定["key"]) or {})
+    即時進度 = 副本狀態.get("active_scan") if isinstance(副本狀態, dict) else {}
+    目前階段 = 即時進度.get("stage") if isinstance(即時進度, dict) else None
+    # 不切換 stage，讓 active_scan 保留最後一個淺層掃描區間；
+    # 下一輪可直接看到是哪個時間窗遇到 FFLogs 暫時性錯誤。
+    更新副本掃描進度(
+        狀態,
+        副本設定,
+        scan_failed=True,
+        failure_stage=目前階段,
+        last_error_type=錯誤.__class__.__name__,
+        last_error_message=截短文字(str(錯誤)),
+        last_error_at=現在時間戳記,
+        last_error_at_iso=毫秒轉_iso(現在時間戳記),
+    )
+
+
 def 顯示前次未完成掃描(狀態: dict[str, Any], 副本設定: dict[str, Any]) -> None:
     即時進度 = ((狀態.get("encounters") or {}).get(副本設定["key"]) or {}).get("active_scan")
     if not isinstance(即時進度, dict) or not 即時進度:
@@ -765,6 +821,9 @@ def 顯示前次未完成掃描(狀態: dict[str, Any], 副本設定: dict[str, 
         補充 = f"，最後區間 {區間起點} ~ {區間終點}"
     if 報告代碼:
         補充 += f"，最後報告 {報告代碼}"
+    錯誤訊息 = 即時進度.get("last_error_message")
+    if 錯誤訊息:
+        補充 += f"，最後錯誤 {截短文字(錯誤訊息, 160)}"
 
     print(f"偵測到前次未完成掃描：{副本設定['name']} / {階段}，最後更新 {最後更新}{補充}")
 
@@ -1291,7 +1350,7 @@ def post_並重試(
             回應 = session.post(url, **kwargs)
             最後回應 = 回應
             最後錯誤 = None
-            if 回應.status_code not in {429, 500, 502, 503, 504}:
+            if 回應.status_code not in {429, *暫時性HTTP狀態碼}:
                 return 回應
             if 回應.status_code == 429 and 限流時直接回傳:
                 return 回應
@@ -1326,10 +1385,13 @@ def post_並重試(
             time.sleep(等待秒數)
 
     if 最後錯誤:
-        raise RuntimeError("FFLogs API 請求重試後仍失敗。") from 最後錯誤
+        raise FFLogs暫時性API錯誤(
+            "FFLogs API 請求重試後仍失敗",
+            response_text=str(最後錯誤),
+        ) from 最後錯誤
 
     if 最後回應 is None:
-        raise RuntimeError("FFLogs API 請求未取得任何回應。")
+        raise FFLogs暫時性API錯誤("FFLogs API 請求未取得任何回應")
     return 最後回應
 
 
@@ -1353,6 +1415,12 @@ def 取得_bearer_token(
         raise FFLogs限流錯誤(回應)
 
     if not 回應.ok:
+        if 回應.status_code in 暫時性HTTP狀態碼:
+            raise FFLogs暫時性API錯誤(
+                "取得 FFLogs Bearer Token 重試後仍失敗",
+                status_code=回應.status_code,
+                response_text=回應.text,
+            )
         raise RuntimeError(f"取得 FFLogs Bearer Token 失敗：HTTP {回應.status_code} {回應.text}")
 
     內容 = 回應.json()
@@ -1468,7 +1536,15 @@ def 執行_graphql(
         break
 
     if not 回應.ok:
-        raise RuntimeError(f"FFLogs GraphQL 請求失敗：HTTP {回應.status_code} {回應.text}")
+        if 回應.status_code in 暫時性HTTP狀態碼:
+            raise FFLogs暫時性API錯誤(
+                "FFLogs GraphQL 請求重試後仍失敗",
+                status_code=回應.status_code,
+                response_text=回應.text,
+            )
+        raise RuntimeError(
+            f"FFLogs GraphQL 請求失敗：HTTP {回應.status_code} {截短文字(回應.text)}"
+        )
 
     內容 = 回應.json()
     錯誤列表 = 內容.get("errors")
@@ -2938,14 +3014,23 @@ def 更新狀態(
     新時間戳記: int,
     統計: dict[str, Any],
     已處理副本清單: list[dict[str, Any]],
+    *,
+    完整成功: bool = True,
 ) -> None:
     # processed_reports 是單輪 checkpoint，成功跑完整輪後會清空，避免永久膨脹。
     # checked_reports 才是跨輪的略過/已檢查快取；清理時只裁切最舊快取，不會刪 data/rankings 的歷史報告。
+    # 當 FFLogs 暫時性 5xx/逾時只影響部分副本時，只推進已完成副本的掃描點；
+    # 失敗副本保留原掃描點與 active_scan，避免下次排程漏掃該時間窗。
     狀態 = dict(原始狀態)
-    狀態["last_scanned_at"] = 新時間戳記
-    狀態["last_scanned_at_iso"] = 毫秒轉_iso(新時間戳記)
-    狀態["last_successful_run_at"] = 現在毫秒()
-    狀態["last_successful_run_at_iso"] = 毫秒轉_iso(狀態["last_successful_run_at"])
+    執行結束時間戳記 = 現在毫秒()
+    狀態["last_attempted_run_at"] = 執行結束時間戳記
+    狀態["last_attempted_run_at_iso"] = 毫秒轉_iso(執行結束時間戳記)
+    狀態["last_run_completed"] = 完整成功
+    if 完整成功:
+        狀態["last_scanned_at"] = 新時間戳記
+        狀態["last_scanned_at_iso"] = 毫秒轉_iso(新時間戳記)
+        狀態["last_successful_run_at"] = 執行結束時間戳記
+        狀態["last_successful_run_at_iso"] = 毫秒轉_iso(執行結束時間戳記)
     狀態["last_run_stats"] = 統計
     副本狀態索引 = dict(狀態.get("encounters") or {})
     for 副本 in 已處理副本清單:
@@ -2996,6 +3081,8 @@ def main() -> int:
             "history_reports_skipped_known": 0,
             "history_reports_deferred": 0,
             "history_scan": None,
+            "scan_failed": False,
+            "scan_error": None,
             "skipped_already_processed_reports": 0,
             "traditional_chinese_reports": 0,
             "reports_saved": 0,
@@ -3005,6 +3092,8 @@ def main() -> int:
 
     淺層掃描快取: dict[tuple[int, int, int, int | None], list[dict[str, Any]]] = {}
     歷史補查候選報告代碼: set[str] = set()
+    已完成副本清單: list[dict[str, Any]] = []
+    暫時失敗副本清單: list[dict[str, Any]] = []
 
     def 取得同區同難度副本清單(基準副本: dict[str, Any]) -> list[dict[str, Any]]:
         # 同一份 FFLogs report 常同時包含同區同難度的多個副本。
@@ -3162,6 +3251,22 @@ def main() -> int:
         處理狀態["已處理報告代碼"].add(報告代碼)
         處理狀態["本輪已嘗試報告代碼"].add(報告代碼)
 
+    def 延後副本掃描(
+        副本設定: dict[str, Any],
+        處理狀態: dict[str, Any],
+        錯誤: FFLogs暫時性API錯誤,
+    ) -> None:
+        if not 處理狀態["scan_failed"]:
+            暫時失敗副本清單.append(副本設定)
+        處理狀態["scan_failed"] = True
+        處理狀態["scan_error"] = str(錯誤)
+        記錄暫時性掃描失敗(狀態, 副本設定, 錯誤)
+        print(
+            f"{副本設定['name']} 因 FFLogs 暫時性錯誤延後本輪掃描，"
+            f"該副本掃描點維持在原位置：{錯誤}",
+            file=sys.stderr,
+        )
+
     for 副本設定 in 副本清單:
         目前處理狀態 = 副本處理狀態[副本設定["key"]]
         顯示前次未完成掃描(狀態, 副本設定)
@@ -3210,12 +3315,16 @@ def main() -> int:
                     **進度,
                 )
 
-            最新報告列表 = 擷取並快取淺層報告(
-                副本設定,
-                起始時間戳記,
-                掃描結束時間戳記,
-                記錄淺層掃描進度,
-            )
+            try:
+                最新報告列表 = 擷取並快取淺層報告(
+                    副本設定,
+                    起始時間戳記,
+                    掃描結束時間戳記,
+                    記錄淺層掃描進度,
+                )
+            except FFLogs暫時性API錯誤 as 錯誤:
+                延後副本掃描(副本設定, 目前處理狀態, 錯誤)
+                continue
             最新報告列表 = 補入指定報告(最新報告列表, 重抓報告代碼, 起始時間戳記, 掃描結束時間戳記)
             最新報告列表 = 加入掃描來源(最新報告列表, "recent")
             最新報告代碼 = {str(報告.get("code")) for 報告 in 最新報告列表 if 報告.get("code")}
@@ -3223,6 +3332,7 @@ def main() -> int:
             歷史報告列表: list[dict[str, Any]] = []
             歷史區間列表, 歷史補查狀態 = 建立歷史補查區間(狀態, 副本設定, 狀態時間戳記)
             目前處理狀態["history_scan"] = 歷史補查狀態
+            歷史補查暫停 = False
 
             if 歷史區間列表:
                 def 記錄歷史補查進度(進度: dict[str, Any]) -> None:
@@ -3237,16 +3347,24 @@ def main() -> int:
                     )
 
                 for 歷史區間 in 歷史區間列表:
-                    歷史報告列表.extend(
-                        擷取並快取淺層報告(
-                            副本設定,
-                            歷史區間["start_at"],
-                            歷史區間["end_at"],
-                            記錄歷史補查進度,
-                            掃描區間小時=歷史補查區間小時,
-                            階段名稱="歷史補查淺層掃描",
+                    try:
+                        歷史報告列表.extend(
+                            擷取並快取淺層報告(
+                                副本設定,
+                                歷史區間["start_at"],
+                                歷史區間["end_at"],
+                                記錄歷史補查進度,
+                                掃描區間小時=歷史補查區間小時,
+                                階段名稱="歷史補查淺層掃描",
+                            )
                         )
-                    )
+                    except FFLogs暫時性API錯誤 as 錯誤:
+                        延後副本掃描(副本設定, 目前處理狀態, 錯誤)
+                        歷史補查暫停 = True
+                        break
+
+            if 歷史補查暫停:
+                continue
 
             歷史報告列表 = 加入掃描來源(歷史報告列表, "history")
             歷史報告候選列表, 歷史候選統計 = 篩選歷史補查候選(副本設定, 歷史報告列表, 最新報告代碼)
@@ -3401,8 +3519,13 @@ def main() -> int:
                     print(f"{目標副本['name']} {進度文字} 未找到通關戰鬥，已略過：{報告代碼}")
 
         for 處理狀態 in 副本處理狀態.values():
-            原因 = "副本掃描結尾" if 處理狀態["副本設定"]["key"] == 副本設定["key"] else f"{副本設定['name']} 跨副本掃描結尾"
+            原因 = (
+                "副本掃描結尾"
+                if 處理狀態["副本設定"]["key"] == 副本設定["key"]
+                else f"{副本設定['name']} 跨副本掃描結尾"
+            )
             批次寫入排行榜(處理狀態, 原因)
+        已完成副本清單.append(副本設定)
 
     副本統計: dict[str, Any] = {}
     for 副本設定 in 副本清單:
@@ -3422,6 +3545,8 @@ def main() -> int:
             "history_reports_skipped_known": 處理狀態["history_reports_skipped_known"],
             "history_reports_deferred": 處理狀態["history_reports_deferred"],
             "history_scan": 處理狀態.get("history_scan"),
+            "scan_failed": 處理狀態["scan_failed"],
+            "scan_error": 處理狀態["scan_error"],
             "skipped_already_processed_reports": 處理狀態["skipped_already_processed_reports"],
             "traditional_chinese_reports": 處理狀態["traditional_chinese_reports"],
             "reports_saved": 處理狀態["reports_saved"],
@@ -3431,15 +3556,19 @@ def main() -> int:
 
     總新增或更新數量 = sum(處理狀態["rankings_inserted_or_updated"] for 處理狀態 in 副本處理狀態.values())
     總失敗報告數量 = sum(處理狀態["reports_failed"] for 處理狀態 in 副本處理狀態.values())
+    暫時失敗副本鍵值 = [副本["key"] for 副本 in 暫時失敗副本清單]
 
     統計 = {
         "scan_end_at": 掃描結束時間戳記,
         "scan_end_at_iso": 毫秒轉_iso(掃描結束時間戳記),
         "enabled_encounters": [副本["key"] for 副本 in 副本清單],
+        "completed_encounters": [副本["key"] for 副本 in 已完成副本清單],
+        "deferred_encounters": 暫時失敗副本鍵值,
         "manual_report_codes": sorted(只處理報告代碼 or 重抓報告代碼),
         "encounters": 副本統計,
         "rankings_inserted_or_updated": 總新增或更新數量,
         "reports_failed": 總失敗報告數量,
+        "scan_deferred_encounters": len(暫時失敗副本鍵值),
     }
     if 只處理指定報告模式:
         if 總失敗報告數量 == 0:
@@ -3450,9 +3579,15 @@ def main() -> int:
         狀態["last_run_stats"] = 統計
         寫入_json(狀態檔案路徑, 狀態)
     else:
-        for 副本設定 in 副本清單:
+        for 副本設定 in 已完成副本清單:
             套用歷史補查執行狀態(狀態, 副本設定, 副本處理狀態[副本設定["key"]])
-        更新狀態(狀態, 掃描結束時間戳記, 統計, 副本清單)
+        更新狀態(
+            狀態,
+            掃描結束時間戳記,
+            統計,
+            已完成副本清單,
+            完整成功=not 暫時失敗副本鍵值,
+        )
 
     if 只處理指定報告模式 and 總失敗報告數量 > 0:
         print(
@@ -3463,6 +3598,12 @@ def main() -> int:
         return 1
     if 只處理指定報告模式:
         print(f"完成：寫入或更新 {總新增或更新數量} 筆排行榜成績，掃描點維持不變。")
+    elif 暫時失敗副本鍵值:
+        print(
+            f"完成：寫入或更新 {總新增或更新數量} 筆排行榜成績；"
+            f"{len(暫時失敗副本鍵值)} 個副本因 FFLogs 暫時性錯誤延後，"
+            "已完成副本的掃描點已更新。"
+        )
     else:
         print(f"完成：寫入或更新 {總新增或更新數量} 筆排行榜成績，state.json 已更新。")
     return 0
