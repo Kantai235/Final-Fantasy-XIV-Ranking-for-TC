@@ -182,6 +182,8 @@ def 布林設定(名稱: str) -> bool:
 )
 
 版本紀錄範圍清單 = ("all", "valid", "obsolete")
+報告尚未完整匯出狀態 = "deferred_incomplete_export"
+可重試報告處理狀態 = {報告尚未完整匯出狀態}
 
 每頁報告數量 = 整數設定("report_page_limit")
 報告查詢最大頁數 = 整數設定("report_max_pages")
@@ -286,6 +288,25 @@ class FFLogsGraphQL錯誤(RuntimeError):
 
 class FFLogs報告存取錯誤(FFLogsGraphQL錯誤):
     pass
+
+
+class FFLogs報告尚未完整匯出錯誤(RuntimeError):
+    def __init__(
+        self,
+        報告代碼: str,
+        戰鬥_id: int,
+        報告結束時間戳記: int,
+        戰鬥結束時間戳記: int,
+    ) -> None:
+        self.報告代碼 = 報告代碼
+        self.戰鬥_id = 戰鬥_id
+        self.報告結束時間戳記 = 報告結束時間戳記
+        self.戰鬥結束時間戳記 = 戰鬥結束時間戳記
+        super().__init__(
+            f"FFLogs 報告尚未完整匯出：{報告代碼} fight {戰鬥_id}，"
+            f"report end={毫秒轉_iso(報告結束時間戳記)}，"
+            f"fight end={毫秒轉_iso(戰鬥結束時間戳記)}"
+        )
 
 
 def GraphQL錯誤是否為報告存取錯誤(錯誤列表: list[Any]) -> bool:
@@ -1669,16 +1690,30 @@ def 查詢玩家成績(
     }
 
 
-def 建立玩家成績批次查詢(戰鬥_id清單: list[int]) -> str:
+def 建立玩家成績批次查詢(
+    戰鬥_id清單: list[int],
+    戰鬥時間範圍索引: dict[int, dict[str, int | float]] | None = None,
+) -> str:
     # playerDetails 與 damageDone 必須維持「單一 fight」語意，否則多場通關會被 FFLogs 聚合成同一張表，
     # rDPS/aDPS 分母、停手時間與玩家列表都會失去逐場可追溯性。這裡用 GraphQL alias 把多個單 fight
     # 查詢包進同一個 HTTP request，降低 workflow 遇到多場戰鬥 report 時的 API request 數量。
     欄位片段: list[str] = []
     for 索引, 戰鬥_id in enumerate(戰鬥_id清單):
+        時間範圍 = (戰鬥時間範圍索引 or {}).get(戰鬥_id) or {}
+        起始時間 = 轉_float(時間範圍.get("start_time"))
+        結束時間 = 轉_float(時間範圍.get("end_time"))
+        時間範圍參數 = ""
+        if 起始時間 is not None and 結束時間 is not None and 結束時間 > 起始時間:
+            # fightIDs 在少數舊報告上會跟 report.endTime 的舊匯出邊界一起截斷 damageDone table。
+            # 同時提供 fight 的相對 start/end time，可讓 FFLogs 回傳與網頁 CSV 匯出一致的完整時間窗。
+            時間範圍參數 = f"""
+        startTime: {起始時間},
+        endTime: {結束時間},"""
         欄位片段.append(
             f"""
       playerDetails_{索引}: playerDetails(
         fightIDs: [{戰鬥_id}],
+{時間範圍參數}
         encounterID: $encounterID,
         difficulty: $difficulty,
         killType: Kills,
@@ -1688,6 +1723,7 @@ def 建立玩家成績批次查詢(戰鬥_id清單: list[int]) -> str:
       damageDone_{索引}: table(
         dataType: DamageDone,
         fightIDs: [{戰鬥_id}],
+{時間範圍參數}
         encounterID: $encounterID,
         difficulty: $difficulty,
         killType: Kills,
@@ -1722,12 +1758,13 @@ def 查詢多場玩家成績(
     副本設定: dict[str, Any],
     報告代碼: str,
     戰鬥_id清單: list[int],
+    戰鬥時間範圍索引: dict[int, dict[str, int | float]] | None = None,
 ) -> dict[int, dict[str, Any]]:
     def 查詢批次(批次戰鬥_id清單: list[int]) -> dict[int, dict[str, Any]]:
         資料 = 執行_graphql(
             session,
             認證池,
-            建立玩家成績批次查詢(批次戰鬥_id清單),
+            建立玩家成績批次查詢(批次戰鬥_id清單, 戰鬥時間範圍索引),
             {
                 "code": 報告代碼,
                 "encounterID": 副本設定["encounter_id"],
@@ -2221,11 +2258,13 @@ def 建立排行榜條目(排行榜: dict[str, Any], 版本範圍: str = "all") 
     最佳成績索引: dict[str, dict[str, Any]] = {}
     版本設定 = 取得副本版本截止設定(排行榜.get("encounter"))
 
-    for 條目 in 排行榜.get("ranking_entries") or []:
-        if isinstance(條目, dict):
-            登記排行榜條目(條目, 精確成績索引)
+    報告索引 = 排行榜.get("reports") if isinstance(排行榜.get("reports"), dict) else {}
+    if not 報告索引:
+        for 條目 in 排行榜.get("ranking_entries") or []:
+            if isinstance(條目, dict):
+                登記排行榜條目(條目, 精確成績索引)
 
-    for 報告代碼, 報告 in (排行榜.get("reports") or {}).items():
+    for 報告代碼, 報告 in 報告索引.items():
         if not isinstance(報告, dict):
             continue
 
@@ -2272,7 +2311,13 @@ def 建立排行榜條目(排行榜: dict[str, Any], 版本範圍: str = "all") 
                     "ndps": 玩家.get("ndps"),
                     "total_damage": 玩家.get("total_damage"),
                     "active_time_ms": 玩家.get("active_time_ms"),
-                    "active_percent": 計算_active_percent(玩家.get("active_time_ms"), 戰鬥.get("clear_time_ms")),
+                    # FFLogs Damage Done 表格的 Active% 以 totalTime 為分母，包含 pull 起訖的完整時間窗；
+                    # clear_time_ms/combatTime 會扣掉 FFLogs 認定的非戰鬥邊界，拿來算 DPS 分母是對的，
+                    # 但拿來算 Active% 會和 FFLogs CSV 顯示略有落差。
+                    "active_percent": 計算_active_percent(
+                        玩家.get("active_time_ms"),
+                        戰鬥.get("fflogs_total_time_ms") or 戰鬥.get("clear_time_ms"),
+                    ),
                     "clear_time_ms": 戰鬥.get("clear_time_ms"),
                     "clear_time_seconds": 戰鬥.get("clear_time_seconds"),
                     "damage_downtime_ms": 戰鬥.get("damage_downtime_ms"),
@@ -2460,6 +2505,68 @@ def 寫入排行榜報告分片(副本設定: dict[str, Any], 報告索引: dict
     return 分片路徑清單
 
 
+def 建立戰鬥時間範圍索引(戰鬥列表: list[dict[str, Any]]) -> dict[int, dict[str, int | float]]:
+    時間範圍索引: dict[int, dict[str, int | float]] = {}
+    for 戰鬥 in 戰鬥列表:
+        if not isinstance(戰鬥, dict):
+            continue
+
+        戰鬥_id = 戰鬥.get("id")
+        戰鬥開始時間 = 轉_float(戰鬥.get("startTime"))
+        戰鬥結束時間 = 轉_float(戰鬥.get("endTime"))
+        if type(戰鬥_id) is int and 戰鬥開始時間 is not None and 戰鬥結束時間 is not None:
+            時間範圍索引[戰鬥_id] = {
+                "start_time": 戰鬥開始時間,
+                "end_time": 戰鬥結束時間,
+            }
+
+    return 時間範圍索引
+
+
+def 傷害表格疑似未完整匯出(
+    戰鬥時間毫秒: float | None,
+    傷害時間資訊: dict[str, Any],
+    玩家列表: list[dict[str, Any]],
+) -> bool:
+    if 戰鬥時間毫秒 is None or 戰鬥時間毫秒 <= 0:
+        return False
+
+    傷害時間毫秒 = 轉_float(傷害時間資訊.get("damage_time_ms"))
+    if 傷害時間毫秒 is None or 傷害時間毫秒 <= 0:
+        return False
+
+    傷害時間比例 = 傷害時間毫秒 / 戰鬥時間毫秒
+    玩家活躍比例 = [
+        活躍時間 / 戰鬥時間毫秒
+        for 玩家 in 玩家列表
+        if (活躍時間 := 轉_float(玩家.get("active_time_ms"))) is not None
+    ]
+    最高活躍比例 = max(玩家活躍比例, default=1)
+    return 傷害時間比例 < 0.25 and 最高活躍比例 < 0.5
+
+
+def 建立尚未完整匯出錯誤(報告代碼: str, 報告: dict[str, Any], 戰鬥: dict[str, Any]) -> FFLogs報告尚未完整匯出錯誤:
+    報告起始時間戳記 = 轉_float(報告.get("startTime"))
+    報告結束時間戳記 = 轉_float(報告.get("endTime"))
+    戰鬥結束時間 = 轉_float(戰鬥.get("endTime"))
+    戰鬥_id = 戰鬥.get("id")
+    if (
+        報告起始時間戳記 is None
+        or 報告結束時間戳記 is None
+        or 戰鬥結束時間 is None
+        or type(戰鬥_id) is not int
+    ):
+        return FFLogs報告尚未完整匯出錯誤(報告代碼, int(戰鬥_id or 0), 0, 0)
+
+    戰鬥結束時間戳記 = int(報告起始時間戳記 + 戰鬥結束時間)
+    return FFLogs報告尚未完整匯出錯誤(
+        報告代碼,
+        戰鬥_id,
+        int(報告結束時間戳記),
+        戰鬥結束時間戳記,
+    )
+
+
 def 建立報告成績(
     session: requests.Session,
     認證池: FFLogs認證池,
@@ -2482,7 +2589,8 @@ def 建立報告成績(
     整理後戰鬥列表: list[dict[str, Any]] = []
     報告起始時間戳記 = 報告.get("startTime") or 淺層報告.get("startTime")
     戰鬥_id清單 = [戰鬥.get("id") for 戰鬥 in 戰鬥列表 if type(戰鬥.get("id")) is int]
-    玩家成績索引 = 查詢多場玩家成績(session, 認證池, 副本設定, 報告代碼, 戰鬥_id清單)
+    戰鬥時間範圍索引 = 建立戰鬥時間範圍索引(戰鬥列表)
+    玩家成績索引 = 查詢多場玩家成績(session, 認證池, 副本設定, 報告代碼, 戰鬥_id清單, 戰鬥時間範圍索引)
     for 戰鬥 in 戰鬥列表:
         戰鬥_id = 戰鬥.get("id")
         if type(戰鬥_id) is not int:
@@ -2502,6 +2610,10 @@ def 建立報告成績(
         傷害時間資訊 = 計算傷害時間資訊(原始成績, 戰鬥時間毫秒)
         傷害計算時間毫秒 = 轉_float(傷害時間資訊.get("damage_time_ms")) or 戰鬥時間毫秒
         紀錄時間戳記 = 相對戰鬥時間轉實際時間(報告起始時間戳記, 戰鬥.get("startTime"))
+        玩家列表 = 從原始成績整理玩家_dps(原始成績, 傷害計算時間毫秒)
+        if 傷害表格疑似未完整匯出(戰鬥時間毫秒, 傷害時間資訊, 玩家列表):
+            raise 建立尚未完整匯出錯誤(報告代碼, 報告, 戰鬥)
+
         整理後戰鬥列表.append(
             {
                 "fight_id": 戰鬥_id,
@@ -2541,7 +2653,7 @@ def 建立報告成績(
                 "average_item_level": 戰鬥.get("averageItemLevel"),
                 "boss_percentage": 戰鬥.get("bossPercentage"),
                 "damage_done_summary": 建立傷害表格摘要(原始成績),
-                "players": 從原始成績整理玩家_dps(原始成績, 傷害計算時間毫秒),
+                "players": 玩家列表,
             }
         )
 
@@ -2707,6 +2819,10 @@ def 合併寫入排行榜(副本設定: dict[str, Any], 新成績列表: list[di
     return 新增或更新數量
 
 
+def 報告處理記錄可重試(記錄: Any) -> bool:
+    return isinstance(記錄, dict) and 記錄.get("status") in 可重試報告處理狀態
+
+
 def 讀取已處理報告代碼(狀態: dict[str, Any], 副本設定: dict[str, Any]) -> set[str]:
     副本鍵值 = 副本設定["key"]
     已處理 = set()
@@ -2714,11 +2830,11 @@ def 讀取已處理報告代碼(狀態: dict[str, Any], 副本設定: dict[str, 
     副本狀態 = (狀態.get("encounters") or {}).get(副本鍵值) or {}
     已處理報告 = 副本狀態.get("processed_reports") or {}
     if isinstance(已處理報告, dict):
-        已處理.update(str(代碼) for 代碼 in 已處理報告.keys())
+        已處理.update(str(代碼) for 代碼, 記錄 in 已處理報告.items() if not 報告處理記錄可重試(記錄))
 
     已檢查報告 = 副本狀態.get("checked_reports") or {}
     if isinstance(已檢查報告, dict):
-        已處理.update(str(代碼) for 代碼 in 已檢查報告.keys())
+        已處理.update(str(代碼) for 代碼, 記錄 in 已檢查報告.items() if not 報告處理記錄可重試(記錄))
 
     排行榜 = 讀取排行榜檔案(副本設定)
     報告索引 = 排行榜.get("reports") if isinstance(排行榜, dict) else {}
@@ -3229,6 +3345,24 @@ def main() -> int:
 
                 try:
                     成績 = 建立報告成績(session, 認證池, 目標副本, 報告, 繁中服玩家)
+                except FFLogs報告尚未完整匯出錯誤 as 錯誤:
+                    標記報告略過(
+                        目標處理狀態,
+                        報告代碼,
+                        報告尚未完整匯出狀態,
+                        {
+                            "reason": str(錯誤),
+                            "retryable": True,
+                            "report_end_at": 錯誤.報告結束時間戳記,
+                            "report_end_at_iso": 毫秒轉_iso(錯誤.報告結束時間戳記),
+                            "required_fight_end_at": 錯誤.戰鬥結束時間戳記,
+                            "required_fight_end_at_iso": 毫秒轉_iso(錯誤.戰鬥結束時間戳記),
+                            "fight_id": 錯誤.戰鬥_id,
+                        },
+                    )
+                    目標處理狀態["history_reports_deferred"] += 1
+                    print(f"{目標副本['name']} {進度文字} FFLogs 尚未完整匯出，延後重抓：{報告代碼}")
+                    continue
                 except FFLogs報告存取錯誤 as 錯誤:
                     標記報告略過(
                         目標處理狀態,

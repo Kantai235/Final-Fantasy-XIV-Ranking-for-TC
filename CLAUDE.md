@@ -74,6 +74,7 @@
 3. 同一角色、同一伺服器、同一職業的最佳成績排序規則為 rDPS 優先，平手看通關時間，再看 aDPS，最後才用紀錄時間或名稱穩定排序。
 4. `fight_hash` 用於辨識不同 report 上傳的同一場戰鬥；`source_reports` 與 `duplicate_count` 必須保留，不能因去重而刪掉來源線索。
 5. 新寫入的 report 不保存 `fflogs_raw`、`master_data` 與 `matched_players`；這些大型 raw 欄位可依 report code 重查，停止落地是為避免 Git repo 容量快速膨脹。
+6. 當 `reports` 分片存在時，`ranking_entries` 只視為衍生索引；重建排行榜必須以 `reports -> fights -> players` 為權威來源，避免重抓單一 report 後舊扁平索引把錯誤高分帶回來。
 
 ### D. FFLogs 欄位解析脈絡
 1. 淺層 reports 查詢目前不能直接用伺服器過濾，因此先用 `region.id == 4` 篩中國區域，再查 `masterData.actors(type: "Player")` 確認是否包含繁中服伺服器。
@@ -81,6 +82,8 @@
 3. `id` / `guid` 優先於角色名稱；只有在同一 report 的名稱唯一時才用名稱 fallback，避免跨伺服器同名角色被合併。
 4. `damage_time_ms` 優先來自 FFLogs damageDone table 的 `combatTime - damageDowntime`。沒有該表格時才退回 fight combatTime，避免 rDPS/aDPS 分母被誤判。
 5. `backfill_missing_fflogs_data.py` 只應補齊影響建置的欄位，例如 `fights[].players`、`clear_time_ms` 與 `damage_time_ms`；不得因缺少 raw 欄位而把大型原始資料補回 repo。
+6. 單場 `playerDetails` 與 `damageDone` GraphQL 查詢必須同時帶 `fightIDs` 以及該 fight 的相對 `startTime` / `endTime`。少數 FFLogs 舊報告的 `report.endTime` 可能停在 fight 中途；只用 `fightIDs` 會拿到 partial table，導致 rDPS/aDPS 異常放大。
+7. `active_percent` 對齊 FFLogs Damage Done CSV 的 Active%，優先使用 `fflogs_total_time_ms` 作為分母；DPS/rDPS/aDPS 仍使用 `damage_time_ms` 作為分母。
 
 ### E. 驗證與同步
 1. 文件或註解變更仍需至少執行語法檢查與 `npm run build:user-data`，確認資料聚合可完成。

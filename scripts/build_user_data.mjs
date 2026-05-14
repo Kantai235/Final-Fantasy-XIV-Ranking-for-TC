@@ -784,13 +784,20 @@ function makePublicEntry({ encounter, report, reportCode, fight, player, fightPl
 
   const clearTimeMs = toNumber(fight.clear_time_ms);
   const clearTimeSeconds = toNumber(fight.clear_time_seconds) ?? (clearTimeMs === null ? null : clearTimeMs / 1000);
+  const fflogsTotalTimeMs = toNumber(fight.fflogs_total_time_ms);
+  const fflogsTotalTimeSeconds = fflogsTotalTimeMs === null ? null : fflogsTotalTimeMs / 1000;
   const damageDowntimeMs = toNumber(fight.damage_downtime_ms);
   const damageTimeMs = toNumber(fight.damage_time_ms);
   const damageDowntimeSeconds =
     toNumber(fight.damage_downtime_seconds) ?? (damageDowntimeMs === null ? null : damageDowntimeMs / 1000);
   const damageTimeSeconds = toNumber(fight.damage_time_seconds) ?? (damageTimeMs === null ? null : damageTimeMs / 1000);
+  // FFLogs Damage Done CSV 的 Active% 使用 totalTime，而 DPS/rDPS 使用 combatTime - downtime。
+  // 這兩個分母不同；這裡優先用 fflogs_total_time_ms，避免個人成績單與排行榜重建時偏離 FFLogs 顯示值。
+  const activePercentDurationMs = fflogsTotalTimeMs ?? clearTimeMs;
+  const activePercentDurationSeconds = fflogsTotalTimeSeconds ?? clearTimeSeconds;
   const activePercent =
-    toNumber(player.active_percent) ?? calculateActivePercent(player.active_time_ms, clearTimeMs, clearTimeSeconds);
+    toNumber(player.active_percent) ??
+    calculateActivePercent(player.active_time_ms, activePercentDurationMs, activePercentDurationSeconds);
   const signature = {
     encounter_key: encounter.key,
     fight_hash: fight.fight_hash || null,

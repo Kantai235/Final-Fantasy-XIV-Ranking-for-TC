@@ -334,6 +334,8 @@ npm run build:user-data
 
 處理完成後，建議清空手動補抓欄位，避免下次排程重複處理。
 
+手動補抓既有 report 時，資料管線會以 `data/rankings/{key}.reports/` 的 report/fight/player 明細重新建立 `ranking_entries`。因此重抓可以修正舊扁平索引中的錯誤數值，不需要手動編輯公開 JSON。
+
 ## 自動更新
 
 `.github/workflows/update_rankings.yml` 會在每小時第 17 分與第 47 分左右執行一次，也支援手動觸發。這兩個時間點各自使用一條獨立 cron 排程，讓 GitHub Actions 比較明確地註冊半小時更新。排程會以 GitHub 預設分支上的最新版 workflow 與設定檔執行；本機尚未 commit / push 的 `config/encounters.json` 變更不會被自動更新流程使用。
@@ -404,6 +406,8 @@ npm run cloudflare:estimate
 - `public/data/rankings/` 是由 `fetch_fflogs.py --rebuild-public` 或 `--split-rankings` 重新產生的公開排行榜資料；若副本列在 `public/data/encounters.json`，就必須有對應公開 ranking 檔案。
 - FFLogs API 有限流，`config/fflogs.json` 可調整請求限制、重試、冷卻時間與單一 report 多 fight 的玩家成績批次大小。
 - 排行榜只統計公開報告中可解析且符合繁中服條件的資料。
+- 單場 FFLogs `playerDetails` / `damageDone` 查詢會同時帶 `fightIDs` 與 fight 的相對 `startTime` / `endTime`，避免少數舊報告只用 `fightIDs` 時拿到 partial damage table，造成 rDPS/aDPS 異常放大。
+- `active_percent` 對齊 FFLogs Damage Done CSV 的 Active%，使用 `fflogs_total_time_ms` 作為優先分母；DPS/rDPS/aDPS 仍使用 `damage_time_ms`。
 
 ## 版本切點與過版紀錄
 
