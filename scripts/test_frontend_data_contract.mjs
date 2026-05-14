@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { 建立職業佔比分組 } from "../src/utils/statsDisplay.js";
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const srcDir = path.join(rootDir, "src");
@@ -177,6 +178,7 @@ async function validateFrontendFetchBoundary() {
     "utils/fetchJson.js",
     "utils/publicData.js",
     "utils/shareMeta.js",
+    "utils/statsDisplay.js",
     "utils/urlState.js",
     "utils/userData.js",
     "utils/viewHelpers.js",
@@ -330,6 +332,46 @@ async function validatePublicDataForFrontend() {
       }
     }
   }
+}
+
+function validateScopedJobShareRecalculation() {
+  const source = {
+    role_stats: [
+      { role: "role:tank", role_name: "防護職業", clear_count: 3, percentage: 25 },
+      { role: "role:healer", role_name: "治療職業", clear_count: 9, percentage: 75 },
+    ],
+    job_stats: [
+      { job: "Paladin", role: "role:tank", role_name: "防護職業", clear_count: 3, percentage: 20 },
+      { job: "Warrior", role: "role:tank", role_name: "防護職業", clear_count: 1, percentage: 6.67 },
+      { job: "WhiteMage", role: "role:healer", role_name: "治療職業", clear_count: 8, percentage: 53.33 },
+      { job: "Sage", role: "role:healer", role_name: "治療職業", clear_count: 1, percentage: 6.67 },
+    ],
+  };
+
+  const allGroups = 建立職業佔比分組(source, "all");
+  const allTankGroup = allGroups.find((group) => group.role === "role:tank");
+  assert(allTankGroup?.percentage === 25, "全部職業範圍應沿用資料建置層已算好的職能佔比。");
+  assert(
+    allTankGroup?.jobs.find((job) => job.job === "Paladin")?.percentage === 20,
+    "全部職業範圍應沿用資料建置層已算好的職業佔比。",
+  );
+
+  const tankGroups = 建立職業佔比分組(source, "role:tank");
+  const tankGroup = tankGroups[0];
+  assert(tankGroups.length === 1 && tankGroup?.role === "role:tank", "職能範圍應只顯示該職能的職業佔比群組。");
+  assert(tankGroup?.percentage === 100, "職能範圍的群組佔比應以目前職能作為 100% 分母。");
+  assert(
+    tankGroup?.jobs.find((job) => job.job === "Paladin")?.percentage === 75,
+    "職能範圍內的職業佔比應依該職能的職業紀錄總數重算。",
+  );
+  assert(
+    tankGroup?.jobs.find((job) => job.job === "Warrior")?.percentage === 25,
+    "職能範圍內的第二個職業也應依該職能分母重算。",
+  );
+
+  const paladinGroup = 建立職業佔比分組(source, "Paladin")[0];
+  assert(paladinGroup?.percentage === 100, "單一職業範圍的群組佔比應以目前職業作為 100% 分母。");
+  assert(paladinGroup?.jobs[0]?.percentage === 100, "單一職業範圍的職業佔比應顯示為 100%。");
 }
 
 async function loadUrlStateTestModule() {
@@ -529,6 +571,7 @@ async function main() {
   await validateFrontendFetchBoundary();
   await validateEncounterSwitchFilterPersistence();
   await validatePublicDataForFrontend();
+  validateScopedJobShareRecalculation();
   await validateUserSearchResolution();
   await validateShareUrlStateCompatibility();
 

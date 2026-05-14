@@ -50,6 +50,7 @@ import {
   解析使用者搜尋目標,
   讀取使用者資料檔,
 } from "../utils/userData";
+import { 建立職業佔比分組, 職業範圍類型 } from "../utils/statsDisplay";
 import { 寫入網址狀態, 讀取目前網址狀態 } from "../utils/urlState";
 import { 排名色彩類別, 比例條樣式, 熱力格樣式, 趨勢點樣式, 隱藏載入失敗圖片 } from "../utils/viewHelpers";
 import { useTheme } from "./useTheme";
@@ -1142,13 +1143,6 @@ function 切換職業傷害提示(職業代碼) {
   職業傷害提示互動職業.value = 已鎖定 ? "" : 職業代碼;
 }
 
-function 職業範圍類型(範圍) {
-  if (!範圍 || 範圍 === "all") {
-    return "all";
-  }
-  return String(範圍).startsWith("role:") ? "role" : "job";
-}
-
 function 取得統計計數(統計項目, 職業範圍 = 統計職業範圍.value) {
   if (!統計項目) {
     return 0;
@@ -1415,38 +1409,7 @@ const 職業佔比標題文字 = computed(() => {
 });
 
 const 職業佔比分組 = computed(() => {
-  const 來源 = 職業佔比來源.value;
-  const 範圍類型 = 職業範圍類型(統計職業範圍.value);
-  const 職業列表 = (來源?.job_stats || []).filter((項目) => {
-    if (範圍類型 === "role") {
-      return 項目.role === 統計職業範圍.value;
-    }
-    if (範圍類型 === "job") {
-      return 項目.job === 統計職業範圍.value;
-    }
-    return true;
-  });
-
-  return 職業群組設定
-    .map((群組) => {
-      const jobs = 職業列表.filter((項目) => 項目.role === 群組.代碼);
-      if (jobs.length === 0) {
-        return null;
-      }
-      const roleStats = (來源?.role_stats || []).find((項目) => 項目.role === 群組.代碼);
-      const clearCount = 範圍類型 === "job" ? jobs.reduce((總數, 項目) => 總數 + 項目.clear_count, 0) : roleStats?.clear_count;
-      const percentage = 範圍類型 === "job" ? jobs.reduce((總數, 項目) => 總數 + 項目.percentage, 0) : roleStats?.percentage;
-
-      return {
-        role: 群組.代碼,
-        role_name: 群組.名稱,
-        色彩: 群組.色彩,
-        clear_count: clearCount ?? jobs.reduce((總數, 項目) => 總數 + 項目.clear_count, 0),
-        percentage: percentage ?? 0,
-        jobs,
-      };
-    })
-    .filter(Boolean);
+  return 建立職業佔比分組(職業佔比來源.value, 統計職業範圍.value);
 });
 
 const 伺服器生態欄位 = computed(() => {
