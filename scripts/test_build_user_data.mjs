@@ -111,6 +111,19 @@ async function createFixture(tempRoot) {
               total_damage: 55000,
               active_time_ms: 500000,
               active_percent: 90.91,
+              gcd_coverage: {
+                percent: 94.43,
+                covered_time_ms: 519365,
+                denominator_ms: 550000,
+                gcd_cast_count: 220,
+                calculation_version: 1,
+                source: "fflogs_casts_graph",
+              },
+              gcd_coverage_status: {
+                state: "ok",
+                calculation_version: 1,
+                checked_at_iso: "2026-01-02T03:10:00.000Z",
+              },
             },
             {
               name: "治療隊友",
@@ -153,6 +166,9 @@ async function assertFixtureOutput(tempRoot, expectedGlobalStatsText, expectedSe
   assert(mainUser, "使用者索引應包含測試角色。");
   const mainUserData = await readJson(path.join(tempRoot, "public", mainUser.file_path));
   assert(mainUserData.summary.best_rdps === 90, "測試角色最佳 rDPS 應正確彙整。");
+  const mainUserEntry = mainUserData.encounters[0]?.public_entries?.[0];
+  assert(mainUserEntry?.gcd_coverage?.percent === 94.43, "個人成績單應保留 GCD 覆蓋率。");
+  assert(mainUserEntry?.gcd_coverage_status?.state === "ok", "個人成績單應保留 GCD 覆蓋率狀態。");
   assert(mainUserData.frequent_teammates[0]?.character_name === "治療隊友", "測試角色應彙整同場隊友。");
 
   if (expectedGlobalStatsText !== null) {

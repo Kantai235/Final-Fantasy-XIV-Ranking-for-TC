@@ -1,5 +1,6 @@
 <script setup>
 import { onBeforeUnmount, onMounted, ref } from "vue";
+import { 顯示作者相關標示, 顯示社群連結 } from "../utils/siteFeatures";
 
 defineOptions({
   name: "AppFooter",
@@ -26,12 +27,20 @@ function 清除收回計時器() {
 }
 
 function 開啟作者卡() {
+  if (!顯示作者相關標示) {
+    return;
+  }
+
   清除收回計時器();
   作者卡正在收回.value = false;
   顯示作者卡.value = true;
 }
 
 function 關閉作者卡() {
+  if (!顯示作者相關標示) {
+    return;
+  }
+
   if (!顯示作者卡.value && !作者卡正在收回.value) {
     return;
   }
@@ -47,12 +56,20 @@ function 關閉作者卡() {
 }
 
 function 游標離開作者區() {
+  if (!顯示作者相關標示) {
+    return;
+  }
+
   if (!作者卡已釘選.value) {
     顯示作者卡.value = false;
   }
 }
 
 function 切換作者卡() {
+  if (!顯示作者相關標示) {
+    return;
+  }
+
   if (作者卡已釘選.value) {
     關閉作者卡();
     return;
@@ -63,6 +80,10 @@ function 切換作者卡() {
 }
 
 function 點擊作者區外側(event) {
+  if (!顯示作者相關標示) {
+    return;
+  }
+
   if ((!顯示作者卡.value && !作者卡正在收回.value) || 作者互動區.value?.contains(event.target)) {
     return;
   }
@@ -71,12 +92,16 @@ function 點擊作者區外側(event) {
 }
 
 onMounted(() => {
-  document.addEventListener("pointerdown", 點擊作者區外側);
+  if (顯示作者相關標示) {
+    document.addEventListener("pointerdown", 點擊作者區外側);
+  }
 });
 
 onBeforeUnmount(() => {
   清除收回計時器();
-  document.removeEventListener("pointerdown", 點擊作者區外側);
+  if (顯示作者相關標示) {
+    document.removeEventListener("pointerdown", 點擊作者區外側);
+  }
 });
 </script>
 
@@ -84,7 +109,7 @@ onBeforeUnmount(() => {
 <footer class="頁尾宣告" aria-label="網站宣告">
   <p>FINAL FANTASY XIV © SQUARE ENIX CO., LTD. All Rights Reserved.</p>
   <p>本網站為非官方社群工具，資料來自 FFLogs 公開報告，與 SQUARE ENIX CO., LTD. 無從屬或背書關係。</p>
-  <div class="頁尾作者列">
+  <div v-if="顯示作者相關標示" class="頁尾作者列">
     <span>力量來自於</span>
     <span ref="作者互動區" class="頁尾作者互動" @mouseenter="開啟作者卡" @mouseleave="游標離開作者區">
       <button
@@ -109,7 +134,7 @@ onBeforeUnmount(() => {
       >
         <figure class="作者形象區">
           <img class="作者形象圖" :src="作者圖片網址" alt="乾太的形象圖" />
-          <figcaption class="作者圖片署名">
+          <figcaption v-if="顯示社群連結" class="作者圖片署名">
             <a href="https://x.com/fwfwdog" target="_blank" rel="noopener noreferrer">🎨 by 猋ポチ︎︎</a>
           </figcaption>
         </figure>
@@ -118,8 +143,8 @@ onBeforeUnmount(() => {
           <p>在鳳凰伺服器蹦蹦跳跳，</p>
           <p>偶爾會打些高難副本，</p>
           <p>歡迎來找我玩玩～</p>
-          <div class="作者行動列" aria-label="乾太相關連結">
-            <a class="作者行動按鈕" :href="作者Facebook網址" target="_blank" rel="noopener noreferrer">
+          <div class="作者行動列" :aria-label="顯示社群連結 ? '乾太相關連結' : '乾太站內連結'">
+            <a v-if="顯示社群連結" class="作者行動按鈕" :href="作者Facebook網址" target="_blank" rel="noopener noreferrer">
               我有事情想找乾太 👉👈
             </a>
             <a class="作者行動按鈕" :href="作者成績單網址">我想偷看乾太的成績單 👀✨</a>

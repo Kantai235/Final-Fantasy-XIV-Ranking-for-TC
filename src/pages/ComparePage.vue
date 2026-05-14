@@ -38,14 +38,48 @@ export default {
         </div>
       </fieldset>
 
-      <label class="欄位">
+      <div class="欄位 副本選單欄位 比較副本選單欄位" @focusout="處理比較副本選單失焦">
         <span>統計範圍</span>
-        <select v-model="比較副本鍵值">
-          <option v-for="副本 in 比較副本列表" :key="副本.key" :value="副本.key">
-            {{ 副本.name }}
-          </option>
-        </select>
-      </label>
+        <div class="副本選單">
+          <button
+            class="副本選單按鈕"
+            type="button"
+            :aria-expanded="比較副本選單開啟"
+            aria-haspopup="true"
+            @click="切換比較副本選單"
+          >
+            <span class="副本選單目前值">{{ 比較副本選單文字 }}</span>
+            <span class="選單箭頭">▾</span>
+          </button>
+
+          <div v-if="比較副本選單開啟" class="副本選單面板" role="menu" aria-label="玩家比較統計範圍">
+            <section class="副本分類群">
+              <p class="副本分類標題">全部</p>
+              <button
+                class="副本選單項"
+                type="button"
+                :class="{ 已選取: 比較副本鍵值 === 'all' }"
+                @click="選擇比較副本(null)"
+              >
+                全部副本
+              </button>
+            </section>
+            <section v-for="分組 in 副本分組" :key="分組.分類" class="副本分類群">
+              <p class="副本分類標題">{{ 分組.分類 }}</p>
+              <button
+                v-for="副本 in 分組.副本列表"
+                :key="副本.key"
+                class="副本選單項"
+                type="button"
+                :class="{ 已選取: 比較副本鍵值 === 副本.key }"
+                @click="選擇比較副本(副本)"
+              >
+                {{ 副本.name }}
+              </button>
+            </section>
+          </div>
+        </div>
+      </div>
 
       <label v-if="顯示比較版本篩選" class="欄位">
         <span>版本紀錄</span>

@@ -51,6 +51,86 @@ def 建立測試原始成績(總傷害: int) -> dict[str, Any]:
 
 
 class FetchFFLogsBatchTest(unittest.TestCase):
+    def test_graphql_503_is_treated_as_transient_api_error(self) -> None:
+        class 假回應:
+            status_code = 503
+            ok = False
+            text = "Service Unavailable" * 80
+
+            def json(self) -> dict[str, Any]:
+                return {}
+
+        class 假認證池:
+            認證 = {"limiter": None}
+
+            def 取得目前認證(self) -> dict[str, Any]:
+                return self.認證
+
+            def 取得_token(self, 認證: dict[str, Any]) -> tuple[dict[str, Any], str]:
+                return 認證, "token"
+
+            def 切換下一組(self) -> None:
+                return None
+
+        with patch.object(fflogs, "post_並重試", return_value=假回應()):
+            with self.assertRaises(fflogs.FFLogs暫時性API錯誤) as 錯誤內容:
+                fflogs.執行_graphql(
+                    None,
+                    假認證池(),
+                    "query Test { reportData { reports { data { code } } } }",
+                )
+
+        self.assertEqual(錯誤內容.exception.status_code, 503)
+        self.assertIn("已截短", str(錯誤內容.exception))
+
+    def test_partial_state_update_keeps_failed_encounter_scan_cursor(self) -> None:
+        原始狀態 = {
+            "last_scanned_at": 1000,
+            "last_scanned_at_iso": "1970-01-01T00:00:01+00:00",
+            "encounters": {
+                "done": {
+                    "last_scanned_at": 1000,
+                    "active_scan": {"stage": "深層過濾與成績整理"},
+                    "processed_reports": {"old": {"status": "saved"}},
+                },
+                "deferred": {
+                    "last_scanned_at": 1000,
+                    "active_scan": {"stage": "淺層掃描", "current_window_start_at": 900},
+                    "processed_reports": {"keep": {"status": "saved"}},
+                },
+            },
+        }
+        寫入結果: list[dict[str, Any]] = []
+
+        def 假寫入_json(path: Any, content: dict[str, Any], **kwargs: Any) -> None:
+            寫入結果.append(content)
+
+        with (
+            patch.object(fflogs, "寫入_json", 假寫入_json),
+            patch.object(fflogs, "現在毫秒", return_value=3000),
+        ):
+            fflogs.更新狀態(
+                原始狀態,
+                2000,
+                {"deferred_encounters": ["deferred"]},
+                [{"key": "done"}],
+                完整成功=False,
+            )
+
+        self.assertEqual(len(寫入結果), 1)
+        新狀態 = 寫入結果[0]
+        self.assertEqual(新狀態["last_scanned_at"], 1000)
+        self.assertFalse(新狀態["last_run_completed"])
+        self.assertEqual(新狀態["encounters"]["done"]["last_scanned_at"], 2000)
+        self.assertEqual(新狀態["encounters"]["done"]["processed_reports"], {})
+        self.assertNotIn("active_scan", 新狀態["encounters"]["done"])
+        self.assertEqual(新狀態["encounters"]["deferred"]["last_scanned_at"], 1000)
+        self.assertEqual(
+            新狀態["encounters"]["deferred"]["processed_reports"],
+            {"keep": {"status": "saved"}},
+        )
+        self.assertEqual(新狀態["encounters"]["deferred"]["active_scan"]["stage"], "淺層掃描")
+
     def test_batch_query_keeps_each_fight_as_separate_alias(self) -> None:
         副本設定 = {"encounter_id": 93, "difficulty": 101}
         呼叫紀錄: list[tuple[str, dict[str, Any]]] = []
@@ -353,6 +433,8 @@ class FetchFFLogsBatchTest(unittest.TestCase):
                                     "adps": 20000,
                                     "total_damage": 200000,
                                     "active_time_ms": 9900,
+                                    "gcd_coverage": {"percent": 98.76},
+                                    "gcd_coverage_status": {"state": "ok"},
                                 }
                             ],
                         }
@@ -366,6 +448,8 @@ class FetchFFLogsBatchTest(unittest.TestCase):
         self.assertEqual(len(條目), 1)
         self.assertEqual(條目[0]["rdps"], 21000)
         self.assertEqual(條目[0]["dps"], 20000)
+        self.assertEqual(條目[0]["gcd_coverage"]["percent"], 98.76)
+        self.assertEqual(條目[0]["gcd_coverage_status"]["state"], "ok")
 
 
 if __name__ == "__main__":

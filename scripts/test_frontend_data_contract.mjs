@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { 建立職業佔比分組 } from "../src/utils/statsDisplay.js";
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const srcDir = path.join(rootDir, "src");
@@ -177,6 +178,8 @@ async function validateFrontendFetchBoundary() {
     "utils/fetchJson.js",
     "utils/publicData.js",
     "utils/shareMeta.js",
+    "utils/siteFeatures.js",
+    "utils/statsDisplay.js",
     "utils/urlState.js",
     "utils/userData.js",
     "utils/viewHelpers.js",
@@ -192,6 +195,42 @@ async function validateFrontendFetchBoundary() {
       reportIssue(`${relativePath} 看起來直接碰到 FFLogs API，前端不得繞過資料管線`);
     }
   }
+}
+
+function extractSourceSection(source, startText, endText, label) {
+  const startIndex = source.indexOf(startText);
+  const endIndex = source.indexOf(endText, startIndex + startText.length);
+  if (startIndex === -1 || endIndex === -1) {
+    reportIssue(`${label} 區段定位失敗，無法驗證副本切換篩選狀態`);
+    return "";
+  }
+
+  return source.slice(startIndex, endIndex);
+}
+
+async function validateEncounterSwitchFilterPersistence() {
+  const filePath = path.join(srcDir, "composables", "useRankingApp.js");
+  const source = await readText(filePath);
+  const rankingWatcher = extractSourceSection(source, "watch(副本鍵值", "watch(排行榜版本範圍", "排行榜副本切換 watcher");
+  const statsWatcher = extractSourceSection(
+    source,
+    "watch([統計副本鍵值, 全服統計資料]",
+    "watch([統計副本鍵值, 統計版本範圍",
+    "全服統計副本切換 watcher",
+  );
+
+  for (const resetExpression of ['伺服器篩選.value = ""', '職業類型篩選.value = ""', '職業篩選.value = ""']) {
+    assert(!rankingWatcher.includes(resetExpression), `排行榜切換副本時不可清空既有篩選：${resetExpression}`);
+  }
+
+  assert(
+    statsWatcher.includes("統計伺服器可識別"),
+    "全服統計切換副本時應以全域伺服器清單判斷有效性，避免只因目前副本沒有資料就清空伺服器篩選",
+  );
+  assert(
+    statsWatcher.includes("統計職業範圍可識別"),
+    "全服統計切換副本時應以職業定義判斷有效性，避免只因目前副本沒有資料就清空職業篩選",
+  );
 }
 
 async function validatePublicDataForFrontend() {
@@ -294,6 +333,46 @@ async function validatePublicDataForFrontend() {
       }
     }
   }
+}
+
+function validateScopedJobShareRecalculation() {
+  const source = {
+    role_stats: [
+      { role: "role:tank", role_name: "防護職業", clear_count: 3, percentage: 25 },
+      { role: "role:healer", role_name: "治療職業", clear_count: 9, percentage: 75 },
+    ],
+    job_stats: [
+      { job: "Paladin", role: "role:tank", role_name: "防護職業", clear_count: 3, percentage: 20 },
+      { job: "Warrior", role: "role:tank", role_name: "防護職業", clear_count: 1, percentage: 6.67 },
+      { job: "WhiteMage", role: "role:healer", role_name: "治療職業", clear_count: 8, percentage: 53.33 },
+      { job: "Sage", role: "role:healer", role_name: "治療職業", clear_count: 1, percentage: 6.67 },
+    ],
+  };
+
+  const allGroups = 建立職業佔比分組(source, "all");
+  const allTankGroup = allGroups.find((group) => group.role === "role:tank");
+  assert(allTankGroup?.percentage === 25, "全部職業範圍應沿用資料建置層已算好的職能佔比。");
+  assert(
+    allTankGroup?.jobs.find((job) => job.job === "Paladin")?.percentage === 20,
+    "全部職業範圍應沿用資料建置層已算好的職業佔比。",
+  );
+
+  const tankGroups = 建立職業佔比分組(source, "role:tank");
+  const tankGroup = tankGroups[0];
+  assert(tankGroups.length === 1 && tankGroup?.role === "role:tank", "職能範圍應只顯示該職能的職業佔比群組。");
+  assert(tankGroup?.percentage === 100, "職能範圍的群組佔比應以目前職能作為 100% 分母。");
+  assert(
+    tankGroup?.jobs.find((job) => job.job === "Paladin")?.percentage === 75,
+    "職能範圍內的職業佔比應依該職能的職業紀錄總數重算。",
+  );
+  assert(
+    tankGroup?.jobs.find((job) => job.job === "Warrior")?.percentage === 25,
+    "職能範圍內的第二個職業也應依該職能分母重算。",
+  );
+
+  const paladinGroup = 建立職業佔比分組(source, "Paladin")[0];
+  assert(paladinGroup?.percentage === 100, "單一職業範圍的群組佔比應以目前職業作為 100% 分母。");
+  assert(paladinGroup?.jobs[0]?.percentage === 100, "單一職業範圍的職業佔比應顯示為 100%。");
 }
 
 async function loadUrlStateTestModule() {
@@ -457,6 +536,25 @@ async function validateShareUrlStateCompatibility() {
     "排行榜分享網址必須保留版本篩選 query",
   );
 
+  installUrlStateWindow("https://ranking.init.engineer/?encounter=savage_m1s&server=%E9%B3%B3%E5%87%B0&jobType=role%3Ahealer&job=WhiteMage", events);
+  module.writeState(
+    { page: "ranking", encounter: "savage_m2s", server: "鳳凰", jobType: "role:healer", job: "WhiteMage" },
+    { replace: true },
+  );
+  assert(
+    globalThis.window.location.href ===
+      "https://ranking.init.engineer/?encounter=savage_m2s&server=%E9%B3%B3%E5%87%B0&jobType=role%3Ahealer&job=WhiteMage",
+    "排行榜切換副本後的分享網址必須保留伺服器與職業篩選 query",
+  );
+
+  installUrlStateWindow("https://ranking.init.engineer/stats/savage_m1s?server=%E9%B3%B3%E5%87%B0&jobScope=WhiteMage", events);
+  module.writeState({ page: "stats", encounter: "savage_m2s", server: "鳳凰", jobScope: "WhiteMage" }, { replace: true });
+  assert(
+    globalThis.window.location.href ===
+      "https://ranking.init.engineer/stats/savage_m2s?server=%E9%B3%B3%E5%87%B0&jobScope=WhiteMage",
+    "全服統計切換副本後的分享網址必須保留伺服器與職業範圍 query",
+  );
+
   installUrlStateWindow("https://ranking.init.engineer/servers?left=a&right=b", events);
   module.writeState({ page: "servers", left: "鳳凰", right: "伊弗利特" }, { replace: true });
   assert(
@@ -472,7 +570,9 @@ async function validateShareUrlStateCompatibility() {
 async function main() {
   await validateUseRankingAppReturnBindings();
   await validateFrontendFetchBoundary();
+  await validateEncounterSwitchFilterPersistence();
   await validatePublicDataForFrontend();
+  validateScopedJobShareRecalculation();
   await validateUserSearchResolution();
   await validateShareUrlStateCompatibility();
 

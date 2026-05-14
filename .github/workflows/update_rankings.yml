@@ -94,6 +94,15 @@ jobs:
           FFLOGS_CLIENT_CREDENTIALS_JSON: ${{ secrets.FFLOGS_CLIENT_CREDENTIALS_JSON }}
         run: python scripts/backfill_missing_fflogs_data.py --limit 250
 
+      - name: 補齊 GCD 覆蓋率
+        env:
+          FFLOGS_CLIENT_ID: ${{ secrets.FFLOGS_CLIENT_ID }}
+          FFLOGS_CLIENT_SECRET: ${{ secrets.FFLOGS_CLIENT_SECRET }}
+          FFLOGS_CLIENT_IDS: ${{ secrets.FFLOGS_CLIENT_IDS }}
+          FFLOGS_CLIENT_SECRETS: ${{ secrets.FFLOGS_CLIENT_SECRETS }}
+          FFLOGS_CLIENT_CREDENTIALS_JSON: ${{ secrets.FFLOGS_CLIENT_CREDENTIALS_JSON }}
+        run: python scripts/backfill_gcd_coverage.py --limit 200
+
       - name: 分割完整排行榜資料供 Git 追蹤
         run: python scripts/fetch_fflogs.py --split-rankings
 
@@ -168,7 +177,7 @@ jobs:
             -m "chore(data): 自動更新排行榜資料" \
             -m "原因：GitHub Actions 定時同步 FFLogs 公開報告，讓靜態網站資料保持最新。" \
             -m "主要變更：更新 data 與 public/data 內的排行榜、個人成績單、全服統計或更新狀態產物。" \
-            -m "測試/驗證：本 workflow 已完成 fetch_fflogs.py、backfill_missing_fflogs_data.py、validate:data 與 npm run build。"
+            -m "測試/驗證：本 workflow 已完成 fetch_fflogs.py、backfill_missing_fflogs_data.py、backfill_gcd_coverage.py、validate:data 與 npm run build。"
           # rebase 前工作樹必須乾淨；若未來資料建置新增了已追蹤產物但忘記納入 DATA_PATHS，
           # 這裡會列出漏掉的檔案，避免只看到 Git 的「cannot rebase: You have unstaged changes」。
           if [ -n "$(git status --porcelain --untracked-files=no)" ]; then

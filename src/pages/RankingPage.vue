@@ -314,7 +314,7 @@ export default {
               {{ 列.角色名稱 }}
             </button>
             <span v-if="列.過版紀錄" class="版本紀錄標籤">過版紀錄</span>
-            <span v-if="是網站作者(列.角色名稱)" class="說明提示 作者提示">
+            <span v-if="顯示作者相關標示 && 是網站作者(列.角色名稱)" class="說明提示 作者提示">
               <button class="說明提示按鈕 作者勾勾按鈕" type="button" aria-label="網站作者說明">✓</button>
               <span class="說明提示內容" role="tooltip">{{ 作者說明文字 }}</span>
             </span>
@@ -337,7 +337,7 @@ export default {
                       {{ 列.角色名稱 }}
                     </button>
                     <span v-if="列.過版紀錄" class="版本紀錄標籤">過版紀錄</span>
-                    <span v-if="是網站作者(列.角色名稱)" class="說明提示 作者提示">
+                    <span v-if="顯示作者相關標示 && 是網站作者(列.角色名稱)" class="說明提示 作者提示">
                       <button class="說明提示按鈕 作者勾勾按鈕" type="button" aria-label="網站作者說明">✓</button>
                       <span class="說明提示內容" role="tooltip">{{ 作者說明文字 }}</span>
                     </span>

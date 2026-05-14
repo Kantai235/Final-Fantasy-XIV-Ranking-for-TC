@@ -660,13 +660,27 @@ h1 {
 }
 
 .工具列 {
-  display: grid;
-  grid-template-columns: minmax(210px, 1.25fr) minmax(160px, 0.85fr) minmax(145px, 0.8fr) minmax(170px, 1fr) minmax(220px, 1.25fr);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
   gap: 16px;
   margin-bottom: 18px;
 }
 
+.工具列 > .欄位 {
+  flex: 1 1 118px;
+}
+
+.工具列 > .副本選單欄位 {
+  flex-basis: 200px;
+}
+
+.工具列 > .搜尋欄位 {
+  flex: 2 1 210px;
+}
+
 .欄位 {
+  min-width: 0;
   display: grid;
   gap: 8px;
   color: var(--次要文字);
@@ -677,6 +691,7 @@ h1 {
 select,
 input {
   width: 100%;
+  min-width: 0;
   min-height: 42px;
   border: 1px solid var(--輸入邊框);
   border-radius: 8px;
@@ -724,11 +739,13 @@ button:disabled {
 }
 
 .副本選單 {
+  min-width: 0;
   position: relative;
 }
 
 .副本選單按鈕 {
   width: 100%;
+  min-width: 0;
   min-height: 42px;
   display: flex;
   align-items: center;
@@ -748,7 +765,9 @@ button:disabled {
 }
 
 .副本選單目前值 {
+  flex: 1 1 auto;
   min-width: 0;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -814,22 +833,37 @@ button:disabled {
   position: relative;
 }
 
+.工具列 > .職業選單欄位 {
+  flex: 0 1 240px;
+  width: 240px;
+  min-width: 220px;
+}
+
+.統計工具列 > .職業選單欄位 {
+  flex: 0 1 300px;
+  width: 300px;
+  min-width: 260px;
+}
+
 .職業選單 {
+  min-width: 0;
   position: relative;
 }
 
 .職業選單按鈕 {
   width: 100%;
+  min-width: 0;
   min-height: 42px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
   border-color: var(--輸入邊框);
-  padding: 0 12px;
+  padding: 7px 12px;
   color: var(--主要文字);
   background: var(--輸入背景);
   font-weight: 650;
+  line-height: 1.35;
   text-align: left;
 }
 
@@ -839,13 +873,18 @@ button:disabled {
 }
 
 .職業選單目前值 {
+  flex: 1 1 auto;
   min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
   display: inline-flex;
   align-items: center;
   gap: 8px;
 }
 
 .職業選單目前值 span {
+  min-width: 0;
+  display: block;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1082,11 +1121,11 @@ button:disabled {
 }
 
 .比較搜尋表單 {
-  grid-template-columns: minmax(180px, 0.75fr) repeat(2, minmax(220px, 1fr)) auto;
+  grid-template-columns: minmax(220px, 1.05fr) repeat(2, minmax(220px, 1fr)) auto;
 }
 
 .比較搜尋表單.比較搜尋表單含版本 {
-  grid-template-columns: minmax(180px, 0.75fr) minmax(170px, 0.65fr) repeat(2, minmax(220px, 1fr)) auto;
+  grid-template-columns: minmax(220px, 1.05fr) minmax(170px, 0.65fr) repeat(2, minmax(220px, 1fr)) auto;
 }
 
 .比較職能選擇 {
@@ -1152,10 +1191,19 @@ button:disabled {
 }
 
 .統計工具列 {
-  display: grid;
-  grid-template-columns: minmax(220px, 1.2fr) minmax(160px, 0.85fr) minmax(150px, 0.8fr) minmax(220px, 1.1fr) minmax(170px, 0.8fr);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
   gap: 16px;
   margin-bottom: 18px;
+}
+
+.統計工具列 > .欄位 {
+  flex: 1 1 150px;
+}
+
+.統計工具列 > .副本選單欄位 {
+  flex-basis: 220px;
 }
 
 .職業分析工具列 {
@@ -4013,7 +4061,14 @@ td a:hover {
   }
 
   .工具列 {
+    display: grid;
     grid-template-columns: 1fr;
+  }
+
+  .工具列 > .職業選單欄位,
+  .統計工具列 > .職業選單欄位 {
+    width: auto;
+    min-width: 0;
   }
 
   .隊伍榜工具列 {
@@ -4190,6 +4245,7 @@ td a:hover {
   }
 
   .統計工具列 {
+    display: grid;
     grid-template-columns: 1fr;
   }
 

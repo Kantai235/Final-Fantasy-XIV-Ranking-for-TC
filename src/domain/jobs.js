@@ -1,4 +1,4 @@
-import { 建立公開資料網址 } from "../utils/publicData";
+import { 建立公開資料網址 } from "../utils/publicData.js";
 
 // FFLogs 回傳職業代碼為英文 job slug；前端所有頁面都透過這張表轉成繁中顯示。
 // 新增職業時，需同步補上：繁中名稱、職業群組、職業圖示檔名與比較圖色彩。

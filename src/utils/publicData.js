@@ -1,6 +1,6 @@
 // 前端只讀取 Vite 打包後位於 public/data 的靜態 JSON。
 // 這裡集中處理公開資料 URL，避免頁面或 composable 各自拼接路徑時漏掉 base path。
-const 公開資料基底路徑 = import.meta.env.BASE_URL;
+const 公開資料基底路徑 = import.meta.env?.BASE_URL ?? "/";
 
 export const 副本清單網址 = `${公開資料基底路徑}data/encounters.json`;
 export const 使用者索引網址 = `${公開資料基底路徑}data/users/index.json`;
