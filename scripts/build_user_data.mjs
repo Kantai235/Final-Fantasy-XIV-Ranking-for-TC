@@ -28,6 +28,7 @@ const activityWindowDays = 7;
 const recentActivityLimit = 40;
 const teamRecordsPerEncounterLimit = 50;
 const versionRecordModes = ["all", "valid", "obsolete"];
+const retryableWriteErrorCodes = new Set(["UNKNOWN", "EBUSY", "EPERM", "EACCES"]);
 
 const jobRoleGroups = [
   {
@@ -88,8 +89,28 @@ async function readJson(filePath, fallback = null) {
   }
 }
 
-function writeJson(filePath, data) {
-  return writeFile(filePath, `${JSON.stringify(data)}\n`, "utf8");
+function sleep(ms) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+async function writeJson(filePath, data) {
+  const payload = `${JSON.stringify(data)}\n`;
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    try {
+      await writeFile(filePath, payload, "utf8");
+      return;
+    } catch (error) {
+      const shouldRetry = retryableWriteErrorCodes.has(error?.code) && attempt < 5;
+      if (!shouldRetry) {
+        throw error;
+      }
+      // Windows 本機大量重建 public/data/users 後，防毒或同步程式偶爾會短暫鎖住
+      // 接續寫入的公開 JSON。這裡只重試可恢復的開檔錯誤，避免資料建置被環境抖動中斷。
+      await sleep(150 * 2 ** attempt);
+    }
+  }
 }
 
 function resolveGeneratedAtIso(latestRankingUpdatedAt) {

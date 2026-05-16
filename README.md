@@ -48,6 +48,7 @@ Final Fantasy XIV 繁中服排行榜是一個以 FFLogs 公開資料為來源的
 ├── scripts/
 │   ├── fetch_fflogs.py        # 抓取並整理 FFLogs 排行榜資料
 │   ├── backfill_gcd_coverage.py # 逐批補齊玩家 GCD 覆蓋率
+│   ├── fetch_honey_b_fans.py  # 抓取 Honey B. Lovely 粉絲榜趣味資料
 │   ├── build_user_data.mjs    # 產生個人成績單、全服統計、近期動態、隊伍榜與伺服器對比資料
 │   ├── validate_data.mjs      # 驗證公開資料、分片與使用者索引完整性
 │   ├── test_build_user_data.mjs # 使用 fixture 驗證資料建置規則
@@ -60,6 +61,7 @@ Final Fantasy XIV 繁中服排行榜是一個以 FFLogs 公開資料為來源的
 │   └── site.json              # 站台網址、Vite base path 與允許 host
 ├── data/
 │   ├── rankings/              # 原始排行榜資料
+│   ├── fun/                   # 與正式排行榜分離的趣味榜來源資料
 │   └── state.json             # 掃描進度與處理狀態
 ├── public/
 │   ├── data/                  # 網站讀取的公開資料
@@ -89,14 +91,15 @@ Final Fantasy XIV 繁中服排行榜是一個以 FFLogs 公開資料為來源的
 - 同一玩家同一副本同一職業的最佳成績排序規則為 rDPS 優先，平手看通關時間，再看 aDPS。
 - `build_user_data.mjs` 預設以最新 `rankings_updated_at_iso` 作為 `generated_at_iso`，避免同一批資料重建時讓 `global_stats.json` 產生無意義 diff；需要指定產物時間時可設定 `FFXIV_TC_GENERATED_AT_ISO`。
 - `data/state.json` 的 `checked_reports` 是跨輪快取，`processed_reports` 是單輪 checkpoint；兩者和 `data/rankings/` 都不能用硬刪或覆蓋方式整理。
+- Honey B. Lovely 粉絲榜是趣味資料，來源在 `data/fun/honey_b_fans.json`，公開輸出在 `public/data/fun/honey_b_fans.json`；它只保存通關與 wipe 場次中 `心醉魂迷：奴役` 的衍生紀錄、已檢查戰鬥狀態與已檢查 report 快取，不寫入正式 `data/rankings/`。
 
 開發代理注意事項：
 
 - 修改前先檢查 `git status`。本專案常有資料管線產物處於未提交狀態，不要回復或清掉非本次任務造成的資料差異。
 - 不要擅自啟動 `npm run dev` 或 Vite 開發伺服器；需要瀏覽器驗證時先取得使用者同意。
 - 臨時隱藏或恢復作者相關 UI 標示、社群連結時，只調整 `src/utils/siteFeatures.js` 的 `顯示作者相關標示` 與 `顯示社群連結`。這些旗標只影響排行榜作者勾勾、個人成績單作者徽章、頁尾作者卡、頁首 Telegram 交流群與作者卡外部社群連結，不改動公開資料或排行榜歷史資料結構。
-- 驗證資料聚合優先跑 `npm run build:user-data`。若只是重建公開排行榜 JSON，可跑 `python scripts/fetch_fflogs.py --rebuild-public`，這個模式不會呼叫 FFLogs API。
-- 驗證公開資料完整性可跑 `npm run validate:data`；它會檢查公開副本是否都有 ranking 檔案、來源分片是否存在、raw 欄位是否回流，以及全服統計、近期動態、隊伍榜、伺服器對比與使用者索引是否可讀。
+- 驗證資料聚合優先跑 `npm run build:user-data`。若只是重建公開排行榜 JSON，可跑 `python scripts/fetch_fflogs.py --rebuild-public`；若只是重建 Honey B. Lovely 粉絲榜公開 JSON，可跑 `npm run build:honey-fans`，兩者都不會呼叫 FFLogs API。
+- 驗證公開資料完整性可跑 `npm run validate:data`；它會檢查公開副本是否都有 ranking 檔案、來源分片是否存在、raw 欄位是否回流，以及全服統計、近期動態、隊伍榜、伺服器對比、Honey B. Lovely 粉絲榜與使用者索引是否可讀。
 - 需要同步本機與 GitHub Actions 產生的資料時，先跑 `npm run sync:data -- --dry-run`，確認沒有 `REMOVAL` 或 `CONFLICT` 再真正同步。
 
 ## 快速開始
@@ -251,12 +254,13 @@ npm run build
 - 伺服器對比：`./servers/陸行鳥/vs/莫古力`
 - 職業分析：`./jobs/Paladin`
 - 近期動態：`./activity`
+- Honey B. Lovely 粉絲榜：`./honey-fans`
 
 例如排行榜預設副本與隊伍榜預設副本目前都是 `savage_m4s`（零式 M4S / 狡雷），全服統計的「全部副本」、玩家比較的預設防護職能，也都不會寫入 URL。全服統計的副本、職業分析的職業、伺服器對比的左右伺服器會寫入乾淨路徑，讓社群爬蟲可以讀到對應的靜態 SEO/OG；額外的指標、分群、伺服器篩選等細部條件仍保留為 query，由前端載入後同步動態 meta。舊版 `?page=user&user=玩家名稱`、`?user=玩家名稱&server=伺服器`、`./user?name=玩家名稱`、`./jobs?job=Paladin` 或 `./servers?left=陸行鳥&right=莫古力` 連結仍會自動套用到對應頁面，避免既有分享連結失效；但需要社群爬蟲讀到專屬 OG 時，應使用 `./user/玩家名稱`、`./stats/{副本 key}`、`./jobs/{職業}` 或 `./servers/{左}/vs/{右}` 這類乾淨路徑。
 
 排行榜與全服統計切換副本時會保留已選的伺服器與職業條件，讓使用者可以沿用同一組 query 在多個副本間比較；只有副本本身不支援版本切點時，版本篩選會自動回到 `all`。
 
-`index.html` 提供站台層級 SEO、Open Graph、Twitter Card、JSON-LD 結構化資料，以及 favicon / Apple touch icon / web app manifest 引用。網站 icon 的設計來源是 `public/favicon.svg`，實際 PNG 與 ICO 由 `npm run build:icons` 產生；社群預覽圖位於 `public/og-image.png`。`npm run build` 後會由 `scripts/build_spa_fallback.mjs` 產生 `/stats/`、`/user/`、`/compare/`、`/teams/`、`/servers/`、`/jobs/` 與 `/activity/` 的 route 專屬 HTML，讓不執行 JavaScript 的社群爬蟲也能讀到各頁預設標題、描述、canonical 與 OG/Twitter meta。
+`index.html` 提供站台層級 SEO、Open Graph、Twitter Card、JSON-LD 結構化資料，以及 favicon / Apple touch icon / web app manifest 引用。網站 icon 的設計來源是 `public/favicon.svg`，實際 PNG 與 ICO 由 `npm run build:icons` 產生；社群預覽圖位於 `public/og-image.png`。`npm run build` 後會由 `scripts/build_spa_fallback.mjs` 產生 `/stats/`、`/user/`、`/compare/`、`/teams/`、`/servers/`、`/jobs/`、`/activity/` 與 `/honey-fans/` 的 route 專屬 HTML，讓不執行 JavaScript 的社群爬蟲也能讀到各頁預設標題、描述、canonical 與 OG/Twitter meta。
 
 同一個 postbuild 也會依 `public/data/global_stats.json`、`public/data/server_compare.json` 與 `public/data/users/index.json` 產生每個副本統計的 `dist/stats/{副本 key}/index.html`、每個職業的 `dist/jobs/{職業}/index.html`、每組有序伺服器配對的 `dist/servers/{左}/vs/{右}/index.html`、每位玩家的 `dist/user/{玩家名稱}/index.html`，以及對應的 `dist/og/stats/*.png`、`dist/og/jobs/*.png`、`dist/og/servers/*.png`、`dist/og/users/*.png`、`dist/sitemap.xml` 與 `dist/robots.txt`。因 LINE、Facebook 與多數 OG 檢查器對 SVG 支援不一致，postbuild 會用 `sharp` 將內部 SVG 模板轉成 1200x630 PNG，讓各頁 `og:image` 與 `twitter:image` 都指向自己的實體預覽圖；`robots.txt` 會明確允許 `facebookexternalhit` 與 `Facebot` 抓取分享預覽，首頁仍使用 `public/og-image.png` 作為站台層級預覽圖。建置產物只存在於 `dist/`，不會寫回 `data/` 或 `public/data/`，也不會改變 `config/encounters.json`、`data/rankings/` 或個人成績單 JSON schema。
 
@@ -292,6 +296,14 @@ npm run preview
 python scripts/fetch_fflogs.py
 ```
 
+抓取 Honey B. Lovely 粉絲榜趣味資料：
+
+```bash
+npm run fetch:honey-fans
+```
+
+這個指令會直接使用 `savage_m2s` 的 zone / encounter / difficulty 設定，不依賴 `enabled` 是否為 `true`。每輪先掃描近三天公開 M2S 戰鬥，補上尚未檢查的通關與 wipe 場次；接著從 `scan_start_date` 的歷史游標往後掃描，每輪最多檢查 200 場未記錄戰鬥。已完成目前 `fight_scan_mode` 的 `checked_reports` 快取的 report 會在 detail query 前略過，避免重複消耗 FFLogs API 配額；舊版只掃通關場次的快取不會阻擋 wipe 補掃。若只要由既有來源檔重建公開 JSON，請執行 `npm run build:honey-fans`。
+
 ## 資料更新流程
 
 一般更新流程如下：
@@ -312,10 +324,16 @@ python scripts/fetch_fflogs.py
    - 產生 `public/data/team_rankings.json`。
    - 產生 `public/data/server_compare.json`。
 
-3. `npm run build`
+3. `npm run build:honey-fans`
+   - 讀取 `data/fun/honey_b_fans.json`。
+   - 產生 `public/data/fun/honey_b_fans.json`。
+   - 不呼叫 FFLogs API，適合在建置流程中保持趣味榜公開資料同步。
+
+4. `npm run build`
    - 先自動執行 `build:public-rankings`，確保 `public/data/rankings/*.json` 與目前原始排行榜資料同步。
    - 接著自動執行 `build:user-data`。
-   - 執行 `validate:data`，確認公開副本、排行榜分片、全服統計、近期動態、隊伍榜、伺服器對比與使用者索引完整。
+   - 接著自動執行 `build:honey-fans`。
+   - 執行 `validate:data`，確認公開副本、排行榜分片、全服統計、近期動態、隊伍榜、伺服器對比、Honey B. Lovely 粉絲榜與使用者索引完整。
    - 再由 Vite 建置靜態網站到 `dist/`。
 
 ## 設定副本
@@ -420,6 +438,7 @@ npm run cloudflare:estimate
 - `data/state.json` 是抓取進度狀態，手動修改前請先確認目前掃描狀態。
 - `public/data/users/` 是由 `scripts/build_user_data.mjs` 重新產生的資料。
 - `public/data/rankings/` 是由 `fetch_fflogs.py --rebuild-public` 或 `--split-rankings` 重新產生的公開排行榜資料；若副本列在 `public/data/encounters.json`，就必須有對應公開 ranking 檔案。
+- `public/data/fun/honey_b_fans.json` 是由 `scripts/fetch_honey_b_fans.py --rebuild-public` 依 `data/fun/honey_b_fans.json` 重新產生的趣味榜公開資料，不屬於正式排行榜 schema。
 - FFLogs API 有限流，`config/fflogs.json` 可調整請求限制、重試、冷卻時間與單一 report 多 fight 的玩家成績批次大小。
 - 排行榜只統計公開報告中可解析且符合繁中服條件的資料。
 - 單場 FFLogs `playerDetails` / `damageDone` 查詢會同時帶 `fightIDs` 與 fight 的相對 `startTime` / `endTime`，避免少數舊報告只用 `fightIDs` 時拿到 partial damage table，造成 rDPS/aDPS 異常放大。

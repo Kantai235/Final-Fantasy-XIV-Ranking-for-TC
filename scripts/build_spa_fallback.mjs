@@ -118,6 +118,14 @@ const routePages = [
     imageSubtitle: "最新公開成績與刷新紀錄",
     imageHighlights: ["最新成績", "個人最佳刷新", "伺服器活躍"],
   },
+  {
+    path: "honey-fans",
+    title: `Honey B. Lovely 粉絲榜 | ${siteName}`,
+    description: "趣味統計 M2S 通關紀錄中吃到第 4 顆愛心並進入心醉魂迷：奴役的 Honey B. Lovely 粉絲榜。",
+    imageTitle: "Honey B. Lovely 粉絲榜",
+    imageSubtitle: "吃到第 4 顆愛心的趣味統計",
+    imageHighlights: ["頭號粉絲", "最新收錄紀錄", "最新加入粉絲"],
+  },
 ];
 
 if (!existsSync(indexPath)) {

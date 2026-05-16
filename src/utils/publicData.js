@@ -8,6 +8,7 @@ export const 全服統計網址 = `${公開資料基底路徑}data/global_stats.
 export const 近期動態網址 = `${公開資料基底路徑}data/activity.json`;
 export const 隊伍榜網址 = `${公開資料基底路徑}data/team_rankings.json`;
 export const 伺服器對比網址 = `${公開資料基底路徑}data/server_compare.json`;
+export const 蜂蜂粉絲榜網址 = `${公開資料基底路徑}data/fun/honey_b_fans.json`;
 
 export function 建立公開資料網址(相對路徑) {
   return `${公開資料基底路徑}${String(相對路徑)

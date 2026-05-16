@@ -1,6 +1,6 @@
 import { 分享網址變更事件 } from "./shareMeta";
 
-export const 可分享頁面模式 = new Set(["ranking", "stats", "user", "compare", "jobs", "activity", "teams", "servers"]);
+export const 可分享頁面模式 = new Set(["ranking", "stats", "user", "compare", "jobs", "activity", "teams", "servers", "honey-fans"]);
 
 const 頁面路徑片段 = {
   ranking: "",
@@ -11,6 +11,7 @@ const 頁面路徑片段 = {
   activity: "activity",
   teams: "teams",
   servers: "servers",
+  "honey-fans": "honey-fans",
 };
 
 const 路徑片段頁面 = new Map(

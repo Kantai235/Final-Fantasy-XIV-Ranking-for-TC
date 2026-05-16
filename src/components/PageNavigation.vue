@@ -19,5 +19,6 @@ export default {
   <button type="button" :class="{ 作用中: 頁面模式 === 'servers' }" @click="切換到伺服器對比">伺服器對比</button>
   <button type="button" :class="{ 作用中: 頁面模式 === 'jobs' }" @click="切換到職業分析">職業分析</button>
   <button type="button" :class="{ 作用中: 頁面模式 === 'activity' }" @click="切換到近期動態">近期動態</button>
+  <button type="button" :class="{ 作用中: 頁面模式 === 'honey-fans' }" @click="切換到蜂蜂粉絲榜">粉絲榜</button>
 </nav>
 </template>
