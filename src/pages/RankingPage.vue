@@ -183,6 +183,7 @@ export default {
         <col class="伺服器欄" />
         <col class="職業欄" />
         <col class="active欄" />
+        <col class="gcd欄" />
         <col class="傷害欄" />
         <col class="傷害欄" />
         <col class="傷害欄" />
@@ -221,6 +222,24 @@ export default {
               <span class="說明提示">
                 <button class="說明提示按鈕" type="button" aria-label="Active 說明">?</button>
                 <span class="說明提示內容" role="tooltip">{{ 統計說明文字("Active") }}</span>
+              </span>
+            </span>
+          </th>
+          <th scope="col" class="數字" :aria-sort="排序ARIA('gcdCoverage')">
+            <span class="表頭說明標籤">
+              <button
+                class="表頭排序按鈕"
+                type="button"
+                :class="{ 作用中: 是否目前排序('gcdCoverage') }"
+                :aria-label="排序按鈕標籤('gcdCoverage')"
+                @click="切換排序('gcdCoverage')"
+              >
+                <span>GCD</span>
+                <span v-if="是否目前排序('gcdCoverage')" class="排序箭頭" aria-hidden="true">{{ 排序方向圖示("gcdCoverage") }}</span>
+              </button>
+              <span class="說明提示">
+                <button class="說明提示按鈕" type="button" aria-label="GCD 覆蓋率說明">?</button>
+                <span class="說明提示內容" role="tooltip">{{ 統計說明文字("GCD 覆蓋率") }}</span>
               </span>
             </span>
           </th>
@@ -361,6 +380,10 @@ export default {
               </div>
               <div class="手機排行資訊列">
                 <span>
+                  <em>GCD</em>
+                  <strong>{{ 格式化Gcd覆蓋率(列.gcd_coverage) }}</strong>
+                </span>
+                <span>
                   <em>通關</em>
                   <strong>{{ 格式化通關時間(列.通關秒數) }}</strong>
                 </span>
@@ -389,6 +412,7 @@ export default {
             </span>
           </td>
           <td class="數字">{{ 格式化Active(列.active) }}</td>
+          <td class="數字">{{ 格式化Gcd覆蓋率(列.gcd_coverage) }}</td>
           <td class="數字">{{ 格式化傷害數值(列.dps) }}</td>
           <td class="數字">{{ 格式化傷害數值(列.rdps) }}</td>
           <td class="數字">{{ 格式化傷害數值(列.adps) }}</td>

@@ -378,7 +378,7 @@ function validateScopedJobShareRecalculation() {
 async function loadUrlStateTestModule() {
   const filePath = path.join(srcDir, "utils", "urlState.js");
   let source = await readText(filePath);
-  const importMatch = source.match(/import\s*\{\s*([^}]+?)\s*\}\s*from\s*["']\.\/shareMeta(?:\.js)?["'];\n/);
+  const importMatch = source.match(/import\s*\{\s*([^}]+?)\s*\}\s*from\s*["']\.\/shareMeta(?:\.js)?["'];\r?\n/);
   const exportedFunctions = [...source.matchAll(/export function\s+([^\s(]+)\s*\(/g)].map((match) => match[1]);
 
   assert(Boolean(importMatch), "urlState.js 必須明確匯入分享網址變更事件，讓網址寫入後可同步 SEO/OG meta");

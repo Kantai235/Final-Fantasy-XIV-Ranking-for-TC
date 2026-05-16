@@ -20,6 +20,7 @@ import { 讀取Json } from "../utils/fetchJson";
 import {
   解析紀錄日期,
   格式化Active,
+  格式化Gcd覆蓋率,
   格式化傷害數值,
   格式化前段百分位,
   格式化帶號整數,
@@ -578,6 +579,7 @@ function 處理職業分析選單失焦(event) {
 const 排序欄位標籤 = {
   rank: "排名",
   active: "Active",
+  gcdCoverage: "GCD 覆蓋率",
   dps: "DPS",
   rdps: "rDPS",
   adps: "aDPS",
@@ -588,6 +590,7 @@ const 排序欄位標籤 = {
 const 排序預設方向 = {
   rank: "asc",
   active: "desc",
+  gcdCoverage: "desc",
   dps: "desc",
   rdps: "desc",
   adps: "desc",
@@ -668,6 +671,9 @@ function 排序數值(列, 欄位) {
   if (欄位 === "active") {
     return 列.active ?? null;
   }
+  if (欄位 === "gcdCoverage") {
+    return typeof 列.gcd_coverage === "number" ? 轉為數字(列.gcd_coverage) : 轉為數字(列.gcd_coverage?.percent);
+  }
   if (欄位 === "dps") {
     return 列.dps ?? null;
   }
@@ -735,6 +741,8 @@ function 建立排行列(條目, 副本 = 目前副本.value) {
     adps: 轉為數字(條目.adps),
     dps: 轉為數字(條目.dps),
     active,
+    gcd_coverage: 條目.gcd_coverage ?? null,
+    gcd_coverage_status: 條目.gcd_coverage_status ?? null,
     activeTimeMs: 轉為數字(條目.active_time_ms),
     通關秒數,
     紀錄時間: 條目.recorded_at_iso || 條目.report_start_time_iso,
@@ -859,6 +867,8 @@ function 展開排行榜列(原始資料, 副本 = 目前副本.value, 版本範
         adps: 轉為數字(玩家.adps),
         dps: 轉為數字(玩家.dps),
         active: 計算Active百分比(玩家.active_time_ms, 通關秒數),
+        gcd_coverage: 玩家.gcd_coverage ?? null,
+        gcd_coverage_status: 玩家.gcd_coverage_status ?? null,
         activeTimeMs: 轉為數字(玩家.active_time_ms),
         通關秒數,
         紀錄時間: 戰鬥.recorded_at_iso || 報告.report_start_time_iso,
@@ -1346,6 +1356,7 @@ const 統計詞彙說明 = {
   nDPS: "純淨 DPS。公式：DPS - 他人團輔，用來看移除外部增益後自己的輸出表現。",
   aDPS: "調整後 DPS。公式：DPS - 被選取的單體增益，會移除標舞、舞伴、占星卡與龍眼等單體填充傷害。",
   cDPS: "綜合 DPS。公式：DPS - 被選取的單體增益 + 自體團輔，用來同時觀察自身爆發與你提供給團隊的增益價值。",
+  "GCD 覆蓋率": "以 FFLogs Casts graph 補算玩家在扣除停手視窗後，GCD 技能覆蓋有效輸出時間的比例；尚未補齊或 report 無法存取時會顯示 -。",
   "最佳 rDPS": "此玩家目前公開成績中最高的團隊貢獻 DPS。",
 };
 
@@ -1914,6 +1925,12 @@ const 伺服器對比概要 = computed(() => {
       右值: 右.fastest_entry?.clear_time_seconds,
       格式化: 格式化通關時間,
       越低越好: true,
+    }),
+    建立伺服器對比指標({
+      標籤: "最速紀錄 GCD",
+      左值: 左.fastest_entry?.gcd_coverage?.percent,
+      右值: 右.fastest_entry?.gcd_coverage?.percent,
+      格式化: 格式化Gcd覆蓋率,
     }),
   ];
 });
@@ -2606,6 +2623,7 @@ function 建立使用者成績趨勢項(副本, 職能, 成績列表) {
       id: 成績.id,
       job: 成績.job,
       rdps,
+      gcd_coverage: 成績.gcd_coverage ?? null,
       recorded_at_iso: 成績.recorded_at_iso,
       過版紀錄: Boolean(成績.is_obsolete_record),
       x: Number(x.toFixed(2)),
@@ -3980,6 +3998,7 @@ onUnmounted(() => {
     處理職業分析選單失焦,
     格式化傷害數值,
     格式化Active,
+    格式化Gcd覆蓋率,
     格式化整數,
     格式化帶號整數,
     格式化百分比,
