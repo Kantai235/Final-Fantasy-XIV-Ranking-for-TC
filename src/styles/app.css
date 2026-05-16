@@ -3792,11 +3792,11 @@ table {
 }
 
 .排行榜表格 .排名欄 {
-  width: 5.8%;
+  width: 5.5%;
 }
 
 .排行榜表格 .角色欄 {
-  width: 19%;
+  width: 17%;
 }
 
 .排行榜表格 .伺服器欄 {
@@ -3804,23 +3804,27 @@ table {
 }
 
 .排行榜表格 .職業欄 {
-  width: 12%;
+  width: 10.5%;
 }
 
 .排行榜表格 .active欄 {
-  width: 8.4%;
+  width: 7.8%;
+}
+
+.排行榜表格 .gcd欄 {
+  width: 7.8%;
 }
 
 .排行榜表格 .傷害欄 {
-  width: 8.4%;
+  width: 7.8%;
 }
 
 .排行榜表格 .通關時間欄 {
-  width: 9%;
+  width: 8.7%;
 }
 
 .排行榜表格 .紀錄時間欄 {
-  width: 9.8%;
+  width: 10.5%;
 }
 
 th,
@@ -4737,8 +4741,10 @@ td a:hover {
 
   .近期刷新表格 td:nth-child(5),
   .近期刷新表格 td:nth-child(6),
+  .近期刷新表格 td:nth-child(7),
   .近期公開表格 td:nth-child(2),
-  .近期公開表格 td:nth-child(6) {
+  .近期公開表格 td:nth-child(6),
+  .近期公開表格 td:nth-child(7) {
     display: inline-flex;
     align-items: center;
     gap: 4px;
@@ -4760,6 +4766,11 @@ td a:hover {
     justify-self: end;
   }
 
+  .近期刷新表格 td:nth-child(7) {
+    grid-column: 2 / 4;
+    grid-row: 4;
+  }
+
   .近期公開表格 td:nth-child(2) {
     grid-column: 2;
     grid-row: 3;
@@ -4771,8 +4782,25 @@ td a:hover {
     justify-self: end;
   }
 
+  .近期公開表格 td:nth-child(7) {
+    grid-column: 2 / 4;
+    grid-row: 4;
+  }
+
   .近期刷新表格 td:nth-child(5)::before {
     content: "分位";
+    display: inline;
+  }
+
+  .近期刷新表格 td:nth-child(6)::before,
+  .近期公開表格 td:nth-child(6)::before {
+    content: "GCD";
+    display: inline;
+  }
+
+  .近期刷新表格 td:nth-child(7)::before,
+  .近期公開表格 td:nth-child(7)::before {
+    content: "紀錄";
     display: inline;
   }
 
@@ -5000,7 +5028,7 @@ td a:hover {
     grid-column: 1 / -1;
   }
 
-  .排行榜表格 td:nth-child(10) {
+  .排行榜表格 td:nth-child(11) {
     grid-column: 1 / -1;
   }
 
@@ -5025,22 +5053,26 @@ td a:hover {
   }
 
   .排行榜表格 td:nth-child(6)::before {
-    content: "DPS";
+    content: "GCD";
   }
 
   .排行榜表格 td:nth-child(7)::before {
-    content: "rDPS";
+    content: "DPS";
   }
 
   .排行榜表格 td:nth-child(8)::before {
-    content: "aDPS";
+    content: "rDPS";
   }
 
   .排行榜表格 td:nth-child(9)::before {
-    content: "通關時間";
+    content: "aDPS";
   }
 
   .排行榜表格 td:nth-child(10)::before {
+    content: "通關時間";
+  }
+
+  .排行榜表格 td:nth-child(11)::before {
     content: "紀錄時間";
   }
 
@@ -5124,9 +5156,10 @@ td a:hover {
 
   .排行榜表格 th:nth-child(3),
   .排行榜表格 th:nth-child(6),
-  .排行榜表格 th:nth-child(8),
+  .排行榜表格 th:nth-child(7),
   .排行榜表格 th:nth-child(9),
   .排行榜表格 th:nth-child(10),
+  .排行榜表格 th:nth-child(11),
   .排行榜表格 th:nth-child(5),
   .排行榜表格 td:nth-child(5) {
     display: none;
@@ -5154,8 +5187,8 @@ td a:hover {
     grid-row: 1;
   }
 
-  .排行榜表格 th:nth-child(7),
-  .排行榜表格 td:nth-child(7) {
+  .排行榜表格 th:nth-child(8),
+  .排行榜表格 td:nth-child(8) {
     grid-column: 4;
     grid-row: 1;
     justify-content: flex-end;
@@ -5168,29 +5201,29 @@ td a:hover {
     grid-row: 2;
   }
 
-  .排行榜表格 td:nth-child(6) {
+  .排行榜表格 td:nth-child(7) {
     grid-column: 3;
     grid-row: 2;
   }
 
-  .排行榜表格 td:nth-child(8) {
+  .排行榜表格 td:nth-child(9) {
     grid-column: 4;
     grid-row: 2;
   }
 
-  .排行榜表格 td:nth-child(9) {
+  .排行榜表格 td:nth-child(10) {
     grid-column: 2;
     grid-row: 3;
   }
 
-  .排行榜表格 td:nth-child(10) {
+  .排行榜表格 td:nth-child(11) {
     grid-column: 3 / 5;
     grid-row: 3;
   }
 
-  .排行榜表格 td:nth-child(6),
-  .排行榜表格 td:nth-child(8),
-  .排行榜表格 td:nth-child(10) {
+  .排行榜表格 td:nth-child(7),
+  .排行榜表格 td:nth-child(9),
+  .排行榜表格 td:nth-child(11) {
     justify-content: flex-end;
   }
 
@@ -5226,10 +5259,10 @@ td a:hover {
   }
 
   .排行榜表格 td:nth-child(3),
-  .排行榜表格 td:nth-child(6),
-  .排行榜表格 td:nth-child(8),
+  .排行榜表格 td:nth-child(7),
   .排行榜表格 td:nth-child(9),
-  .排行榜表格 td:nth-child(10) {
+  .排行榜表格 td:nth-child(10),
+  .排行榜表格 td:nth-child(11) {
     gap: 3px;
     color: var(--次要文字);
     font-size: 0.66rem;
@@ -5237,26 +5270,26 @@ td a:hover {
     line-height: 1.1;
   }
 
-  .排行榜表格 td:nth-child(6)::before {
+  .排行榜表格 td:nth-child(7)::before {
     content: "D" !important;
   }
 
-  .排行榜表格 td:nth-child(8)::before {
+  .排行榜表格 td:nth-child(9)::before {
     content: "A" !important;
   }
 
-  .排行榜表格 td:nth-child(9)::before {
+  .排行榜表格 td:nth-child(10)::before {
     content: "通" !important;
   }
 
-  .排行榜表格 td:nth-child(10)::before {
+  .排行榜表格 td:nth-child(11)::before {
     content: "紀" !important;
   }
 
-  .排行榜表格 td:nth-child(6)::before,
-  .排行榜表格 td:nth-child(8)::before,
+  .排行榜表格 td:nth-child(7)::before,
   .排行榜表格 td:nth-child(9)::before,
-  .排行榜表格 td:nth-child(10)::before {
+  .排行榜表格 td:nth-child(10)::before,
+  .排行榜表格 td:nth-child(11)::before {
     color: var(--靜音文字);
     font-size: 0.6rem;
     font-weight: 760;
@@ -5316,18 +5349,18 @@ td a:hover {
     height: 24px;
   }
 
-  .排行榜表格 td:nth-child(10) .緊湊紀錄時間 {
+  .排行榜表格 td:nth-child(11) .緊湊紀錄時間 {
     display: grid;
     justify-items: end;
     gap: 0;
     line-height: 1;
   }
 
-  .排行榜表格 td:nth-child(10) .緊湊紀錄時間 span:first-child {
+  .排行榜表格 td:nth-child(11) .緊湊紀錄時間 span:first-child {
     font-size: 0.62rem;
   }
 
-  .排行榜表格 td:nth-child(10) .緊湊紀錄時間 span:last-child {
+  .排行榜表格 td:nth-child(11) .緊湊紀錄時間 span:last-child {
     font-size: 0.6rem;
   }
 
@@ -5368,7 +5401,7 @@ td a:hover {
     grid-row: 1;
   }
 
-  .排行榜表格 th:nth-child(7) {
+  .排行榜表格 th:nth-child(8) {
     grid-column: 3;
     grid-row: 1;
   }
@@ -5382,9 +5415,10 @@ td a:hover {
   .排行榜表格 th:nth-child(4),
   .排行榜表格 th:nth-child(5),
   .排行榜表格 th:nth-child(6),
-  .排行榜表格 th:nth-child(8),
+  .排行榜表格 th:nth-child(7),
   .排行榜表格 th:nth-child(9),
   .排行榜表格 th:nth-child(10),
+  .排行榜表格 th:nth-child(11),
   .排行榜表格 td:nth-child(3),
   .排行榜表格 td:nth-child(4),
   .排行榜表格 td:nth-child(5),
@@ -5392,7 +5426,8 @@ td a:hover {
   .排行榜表格 td:nth-child(7),
   .排行榜表格 td:nth-child(8),
   .排行榜表格 td:nth-child(9),
-  .排行榜表格 td:nth-child(10) {
+  .排行榜表格 td:nth-child(10),
+  .排行榜表格 td:nth-child(11) {
     display: none;
   }
 
@@ -5521,10 +5556,10 @@ td a:hover {
   }
 
   .排行榜表格 th:nth-child(4)::after,
-  .排行榜表格 td:nth-child(6)::before,
-  .排行榜表格 td:nth-child(8)::before,
+  .排行榜表格 td:nth-child(7)::before,
   .排行榜表格 td:nth-child(9)::before,
-  .排行榜表格 td:nth-child(10)::before {
+  .排行榜表格 td:nth-child(10)::before,
+  .排行榜表格 td:nth-child(11)::before {
     content: none !important;
   }
 
@@ -5532,7 +5567,7 @@ td a:hover {
     grid-template-columns: 38px minmax(0, 1fr);
   }
 
-  .排行榜表格 th:nth-child(7) {
+  .排行榜表格 th:nth-child(8) {
     display: none;
   }
 
@@ -5700,7 +5735,7 @@ td a:hover {
 
   .手機排行資訊列 {
     display: grid;
-    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-columns: auto auto minmax(0, 1fr) auto;
     align-items: center;
     gap: 6px;
     color: var(--次要文字);
@@ -5804,6 +5839,10 @@ td a:hover {
   }
 
   .近期刷新表格 td:nth-child(6)::before {
+    content: "GCD";
+  }
+
+  .近期刷新表格 td:nth-child(7)::before {
     content: "紀錄時間";
   }
 
@@ -5824,6 +5863,10 @@ td a:hover {
   }
 
   .近期公開表格 td:nth-child(6)::before {
+    content: "GCD";
+  }
+
+  .近期公開表格 td:nth-child(7)::before {
     content: "紀錄時間";
   }
 
@@ -5942,18 +5985,22 @@ td a:hover {
   }
 
   .歷史表格 td:nth-child(6)::before {
-    content: "DPS";
+    content: "GCD";
   }
 
   .歷史表格 td:nth-child(7)::before {
-    content: "rDPS";
+    content: "DPS";
   }
 
   .歷史表格 td:nth-child(8)::before {
-    content: "aDPS";
+    content: "rDPS";
   }
 
   .歷史表格 td:nth-child(9)::before {
+    content: "aDPS";
+  }
+
+  .歷史表格 td:nth-child(10)::before {
     content: "通關時間";
   }
 

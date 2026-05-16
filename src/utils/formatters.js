@@ -49,6 +49,11 @@ export function 格式化Active(active) {
   return `${active.toFixed(2)}%`;
 }
 
+export function 格式化Gcd覆蓋率(gcdCoverage) {
+  const 數值 = typeof gcdCoverage === "number" ? 轉為數字(gcdCoverage) : 轉為數字(gcdCoverage?.percent);
+  return 數值 === null ? "-" : `${數值.toFixed(2)}%`;
+}
+
 export function 格式化整數(數值) {
   const 數字 = 轉為數字(數值);
   return 數字 === null ? "-" : 台灣整數格式.format(數字);
