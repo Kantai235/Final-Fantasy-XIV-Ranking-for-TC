@@ -197,6 +197,18 @@ async function validateFrontendFetchBoundary() {
   }
 }
 
+async function validateSiteFeatureFlags() {
+  const source = await readText(path.join(srcDir, "utils", "siteFeatures.js"));
+  assert(
+    /export\s+const\s+顯示Gcd覆蓋率\s*=\s*false\s*;/.test(source),
+    "目前營運設定應透過 src/utils/siteFeatures.js 關閉 GCD 覆蓋率顯示",
+  );
+  assert(
+    source.includes("這些旗標只影響 UI 呈現"),
+    "siteFeatures.js 應保留旗標只影響 UI 呈現的註解，避免誤改資料管線",
+  );
+}
+
 function extractSourceSection(source, startText, endText, label) {
   const startIndex = source.indexOf(startText);
   const endIndex = source.indexOf(endText, startIndex + startText.length);
@@ -570,6 +582,7 @@ async function validateShareUrlStateCompatibility() {
 async function main() {
   await validateUseRankingAppReturnBindings();
   await validateFrontendFetchBoundary();
+  await validateSiteFeatureFlags();
   await validateEncounterSwitchFilterPersistence();
   await validatePublicDataForFrontend();
   validateScopedJobShareRecalculation();

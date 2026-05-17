@@ -52,7 +52,7 @@ import {
   讀取使用者資料檔,
 } from "../utils/userData";
 import { 建立職業佔比分組, 職業範圍類型 } from "../utils/statsDisplay";
-import { 顯示作者相關標示 } from "../utils/siteFeatures";
+import { 顯示Gcd覆蓋率, 顯示作者相關標示 } from "../utils/siteFeatures";
 import { 寫入網址狀態, 讀取目前網址狀態 } from "../utils/urlState";
 import { 排名色彩類別, 比例條樣式, 熱力格樣式, 趨勢點樣式, 隱藏載入失敗圖片 } from "../utils/viewHelpers";
 import { useTheme } from "./useTheme";
@@ -1909,7 +1909,7 @@ const 伺服器對比概要 = computed(() => {
     return [];
   }
 
-  return [
+  const 指標列表 = [
     建立伺服器對比指標({ 標籤: "收錄玩家", 左值: 左.unique_player_count, 右值: 右.unique_player_count }),
     建立伺服器對比指標({ 標籤: "副本通關", 左值: 左.encounter_clear_count, 右值: 右.encounter_clear_count }),
     建立伺服器對比指標({ 標籤: "職業紀錄", 左值: 左.job_record_count, 右值: 右.job_record_count }),
@@ -1926,13 +1926,18 @@ const 伺服器對比概要 = computed(() => {
       格式化: 格式化通關時間,
       越低越好: true,
     }),
-    建立伺服器對比指標({
+  ];
+
+  if (顯示Gcd覆蓋率) {
+    指標列表.push(建立伺服器對比指標({
       標籤: "最速紀錄 GCD",
       左值: 左.fastest_entry?.gcd_coverage?.percent,
       右值: 右.fastest_entry?.gcd_coverage?.percent,
       格式化: 格式化Gcd覆蓋率,
-    }),
-  ];
+    }));
+  }
+
+  return 指標列表;
 });
 
 const 伺服器對比職能列 = computed(() => {
@@ -3241,6 +3246,12 @@ function 套用隊伍榜有效副本鍵值() {
 function 排行榜排序分享狀態() {
   const 欄位 = 排序欄位.value;
   const 方向 = 排序方向.value;
+  if (!顯示Gcd覆蓋率 && 欄位 === "gcdCoverage") {
+    return {
+      sort: "",
+      order: "",
+    };
+  }
   const 是否預設排序 = 欄位 === 預設排序欄位 && 方向 === 預設排序方向;
   if (是否預設排序) {
     return {
@@ -3553,7 +3564,7 @@ function 套用排行榜網址狀態(網址狀態) {
   搜尋關鍵字.value = 網址狀態.q || "";
   排行榜版本範圍.value = 正規化版本紀錄範圍(網址狀態.version);
 
-  if (排序欄位標籤[網址狀態.sort]) {
+  if (排序欄位標籤[網址狀態.sort] && (顯示Gcd覆蓋率 || 網址狀態.sort !== "gcdCoverage")) {
     排序欄位.value = 網址狀態.sort;
     排序方向.value = ["asc", "desc"].includes(網址狀態.order) ? 網址狀態.order : 排序欄位預設方向(網址狀態.sort);
   } else {
@@ -3875,6 +3886,7 @@ onUnmounted(() => {
     主題儲存鍵,
     頁面模式,
     顯示作者相關標示,
+    顯示Gcd覆蓋率,
     作者說明文字,
     使用者索引,
     使用者資料,

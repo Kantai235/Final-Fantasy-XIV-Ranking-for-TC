@@ -183,7 +183,7 @@ export default {
         <col class="伺服器欄" />
         <col class="職業欄" />
         <col class="active欄" />
-        <col class="gcd欄" />
+        <col v-show="顯示Gcd覆蓋率" class="gcd欄" />
         <col class="傷害欄" />
         <col class="傷害欄" />
         <col class="傷害欄" />
@@ -225,7 +225,7 @@ export default {
               </span>
             </span>
           </th>
-          <th scope="col" class="數字" :aria-sort="排序ARIA('gcdCoverage')">
+          <th v-show="顯示Gcd覆蓋率" scope="col" class="數字" :aria-sort="排序ARIA('gcdCoverage')">
             <span class="表頭說明標籤">
               <button
                 class="表頭排序按鈕"
@@ -379,7 +379,7 @@ export default {
                 </span>
               </div>
               <div class="手機排行資訊列">
-                <span>
+                <span v-if="顯示Gcd覆蓋率">
                   <em>GCD</em>
                   <strong>{{ 格式化Gcd覆蓋率(列.gcd_coverage) }}</strong>
                 </span>
@@ -412,7 +412,7 @@ export default {
             </span>
           </td>
           <td class="數字">{{ 格式化Active(列.active) }}</td>
-          <td class="數字">{{ 格式化Gcd覆蓋率(列.gcd_coverage) }}</td>
+          <td v-show="顯示Gcd覆蓋率" class="數字">{{ 格式化Gcd覆蓋率(列.gcd_coverage) }}</td>
           <td class="數字">{{ 格式化傷害數值(列.dps) }}</td>
           <td class="數字">{{ 格式化傷害數值(列.rdps) }}</td>
           <td class="數字">{{ 格式化傷害數值(列.adps) }}</td>

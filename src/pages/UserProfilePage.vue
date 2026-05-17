@@ -138,7 +138,7 @@ export default {
           </span>
           <strong>{{ 格式化傷害數值(使用者統計.最佳成績?.rdps) }}</strong>
         </div>
-        <div class="概要項">
+        <div v-if="顯示Gcd覆蓋率" class="概要項">
           <span class="說明標籤">
             <span>GCD 覆蓋率</span>
             <span class="說明提示">
@@ -184,7 +184,11 @@ export default {
               <span>{{ 顯示職業名稱(成績.job) }}</span>
             </span>
             <strong>{{ 格式化前段百分位(成績.performance?.rank, 成績.performance?.sample_count) }}</strong>
-            <small>rDPS {{ 格式化傷害數值(成績.rdps) }}・GCD {{ 格式化Gcd覆蓋率(成績.gcd_coverage) }}・高於中位 {{ 格式化帶號整數(成績.performance?.delta_to_median) }}</small>
+            <small>
+              rDPS {{ 格式化傷害數值(成績.rdps) }}
+              <template v-if="顯示Gcd覆蓋率">・GCD {{ 格式化Gcd覆蓋率(成績.gcd_coverage) }}</template>
+              ・高於中位 {{ 格式化帶號整數(成績.performance?.delta_to_median) }}
+            </small>
           </article>
         </div>
       </section>
@@ -246,7 +250,7 @@ export default {
                   class="趨勢點"
                   :class="{ 過版: 點.過版紀錄 }"
                   :style="趨勢點樣式(點)"
-                  :title="`${格式化紀錄時間(點.recorded_at_iso)}・${顯示職業名稱(點.job)}・rDPS ${格式化傷害數值(點.rdps)}・GCD ${格式化Gcd覆蓋率(點.gcd_coverage)}${點.過版紀錄 ? '・過版紀錄' : ''}`"
+                  :title="`${格式化紀錄時間(點.recorded_at_iso)}・${顯示職業名稱(點.job)}・rDPS ${格式化傷害數值(點.rdps)}${顯示Gcd覆蓋率 ? `・GCD ${格式化Gcd覆蓋率(點.gcd_coverage)}` : ''}${點.過版紀錄 ? '・過版紀錄' : ''}`"
                 ></span>
               </span>
               <div class="趨勢刻度" aria-hidden="true">
@@ -421,7 +425,7 @@ export default {
               </small>
               <strong>{{ 副本.best_entry ? 格式化Active(副本.best_entry.active_percent) : "-" }}</strong>
             </span>
-            <span class="成績列數值">
+            <span v-if="顯示Gcd覆蓋率" class="成績列數值">
               <small class="說明標籤">
                 <span>GCD</span>
                 <span class="說明提示">
@@ -481,7 +485,7 @@ export default {
                       </span>
                     </span>
                   </th>
-                  <th scope="col" class="數字">
+                  <th v-show="顯示Gcd覆蓋率" scope="col" class="數字">
                     <span class="表頭說明標籤">
                       <span>GCD</span>
                       <span class="說明提示">
@@ -542,7 +546,7 @@ export default {
                   </td>
                   <td class="數字">{{ 成績.is_obsolete_record ? "過時紀錄" : 格式化前段百分位(成績.performance?.rank, 成績.performance?.sample_count) }}</td>
                   <td class="數字">{{ 格式化Active(成績.active_percent) }}</td>
-                  <td class="數字">{{ 格式化Gcd覆蓋率(成績.gcd_coverage) }}</td>
+                  <td v-show="顯示Gcd覆蓋率" class="數字">{{ 格式化Gcd覆蓋率(成績.gcd_coverage) }}</td>
                   <td class="數字">{{ 格式化傷害數值(成績.dps) }}</td>
                   <td class="數字">{{ 格式化傷害數值(成績.rdps) }}</td>
                   <td class="數字">{{ 格式化傷害數值(成績.adps) }}</td>

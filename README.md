@@ -94,7 +94,7 @@ Final Fantasy XIV 繁中服排行榜是一個以 FFLogs 公開資料為來源的
 
 - 修改前先檢查 `git status`。本專案常有資料管線產物處於未提交狀態，不要回復或清掉非本次任務造成的資料差異。
 - 不要擅自啟動 `npm run dev` 或 Vite 開發伺服器；需要瀏覽器驗證時先取得使用者同意。
-- 臨時隱藏或恢復作者相關 UI 標示、社群連結時，只調整 `src/utils/siteFeatures.js` 的 `顯示作者相關標示` 與 `顯示社群連結`。這些旗標只影響排行榜作者勾勾、個人成績單作者徽章、頁尾作者卡、頁首 Telegram 交流群與作者卡外部社群連結，不改動公開資料或排行榜歷史資料結構。
+- 臨時隱藏或恢復作者相關 UI 標示、社群連結或 GCD 覆蓋率時，只調整 `src/utils/siteFeatures.js` 的 `顯示作者相關標示`、`顯示社群連結` 與 `顯示Gcd覆蓋率`。這些旗標只影響前端呈現，不改動公開資料或排行榜歷史資料結構。
 - 驗證資料聚合優先跑 `npm run build:user-data`。若只是重建公開排行榜 JSON，可跑 `python scripts/fetch_fflogs.py --rebuild-public`，這個模式不會呼叫 FFLogs API。
 - 驗證公開資料完整性可跑 `npm run validate:data`；它會檢查公開副本是否都有 ranking 檔案、來源分片是否存在、raw 欄位是否回流，以及全服統計、近期動態、隊伍榜、伺服器對比與使用者索引是否可讀。
 - 需要同步本機與 GitHub Actions 產生的資料時，先跑 `npm run sync:data -- --dry-run`，確認沒有 `REMOVAL` 或 `CONFLICT` 再真正同步。

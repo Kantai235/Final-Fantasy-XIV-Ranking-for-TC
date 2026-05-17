@@ -2,3 +2,4 @@
 // 這些旗標只影響 UI 呈現，不改動 public/data 或排行榜歷史資料結構。
 export const 顯示作者相關標示 = false;
 export const 顯示社群連結 = false;
+export const 顯示Gcd覆蓋率 = false;
