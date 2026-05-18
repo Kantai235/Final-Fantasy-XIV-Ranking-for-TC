@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 
 // 本檔是資料管線的 Data Building Layer。
@@ -88,8 +89,33 @@ async function readJson(filePath, fallback = null) {
   }
 }
 
-function writeJson(filePath, data) {
-  return writeFile(filePath, `${JSON.stringify(data)}\n`, "utf8");
+async function writeJson(filePath, data) {
+  const payload = `${JSON.stringify(data)}\n`;
+  const transientWriteErrorCodes = new Set(["EBUSY", "EPERM", "UNKNOWN"]);
+
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const tempPath = path.join(
+      path.dirname(filePath),
+      `.${path.basename(filePath)}.${process.pid}.${attempt}.tmp`,
+    );
+
+    try {
+      await writeFile(tempPath, payload, "utf8");
+      await rename(tempPath, filePath);
+      return;
+    } catch (error) {
+      await rm(tempPath, { force: true }).catch(() => {});
+
+      if (!transientWriteErrorCodes.has(error?.code) || attempt === 4) {
+        throw error;
+      }
+
+      // Windows 本機常見的索引、同步或防護軟體短暫鎖檔，會讓大型公開 JSON 直接覆寫時
+      // 偶發開檔失敗。先寫同資料夾暫存檔再 rename，可降低留下半寫入檔的風險；這裡
+      // 只針對暫時性檔案錯誤退避重試，不吞掉真實的 JSON 建置或路徑錯誤。
+      await sleep(100 * 2 ** attempt);
+    }
+  }
 }
 
 function resolveGeneratedAtIso(latestRankingUpdatedAt) {
