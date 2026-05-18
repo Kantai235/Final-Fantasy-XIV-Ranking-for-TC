@@ -85,8 +85,9 @@
 6. 單場 `playerDetails` 與 `damageDone` GraphQL 查詢必須同時帶 `fightIDs` 以及該 fight 的相對 `startTime` / `endTime`。少數 FFLogs 舊報告的 `report.endTime` 可能停在 fight 中途；只用 `fightIDs` 會拿到 partial table，導致 rDPS/aDPS 異常放大。
 7. `active_percent` 對齊 FFLogs Damage Done CSV 的 Active%，優先使用 `fflogs_total_time_ms` 作為分母；DPS/rDPS/aDPS 仍使用 `damage_time_ms` 作為分母。
 8. `gcd_coverage` 只保存衍生結果，不保存 FFLogs Casts raw events。key 不存在代表尚未嘗試補齊；值為 `null` 代表已嘗試但 report 已轉為 Private、刪除或無權限。
-9. `scripts/backfill_gcd_coverage.py` 會以 FFLogs `Casts` graph 補算 GCD 覆蓋率，GraphQL 查詢必須帶 `fightIDs`、該 fight 的相對 `startTime` / `endTime` 與玩家 `sourceID`，並使用 graph downtime 視窗同時扣除分母與分子。
-10. GCD 技能分類與基礎 cast/recast 來自 XIVAPI datamining `Action.csv`；腳本只於執行時讀入記憶體，不落地完整遊戲資料。實際 recast 需以同玩家相鄰 GCD 的緊貼施放間隔偏高分位估計，並用下一個 GCD timestamp 夾住覆蓋區間，避免 FFLogs 偏短 cast packet 間隔讓高施放密度職業被低估。
+9. `scripts/backfill_gcd_coverage.py` 會以 FFLogs `Casts` graph 本地補算 GCD 覆蓋率；GraphQL 查詢必須帶 `fightIDs` 與該 fight 的相對 `startTime` / `endTime`，同一個 report/fight 優先查整場 graph 後再依玩家 `sourceID` 於本地切分，避免每位玩家各打一個 request。計算仍使用 graph downtime 視窗同時扣除分母與分子。
+10. GCD 技能分類與基礎 cast/recast 以 XIVAPI datamining `Action.csv` 為底；腳本只於執行時讀入記憶體，不落地完整遊戲資料。`Action.csv` 無法表達的 xivanalysis-like 例外，例如忍者 mudra/ninjutsu 屬於 GCD 流程、毒蛇劍士部分技能有獨立 `gcdRecast`，需在腳本 allow-list 補上。實際 recast 參照 xivanalysis 的 45ms timestamp 分桶估計，並拆分忍者/武僧職業加速與毒蛇劍士、武士、白魔法師等加速狀態，避免把有 buff 的短 GCD 誤套到開場或 buff 斷掉的 GCD；最後仍以下一個 GCD timestamp 夾住覆蓋區間，避免 FFLogs 偏短 cast packet 間隔讓高施放密度職業被高估。
+11. `scripts/backfill_gcd_coverage_xivanalysis.py` 只保留為人工抽樣診斷工具，會以 Playwright 開啟 xivanalysis report/fight/player 頁面並解析 Checklist 的 `Always be casting` 百分比；GitHub Actions 預設不得使用此入口，避免觸發 xivanalysis 的 `Slow down / Too many requests` 限流。xivanalysis 沒有正式結果 JSON API；此腳本不得保存頁面或 FFLogs raw events。
 
 ### E. 驗證與同步
 1. 文件或註解變更仍需至少執行語法檢查與 `npm run build:user-data`，確認資料聚合可完成。
@@ -101,7 +102,7 @@
 10. `scripts/build_spa_fallback.mjs` 會為 route、個人成績單、副本統計、職業分析與伺服器對比產生各自的 1200x630 PNG OG 圖；內部可用 SVG 模板繪製，但公開 `og:image` / `twitter:image` 必須指向 crawler-safe PNG。
 11. `dist/robots.txt` 必須明確允許 `facebookexternalhit` 與 `Facebot`，避免 Facebook 分享偵錯工具把 robots 設定判定為可能阻擋 OG 抓取。
 12. `scripts/apply_cloudflare_rules.mjs` 必須維護 Meta/Facebook 分享爬蟲例外規則；`AS32934`、`AS63293` 與 Cloudflare verified Facebook bot 的 GET/HEAD 請求需跳過會造成 OG 抓取 403 的 Security Level、BIC、UA Blocking、Rate Limiting 與後續自訂規則。
-13. `npm run backfill:gcd -- --dry-run` 會列出待補 GCD 覆蓋率筆數、需以新版計算重算的筆數、已為 null 的筆數與本輪候選；正式 `npm run backfill:gcd` 預設每輪更新 2000 位玩家，並在 workflow log 中逐筆輸出 `[目前/本輪總數]` 進度。
+13. GCD 覆蓋率目前只在前端隱藏：`src/utils/siteFeatures.js` 的 `顯示Gcd覆蓋率=false`，但 GitHub Actions 仍會持續執行 GCD 補算，避免未來恢復顯示時需要從零開始。`npm run backfill:gcd -- --dry-run` 可手動列出待以本地演算法更新的 GCD 覆蓋率筆數與本輪候選；若要本機全量重算所有非 null 玩家 GCD，使用 `npm run backfill:gcd:all`。
 14. `scripts/fetch_fflogs.py` 遇到 FFLogs 暫時性 500/502/503/504 或連線逾時時，只延後受影響副本並保留該副本原掃描點；`active_scan.last_error_*` 會記錄錯誤摘要，已完成副本仍可推進掃描點，避免單一 API 波動中斷整輪資料更新。
 
 ### F. 版本切點與過版紀錄
