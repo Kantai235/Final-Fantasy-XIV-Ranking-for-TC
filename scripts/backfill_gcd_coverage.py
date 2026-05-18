@@ -32,6 +32,7 @@ GCD_ACTION_CATEGORY_IDS = {2, 3}  # 2=Spell, 3=Weaponskill
 GCD_CALCULATION_VERSION = 5
 GCD_SOURCE = "fflogs_casts_graph"
 MIN_REASONABLE_EPOCH_MS = 946684800000
+DEFAULT_GCD_BACKFILL_LIMIT = 2000
 BASE_GCD_MS = 2500
 RECAST_TIGHT_DELTA_MIN_RATIO = 0.8
 RECAST_TIGHT_DELTA_MAX_RATIO = 1.05
@@ -958,8 +959,22 @@ def apply_coverage(candidate: GcdCandidate, coverage: dict[str, Any], checked_at
     }
 
 
+def parse_int_env_default(name: str, fallback: int) -> int:
+    raw_value = os.environ.get(name)
+    if raw_value is None or raw_value.strip() == "":
+        return fallback
+    try:
+        return int(raw_value)
+    except ValueError:
+        print(f"環境變數 {name} 不是整數，已改用預設值 {fallback}。", file=sys.stderr)
+        return fallback
+
+
 def parse_args() -> argparse.Namespace:
-    default_limit = int(os.environ.get("FFLOGS_GCD_BACKFILL_LIMIT", "2000"))
+    # GitHub Actions 未設定 Repository Variable 時，若 workflow 明確把它傳入 env，
+    # Python 會看到空字串而不是缺少 key。這裡先把空值視為預設值，避免還沒讀到
+    # 命令列 --limit 覆寫前就因 int("") 中止整輪資料更新。
+    default_limit = parse_int_env_default("FFLOGS_GCD_BACKFILL_LIMIT", DEFAULT_GCD_BACKFILL_LIMIT)
     parser = argparse.ArgumentParser(description="Backfill missing FFLogs GCD coverage fields.")
     parser.add_argument("--limit", type=int, default=default_limit, help="本輪最多更新的玩家筆數。")
     parser.add_argument("--all", action="store_true", help="連已是目前 GCD 計算版本的玩家也重新計算；仍會略過已標為 null 的不可用報告。")

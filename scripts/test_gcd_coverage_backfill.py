@@ -29,6 +29,24 @@ def make_cast_group(timestamp: int, action_id: int, source_id: int | None = None
 
 
 class GcdCoverageBackfillTest(unittest.TestCase):
+    def test_parse_args_treats_empty_env_limit_as_default(self) -> None:
+        with (
+            patch.dict(gcd.os.environ, {"FFLOGS_GCD_BACKFILL_LIMIT": ""}),
+            patch.object(gcd.sys, "argv", ["backfill_gcd_coverage.py"]),
+        ):
+            args = gcd.parse_args()
+
+        self.assertEqual(args.limit, gcd.DEFAULT_GCD_BACKFILL_LIMIT)
+
+    def test_parse_args_allows_cli_limit_when_env_limit_is_empty(self) -> None:
+        with (
+            patch.dict(gcd.os.environ, {"FFLOGS_GCD_BACKFILL_LIMIT": ""}),
+            patch.object(gcd.sys, "argv", ["backfill_gcd_coverage.py", "--limit", "37"]),
+        ):
+            args = gcd.parse_args()
+
+        self.assertEqual(args.limit, 37)
+
     def test_calculation_subtracts_downtime_from_denominator_and_covered_time(self) -> None:
         metadata_store = FakeMetadataStore(
             {
