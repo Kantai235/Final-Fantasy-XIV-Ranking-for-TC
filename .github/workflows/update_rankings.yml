@@ -83,6 +83,16 @@ jobs:
           FFLOGS_CLIENT_IDS: ${{ secrets.FFLOGS_CLIENT_IDS }}
           FFLOGS_CLIENT_SECRETS: ${{ secrets.FFLOGS_CLIENT_SECRETS }}
           FFLOGS_CLIENT_CREDENTIALS_JSON: ${{ secrets.FFLOGS_CLIENT_CREDENTIALS_JSON }}
+          # config/fflogs.json 預設關閉歷史補查；workflow 以低量輪巡方式檢查舊時間窗是否新增公開 logs。
+          FFLOGS_HISTORY_SCAN_ENABLED: ${{ vars.FFLOGS_HISTORY_SCAN_ENABLED || 'true' }}
+          FFLOGS_HISTORY_SCAN_FULL_RUN: ${{ vars.FFLOGS_HISTORY_SCAN_FULL_RUN || 'false' }}
+          FFLOGS_HISTORY_SCAN_WINDOW_HOURS: ${{ vars.FFLOGS_HISTORY_SCAN_WINDOW_HOURS || '24' }}
+          FFLOGS_HISTORY_SCAN_WINDOWS_PER_RUN: ${{ vars.FFLOGS_HISTORY_SCAN_WINDOWS_PER_RUN || '1' }}
+          FFLOGS_HISTORY_SCAN_RECENT_GAP_HOURS: ${{ vars.FFLOGS_HISTORY_SCAN_RECENT_GAP_HOURS || '6' }}
+          FFLOGS_HISTORY_MAX_DEEP_REPORTS_PER_RUN: ${{ vars.FFLOGS_HISTORY_MAX_DEEP_REPORTS_PER_RUN || '25' }}
+          # 新 report 抓取時順手查同一場 Casts graph 並以本地演算法計算 GCD，只保存衍生結果。
+          FFLOGS_FETCH_GCD_COVERAGE_ENABLED: ${{ vars.FFLOGS_FETCH_GCD_COVERAGE_ENABLED || 'true' }}
+          FFLOGS_FETCH_GCD_COVERAGE_MAX_FIGHTS_PER_RUN: ${{ vars.FFLOGS_FETCH_GCD_COVERAGE_MAX_FIGHTS_PER_RUN || '500' }}
         run: python scripts/fetch_fflogs.py
 
       # 舊版資料修補工具暫停每輪自動執行，避免排程重複回查已不常需要補齊的歷史 report。

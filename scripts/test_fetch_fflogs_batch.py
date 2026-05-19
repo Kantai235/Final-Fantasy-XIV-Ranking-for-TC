@@ -51,6 +51,42 @@ def 建立測試原始成績(總傷害: int) -> dict[str, Any]:
 
 
 class FetchFFLogsBatchTest(unittest.TestCase):
+    def test_fflogs_runtime_settings_can_be_overridden_by_environment(self) -> None:
+        原始設定 = {
+            "history_scan_enabled": False,
+            "history_scan_windows_per_run": 0,
+            "history_scan_window_hours": 24,
+            "history_max_deep_reports_per_run": 0,
+            "fetch_gcd_coverage_enabled": False,
+            "fetch_gcd_coverage_max_fights_per_run": 0,
+            "request_timeout": 30,
+            "retry_report_codes": [],
+        }
+
+        with patch.dict(
+            fflogs.os.environ,
+            {
+                "FFLOGS_HISTORY_SCAN_ENABLED": "true",
+                "FFLOGS_HISTORY_SCAN_WINDOWS_PER_RUN": "2",
+                "FFLOGS_HISTORY_SCAN_WINDOW_HOURS": "12",
+                "FFLOGS_HISTORY_MAX_DEEP_REPORTS_PER_RUN": "10",
+                "FFLOGS_FETCH_GCD_COVERAGE_ENABLED": "true",
+                "FFLOGS_FETCH_GCD_COVERAGE_MAX_FIGHTS_PER_RUN": "500",
+                "FFLOGS_REQUEST_TIMEOUT": "12.5",
+                "FFLOGS_RETRY_REPORT_CODES": "abc123, def456",
+            },
+        ):
+            覆寫後設定 = fflogs.套用環境變數覆寫設定(原始設定)
+
+        self.assertTrue(覆寫後設定["history_scan_enabled"])
+        self.assertEqual(覆寫後設定["history_scan_windows_per_run"], 2)
+        self.assertEqual(覆寫後設定["history_scan_window_hours"], 12)
+        self.assertEqual(覆寫後設定["history_max_deep_reports_per_run"], 10)
+        self.assertTrue(覆寫後設定["fetch_gcd_coverage_enabled"])
+        self.assertEqual(覆寫後設定["fetch_gcd_coverage_max_fights_per_run"], 500)
+        self.assertEqual(覆寫後設定["request_timeout"], 12.5)
+        self.assertEqual(覆寫後設定["retry_report_codes"], ["abc123", "def456"])
+
     def test_graphql_503_is_treated_as_transient_api_error(self) -> None:
         class 假回應:
             status_code = 503
@@ -295,18 +331,43 @@ class FetchFFLogsBatchTest(unittest.TestCase):
         def 不應呼叫單場玩家成績(*args: Any, **kwargs: Any) -> dict[str, Any]:
             raise AssertionError("建立報告成績應使用批次玩家成績查詢，避免每場 fight 各打一個 API request。")
 
+        gcd呼叫: list[tuple[str, int, int]] = []
+
+        class 假即時Gcd計算器:
+            def 補齊戰鬥玩家GCD覆蓋率(
+                self,
+                session: Any,
+                認證池: Any,
+                報告代碼: str,
+                戰鬥: dict[str, Any],
+                玩家列表: list[dict[str, Any]],
+            ) -> None:
+                gcd呼叫.append((報告代碼, 戰鬥["fight_id"], len(玩家列表)))
+                for 玩家 in 玩家列表:
+                    玩家["gcd_coverage"] = {"percent": 97.5, "calculation_version": 5}
+                    玩家["gcd_coverage_status"] = {"state": "ok"}
+
         with (
             patch.object(fflogs, "查詢通關戰鬥", 假通關戰鬥),
             patch.object(fflogs, "查詢多場玩家成績", 假多場玩家成績),
             patch.object(fflogs, "查詢玩家成績", 不應呼叫單場玩家成績),
         ):
-            成績 = fflogs.建立報告成績(None, None, 副本設定, 淺層報告, [{"server": "巴哈姆特"}])
+            成績 = fflogs.建立報告成績(
+                None,
+                None,
+                副本設定,
+                淺層報告,
+                [{"server": "巴哈姆特"}],
+                假即時Gcd計算器(),
+            )
 
         self.assertEqual(批次呼叫, [[1, 2]])
+        self.assertEqual(gcd呼叫, [("abc123", 1, 1), ("abc123", 2, 1)])
         self.assertIsNotNone(成績)
         self.assertEqual(len(成績["fights"]), 2)
         self.assertEqual(成績["fights"][0]["players"][0]["dps"], 1000)
         self.assertEqual(成績["fights"][1]["players"][0]["dps"], 2000)
+        self.assertEqual(成績["fights"][0]["players"][0]["gcd_coverage"]["percent"], 97.5)
 
     def test_report_score_defers_when_damage_table_is_still_partial(self) -> None:
         副本設定 = {

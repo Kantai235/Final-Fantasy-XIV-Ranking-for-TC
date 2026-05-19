@@ -102,8 +102,9 @@
 10. `scripts/build_spa_fallback.mjs` 會為 route、個人成績單、副本統計、職業分析與伺服器對比產生各自的 1200x630 PNG OG 圖；內部可用 SVG 模板繪製，但公開 `og:image` / `twitter:image` 必須指向 crawler-safe PNG。
 11. `dist/robots.txt` 必須明確允許 `facebookexternalhit` 與 `Facebot`，避免 Facebook 分享偵錯工具把 robots 設定判定為可能阻擋 OG 抓取。
 12. `scripts/apply_cloudflare_rules.mjs` 必須維護 Meta/Facebook 分享爬蟲例外規則；`AS32934`、`AS63293` 與 Cloudflare verified Facebook bot 的 GET/HEAD 請求需跳過會造成 OG 抓取 403 的 Security Level、BIC、UA Blocking、Rate Limiting 與後續自訂規則。
-13. GCD 覆蓋率目前只在前端隱藏：`src/utils/siteFeatures.js` 的 `顯示Gcd覆蓋率=false`，GitHub Actions 也已暫停每輪自動執行 GCD 補算。`npm run backfill:gcd -- --dry-run` 可手動列出待以本地演算法更新的 GCD 覆蓋率筆數與本輪候選；若未來恢復顯示或需要追平資料，再正式執行 `npm run backfill:gcd`。若要本機全量重算所有非 null 玩家 GCD，使用 `npm run backfill:gcd:all`。
+13. GCD 覆蓋率目前只在前端隱藏：`src/utils/siteFeatures.js` 的 `顯示Gcd覆蓋率=false`。GitHub Actions 會在新 report 落地時由 `fetch_fflogs.py` 即時計算 GCD 衍生結果；既有玩家的全量補算仍維持手動。`npm run backfill:gcd -- --dry-run` 可手動列出待以本地演算法更新的 GCD 覆蓋率筆數與本輪候選；若未來恢復顯示或需要追平舊資料，再正式執行 `npm run backfill:gcd`。若要本機全量重算所有非 null 玩家 GCD，使用 `npm run backfill:gcd:all`。
 14. `scripts/fetch_fflogs.py` 遇到 FFLogs 暫時性 500/502/503/504 或連線逾時時，只延後受影響副本並保留該副本原掃描點；`active_scan.last_error_*` 會記錄錯誤摘要，已完成副本仍可推進掃描點，避免單一 API 波動中斷整輪資料更新。
+15. GitHub Actions 會用 `FFLOGS_HISTORY_SCAN_*` 環境變數暫時開啟低量歷史補查，並用 `FFLOGS_FETCH_GCD_COVERAGE_*` 在新 report 落地時即時計算 GCD；`config/fflogs.json` 仍預設關閉，避免本機一般執行時額外掃描舊時間窗或查 Casts graph。歷史補查依各副本 `history_scan_cursor_at` 輪巡，專門補抓後來才公開或延後匯出的 report，不取代最新增量掃描。
 
 ### F. 版本切點與過版紀錄
 1. `config/encounters.json` 的 `version_cutoff` 用來描述副本版本有效期限；目前 `極 佐拉加` 與 `極 豔翼蛇鳥` 的過版切點是台灣時間 2026-04-21 18:00，對應 `2026-04-21T10:00:00.000Z`。

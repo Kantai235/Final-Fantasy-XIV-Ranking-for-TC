@@ -14,6 +14,8 @@ from typing import Any, Callable
 import requests
 from dotenv import load_dotenv
 
+import gcd_coverage_core as gcd_core
+
 
 # 本檔是資料管線的 Data Fetching Layer。
 # 它只負責和 FFLogs GraphQL API 溝通、判斷報告是否含繁中服玩家、保存可追溯的原始戰鬥資料。
@@ -43,6 +45,8 @@ FFLogs執行設定預設值: dict[str, Any] = {
     "history_scan_windows_per_run": 1,
     "history_scan_recent_gap_hours": 6,
     "history_max_deep_reports_per_run": 25,
+    "fetch_gcd_coverage_enabled": False,
+    "fetch_gcd_coverage_max_fights_per_run": 0,
     "report_status_cache_limit": 50000,
     "request_timeout": 30,
     "request_connect_timeout": None,
@@ -61,10 +65,72 @@ FFLogs執行設定預設值: dict[str, Any] = {
     "only_report_codes": [],
 }
 
+浮點環境設定名稱 = {
+    "request_timeout",
+    "request_connect_timeout",
+    "request_read_timeout",
+    "rate_limit_padding_seconds",
+    "json_write_retry_seconds",
+}
+
+
+def 分割環境設定清單(值: str) -> list[str]:
+    return [項.strip() for 項 in 值.split(",") if 項.strip()]
+
+
+def 解析環境設定覆寫值(名稱: str, 原始值: str, 參考值: Any) -> Any:
+    文字值 = 原始值.strip()
+    if 文字值 == "":
+        return 參考值
+
+    # workflow 會用環境變數臨時開啟歷史補查；用既有設定值的型別解析，避免把數字或布林
+    # 以字串混入後續限流與掃描區間計算。這只處理非敏感執行參數，不讀取 OAuth 憑證。
+    if isinstance(參考值, bool):
+        標準值 = 文字值.lower()
+        if 標準值 in {"1", "true", "yes", "on"}:
+            return True
+        if 標準值 in {"0", "false", "no", "off"}:
+            return False
+        raise RuntimeError(f"環境變數 FFLOGS_{名稱.upper()} 必須是布林值。")
+
+    if 名稱 in 浮點環境設定名稱 or isinstance(參考值, float):
+        try:
+            return float(文字值)
+        except ValueError as 錯誤:
+            raise RuntimeError(f"環境變數 FFLOGS_{名稱.upper()} 必須是數字。") from 錯誤
+
+    if isinstance(參考值, int) and not isinstance(參考值, bool):
+        try:
+            return int(文字值)
+        except ValueError as 錯誤:
+            raise RuntimeError(f"環境變數 FFLOGS_{名稱.upper()} 必須是整數。") from 錯誤
+
+    if isinstance(參考值, list):
+        return 分割環境設定清單(文字值)
+
+    return 文字值
+
+
+def 套用環境變數覆寫設定(設定: dict[str, Any]) -> dict[str, Any]:
+    覆寫後設定 = dict(設定)
+    for 名稱, 目前值 in list(覆寫後設定.items()):
+        環境變數名稱 = f"FFLOGS_{名稱.upper()}"
+        if 環境變數名稱 not in os.environ:
+            continue
+
+        原始值 = os.environ[環境變數名稱]
+        if 原始值.strip() == "":
+            continue
+
+        參考值 = FFLogs執行設定預設值.get(名稱, 目前值)
+        覆寫後設定[名稱] = 解析環境設定覆寫值(名稱, 原始值, 參考值)
+
+    return 覆寫後設定
+
 
 def 讀取FFLogs執行設定() -> dict[str, Any]:
     if not FFLogs執行設定檔路徑.exists():
-        return dict(FFLogs執行設定預設值)
+        return 套用環境變數覆寫設定(dict(FFLogs執行設定預設值))
 
     try:
         with FFLogs執行設定檔路徑.open("r", encoding="utf-8") as 設定檔:
@@ -77,7 +143,7 @@ def 讀取FFLogs執行設定() -> dict[str, Any]:
 
     設定 = dict(FFLogs執行設定預設值)
     設定.update(原始設定)
-    return 設定
+    return 套用環境變數覆寫設定(設定)
 
 
 FFLogs執行設定 = 讀取FFLogs執行設定()
@@ -203,6 +269,8 @@ def 布林設定(名稱: str) -> bool:
     整數設定("history_scan_recent_gap_hours"),
 )
 歷史補查深層報告上限 = 整數設定("history_max_deep_reports_per_run")
+即時GCD覆蓋率已啟用 = 布林設定("fetch_gcd_coverage_enabled")
+即時GCD覆蓋率戰鬥上限 = max(0, 整數設定("fetch_gcd_coverage_max_fights_per_run"))
 報告檢查快取上限 = max(0, 整數設定("report_status_cache_limit"))
 請求逾時秒數 = max(1.0, 浮點設定("request_timeout"))
 請求連線逾時秒數 = max(1.0, 可選浮點設定("request_connect_timeout", min(10.0, 請求逾時秒數)))
@@ -1200,7 +1268,7 @@ def 建立歷史補查區間(
 def 分割環境清單(值: str | None) -> list[str]:
     if not 值:
         return []
-    return [項.strip() for 項 in 值.split(",") if 項.strip()]
+    return 分割環境設定清單(值)
 
 
 def 清單設定(名稱: str) -> list[str]:
@@ -2105,6 +2173,119 @@ def 計算_active_percent(active_time_ms: Any, clear_time_ms: Any) -> float | No
     return round(active_time / clear_time * 100, 2)
 
 
+class 即時GCD覆蓋率計算器:
+    def __init__(self) -> None:
+        self.啟用 = 即時GCD覆蓋率已啟用
+        self.戰鬥上限 = 即時GCD覆蓋率戰鬥上限
+        self.已查詢戰鬥數 = 0
+        self.已更新玩家數 = 0
+        self.失敗戰鬥數 = 0
+        self._已提示達到上限 = False
+        self._已提示停用原因: str | None = None
+        self._metadata_store = gcd_core.ActionMetadataStore()
+        self._metadata_已載入 = False
+        self._graph_cache: dict[tuple[str, int, float, float], dict[str, Any]] = {}
+        self.checked_at_iso = 毫秒轉_iso(現在毫秒()) or ""
+
+    def 可查詢下一場(self) -> bool:
+        if not self.啟用 or self._已提示停用原因:
+            return False
+        if self.戰鬥上限 > 0 and self.已查詢戰鬥數 >= self.戰鬥上限:
+            if not self._已提示達到上限:
+                print(f"即時 GCD 覆蓋率已達本輪上限：{self.戰鬥上限} 場戰鬥。")
+                self._已提示達到上限 = True
+            return False
+        return True
+
+    def 載入技能資料(self) -> bool:
+        if self._metadata_已載入:
+            return True
+        try:
+            self._metadata_store.preload()
+        except RuntimeError as 錯誤:
+            self._已提示停用原因 = str(錯誤)
+            print(
+                f"無法載入 GCD 技能資料，本輪即時 GCD 覆蓋率暫停，資料仍可由手動 backfill 補齊：{錯誤}",
+                file=sys.stderr,
+            )
+            return False
+        self._metadata_已載入 = True
+        return True
+
+    def 補齊戰鬥玩家GCD覆蓋率(
+        self,
+        session: requests.Session,
+        認證池: FFLogs認證池,
+        報告代碼: str,
+        戰鬥: dict[str, Any],
+        玩家列表: list[dict[str, Any]],
+    ) -> None:
+        if not 玩家列表 or not self.可查詢下一場():
+            return
+
+        fight_id = gcd_core.to_int(戰鬥.get("fight_id"))
+        start_time = gcd_core.first_number(戰鬥.get("start_time"), 戰鬥.get("startTime"))
+        end_time = gcd_core.first_number(戰鬥.get("end_time"), 戰鬥.get("endTime"))
+        if fight_id is None or start_time is None or end_time is None:
+            return
+        if not any(gcd_core.to_int(玩家.get("fflogs_id")) is not None for 玩家 in 玩家列表):
+            return
+        if not self.載入技能資料():
+            return
+
+        self.已查詢戰鬥數 += 1
+        graph_cache_key = (報告代碼, fight_id, start_time, end_time)
+        try:
+            graph = self._graph_cache.get(graph_cache_key)
+            if graph is None:
+                graph = gcd_core.query_fight_casts_graph(執行_graphql, session, 認證池, 報告代碼, 戰鬥)
+                self._graph_cache[graph_cache_key] = graph
+        except Exception as 錯誤:  # noqa: BLE001
+            # GCD 是衍生欄位；Casts graph 暫時失敗不能阻擋排行榜主資料落地。
+            self.失敗戰鬥數 += 1
+            print(f"{報告代碼} fight={fight_id} 即時 GCD 覆蓋率計算失敗，保留缺 key 狀態：{錯誤}", file=sys.stderr)
+            return
+
+        本場更新數 = 0
+        for 玩家 in 玩家列表:
+            source_id = gcd_core.to_int(玩家.get("fflogs_id"))
+            if source_id is None:
+                continue
+
+            coverage = gcd_core.calculate_gcd_coverage_from_graph(
+                graph,
+                self._metadata_store,
+                source_id=source_id,
+                job=玩家.get("job"),
+                fight_end_time=end_time,
+                fallback_denominator_ms=gcd_core.first_number(
+                    戰鬥.get("clear_time_ms"),
+                    end_time - start_time,
+                    戰鬥.get("damage_time_ms"),
+                ),
+            )
+            if not coverage:
+                continue
+
+            玩家["gcd_coverage"] = coverage
+            玩家["gcd_coverage_status"] = gcd_core.build_gcd_coverage_status(checked_at_iso=self.checked_at_iso)
+            本場更新數 += 1
+
+        self.已更新玩家數 += 本場更新數
+        if 本場更新數:
+            print(f"{報告代碼} fight={fight_id} 已即時計算 GCD 覆蓋率：{本場更新數} 位玩家。")
+
+    def 建立統計(self) -> dict[str, Any]:
+        return {
+            "enabled": self.啟用,
+            "max_fights_per_run": self.戰鬥上限,
+            "fights_queried": self.已查詢戰鬥數,
+            "players_updated": self.已更新玩家數,
+            "fights_failed": self.失敗戰鬥數,
+            "disabled_reason": self._已提示停用原因,
+        }
+
+
 def 從原始成績整理玩家_dps(原始成績: dict[str, Any], 戰鬥時間毫秒: float | None) -> list[dict[str, Any]]:
     # playerDetails 提供身分，damageDone 提供輸出數值；兩者必須合併才有可信的「繁中服角色 + 職業 + DPS」。
     # 這裡不做全服統計或 UI 排序，只產出每場戰鬥可回溯的玩家列。
@@ -2657,6 +2838,7 @@ def 建立報告成績(
     副本設定: dict[str, Any],
     淺層報告: dict[str, Any],
     繁中服玩家: list[dict[str, Any]],
+    gcd計算器: 即時GCD覆蓋率計算器 | None = None,
 ) -> dict[str, Any] | None:
     # 一份 report 可能含同 zone 多個 encounter；這裡保存完成排名建置所需的 report/fight/player 脈絡。
     # GraphQL 原始表格可從 FFLogs 依 report code 重查，若全部落地會讓 repo 以 GB 級成長。
@@ -2698,48 +2880,50 @@ def 建立報告成績(
         if 傷害表格疑似未完整匯出(戰鬥時間毫秒, 傷害時間資訊, 玩家列表):
             raise 建立尚未完整匯出錯誤(報告代碼, 報告, 戰鬥)
 
-        整理後戰鬥列表.append(
-            {
-                "fight_id": 戰鬥_id,
-                "encounter_id": 戰鬥.get("encounterID"),
-                "original_encounter_id": 戰鬥.get("originalEncounterID"),
-                "name": 戰鬥.get("name"),
-                "difficulty": 戰鬥.get("difficulty"),
-                "kill": 戰鬥.get("kill"),
-                "complete_raid": 戰鬥.get("completeRaid"),
-                "in_progress": 戰鬥.get("inProgress"),
-                "has_echo": 戰鬥.get("hasEcho"),
-                "last_phase": 戰鬥.get("lastPhase"),
-                "last_phase_as_absolute_index": 戰鬥.get("lastPhaseAsAbsoluteIndex"),
-                "last_phase_is_intermission": 戰鬥.get("lastPhaseIsIntermission"),
-                "size": 戰鬥.get("size"),
-                "standard_composition": 戰鬥.get("standardComposition"),
-                "wipe_called_time": 戰鬥.get("wipeCalledTime"),
-                "friendly_players": 戰鬥.get("friendlyPlayers"),
-                "enemy_players": 戰鬥.get("enemyPlayers"),
-                "start_time": 戰鬥.get("startTime"),
-                "start_time_iso": 毫秒轉_iso(戰鬥.get("startTime")),
-                "end_time": 戰鬥.get("endTime"),
-                "end_time_iso": 毫秒轉_iso(戰鬥.get("endTime")),
-                "recorded_at": 紀錄時間戳記,
-                "recorded_at_iso": 毫秒轉_iso(紀錄時間戳記),
-                "clear_time_ms": int(戰鬥時間毫秒) if 戰鬥時間毫秒 is not None else None,
-                "clear_time_seconds": round(戰鬥時間毫秒 / 1000, 3) if 戰鬥時間毫秒 is not None else None,
-                "fflogs_total_time_ms": 傷害時間資訊.get("fflogs_total_time_ms"),
-                "fflogs_total_time_seconds": 毫秒轉秒數(傷害時間資訊.get("fflogs_total_time_ms")),
-                "fflogs_combat_time_ms": 傷害時間資訊.get("fflogs_combat_time_ms"),
-                "fflogs_combat_time_seconds": 毫秒轉秒數(傷害時間資訊.get("fflogs_combat_time_ms")),
-                "damage_downtime_ms": 傷害時間資訊.get("damage_downtime_ms"),
-                "damage_downtime_seconds": 毫秒轉秒數(傷害時間資訊.get("damage_downtime_ms")),
-                "damage_time_ms": 傷害時間資訊.get("damage_time_ms"),
-                "damage_time_seconds": 毫秒轉秒數(傷害時間資訊.get("damage_time_ms")),
-                "fight_percentage": 戰鬥.get("fightPercentage"),
-                "average_item_level": 戰鬥.get("averageItemLevel"),
-                "boss_percentage": 戰鬥.get("bossPercentage"),
-                "damage_done_summary": 建立傷害表格摘要(原始成績),
-                "players": 玩家列表,
-            }
-        )
+        整理後戰鬥 = {
+            "fight_id": 戰鬥_id,
+            "encounter_id": 戰鬥.get("encounterID"),
+            "original_encounter_id": 戰鬥.get("originalEncounterID"),
+            "name": 戰鬥.get("name"),
+            "difficulty": 戰鬥.get("difficulty"),
+            "kill": 戰鬥.get("kill"),
+            "complete_raid": 戰鬥.get("completeRaid"),
+            "in_progress": 戰鬥.get("inProgress"),
+            "has_echo": 戰鬥.get("hasEcho"),
+            "last_phase": 戰鬥.get("lastPhase"),
+            "last_phase_as_absolute_index": 戰鬥.get("lastPhaseAsAbsoluteIndex"),
+            "last_phase_is_intermission": 戰鬥.get("lastPhaseIsIntermission"),
+            "size": 戰鬥.get("size"),
+            "standard_composition": 戰鬥.get("standardComposition"),
+            "wipe_called_time": 戰鬥.get("wipeCalledTime"),
+            "friendly_players": 戰鬥.get("friendlyPlayers"),
+            "enemy_players": 戰鬥.get("enemyPlayers"),
+            "start_time": 戰鬥.get("startTime"),
+            "start_time_iso": 毫秒轉_iso(戰鬥.get("startTime")),
+            "end_time": 戰鬥.get("endTime"),
+            "end_time_iso": 毫秒轉_iso(戰鬥.get("endTime")),
+            "recorded_at": 紀錄時間戳記,
+            "recorded_at_iso": 毫秒轉_iso(紀錄時間戳記),
+            "clear_time_ms": int(戰鬥時間毫秒) if 戰鬥時間毫秒 is not None else None,
+            "clear_time_seconds": round(戰鬥時間毫秒 / 1000, 3) if 戰鬥時間毫秒 is not None else None,
+            "fflogs_total_time_ms": 傷害時間資訊.get("fflogs_total_time_ms"),
+            "fflogs_total_time_seconds": 毫秒轉秒數(傷害時間資訊.get("fflogs_total_time_ms")),
+            "fflogs_combat_time_ms": 傷害時間資訊.get("fflogs_combat_time_ms"),
+            "fflogs_combat_time_seconds": 毫秒轉秒數(傷害時間資訊.get("fflogs_combat_time_ms")),
+            "damage_downtime_ms": 傷害時間資訊.get("damage_downtime_ms"),
+            "damage_downtime_seconds": 毫秒轉秒數(傷害時間資訊.get("damage_downtime_ms")),
+            "damage_time_ms": 傷害時間資訊.get("damage_time_ms"),
+            "damage_time_seconds": 毫秒轉秒數(傷害時間資訊.get("damage_time_ms")),
+            "fight_percentage": 戰鬥.get("fightPercentage"),
+            "average_item_level": 戰鬥.get("averageItemLevel"),
+            "boss_percentage": 戰鬥.get("bossPercentage"),
+            "damage_done_summary": 建立傷害表格摘要(原始成績),
+            "players": 玩家列表,
+        }
+        if gcd計算器 is not None:
+            gcd計算器.補齊戰鬥玩家GCD覆蓋率(session, 認證池, 報告代碼, 整理後戰鬥, 玩家列表)
+
+        整理後戰鬥列表.append(整理後戰鬥)
 
     if not 整理後戰鬥列表:
         return None
@@ -3055,9 +3239,13 @@ def main() -> int:
 
     狀態 = 讀取_json(狀態檔案路徑, {})
     掃描結束時間戳記 = 現在毫秒()
+    gcd計算器 = 即時GCD覆蓋率計算器()
 
     print(f"啟用副本：{', '.join(副本['name'] for 副本 in 副本清單)}")
     print(f"可用 FFLogs 憑證組數：{len(認證池.認證清單)}")
+    if gcd計算器.啟用:
+        上限文字 = str(gcd計算器.戰鬥上限) if gcd計算器.戰鬥上限 > 0 else "無上限"
+        print(f"已啟用新 report 即時 GCD 覆蓋率計算，本輪 Casts graph 戰鬥上限：{上限文字}。")
     if 重抓報告代碼:
         print(f"指定重抓報告：{', '.join(sorted(重抓報告代碼))}")
     if 只處理報告代碼:
@@ -3470,7 +3658,7 @@ def main() -> int:
                 目標處理狀態["本輪已嘗試報告代碼"].add(報告代碼)
 
                 try:
-                    成績 = 建立報告成績(session, 認證池, 目標副本, 報告, 繁中服玩家)
+                    成績 = 建立報告成績(session, 認證池, 目標副本, 報告, 繁中服玩家, gcd計算器)
                 except FFLogs報告尚未完整匯出錯誤 as 錯誤:
                     標記報告略過(
                         目標處理狀態,
@@ -3557,6 +3745,7 @@ def main() -> int:
     總新增或更新數量 = sum(處理狀態["rankings_inserted_or_updated"] for 處理狀態 in 副本處理狀態.values())
     總失敗報告數量 = sum(處理狀態["reports_failed"] for 處理狀態 in 副本處理狀態.values())
     暫時失敗副本鍵值 = [副本["key"] for 副本 in 暫時失敗副本清單]
+    即時GCD統計 = gcd計算器.建立統計()
 
     統計 = {
         "scan_end_at": 掃描結束時間戳記,
@@ -3569,6 +3758,7 @@ def main() -> int:
         "rankings_inserted_or_updated": 總新增或更新數量,
         "reports_failed": 總失敗報告數量,
         "scan_deferred_encounters": len(暫時失敗副本鍵值),
+        "fetch_gcd_coverage": 即時GCD統計,
     }
     if 只處理指定報告模式:
         if 總失敗報告數量 == 0:
@@ -3587,6 +3777,14 @@ def main() -> int:
             統計,
             已完成副本清單,
             完整成功=not 暫時失敗副本鍵值,
+        )
+
+    if gcd計算器.啟用:
+        print(
+            "即時 GCD 覆蓋率計算："
+            f"查詢 {即時GCD統計['fights_queried']} 場戰鬥，"
+            f"更新 {即時GCD統計['players_updated']} 位玩家，"
+            f"失敗 {即時GCD統計['fights_failed']} 場。"
         )
 
     if 只處理指定報告模式 and 總失敗報告數量 > 0:

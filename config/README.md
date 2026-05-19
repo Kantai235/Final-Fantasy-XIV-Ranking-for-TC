@@ -18,8 +18,11 @@
 ## `fflogs.json` 的判讀重點
 
 - `report_page_limit`、`report_max_pages` 與 `scan_window_hours` 控制淺層 reports 掃描範圍；報告太多時 `fetch_fflogs.py` 會自動切半查詢。
+- `history_scan_enabled`、`history_scan_window_hours`、`history_scan_windows_per_run`、`history_scan_recent_gap_hours` 與 `history_max_deep_reports_per_run` 控制歷史補查。專案預設在 `config/fflogs.json` 關閉，GitHub Actions 會用同名大寫 `FFLOGS_` 環境變數暫時開啟低量巡檢，避免本機一般執行時額外掃描舊時間窗。
+- `fetch_gcd_coverage_enabled` 與 `fetch_gcd_coverage_max_fights_per_run` 控制新 report 落地時是否即時計算 GCD 覆蓋率，以及每輪最多查幾場 fight 的 Casts graph。專案預設關閉，GitHub Actions 會用 `FFLOGS_FETCH_GCD_COVERAGE_ENABLED=true` 與 `FFLOGS_FETCH_GCD_COVERAGE_MAX_FIGHTS_PER_RUN=500` 開啟。
 - `rate_limit_requests`、`rate_limit_window_seconds`、`rate_limit_padding_seconds` 與 `rate_limited_cooldown_seconds` 控制 FFLogs API 限流與多憑證輪替。
 - `player_stats_batch_size` 控制同一份 report、同一副本內一次 GraphQL request 會合併查詢幾場通關戰鬥的 playerDetails / damageDone；每場 fight 仍用獨立 alias 查詢，避免多場戰鬥的輸出數值被 FFLogs 聚合。
 - `retry_report_codes` 會在一般掃描中強制重抓指定 report code。
 - `only_report_codes` 只處理指定 report code，且不推進掃描點，適合手動補抓或除錯。
 - 手動補抓完成後應清空 `retry_report_codes` 與 `only_report_codes`，避免排程重複處理同一批 report。
+- 所有 `fflogs.json` 非敏感執行設定都可用 `FFLOGS_{設定名稱大寫}` 環境變數暫時覆寫，例如 `FFLOGS_HISTORY_SCAN_WINDOWS_PER_RUN=2`。環境變數只影響當次執行，不會改寫設定檔。
