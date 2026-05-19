@@ -75,6 +75,7 @@
 4. `fight_hash` 用於辨識不同 report 上傳的同一場戰鬥；`source_reports` 與 `duplicate_count` 必須保留，不能因去重而刪掉來源線索。
 5. 新寫入的 report 不保存 `fflogs_raw`、`master_data` 與 `matched_players`；這些大型 raw 欄位可依 report code 重查，停止落地是為避免 Git repo 容量快速膨脹。
 6. 當 `reports` 分片存在時，`ranking_entries` 只視為衍生索引；重建排行榜必須以 `reports -> fights -> players` 為權威來源，避免重抓單一 report 後舊扁平索引把錯誤高分帶回來。
+7. `report_hidden: true` 的 report 預設不進入一般公開資料；`public/data/all/` 則提供完整資料鏡像，供額外檢視流程使用。
 
 ### D. FFLogs 欄位解析脈絡
 1. 淺層 reports 查詢目前不能直接用伺服器過濾；`report_region_scope` 只控制候選 report 的地區範圍。專案與 GitHub Actions 預設使用 `all` 掃全部地區，以涵蓋繁中服玩家上傳到其他地區的紀錄；若短期維護需要降低掃描量，可暫時改用 `china`。無論候選來自哪個地區，都必須再查 `masterData.actors(type: "Player")` 確認是否包含繁中服伺服器。
@@ -105,6 +106,7 @@
 13. GCD 覆蓋率目前已在前端開啟：`src/utils/siteFeatures.js` 的 `顯示Gcd覆蓋率=true`。GitHub Actions 會在新 report 落地時由 `fetch_fflogs.py` 即時計算 GCD 衍生結果；既有玩家的全量補算仍維持手動。`npm run backfill:gcd -- --dry-run` 可手動列出待以本地演算法更新的 GCD 覆蓋率筆數與本輪候選；若需要追平舊資料，再正式執行 `npm run backfill:gcd`。若要本機全量重算所有非 null 玩家 GCD，使用 `npm run backfill:gcd:all`。
 14. `scripts/fetch_fflogs.py` 遇到 FFLogs 暫時性 500/502/503/504 或連線逾時時，只延後受影響副本並保留該副本原掃描點；`active_scan.last_error_*` 會記錄錯誤摘要，已完成副本仍可推進掃描點，避免單一 API 波動中斷整輪資料更新。
 15. GitHub Actions 會用 `FFLOGS_HISTORY_SCAN_*` 環境變數暫時開啟低量歷史補查，並用 `FFLOGS_FETCH_GCD_COVERAGE_*` 在新 report 落地時即時計算 GCD；`config/fflogs.json` 仍預設關閉，避免本機一般執行時額外掃描舊時間窗或查 Casts graph。歷史補查依各副本 `history_scan_cursor_at` 輪巡，專門補抓後來才公開或延後匯出的 report，不取代最新增量掃描。
+16. 額外檢視流程若需要完整資料，應只把 `/data/...` 改寫到 `/data/all/...`，不應改動前端邏輯；因此 `build:public-rankings` 與 `build:user-data` 必須維持一般公開資料與完整鏡像同步。
 
 ### F. 版本切點與過版紀錄
 1. `config/encounters.json` 的 `version_cutoff` 用來描述副本版本有效期限；目前 `極 佐拉加` 與 `極 豔翼蛇鳥` 的過版切點是台灣時間 2026-04-21 18:00，對應 `2026-04-21T10:00:00.000Z`。

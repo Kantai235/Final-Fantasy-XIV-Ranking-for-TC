@@ -30,6 +30,7 @@ load_dotenv(專案根目錄 / ".env")
 副本設定檔路徑 = 專案根目錄 / "config" / "encounters.json"
 FFLogs執行設定檔路徑 = 專案根目錄 / "config" / "fflogs.json"
 公開副本清單路徑 = 專案根目錄 / "public" / "data" / "encounters.json"
+含隱藏公開副本清單路徑 = 專案根目錄 / "public" / "data" / "all" / "encounters.json"
 淺層掃描快取目錄 = 專案根目錄 / "data" / "shallow_scan_cache"
 
 FFLogs執行設定預設值: dict[str, Any] = {
@@ -254,6 +255,10 @@ def 正規化報告地區範圍(值: Any) -> str:
     "report_url",
     "fight_id",
     "duplicate_count",
+    "report_hidden",
+    "hidden_reason",
+    "hidden_detected_at_iso",
+    "hidden_source",
     "rank",
     "is_obsolete_record",
     "version_status",
@@ -262,6 +267,7 @@ def 正規化報告地區範圍(值: Any) -> str:
 
 版本紀錄範圍清單 = ("all", "valid", "obsolete")
 報告尚未完整匯出狀態 = "deferred_incomplete_export"
+報告無法存取隱藏原因 = "private_or_deleted"
 可重試報告處理狀態 = {報告尚未完整匯出狀態}
 暫時性HTTP狀態碼 = {500, 502, 503, 504}
 
@@ -1033,7 +1039,14 @@ def 可重用淺層快取完成時間(結束時間戳記: int, 快取完成至: 
     return min(快取完成至, 安全可用至, 結束時間戳記)
 
 
-def 排行榜檔案路徑(副本設定: dict[str, Any], public: bool = False) -> Path:
+def 排行榜檔案路徑(
+    副本設定: dict[str, Any],
+    public: bool = False,
+    *,
+    包含隱藏公開資料: bool = False,
+) -> Path:
+    if public and 包含隱藏公開資料:
+        return 專案根目錄 / "public" / "data" / "all" / "rankings" / f"{副本設定['key']}.json"
     根目錄 = 專案根目錄 / "public" if public else 專案根目錄
     return 根目錄 / "data" / "rankings" / f"{副本設定['key']}.json"
 
@@ -1160,6 +1173,8 @@ def 寫入公開副本清單(副本清單: list[dict[str, Any]]) -> None:
         公開清單.append(公開副本)
 
     寫入_json(公開副本清單路徑, 公開清單)
+    # 副本清單本身不分資料視圖；鏡像檔必須存在，才能讓所有靜態 JSON 使用相同路徑結構。
+    寫入_json(含隱藏公開副本清單路徑, 公開清單)
 
 
 def 取得副本掃描起始時間戳記(副本設定: dict[str, Any], *欄位名稱列表: str) -> int | None:
@@ -2541,7 +2556,47 @@ def 登記排行榜條目(
         精確成績索引[精確成績鍵值] = 標準成績
 
 
-def 建立排行榜條目(排行榜: dict[str, Any], 版本範圍: str = "all") -> list[dict[str, Any]]:
+def 報告已標記隱藏(報告: Any) -> bool:
+    return isinstance(報告, dict) and bool(報告.get("report_hidden") or 報告.get("hidden_report"))
+
+
+def 標記排行榜報告隱藏(
+    排行榜: dict[str, Any],
+    報告代碼: str,
+    *,
+    原因: str = 報告無法存取隱藏原因,
+    來源: str = "fetch_fflogs",
+    詳細原因: str | None = None,
+) -> bool:
+    # 將 report 狀態集中標在來源節點，公開建置層即可用同一套規則排除一般公開資料。
+    報告索引 = 排行榜.get("reports") if isinstance(排行榜.get("reports"), dict) else {}
+    報告 = 報告索引.get(str(報告代碼))
+    if not isinstance(報告, dict):
+        return False
+
+    現在時間戳記 = 現在毫秒()
+    欄位更新 = {
+        "report_hidden": True,
+        "hidden_reason": 原因,
+        "hidden_source": 來源,
+        "hidden_detected_at": 現在時間戳記,
+        "hidden_detected_at_iso": 毫秒轉_iso(現在時間戳記),
+    }
+    if 詳細原因:
+        欄位更新["hidden_detail"] = 詳細原因
+
+    已變更 = any(報告.get(欄位) != 值 for 欄位, 值 in 欄位更新.items())
+    if 已變更:
+        報告.update(欄位更新)
+    return 已變更
+
+
+def 建立排行榜條目(
+    排行榜: dict[str, Any],
+    版本範圍: str = "all",
+    *,
+    包含隱藏報告: bool = False,
+) -> list[dict[str, Any]]:
     # ranking_entries 是給前端快速讀取的扁平索引；reports/fights/players 才是可追溯歷史。
     # 重建時會同時讀兩種來源，確保舊資料、分片資料與新資料都能用同一套去重規則整理。
     精確成績索引: dict[str, dict[str, Any]] = {}
@@ -2551,12 +2606,18 @@ def 建立排行榜條目(排行榜: dict[str, Any], 版本範圍: str = "all") 
     報告索引 = 排行榜.get("reports") if isinstance(排行榜.get("reports"), dict) else {}
     if not 報告索引:
         for 條目 in 排行榜.get("ranking_entries") or []:
+            if not 包含隱藏報告 and isinstance(條目, dict) and 條目.get("report_hidden"):
+                continue
             if isinstance(條目, dict):
                 登記排行榜條目(條目, 精確成績索引)
 
     for 報告代碼, 報告 in 報告索引.items():
         if not isinstance(報告, dict):
             continue
+        if 報告已標記隱藏(報告) and not 包含隱藏報告:
+            continue
+
+        報告隱藏 = 報告已標記隱藏(報告)
 
         for 戰鬥 in 報告.get("fights") or []:
             if not isinstance(戰鬥, dict):
@@ -2624,6 +2685,11 @@ def 建立排行榜條目(排行榜: dict[str, Any], 版本範圍: str = "all") 
                     "source_reports": [報告代碼],
                     "duplicate_count": 1,
                 }
+                if 報告隱藏:
+                    成績["report_hidden"] = True
+                    成績["hidden_reason"] = 報告.get("hidden_reason")
+                    成績["hidden_detected_at_iso"] = 報告.get("hidden_detected_at_iso")
+                    成績["hidden_source"] = 報告.get("hidden_source")
                 if "gcd_coverage" in 玩家:
                     # GCD 覆蓋率由 backfill_gcd_coverage.py 依 Casts graph 後補。
                     # key 不存在代表尚未嘗試；值為 null 代表已嘗試但 report 無法存取。
@@ -2655,7 +2721,11 @@ def 建立公開排行榜條目(條目: dict[str, Any]) -> dict[str, Any]:
     return {欄位: 條目.get(欄位) for 欄位 in 公開排行榜條目欄位 if 欄位 in 條目}
 
 
-def 建立版本排行榜條目(排行榜: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
+def 建立版本排行榜條目(
+    排行榜: dict[str, Any],
+    *,
+    包含隱藏報告: bool = False,
+) -> dict[str, list[dict[str, Any]]]:
     版本設定 = 取得副本版本截止設定(排行榜.get("encounter"))
     if not 版本設定:
         return {}
@@ -2663,21 +2733,22 @@ def 建立版本排行榜條目(排行榜: dict[str, Any]) -> dict[str, list[dic
     return {
         版本範圍: [
             建立公開排行榜條目(條目)
-            for 條目 in 建立排行榜條目(排行榜, 版本範圍)
+            for 條目 in 建立排行榜條目(排行榜, 版本範圍, 包含隱藏報告=包含隱藏報告)
             if isinstance(條目, dict)
         ]
         for 版本範圍 in 版本紀錄範圍清單
     }
 
 
-def 建立公開排行榜(排行榜: dict[str, Any]) -> dict[str, Any]:
-    排行榜條目 = 建立排行榜條目(排行榜)
+def 建立公開排行榜(排行榜: dict[str, Any], *, 包含隱藏報告: bool = False) -> dict[str, Any]:
+    排行榜條目 = 建立排行榜條目(排行榜, 包含隱藏報告=包含隱藏報告)
     版本設定 = 取得副本版本截止設定(排行榜.get("encounter"))
     公開排行榜 = {
         "schema_version": 排行榜.get("schema_version", 1),
         "encounter": 排行榜.get("encounter"),
         "updated_at": 排行榜.get("updated_at"),
         "updated_at_iso": 排行榜.get("updated_at_iso"),
+        "hidden_reports_included": 包含隱藏報告,
         "ranking_entries": [
             建立公開排行榜條目(條目)
             for 條目 in 排行榜條目
@@ -2687,7 +2758,10 @@ def 建立公開排行榜(排行榜: dict[str, Any]) -> dict[str, Any]:
 
     if 版本設定:
         公開排行榜["version_cutoff"] = 版本設定
-        公開排行榜["version_ranking_entries"] = 建立版本排行榜條目(排行榜)
+        公開排行榜["version_ranking_entries"] = 建立版本排行榜條目(
+            排行榜,
+            包含隱藏報告=包含隱藏報告,
+        )
 
     return 公開排行榜
 
@@ -3064,6 +3138,11 @@ def 寫入排行榜檔案(副本設定: dict[str, Any], 排行榜: dict[str, Any
 
     寫入_json(排行榜檔案路徑(副本設定), 儲存內容, 緊湊格式=True)
     寫入_json(排行榜檔案路徑(副本設定, public=True), 建立公開排行榜(排行榜), 緊湊格式=True)
+    寫入_json(
+        排行榜檔案路徑(副本設定, public=True, 包含隱藏公開資料=True),
+        建立公開排行榜(排行榜, 包含隱藏報告=True),
+        緊湊格式=True,
+    )
 
 
 def 重建公開排行榜檔案() -> None:
@@ -3084,6 +3163,11 @@ def 重建公開排行榜檔案() -> None:
         排行榜.setdefault("schema_version", 1)
         排行榜.setdefault("encounter", 建立副本摘要(副本設定))
         寫入_json(排行榜檔案路徑(副本設定, public=True), 建立公開排行榜(排行榜), 緊湊格式=True)
+        寫入_json(
+            排行榜檔案路徑(副本設定, public=True, 包含隱藏公開資料=True),
+            建立公開排行榜(排行榜, 包含隱藏報告=True),
+            緊湊格式=True,
+        )
         print(f"已重建公開排行榜：{副本設定['key']}")
 
 
@@ -3108,6 +3192,11 @@ def 分割排行榜儲存檔案() -> None:
             儲存內容["reports"] = {}
         寫入_json(路徑, 儲存內容, 緊湊格式=True)
         寫入_json(排行榜檔案路徑(副本設定, public=True), 建立公開排行榜(排行榜), 緊湊格式=True)
+        寫入_json(
+            排行榜檔案路徑(副本設定, public=True, 包含隱藏公開資料=True),
+            建立公開排行榜(排行榜, 包含隱藏報告=True),
+            緊湊格式=True,
+        )
         print(f"已分割完整排行榜儲存檔案：{副本設定['key']}")
 
 
@@ -3471,6 +3560,21 @@ def main() -> int:
         處理狀態["已處理報告代碼"].add(報告代碼)
         處理狀態["本輪已嘗試報告代碼"].add(報告代碼)
 
+    def 標記不可存取報告隱藏(目標副本設定: dict[str, Any], 報告代碼: str, 錯誤: Exception) -> None:
+        目標處理狀態 = 副本處理狀態[目標副本設定["key"]]
+        已變更 = 標記排行榜報告隱藏(
+            目標處理狀態["排行榜"],
+            報告代碼,
+            原因=報告無法存取隱藏原因,
+            來源="fetch_fflogs",
+            詳細原因=str(錯誤),
+        )
+        if not 已變更:
+            return
+
+        寫入排行榜檔案(目標副本設定, 目標處理狀態["排行榜"])
+        print(f"{目標副本設定['name']} 已將無法存取的既有 report 標記為隱藏：{報告代碼}")
+
     def 延後副本掃描(
         副本設定: dict[str, Any],
         處理狀態: dict[str, Any],
@@ -3664,6 +3768,7 @@ def main() -> int:
                 有繁中服玩家, 繁中服玩家 = 報告是否包含繁中服玩家(session, 認證池, 報告代碼)
             except FFLogs報告存取錯誤 as 錯誤:
                 for 目標副本 in 待處理副本:
+                    標記不可存取報告隱藏(目標副本, 報告代碼, 錯誤)
                     標記報告略過(
                         副本處理狀態[目標副本["key"]],
                         報告代碼,
@@ -3720,6 +3825,7 @@ def main() -> int:
                     print(f"{目標副本['name']} {進度文字} FFLogs 尚未完整匯出，延後重抓：{報告代碼}")
                     continue
                 except FFLogs報告存取錯誤 as 錯誤:
+                    標記不可存取報告隱藏(目標副本, 報告代碼, 錯誤)
                     標記報告略過(
                         目標處理狀態,
                         報告代碼,

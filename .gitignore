@@ -42,6 +42,7 @@ Desktop.ini
 *.swo
 
 # Generated data
+public/data/all/
 public/data/rankings/
 public/data/users/
 

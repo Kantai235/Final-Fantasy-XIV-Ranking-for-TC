@@ -11,15 +11,10 @@ import { fileURLToPath } from "node:url";
 const defaultRootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const rootDir = path.resolve(process.env.FFXIV_TC_ROOT_DIR || defaultRootDir);
 const sourceRankingsDir = path.join(rootDir, "data", "rankings");
-const publicRankingsDir = path.join(rootDir, "public", "data", "rankings");
-const publicEncountersPath = path.join(rootDir, "public", "data", "encounters.json");
+const basePublicDataDir = path.join(rootDir, "public", "data");
+const publicRankingsDir = path.join(basePublicDataDir, "rankings");
+const publicEncountersPath = path.join(basePublicDataDir, "encounters.json");
 const configEncountersPath = path.join(rootDir, "config", "encounters.json");
-const publicDataDir = path.join(rootDir, "public", "data");
-const outputDir = path.join(rootDir, "public", "data", "users");
-const globalStatsPath = path.join(publicDataDir, "global_stats.json");
-const activityPath = path.join(publicDataDir, "activity.json");
-const teamRankingsPath = path.join(publicDataDir, "team_rankings.json");
-const serverComparePath = path.join(publicDataDir, "server_compare.json");
 // 目前箱型圖只比較現行零式系列；其他副本仍會進入全服統計與個人成績單。
 // minimumDamageActivePercent 用來排除明顯中途死亡或缺乏輸出時間的樣本，避免分位數被極端異常值拉歪。
 const savageDamageComparisonEncounterKeys = ["savage_m1s", "savage_m2s", "savage_m3s", "savage_m4s"];
@@ -140,6 +135,27 @@ function resolveGeneratedAtIso(latestRankingUpdatedAt) {
 function toNumber(value) {
   const numberValue = Number(value);
   return Number.isFinite(numberValue) ? numberValue : null;
+}
+
+function isHiddenReport(report) {
+  return Boolean(report?.report_hidden || report?.hidden_report);
+}
+
+function isHiddenEntry(entry) {
+  return Boolean(entry?.report_hidden || entry?.hidden_report);
+}
+
+function hiddenReportFields(report) {
+  if (!isHiddenReport(report)) {
+    return {};
+  }
+
+  return {
+    report_hidden: true,
+    hidden_reason: report.hidden_reason || null,
+    hidden_detected_at_iso: report.hidden_detected_at_iso || null,
+    hidden_source: report.hidden_source || null,
+  };
 }
 
 function calculateActivePercent(activeTimeMs, clearTimeMs, clearTimeSeconds) {
@@ -875,6 +891,7 @@ function makePublicEntry({ encounter, report, reportCode, fight, player, fightPl
     job_rank: null,
     overall_rank: null,
     duplicate_count: 1,
+    ...hiddenReportFields(report),
     teammates: fightPlayers
       .filter((teammate) => {
         const teammateName = teammate?.name || teammate?.character_name;
@@ -889,7 +906,7 @@ function makePublicEntry({ encounter, report, reportCode, fight, player, fightPl
   return attachVersionState(entry, encounter);
 }
 
-function collectEntriesFromReports({ ranking, encounter }) {
+function collectEntriesFromReports({ ranking, encounter, includeHiddenReports = false }) {
   // 完整 reports 是最可信來源：它能辨識同場玩家、重複上傳與 fight_hash。
   // exactKey 不含 report_code，讓同一場戰鬥被多名隊員上傳時只算一次，duplicate_count 保留來源數。
   const entriesByExactKey = new Map();
@@ -897,6 +914,9 @@ function collectEntriesFromReports({ ranking, encounter }) {
 
   for (const [fallbackReportCode, report] of Object.entries(ranking.reports || {})) {
     if (!report || typeof report !== "object") {
+      continue;
+    }
+    if (isHiddenReport(report) && !includeHiddenReports) {
       continue;
     }
 
@@ -959,10 +979,11 @@ function collectEntriesFromReports({ ranking, encounter }) {
   return entries;
 }
 
-function collectEntriesFromRankingEntries({ ranking, encounter }) {
+function collectEntriesFromRankingEntries({ ranking, encounter, includeHiddenReports = false }) {
   const rankIndex = buildJobRankIndex(ranking.ranking_entries || []);
 
   return (ranking.ranking_entries || [])
+    .filter((entry) => includeHiddenReports || !isHiddenEntry(entry))
     .map((entry) => {
       const ranks = rankIndex.get(characterJobKey(entry)) || {};
       const normalizedEntry = {
@@ -998,10 +1019,83 @@ function collectEntriesFromRankingEntries({ ranking, encounter }) {
         job_rank: ranks.job_rank ?? null,
         overall_rank: ranks.overall_rank ?? entry.rank ?? null,
         duplicate_count: toNumber(entry.duplicate_count) || 1,
+        ...(isHiddenEntry(entry)
+          ? {
+              report_hidden: true,
+              hidden_reason: entry.hidden_reason || null,
+              hidden_detected_at_iso: entry.hidden_detected_at_iso || null,
+              hidden_source: entry.hidden_source || null,
+            }
+          : {}),
       };
       return attachVersionState(normalizedEntry, encounter);
     })
     .filter((entry) => entry.character_name && entry.server && entry.job && entry.dps !== null);
+}
+
+function collectHiddenUserStubsFromReports(ranking) {
+  const stubsByCharacterServer = new Map();
+
+  for (const report of Object.values(ranking.reports || {})) {
+    if (!report || typeof report !== "object" || !isHiddenReport(report)) {
+      continue;
+    }
+
+    for (const fight of report.fights || []) {
+      if (!fight || typeof fight !== "object") {
+        continue;
+      }
+
+      for (const player of Array.isArray(fight.players) ? fight.players : []) {
+        const characterName = player?.name || player?.character_name;
+        const server = player?.server;
+        if (!characterName || !server) {
+          continue;
+        }
+
+        stubsByCharacterServer.set(characterServerKey(characterName, server), {
+          character_name: characterName,
+          server,
+        });
+      }
+    }
+  }
+
+  return Array.from(stubsByCharacterServer.values());
+}
+
+function collectHiddenUserStubsFromRankingEntries(ranking) {
+  const stubsByCharacterServer = new Map();
+
+  for (const entry of ranking.ranking_entries || []) {
+    if (!isHiddenEntry(entry)) {
+      continue;
+    }
+
+    const characterName = entry?.character_name;
+    const server = entry?.server;
+    if (!characterName || !server) {
+      continue;
+    }
+
+    stubsByCharacterServer.set(characterServerKey(characterName, server), {
+      character_name: characterName,
+      server,
+    });
+  }
+
+  return Array.from(stubsByCharacterServer.values());
+}
+
+function collectHiddenUserStubs(ranking) {
+  const stubsByCharacterServer = new Map();
+  for (const stub of [
+    ...collectHiddenUserStubsFromReports(ranking),
+    ...collectHiddenUserStubsFromRankingEntries(ranking),
+  ]) {
+    stubsByCharacterServer.set(characterServerKey(stub.character_name, stub.server), stub);
+  }
+  return Array.from(stubsByCharacterServer.values());
 }
 
 function compareTeamPlayers(left, right) {
@@ -1087,6 +1181,7 @@ function buildTeamRecord({ encounter, report, reportCode, fight }) {
     report_url: report.url || (reportCode ? `https://www.fflogs.com/reports/${reportCode}` : null),
     fight_id: fight.fight_id ?? null,
     duplicate_count: 1,
+    ...hiddenReportFields(report),
     total_rdps: roundDamageStat(totalRdps),
     total_adps: roundDamageStat(totalAdps),
     total_dps: roundDamageStat(totalDps),
@@ -1095,13 +1190,16 @@ function buildTeamRecord({ encounter, report, reportCode, fight }) {
   return attachVersionState(record, encounter);
 }
 
-function collectTeamRecordsFromReports({ ranking, encounter }) {
+function collectTeamRecordsFromReports({ ranking, encounter, includeHiddenReports = false }) {
   // 隊伍榜以 fight 為單位，和個人榜不同：同一場戰鬥若被不同隊員上傳，只保留一筆並累計 duplicate_count。
   // fight_hash 是最佳識別來源；缺少時才退回 report/fight/player 簽章，避免誤合併不同隊伍的相近時間紀錄。
   const recordsByFight = new Map();
 
   for (const [fallbackReportCode, report] of Object.entries(ranking.reports || {})) {
     if (!report || typeof report !== "object") {
+      continue;
+    }
+    if (isHiddenReport(report) && !includeHiddenReports) {
       continue;
     }
 
@@ -1256,6 +1354,18 @@ function addEntry(usersByName, entry) {
     user.entriesByEncounter.set(entry.encounter_key, encounterEntries);
   }
   encounterEntries.push(entry);
+}
+
+function addHiddenUserStub(usersByName, stub) {
+  const characterName = stub?.character_name;
+  const server = stub?.server;
+  if (!characterName || !server) {
+    return;
+  }
+
+  // 一般公開成績單只保留可開啟的入口與伺服器辨識，不帶入非公開 entry 的成績或隊友資料。
+  const user = getOrCreateUser(usersByName, characterName);
+  user.servers.add(server);
 }
 
 function buildTeammateRows(user) {
@@ -1844,12 +1954,23 @@ function normalizeEncounterShare(encounterStatsItem, totalCharacterCount) {
   return normalized;
 }
 
-async function main() {
-  assertInside(path.join(rootDir, "public", "data"), outputDir);
-  assertInside(publicDataDir, globalStatsPath);
-  assertInside(publicDataDir, activityPath);
-  assertInside(publicDataDir, teamRankingsPath);
-  assertInside(publicDataDir, serverComparePath);
+async function buildDataset({
+  outputDataDir,
+  includeHiddenReports = false,
+  label = "公開",
+}) {
+  const outputDir = path.join(outputDataDir, "users");
+  const globalStatsPath = path.join(outputDataDir, "global_stats.json");
+  const activityPath = path.join(outputDataDir, "activity.json");
+  const teamRankingsPath = path.join(outputDataDir, "team_rankings.json");
+  const serverComparePath = path.join(outputDataDir, "server_compare.json");
+
+  assertInside(basePublicDataDir, outputDataDir);
+  assertInside(basePublicDataDir, outputDir);
+  assertInside(basePublicDataDir, globalStatsPath);
+  assertInside(basePublicDataDir, activityPath);
+  assertInside(basePublicDataDir, teamRankingsPath);
+  assertInside(basePublicDataDir, serverComparePath);
 
   const encounters = await loadEncounters();
   const usersByName = new Map();
@@ -1870,10 +1991,12 @@ async function main() {
     }
 
     const entries = ranking.reports
-      ? collectEntriesFromReports({ ranking, encounter })
-      : collectEntriesFromRankingEntries({ ranking, encounter });
+      ? collectEntriesFromReports({ ranking, encounter, includeHiddenReports })
+      : collectEntriesFromRankingEntries({ ranking, encounter, includeHiddenReports });
     assignValidVersionJobRanks(entries);
-    const teamRecords = ranking.reports ? collectTeamRecordsFromReports({ ranking, encounter }) : [];
+    const teamRecords = ranking.reports
+      ? collectTeamRecordsFromReports({ ranking, encounter, includeHiddenReports })
+      : [];
 
     encounterStats.push(collectEncounterStats(encounter, entries, ranking.updated_at_iso));
     allEntries.push(...entries);
@@ -1884,6 +2007,12 @@ async function main() {
     for (const entry of entries) {
       overallCharacterKeys.add(characterServerKey(entry.character_name, entry.server));
       addEntry(usersByName, entry);
+    }
+
+    if (!includeHiddenReports) {
+      for (const stub of collectHiddenUserStubs(ranking)) {
+        addHiddenUserStub(usersByName, stub);
+      }
     }
   }
 
@@ -1960,11 +2089,26 @@ async function main() {
   await writeJson(teamRankingsPath, buildTeamRankingsPayload(teamRecordsByEncounter, generatedAtIso, latestRankingUpdatedAt));
   await writeJson(serverComparePath, buildServerComparePayload(allEntries, normalizedEncounterStats, generatedAtIso, latestRankingUpdatedAt));
 
-  console.log(`Built ${indexUsers.length} user data files in ${path.relative(rootDir, outputDir)}.`);
-  console.log(`Built global stats in ${path.relative(rootDir, globalStatsPath)}.`);
-  console.log(`Built activity feed in ${path.relative(rootDir, activityPath)}.`);
-  console.log(`Built team rankings in ${path.relative(rootDir, teamRankingsPath)}.`);
-  console.log(`Built server compare data in ${path.relative(rootDir, serverComparePath)}.`);
+  console.log(`Built ${label} ${indexUsers.length} user data files in ${path.relative(rootDir, outputDir)}.`);
+  console.log(`Built ${label} global stats in ${path.relative(rootDir, globalStatsPath)}.`);
+  console.log(`Built ${label} activity feed in ${path.relative(rootDir, activityPath)}.`);
+  console.log(`Built ${label} team rankings in ${path.relative(rootDir, teamRankingsPath)}.`);
+  console.log(`Built ${label} server compare data in ${path.relative(rootDir, serverComparePath)}.`);
+}
+
+async function main() {
+  await buildDataset({
+    outputDataDir: basePublicDataDir,
+    includeHiddenReports: false,
+    label: "預設公開",
+  });
+
+  // public/data/all 是完整資料鏡像，讓額外檢視流程能和一般公開資料使用相同 JSON 結構。
+  await buildDataset({
+    outputDataDir: path.join(basePublicDataDir, "all"),
+    includeHiddenReports: true,
+    label: "完整鏡像",
+  });
 }
 
 main().catch((error) => {

@@ -87,6 +87,7 @@ Final Fantasy XIV 繁中服排行榜是一個以 FFLogs 公開資料為來源的
 - `data/rankings/*.json` 主檔通常只保留 `ranking_entries` 與 `report_shards`；完整 report 會在同名的 `*.reports/*.json` 分片中。
 - `ranking_entries` 是去重後的扁平索引；完整追溯請讀 `reports -> fights -> players`。
 - `gcd_coverage` 會逐批補在 `reports -> fights -> players`。key 不存在代表尚未嘗試；`gcd_coverage: null` 代表已嘗試但 report 已轉為 Private、刪除或無權限，避免 workflow 反覆重抓同一筆不可用資料。
+- `report_hidden: true` 的 report 預設不進入一般 `public/data/` 產物；`public/data/all/` 會同步輸出完整資料鏡像，供額外檢視流程使用。
 - 新資料不再保存 `fflogs_raw`、`master_data` 與 `matched_players`，避免可重查的 FFLogs raw table 讓 repo 容量快速膨脹；若需要重新推導 raw 層欄位，應以 report code 重新查 FFLogs API。
 - 同一玩家同一副本同一職業的最佳成績排序規則為 rDPS 優先，平手看通關時間，再看 aDPS。
 - `build_user_data.mjs` 預設以最新 `rankings_updated_at_iso` 作為 `generated_at_iso`，避免同一批資料重建時讓 `global_stats.json` 產生無意義 diff；需要指定產物時間時可設定 `FFXIV_TC_GENERATED_AT_ISO`。
@@ -217,7 +218,7 @@ npm run backfill:gcd
 
 `fetch_fflogs.py` 抓到新 report 時，workflow 會在每場 fight 的玩家成績整理完成後，順手查同一場 FFLogs `Casts` graph，並用 `scripts/gcd_coverage_core.py` 的本地 xivanalysis-like 演算法計算 GCD 覆蓋率；只保存 `gcd_coverage` 與 `gcd_coverage_status` 衍生結果，不保存 Casts raw events。這讓最新增量掃描與歷史巡檢補回來的新公開 logs 都能當場補 GCD。
 
-`backfill_gcd_coverage.py` 則保留為修補既有歷史資料的手動工具。它會依通關時間由新到舊挑選缺少 `gcd_coverage` key，或仍停在舊版 `calculation_version` 的玩家，預設每輪 2000 筆。執行時會先輸出待補筆數、需重算筆數、已為 null 的筆數與本輪選取筆數，更新過程也會逐筆顯示 `[目前/本輪總數]` 進度。同一個 report/fight 會優先只查一次整場 FFLogs `Casts` graph，再於本地依玩家 `sourceID` 切分，避免每位玩家各打一個 FFLogs request。若 FFLogs report 已無法存取，該玩家會寫入 `gcd_coverage: null` 與 `gcd_coverage_status.reason = "private_or_deleted"`；暫時性錯誤會保留缺 key 或舊版狀態，留待下次重試。
+`backfill_gcd_coverage.py` 則保留為修補既有歷史資料的手動工具。它會依通關時間由新到舊挑選缺少 `gcd_coverage` key，或仍停在舊版 `calculation_version` 的玩家，預設每輪 2000 筆。執行時會先輸出待補筆數、需重算筆數、已為 null 的筆數與本輪選取筆數，更新過程也會逐筆顯示 `[目前/本輪總數]` 進度。同一個 report/fight 會優先只查一次整場 FFLogs `Casts` graph，再於本地依玩家 `sourceID` 切分，避免每位玩家各打一個 FFLogs request。若 FFLogs report 已無法存取，該玩家會寫入 `gcd_coverage: null` 與 `gcd_coverage_status.reason = "private_or_deleted"`，並同步標記來源 report，讓一般公開資料排除整份 report；暫時性錯誤會保留缺 key 或舊版狀態，留待下次重試。
 
 本地計算會參照 xivanalysis `Always be casting` 的核心規則：以 GCD cast/recast 取最大覆蓋時間、扣除 downtime，並用 FFLogs 約 45ms 批次的 timestamp 分桶推估實際 recast。對於忍者 mudra/ninjutsu、毒蛇劍士獨立 `gcdRecast`，以及毒蛇劍士、武士、白魔法師等加速狀態，腳本會用小型規則表補上 `Action.csv` 無法表達的例外。xivanalysis 頁面本身容易被站端限流，因此 workflow 預設不再讀取該網站頁面。
 
@@ -369,6 +370,16 @@ npm run build:user-data
 處理完成後，建議清空手動補抓欄位，避免下次排程重複處理。
 
 手動補抓既有 report 時，資料管線會以 `data/rankings/{key}.reports/` 的 report/fight/player 明細重新建立 `ranking_entries`。因此重抓可以修正舊扁平索引中的錯誤數值，不需要手動編輯公開 JSON。
+
+## 隱藏 Report 與資料鏡像
+
+資料管線可在 report 上標記 `report_hidden: true`、`hidden_reason`、`hidden_detected_at_iso` 與 `hidden_source`。一般公開資料會排除這類 report，讓前端不需要在 Vue 元件內重做資料狀態判斷。
+
+`python scripts/fetch_fflogs.py --rebuild-public` 會輸出兩套排行榜 JSON：一般 `public/data/rankings/*.json` 與完整 `public/data/all/rankings/*.json`。`npm run build:user-data` 也會同步輸出一般 `public/data/` 聚合產物與 `public/data/all/` 完整鏡像。
+
+若玩家的公開成績沒有可列出的 entry，一般 `public/data/users/index.json` 仍會保留空白成績單入口與伺服器資訊，讓 `/user/{玩家}` 頁面可以開啟；預設成績單不會輸出副本成績、分數、隊友或紀錄時間。
+
+額外檢視流程若需要完整資料，應只把 `/data/...` 改寫到 `/data/all/...`；若部署端尚未產生鏡像，應退回一般公開資料，避免網站載入失敗。
 
 ## 歷史補查
 

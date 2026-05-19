@@ -571,6 +571,101 @@ class FetchFFLogsBatchTest(unittest.TestCase):
         self.assertEqual(條目[0]["gcd_coverage"]["percent"], 98.76)
         self.assertEqual(條目[0]["gcd_coverage_status"]["state"], "ok")
 
+    def test_hidden_reports_are_excluded_from_default_public_rankings(self) -> None:
+        排行榜 = {
+            "encounter": {"key": "savage_m1s", "name": "零式 M1S / 黑貓"},
+            "reports": {
+                "visible": {
+                    "title": "公開報告",
+                    "url": "https://www.fflogs.com/reports/visible",
+                    "fights": [
+                        {
+                            "fight_id": 1,
+                            "clear_time_seconds": 600,
+                            "damage_time_ms": 600000,
+                            "recorded_at_iso": "2026-01-01T00:00:00+00:00",
+                            "players": [
+                                {
+                                    "name": "公開角色",
+                                    "server": "巴哈姆特",
+                                    "job": "Paladin",
+                                    "dps": 100,
+                                    "rdps": 100,
+                                    "adps": 100,
+                                }
+                            ],
+                        }
+                    ],
+                },
+                "hidden": {
+                    "report_hidden": True,
+                    "hidden_reason": fflogs.報告無法存取隱藏原因,
+                    "hidden_detected_at_iso": "2026-05-19T00:00:00+00:00",
+                    "hidden_source": "test",
+                    "title": "隱藏報告",
+                    "url": "https://www.fflogs.com/reports/hidden",
+                    "fights": [
+                        {
+                            "fight_id": 2,
+                            "clear_time_seconds": 500,
+                            "damage_time_ms": 500000,
+                            "recorded_at_iso": "2026-01-02T00:00:00+00:00",
+                            "players": [
+                                {
+                                    "name": "隱藏角色",
+                                    "server": "巴哈姆特",
+                                    "job": "Paladin",
+                                    "dps": 999,
+                                    "rdps": 999,
+                                    "adps": 999,
+                                }
+                            ],
+                        }
+                    ],
+                },
+            },
+        }
+
+        預設公開 = fflogs.建立公開排行榜(排行榜)
+        含隱藏公開 = fflogs.建立公開排行榜(排行榜, 包含隱藏報告=True)
+
+        self.assertEqual([條目["character_name"] for 條目 in 預設公開["ranking_entries"]], ["公開角色"])
+        self.assertFalse(預設公開["hidden_reports_included"])
+        self.assertEqual(
+            sorted(條目["character_name"] for 條目 in 含隱藏公開["ranking_entries"]),
+            ["公開角色", "隱藏角色"],
+        )
+        隱藏條目 = next(條目 for 條目 in 含隱藏公開["ranking_entries"] if 條目["character_name"] == "隱藏角色")
+        self.assertTrue(隱藏條目["report_hidden"])
+        self.assertEqual(隱藏條目["hidden_reason"], fflogs.報告無法存取隱藏原因)
+
+    def test_mark_ranking_report_hidden_preserves_report_context(self) -> None:
+        排行榜 = {
+            "reports": {
+                "abc123": {
+                    "report_code": "abc123",
+                    "title": "既有報告",
+                    "fights": [],
+                }
+            }
+        }
+
+        with patch.object(fflogs, "現在毫秒", return_value=1779123456789):
+            已變更 = fflogs.標記排行榜報告隱藏(
+                排行榜,
+                "abc123",
+                來源="test",
+                詳細原因="permission to view this report",
+            )
+
+        self.assertTrue(已變更)
+        報告 = 排行榜["reports"]["abc123"]
+        self.assertTrue(報告["report_hidden"])
+        self.assertEqual(報告["hidden_reason"], fflogs.報告無法存取隱藏原因)
+        self.assertEqual(報告["hidden_source"], "test")
+        self.assertEqual(報告["hidden_detected_at"], 1779123456789)
+        self.assertIn("permission to view this report", 報告["hidden_detail"])
+
 
 if __name__ == "__main__":
     unittest.main()

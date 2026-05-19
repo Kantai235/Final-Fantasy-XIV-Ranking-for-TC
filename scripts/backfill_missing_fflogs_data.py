@@ -25,6 +25,7 @@ load_ranking_file = getattr(fflogs, "\u8b80\u53d6\u6392\u884c\u699c\u6a94\u6848"
 build_report_score = getattr(fflogs, "\u5efa\u7acb\u5831\u544a\u6210\u7e3e")
 apply_scores_to_ranking = getattr(fflogs, "\u5957\u7528\u6210\u7e3e\u5230\u6392\u884c\u699c")
 write_ranking_file = getattr(fflogs, "\u5beb\u5165\u6392\u884c\u699c\u6a94\u6848")
+mark_ranking_report_hidden = getattr(fflogs, "\u6a19\u8a18\u6392\u884c\u699c\u5831\u544a\u96b1\u85cf")
 read_credentials = getattr(fflogs, "\u8b80\u53d6\u8a8d\u8b49\u8a2d\u5b9a")
 auth_pool_class = getattr(fflogs, "FFLogs\u8a8d\u8b49\u6c60")
 report_has_tc_players = getattr(fflogs, "\u5831\u544a\u662f\u5426\u5305\u542b\u7e41\u4e2d\u670d\u73a9\u5bb6")
@@ -34,6 +35,7 @@ write_json = getattr(fflogs, "\u5beb\u5165_json")
 state_path = getattr(fflogs, "\u72c0\u614b\u6a94\u6848\u8def\u5f91")
 mark_report_status = getattr(fflogs, "\u6a19\u8a18\u5831\u544a\u8655\u7406\u72c0\u614b")
 report_access_error_class = getattr(fflogs, "FFLogs\u5831\u544a\u5b58\u53d6\u932f\u8aa4")
+hidden_reason_inaccessible = getattr(fflogs, "\u5831\u544a\u7121\u6cd5\u5b58\u53d6\u96b1\u85cf\u539f\u56e0")
 
 
 MIN_REASONABLE_EPOCH_MS = 946684800000
@@ -289,6 +291,17 @@ def mark_candidate_inaccessible(
         encounter = encounters.get(key)
         if not encounter:
             continue
+        ranking = load_ranking_file(encounter)
+        if mark_ranking_report_hidden(
+            ranking,
+            candidate.report_code,
+            原因=hidden_reason_inaccessible,
+            來源="backfill_missing_fflogs_data",
+            詳細原因=str(error),
+        ):
+            # 補欄位腳本常是第一個碰到 Private/刪除 report 的 workflow。
+            # 回寫來源 ranking 的隱藏旗標後，公開排行榜與所有 Node.js 聚合都會同步排除該 report。
+            write_ranking_file(encounter, ranking)
         mark_report_status(
             state,
             encounter,

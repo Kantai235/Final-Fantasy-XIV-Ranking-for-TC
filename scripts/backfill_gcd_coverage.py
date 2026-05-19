@@ -23,11 +23,14 @@ read_json = getattr(fflogs, "\u8b80\u53d6_json")
 ranking_path = getattr(fflogs, "\u6392\u884c\u699c\u6a94\u6848\u8def\u5f91")
 load_ranking_file = getattr(fflogs, "\u8b80\u53d6\u6392\u884c\u699c\u6a94\u6848")
 write_ranking_file = getattr(fflogs, "\u5beb\u5165\u6392\u884c\u699c\u6a94\u6848")
+report_is_hidden = getattr(fflogs, "\u5831\u544a\u5df2\u6a19\u8a18\u96b1\u85cf")
+mark_ranking_report_hidden = getattr(fflogs, "\u6a19\u8a18\u6392\u884c\u699c\u5831\u544a\u96b1\u85cf")
 read_credentials = getattr(fflogs, "\u8b80\u53d6\u8a8d\u8b49\u8a2d\u5b9a")
 auth_pool_class = getattr(fflogs, "FFLogs\u8a8d\u8b49\u6c60")
 execute_graphql = getattr(fflogs, "\u57f7\u884c_graphql")
 report_access_error_class = getattr(fflogs, "FFLogs\u5831\u544a\u5b58\u53d6\u932f\u8aa4")
 milliseconds_to_iso = getattr(fflogs, "\u6beb\u79d2\u8f49_iso")
+hidden_reason_inaccessible = getattr(fflogs, "\u5831\u544a\u7121\u6cd5\u5b58\u53d6\u96b1\u85cf\u539f\u56e0")
 
 
 @dataclass
@@ -144,6 +147,9 @@ def scan_candidates(
 
         for fallback_report_code, report in reports.items():
             if not isinstance(report, dict):
+                continue
+            if report_is_hidden(report):
+                # 已確認無法存取的 report 不再補 GCD，避免 workflow 反覆打同一份 Private/刪除資料。
                 continue
 
             report_code = str(report.get("report_code") or fallback_report_code)
@@ -329,6 +335,13 @@ def main() -> int:
         print(f"[{index}/{len(selected)}] 更新 GCD 覆蓋率：{candidate.label}")
         if candidate.report_code in inaccessible_reports:
             mark_candidate_unavailable(candidate, inaccessible_reports[candidate.report_code], checked_at_iso)
+            mark_ranking_report_hidden(
+                candidate.ranking,
+                candidate.report_code,
+                原因=hidden_reason_inaccessible,
+                來源="backfill_gcd_coverage",
+                詳細原因="同一 report 稍早已確認無法存取",
+            )
             changed_encounter_keys.add(candidate.encounter_key)
             marked_null += 1
             print(f"[{index}/{len(selected)}] → report 已標記無法存取，寫入 null。")
@@ -363,6 +376,13 @@ def main() -> int:
             reason = "private_or_deleted"
             inaccessible_reports[candidate.report_code] = reason
             mark_candidate_unavailable(candidate, reason, checked_at_iso)
+            mark_ranking_report_hidden(
+                candidate.ranking,
+                candidate.report_code,
+                原因=hidden_reason_inaccessible,
+                來源="backfill_gcd_coverage",
+                詳細原因="FFLogs Casts graph 無法存取",
+            )
             changed_encounter_keys.add(candidate.encounter_key)
             marked_null += 1
             print(f"[{index}/{len(selected)}] → report 已轉為 Private、刪除或無權限，寫入 null。")

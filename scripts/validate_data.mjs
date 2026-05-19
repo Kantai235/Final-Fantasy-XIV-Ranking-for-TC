@@ -5,8 +5,10 @@ import { fileURLToPath } from "node:url";
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const publicDataDir = path.join(rootDir, "public", "data");
+const publicAllDataDir = path.join(publicDataDir, "all");
 const sourceRankingsDir = path.join(rootDir, "data", "rankings");
 const publicRankingsDir = path.join(publicDataDir, "rankings");
+const publicAllRankingsDir = path.join(publicAllDataDir, "rankings");
 const rawFieldNames = new Set(["fflogs_raw", "master_data", "matched_players"]);
 
 const issues = [];
@@ -175,6 +177,22 @@ async function validateRankings(publicEncounters) {
     }
     if (publicRanking?.reports || publicRanking?.report_shards) {
       reportIssue(`${key} 公開排行榜不應包含完整 reports 或 report_shards`);
+    }
+
+    const allRankingPath = path.join(publicAllRankingsDir, `${key}.json`);
+    if (!existsSync(allRankingPath)) {
+      reportIssue(`${key} 缺少完整排行榜鏡像：public/data/all/rankings/${key}.json`);
+    } else {
+      const allRanking = await readJson(allRankingPath, `${key} 完整排行榜鏡像`);
+      if (!hasRankingData(allRanking)) {
+        reportIssue(`${key} 完整排行榜鏡像缺少 ranking_entries`);
+      }
+      if (allRanking?.hidden_reports_included !== true) {
+        reportIssue(`${key} 完整排行榜鏡像必須標記 hidden_reports_included=true`);
+      }
+      if (allRanking?.reports || allRanking?.report_shards) {
+        reportIssue(`${key} 完整排行榜鏡像不應包含完整 reports 或 report_shards`);
+      }
     }
 
     const sourceRankingPath = path.join(sourceRankingsDir, `${key}.json`);
@@ -370,6 +388,26 @@ async function validateUsers() {
   }
 }
 
+async function validateAllDataMirror() {
+  const requiredMirrorFiles = [
+    "encounters.json",
+    "global_stats.json",
+    "activity.json",
+    "team_rankings.json",
+    "server_compare.json",
+    "users/index.json",
+  ];
+
+  for (const relativePath of requiredMirrorFiles) {
+    const mirrorPath = path.join(publicAllDataDir, relativePath);
+    if (!existsSync(mirrorPath)) {
+      reportIssue(`缺少完整資料鏡像：public/data/all/${normalizePath(relativePath)}`);
+      continue;
+    }
+    await readJson(mirrorPath, `public/data/all/${normalizePath(relativePath)}`);
+  }
+}
+
 async function main() {
   const publicEncounters = await validateEncounters();
   await validateRankings(publicEncounters);
@@ -378,6 +416,7 @@ async function main() {
   await validateTeamRankings();
   await validateServerCompare();
   await validateUsers();
+  await validateAllDataMirror();
 
   if (issues.length > 0) {
     console.error(`資料驗證失敗：${issues.length} 個問題`);
