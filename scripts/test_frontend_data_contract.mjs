@@ -200,8 +200,8 @@ async function validateFrontendFetchBoundary() {
 async function validateSiteFeatureFlags() {
   const source = await readText(path.join(srcDir, "utils", "siteFeatures.js"));
   assert(
-    /export\s+const\s+顯示Gcd覆蓋率\s*=\s*false\s*;/.test(source),
-    "目前營運設定應透過 src/utils/siteFeatures.js 關閉 GCD 覆蓋率顯示",
+    /export\s+const\s+顯示Gcd覆蓋率\s*=\s*true\s*;/.test(source),
+    "目前營運設定應透過 src/utils/siteFeatures.js 開啟 GCD 覆蓋率顯示",
   );
   assert(
     source.includes("這些旗標只影響 UI 呈現"),
