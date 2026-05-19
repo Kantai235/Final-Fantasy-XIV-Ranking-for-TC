@@ -141,6 +141,7 @@ export default {
             <span>副本數 <strong>{{ 比較角色左.統計.副本數 }}</strong></span>
             <span>公開成績 <strong>{{ 比較角色左.統計.公開成績數 }}</strong></span>
             <span>最佳 rDPS <strong>{{ 格式化傷害數值(比較角色左.統計.最佳成績?.rdps) }}</strong></span>
+            <span v-if="顯示Gcd覆蓋率">最佳 GCD <strong>{{ 格式化Gcd覆蓋率(比較角色左.統計.最高Gcd成績?.gcd_coverage) }}</strong></span>
             <span>
               最後紀錄
               <strong class="比較最後紀錄時間">
@@ -163,6 +164,7 @@ export default {
             <span>副本數 <strong>{{ 比較角色右.統計.副本數 }}</strong></span>
             <span>公開成績 <strong>{{ 比較角色右.統計.公開成績數 }}</strong></span>
             <span>最佳 rDPS <strong>{{ 格式化傷害數值(比較角色右.統計.最佳成績?.rdps) }}</strong></span>
+            <span v-if="顯示Gcd覆蓋率">最佳 GCD <strong>{{ 格式化Gcd覆蓋率(比較角色右.統計.最高Gcd成績?.gcd_coverage) }}</strong></span>
             <span>
               最後紀錄
               <strong class="比較最後紀錄時間">
@@ -197,7 +199,7 @@ export default {
                 <th scope="col">副本</th>
                 <th scope="col">{{ 比較角色左.character_name }}</th>
                 <th scope="col">{{ 比較角色右.character_name }}</th>
-                <th scope="col" class="數字">rDPS 差</th>
+                <th scope="col" class="數字">差異</th>
               </tr>
             </thead>
             <tbody>
@@ -210,45 +212,68 @@ export default {
                 </td>
                 <td>
                   <div v-if="列.左" class="比較成績格" :class="{ 過版紀錄列: 列.左.best_entry.is_obsolete_record }">
-                    <span class="職業標籤" :class="職業色彩類別(職業代碼色彩(列.左.best_entry.job))">
-                      <img
-                        v-if="職業Icon路徑(列.左.best_entry.job)"
-                        class="職業圖示 職業標籤圖示"
-                        :src="職業Icon路徑(列.左.best_entry.job)"
-                        alt=""
-                        loading="lazy"
-                        @error="隱藏載入失敗圖片"
-                      />
-                      <span>{{ 顯示職業名稱(列.左.best_entry.job) }}</span>
+                    <span class="比較成績主列">
+                      <span class="職業標籤" :class="職業色彩類別(職業代碼色彩(列.左.best_entry.job))">
+                        <img
+                          v-if="職業Icon路徑(列.左.best_entry.job)"
+                          class="職業圖示 職業標籤圖示"
+                          :src="職業Icon路徑(列.左.best_entry.job)"
+                          alt=""
+                          loading="lazy"
+                          @error="隱藏載入失敗圖片"
+                        />
+                        <span>{{ 顯示職業名稱(列.左.best_entry.job) }}</span>
+                      </span>
+                      <span v-if="列.左.best_entry.is_obsolete_record" class="版本紀錄標籤">過版紀錄</span>
                     </span>
                     <strong>{{ 格式化傷害數值(列.左.best_entry.rdps) }}</strong>
-                    <span v-if="列.左.best_entry.is_obsolete_record" class="版本紀錄標籤">過版紀錄</span>
-                    <small>Active {{ 格式化Active(列.左.best_entry.active_percent) }}・{{ 格式化排名(列.左.best_entry.job_rank ?? 列.左.best_entry.rank) }}</small>
+                    <span class="比較成績輔助列">
+                      <small>Rank {{ 格式化排名(列.左.best_entry.job_rank ?? 列.左.best_entry.rank) }}</small>
+                      <small>Active {{ 格式化Active(列.左.best_entry.active_percent) }}</small>
+                      <small v-if="顯示Gcd覆蓋率">GCD {{ 格式化Gcd覆蓋率(列.左.best_entry.gcd_coverage) }}</small>
+                    </span>
                   </div>
                   <span v-else>-</span>
                 </td>
                 <td>
                   <div v-if="列.右" class="比較成績格" :class="{ 過版紀錄列: 列.右.best_entry.is_obsolete_record }">
-                    <span class="職業標籤" :class="職業色彩類別(職業代碼色彩(列.右.best_entry.job))">
-                      <img
-                        v-if="職業Icon路徑(列.右.best_entry.job)"
-                        class="職業圖示 職業標籤圖示"
-                        :src="職業Icon路徑(列.右.best_entry.job)"
-                        alt=""
-                        loading="lazy"
-                        @error="隱藏載入失敗圖片"
-                      />
-                      <span>{{ 顯示職業名稱(列.右.best_entry.job) }}</span>
+                    <span class="比較成績主列">
+                      <span class="職業標籤" :class="職業色彩類別(職業代碼色彩(列.右.best_entry.job))">
+                        <img
+                          v-if="職業Icon路徑(列.右.best_entry.job)"
+                          class="職業圖示 職業標籤圖示"
+                          :src="職業Icon路徑(列.右.best_entry.job)"
+                          alt=""
+                          loading="lazy"
+                          @error="隱藏載入失敗圖片"
+                        />
+                        <span>{{ 顯示職業名稱(列.右.best_entry.job) }}</span>
+                      </span>
+                      <span v-if="列.右.best_entry.is_obsolete_record" class="版本紀錄標籤">過版紀錄</span>
                     </span>
                     <strong>{{ 格式化傷害數值(列.右.best_entry.rdps) }}</strong>
-                    <span v-if="列.右.best_entry.is_obsolete_record" class="版本紀錄標籤">過版紀錄</span>
-                    <small>Active {{ 格式化Active(列.右.best_entry.active_percent) }}・{{ 格式化排名(列.右.best_entry.job_rank ?? 列.右.best_entry.rank) }}</small>
+                    <span class="比較成績輔助列">
+                      <small>Rank {{ 格式化排名(列.右.best_entry.job_rank ?? 列.右.best_entry.rank) }}</small>
+                      <small>Active {{ 格式化Active(列.右.best_entry.active_percent) }}</small>
+                      <small v-if="顯示Gcd覆蓋率">GCD {{ 格式化Gcd覆蓋率(列.右.best_entry.gcd_coverage) }}</small>
+                    </span>
                   </div>
                   <span v-else>-</span>
                 </td>
                 <td class="數字">
-                  <span class="比較差異" :class="{ 左領先: 列.差異 > 0, 右領先: 列.差異 < 0 }">
-                    {{ 列.差異 === null ? "-" : 格式化帶號整數(列.差異) }}
+                  <span class="比較差異組">
+                    <span class="比較差異項">
+                      <small>rDPS</small>
+                      <strong class="比較差異" :class="{ 左領先: 列.差異 > 0, 右領先: 列.差異 < 0 }">
+                        {{ 列.差異 === null ? "-" : 格式化帶號整數(列.差異) }}
+                      </strong>
+                    </span>
+                    <span v-if="顯示Gcd覆蓋率" class="比較差異項">
+                      <small>GCD</small>
+                      <strong class="比較差異" :class="{ 左領先: 列.GCD差異 > 0, 右領先: 列.GCD差異 < 0 }">
+                        {{ 格式化帶號百分比(列.GCD差異) }}
+                      </strong>
+                    </span>
                   </span>
                 </td>
               </tr>

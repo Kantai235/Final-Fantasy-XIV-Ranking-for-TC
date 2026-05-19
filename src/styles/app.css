@@ -2433,12 +2433,12 @@ button:disabled {
 }
 
 .比較表格 {
-  min-width: 940px;
+  min-width: 980px;
   table-layout: fixed;
 }
 
 .比較表格副本欄 {
-  width: 32%;
+  width: 30%;
 }
 
 .比較表格玩家欄 {
@@ -2446,7 +2446,7 @@ button:disabled {
 }
 
 .比較表格差異欄 {
-  width: 16%;
+  width: 18%;
 }
 
 .統計表格 th,
@@ -2478,9 +2478,56 @@ button:disabled {
   justify-items: start;
 }
 
+.比較成績主列 {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
 .比較成績格 strong {
   font-size: 1.02rem;
   font-variant-numeric: tabular-nums;
+}
+
+.比較成績輔助列 {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+}
+
+.比較成績輔助列 small {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--邊框柔和色);
+  border-radius: 999px;
+  padding: 2px 7px;
+  background: var(--表面背景柔和);
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.比較差異組 {
+  min-width: 0;
+  display: grid;
+  justify-items: end;
+  gap: 7px;
+}
+
+.比較差異項 {
+  min-width: 0;
+  display: grid;
+  justify-items: end;
+  gap: 2px;
+}
+
+.比較差異項 small {
+  color: var(--靜音文字);
+  font-size: 0.72rem;
+  font-weight: 780;
 }
 
 .比較差異 {
@@ -3016,7 +3063,7 @@ button:disabled {
 
 .個人成績概要 {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 1px;
   overflow: visible;
   border: 1px solid var(--邊框色);
@@ -3566,10 +3613,10 @@ th .說明提示內容 {
 }
 
 .個人成績列 {
-  --個人成績欄位: minmax(170px, 1.45fr) minmax(104px, 0.72fr) minmax(76px, 0.48fr)
-    minmax(92px, 0.58fr) minmax(82px, 0.52fr) minmax(82px, 0.52fr) minmax(82px, 0.52fr)
-    minmax(82px, 0.52fr) minmax(82px, 0.52fr);
-  --個人成績欄距: 12px;
+  --個人成績欄位: minmax(160px, 1.32fr) minmax(96px, 0.72fr) minmax(74px, 0.48fr)
+    minmax(86px, 0.56fr) minmax(68px, 0.42fr) minmax(68px, 0.42fr) minmax(76px, 0.48fr)
+    minmax(76px, 0.48fr) minmax(76px, 0.48fr) minmax(76px, 0.48fr);
+  --個人成績欄距: 10px;
   overflow: visible;
   border: 1px solid var(--邊框色);
   border-radius: 8px;
@@ -4196,7 +4243,40 @@ td a:hover {
   }
 
   .個人成績概要 {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .個人成績概要 .概要項 {
+    min-height: 54px;
+    gap: 2px;
+    padding: 9px 10px;
+  }
+
+  .個人成績概要 .概要項計數,
+  .個人成績概要 .概要項重點 {
+    grid-column: span 2;
+  }
+
+  .個人成績概要 .概要項時間 {
+    min-height: 0;
+    grid-column: 1 / -1;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 8px;
+  }
+
+  .個人成績概要 .概要項時間 strong {
+    justify-self: end;
+    text-align: right;
+    font-size: 0.9rem;
+  }
+
+  .個人成績概要 .概要項 span {
+    font-size: 0.74rem;
+  }
+
+  .個人成績概要 .概要項 strong {
+    font-size: 0.94rem;
   }
 
   .角色比較概要 {
@@ -4218,6 +4298,11 @@ td a:hover {
 
   .比較角色數據 > span {
     padding: 10px;
+  }
+
+  .比較差異組,
+  .比較差異項 {
+    justify-items: start;
   }
 
   .比較最後紀錄時間 {
@@ -4611,8 +4696,38 @@ td a:hover {
     grid-template-columns: 1fr;
   }
 
+  .隊友關係標題,
+  .隊友子面板標題 {
+    padding: 9px 10px;
+  }
+
   .隊友摘要格 {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .隊友摘要項 {
+    gap: 2px;
+    padding: 8px 10px;
+  }
+
+  .隊友摘要項 small,
+  .隊友摘要項 em {
+    font-size: 0.68rem;
+  }
+
+  .隊友摘要項 strong {
+    font-size: 0.86rem;
+  }
+
+  .隊友洞察文字 {
+    padding: 8px 10px;
+    font-size: 0.76rem;
+    line-height: 1.45;
+  }
+
+  .隊友職能項 {
+    gap: 5px 8px;
+    padding: 8px 10px;
   }
 
   .隊友副本交集 {
@@ -4918,28 +5033,113 @@ td a:hover {
   }
 
   .成績列摘要 {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 10px;
-    padding: 12px;
+    position: relative;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 7px 8px;
+    padding: 10px;
   }
 
-  .成績列副本,
-  .成績列日期,
-  .成績列展開 {
+  .成績列副本 {
     grid-column: 1 / -1;
+    grid-row: 1;
+    gap: 1px;
+    padding-right: 76px;
+  }
+
+  .成績列副本 strong {
+    font-size: 0.94rem;
+    white-space: normal;
+  }
+
+  .成績列副本 small {
+    font-size: 0.66rem;
   }
 
   .成績列職業 {
     grid-column: 1 / -1;
+    grid-row: 2;
+    width: fit-content;
+    max-width: 100%;
+    min-height: 28px;
+    padding: 3px 8px;
+    font-size: 0.74rem;
   }
 
-  .成績列數值 {
-    justify-items: start;
-    text-align: left;
+  .成績列職業 .職業標籤圖示 {
+    width: 20px;
+    height: 20px;
   }
 
   .成績列展開 {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    padding: 5px 8px;
+    font-size: 0.72rem;
+  }
+
+  .成績列數值 {
+    min-height: 42px;
+    grid-column: span 3;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: baseline;
+    gap: 1px 6px;
+    border: 1px solid var(--邊框柔和色);
+    border-radius: 6px;
+    padding: 6px 8px;
+    background: var(--表面背景柔和);
+    justify-items: stretch;
+    text-align: left;
+  }
+
+  .成績列數值 small {
+    grid-column: 1;
+    color: var(--靜音文字);
+    font-size: 0.66rem;
+    line-height: 1.15;
+    white-space: nowrap;
+  }
+
+  .成績列數值 strong {
+    grid-column: 2;
+    justify-self: end;
+    font-size: 0.82rem;
+    line-height: 1.15;
+    text-align: right;
+  }
+
+  .成績列數值 em {
+    grid-column: 1 / -1;
+    min-width: 0;
+    overflow: hidden;
+    font-size: 0.64rem;
+    line-height: 1.15;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .成績列數值主要 {
+    background: color-mix(in srgb, var(--重點色) 10%, var(--表面背景));
+  }
+
+  .成績列數值輸出 {
+    min-height: 40px;
+    grid-column: span 2;
+    grid-template-columns: 1fr;
+    align-content: start;
+    gap: 2px;
+    padding: 5px 6px;
+  }
+
+  .成績列數值輸出 small,
+  .成績列數值輸出 strong {
+    grid-column: 1;
     justify-self: start;
+    text-align: left;
+  }
+
+  .成績列數值輸出 strong {
+    font-size: 0.78rem;
   }
 
   .趨勢圖 {
@@ -5947,33 +6147,137 @@ td a:hover {
   }
 
   .比較表格 td:nth-child(4)::before {
-    content: "rDPS 差";
+    content: "差異";
   }
 
   .歷史表格外框 {
     overflow: visible;
-    padding: 10px;
+    padding: 8px;
+  }
+
+  .歷史表格,
+  .歷史表格 tbody {
+    gap: 8px;
   }
 
   .歷史表格 tr {
-    padding: 10px;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    align-items: stretch;
+    gap: 5px 6px;
+    padding: 8px;
   }
 
-  .歷史表格 td:nth-child(1),
+  .歷史表格 td {
+    gap: 2px;
+    line-height: 1.15;
+  }
+
+  .歷史表格 td::before {
+    font-size: 0.62rem;
+  }
+
+  .歷史表格 td:nth-child(1) {
+    grid-column: 2 / 6;
+    grid-row: 1;
+    align-self: center;
+    color: var(--次要文字);
+    font-size: 0.72rem;
+    font-weight: 720;
+  }
+
   .歷史表格 td:nth-child(2) {
-    grid-column: 1 / -1;
+    grid-column: 1;
+    grid-row: 1;
+    align-self: center;
   }
 
-  .歷史表格 td:nth-child(1)::before {
-    content: "紀錄時間";
+  .歷史表格 td:nth-child(3) {
+    grid-column: 6;
+    grid-row: 1;
+    align-self: center;
+    justify-self: end;
   }
 
-  .歷史表格 td:nth-child(2)::before {
-    content: "職業";
-  }
-
+  .歷史表格 td:nth-child(1)::before,
+  .歷史表格 td:nth-child(2)::before,
   .歷史表格 td:nth-child(3)::before {
-    content: "報告";
+    content: none;
+  }
+
+  .歷史表格 td:nth-child(2) .職業標籤 {
+    width: 28px;
+    min-width: 28px;
+    min-height: 28px;
+    justify-content: center;
+    border-radius: 0;
+    padding: 0;
+    background: transparent;
+  }
+
+  .歷史表格 td:nth-child(2) .職業標籤圖示 {
+    width: 24px;
+    height: 24px;
+  }
+
+  .歷史表格 td:nth-child(2) .職業標籤 span {
+    display: none;
+  }
+
+  .歷史表格 td:nth-child(3) a {
+    display: inline-flex;
+    border: 1px solid var(--邊框柔和色);
+    border-radius: 999px;
+    padding: 3px 7px;
+    background: var(--表面背景柔和);
+    font-size: 0.68rem;
+    font-weight: 800;
+    text-decoration: none;
+    white-space: nowrap;
+  }
+
+  .歷史表格 td:nth-child(n + 4) {
+    border: 1px solid var(--邊框柔和色);
+    border-radius: 6px;
+    padding: 5px 6px;
+    background: var(--表面背景柔和);
+  }
+
+  .歷史表格 td:nth-child(4),
+  .歷史表格 td:nth-child(5),
+  .歷史表格 td:nth-child(6),
+  .歷史表格 td:nth-child(7),
+  .歷史表格 td:nth-child(8),
+  .歷史表格 td:nth-child(9) {
+    grid-column: span 2;
+  }
+
+  .歷史表格 td:nth-child(8) {
+    background: color-mix(in srgb, var(--重點色) 10%, var(--表面背景));
+  }
+
+  .歷史表格 td:nth-child(10) {
+    grid-column: 1 / -1;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: baseline;
+    gap: 6px;
+  }
+
+  .歷史表格 td:nth-child(10)::before {
+    color: var(--靜音文字);
+    font-size: 0.62rem;
+  }
+
+  .歷史表格 td:nth-child(n + 4):not(:nth-child(10)) {
+    min-height: 38px;
+  }
+
+  .歷史表格 td:nth-child(n + 4):not(:nth-child(10))::before {
+    line-height: 1.1;
+  }
+
+  .歷史表格 td:nth-child(n + 4):not(:nth-child(10)) {
+    font-size: 0.78rem;
+    font-weight: 800;
   }
 
   .歷史表格 td:nth-child(4)::before {

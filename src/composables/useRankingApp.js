@@ -1364,6 +1364,26 @@ function 統計說明文字(詞彙) {
   return 統計詞彙說明[詞彙] || "";
 }
 
+function 取得Gcd覆蓋率數值(gcdCoverage) {
+  return typeof gcdCoverage === "number" ? 轉為數字(gcdCoverage) : 轉為數字(gcdCoverage?.percent);
+}
+
+function 格式化帶號百分比(數值) {
+  const 數字 = 轉為數字(數值);
+  if (數字 === null) {
+    return "-";
+  }
+
+  const 絕對值文字 = `${Math.abs(數字).toFixed(2)}%`;
+  if (數字 > 0) {
+    return `+${絕對值文字}`;
+  }
+  if (數字 < 0) {
+    return `-${絕對值文字}`;
+  }
+  return "0.00%";
+}
+
 const 伺服器佔比列表 = computed(() => {
   const 伺服器列表 = 目前統計來源.value?.server_stats || [];
   const 加總 = 伺服器列表.reduce((總數, 項目) => 總數 + 取得統計計數(項目), 0);
@@ -2570,10 +2590,23 @@ const 使用者副本成績 = computed(() => {
 
 function 建立使用者統計(副本成績) {
   const 公開成績數 = 副本成績.reduce((總數, 副本) => 總數 + 副本.public_entries.length, 0);
+  const 所有公開成績 = 副本成績.flatMap((副本) => 副本.public_entries || []);
+  const 有效公開成績 = 所有公開成績.filter((成績) => !成績.is_obsolete_record);
   const 最佳成績 = 副本成績.reduce(
     (目前最佳, 副本) => (使用者成績是否較佳(副本.best_entry, 目前最佳) ? 副本.best_entry : 目前最佳),
     null,
   );
+  const 最高Gcd成績 = 有效公開成績.reduce((目前最佳, 成績) => {
+    const 目前Gcd = 取得Gcd覆蓋率數值(目前最佳?.gcd_coverage);
+    const 候選Gcd = 取得Gcd覆蓋率數值(成績?.gcd_coverage);
+    if (候選Gcd === null) {
+      return 目前最佳;
+    }
+    if (目前Gcd === null || 候選Gcd > 目前Gcd) {
+      return 成績;
+    }
+    return 目前最佳;
+  }, null);
   const 最後紀錄時間 = 副本成績
     .flatMap((副本) => 副本.public_entries)
     .map((成績) => 成績.recorded_at_iso)
@@ -2585,6 +2618,7 @@ function 建立使用者統計(副本成績) {
     副本數: 副本成績.length,
     公開成績數,
     最佳成績,
+    最高Gcd成績,
     最後紀錄時間,
   };
 }
@@ -2796,6 +2830,9 @@ const 角色比較列 = computed(() => {
       const 左Rdps = 轉為數字(左成績?.rdps);
       const 右Rdps = 轉為數字(右成績?.rdps);
       const 差異 = 左Rdps !== null && 右Rdps !== null ? 左Rdps - 右Rdps : null;
+      const 左Gcd = 取得Gcd覆蓋率數值(左成績?.gcd_coverage);
+      const 右Gcd = 取得Gcd覆蓋率數值(右成績?.gcd_coverage);
+      const GCD差異 = 左Gcd !== null && 右Gcd !== null ? Number((左Gcd - 右Gcd).toFixed(2)) : null;
 
       return {
         key: `${副本鍵值}::${職能?.代碼 || "role"}`,
@@ -2806,6 +2843,7 @@ const 角色比較列 = computed(() => {
         左,
         右,
         差異,
+        GCD差異,
       };
     })
     .sort((前一個, 後一個) => {
@@ -4013,6 +4051,7 @@ onUnmounted(() => {
     格式化Gcd覆蓋率,
     格式化整數,
     格式化帶號整數,
+    格式化帶號百分比,
     格式化百分比,
     格式化前段百分位,
     格式化通關時間,

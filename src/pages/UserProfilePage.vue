@@ -120,15 +120,15 @@ export default {
 
     <template v-else>
       <section class="個人成績概要" aria-label="個人成績概要">
-        <div class="概要項">
+        <div class="概要項 概要項計數">
           <span>副本數</span>
           <strong>{{ 使用者統計.副本數 }}</strong>
         </div>
-        <div class="概要項">
+        <div class="概要項 概要項計數">
           <span>公開成績</span>
           <strong>{{ 使用者統計.公開成績數 }}</strong>
         </div>
-        <div class="概要項">
+        <div class="概要項 概要項重點">
           <span class="說明標籤">
             <span>最佳 rDPS</span>
             <span class="說明提示">
@@ -138,17 +138,17 @@ export default {
           </span>
           <strong>{{ 格式化傷害數值(使用者統計.最佳成績?.rdps) }}</strong>
         </div>
-        <div v-if="顯示Gcd覆蓋率" class="概要項">
+        <div v-if="顯示Gcd覆蓋率" class="概要項 概要項重點">
           <span class="說明標籤">
-            <span>GCD 覆蓋率</span>
+            <span>最佳 GCD</span>
             <span class="說明提示">
               <button class="說明提示按鈕" type="button" aria-label="GCD 覆蓋率說明">?</button>
               <span class="說明提示內容" role="tooltip">{{ 統計說明文字("GCD 覆蓋率") }}</span>
             </span>
           </span>
-          <strong>{{ 格式化Gcd覆蓋率(使用者統計.最佳成績?.gcd_coverage) }}</strong>
+          <strong>{{ 格式化Gcd覆蓋率(使用者統計.最高Gcd成績?.gcd_coverage) }}</strong>
         </div>
-        <div class="概要項">
+        <div class="概要項 概要項時間">
           <span>最後紀錄</span>
           <strong>{{ 格式化紀錄時間(使用者統計.最後紀錄時間) }}</strong>
         </div>
@@ -405,17 +405,17 @@ export default {
               <span>{{ 顯示職業名稱(副本.best_entry.job) }}</span>
             </span>
             <span v-else class="版本紀錄標籤">無有效最佳紀錄</span>
-            <span class="成績列數值">
+            <span class="成績列數值 成績列數值次要">
               <small>職業 Rank</small>
               <strong>{{ 副本.best_entry ? 格式化排名(副本.best_entry.job_rank ?? 副本.best_entry.rank) : "無法參考" }}</strong>
               <em v-if="副本.best_entry">{{ 格式化前段百分位(副本.best_entry.job_rank ?? 副本.best_entry.rank, 取得成績職業總數(副本.best_entry)) }}</em>
             </span>
-            <span class="成績列數值">
+            <span class="成績列數值 成績列數值次要">
               <small>同職分位</small>
               <strong>{{ 副本.best_entry ? 格式化前段百分位(副本.best_entry.performance?.rank, 副本.best_entry.performance?.sample_count) : "過時紀錄" }}</strong>
               <em v-if="副本.best_entry">中位 {{ 格式化帶號整數(副本.best_entry.performance?.delta_to_median) }}</em>
             </span>
-            <span class="成績列數值">
+            <span class="成績列數值 成績列數值狀態">
               <small class="說明標籤">
                 <span>Active</span>
                 <span class="說明提示">
@@ -425,7 +425,7 @@ export default {
               </small>
               <strong>{{ 副本.best_entry ? 格式化Active(副本.best_entry.active_percent) : "-" }}</strong>
             </span>
-            <span v-if="顯示Gcd覆蓋率" class="成績列數值">
+            <span v-if="顯示Gcd覆蓋率" class="成績列數值 成績列數值狀態">
               <small class="說明標籤">
                 <span>GCD</span>
                 <span class="說明提示">
@@ -435,7 +435,7 @@ export default {
               </small>
               <strong>{{ 副本.best_entry ? 格式化Gcd覆蓋率(副本.best_entry.gcd_coverage) : "-" }}</strong>
             </span>
-            <span class="成績列數值">
+            <span class="成績列數值 成績列數值輸出">
               <small class="說明標籤">
                 <span>DPS</span>
                 <span class="說明提示">
@@ -445,7 +445,7 @@ export default {
               </small>
               <strong>{{ 副本.best_entry ? 格式化傷害數值(副本.best_entry.dps) : "-" }}</strong>
             </span>
-            <span class="成績列數值">
+            <span class="成績列數值 成績列數值輸出 成績列數值主要">
               <small class="說明標籤">
                 <span>rDPS</span>
                 <span class="說明提示">
@@ -455,7 +455,7 @@ export default {
               </small>
               <strong>{{ 副本.best_entry ? 格式化傷害數值(副本.best_entry.rdps) : "-" }}</strong>
             </span>
-            <span class="成績列數值">
+            <span class="成績列數值 成績列數值輸出">
               <small class="說明標籤">
                 <span>aDPS</span>
                 <span class="說明提示">
