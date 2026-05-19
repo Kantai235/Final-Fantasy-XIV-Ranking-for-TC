@@ -90,6 +90,7 @@ Final Fantasy XIV 繁中服排行榜是一個以 FFLogs 公開資料為來源的
 - `report_hidden: true` 的 report 預設不進入一般 `public/data/` 產物；`public/data/all/` 會同步輸出完整資料鏡像，供額外檢視流程使用。
 - 新資料不再保存 `fflogs_raw`、`master_data` 與 `matched_players`，避免可重查的 FFLogs raw table 讓 repo 容量快速膨脹；若需要重新推導 raw 層欄位，應以 report code 重新查 FFLogs API。
 - 同一玩家同一副本同一職業的最佳成績排序規則為 rDPS 優先，平手看通關時間，再看 aDPS。
+- 個人成績單未套用職業篩選時，副本代表列與分享用代表職業會優先選同職 `job_rank` 最前面的有效紀錄；`summary.best_rdps` 仍保留最高 rDPS，避免把「代表職業」與「最高輸出」混成同一件事。
 - `build_user_data.mjs` 預設以最新 `rankings_updated_at_iso` 作為 `generated_at_iso`，避免同一批資料重建時讓 `global_stats.json` 產生無意義 diff；需要指定產物時間時可設定 `FFXIV_TC_GENERATED_AT_ISO`。
 - `data/state.json` 的 `checked_reports` 是跨輪快取，`processed_reports` 是單輪 checkpoint；兩者和 `data/rankings/` 都不能用硬刪或覆蓋方式整理。
 

@@ -140,6 +140,48 @@ async function createFixture(tempRoot) {
         },
       ],
     },
+    RPT2: {
+      report_code: "RPT2",
+      title: "Fixture DPS report",
+      url: "https://www.fflogs.com/reports/RPT2",
+      report_start_time_iso: "2026-01-02T02:45:00.000Z",
+      fights: [
+        {
+          fight_id: 3,
+          fight_hash: "fixture-dps-fight",
+          clear_time_ms: 620000,
+          clear_time_seconds: 620,
+          damage_time_ms: 560000,
+          damage_time_seconds: 560,
+          recorded_at: 1767322500000,
+          recorded_at_iso: "2026-01-02T02:55:00.000Z",
+          players: [
+            {
+              name: "測試角色",
+              server: "鳳凰",
+              job: "BlackMage",
+              dps: 250,
+              rdps: 250,
+              adps: 250,
+              total_damage: 140000,
+              active_time_ms: 520000,
+              active_percent: 92.86,
+            },
+            {
+              name: "黑魔對手",
+              server: "鳳凰",
+              job: "BlackMage",
+              dps: 300,
+              rdps: 300,
+              adps: 300,
+              total_damage: 168000,
+              active_time_ms: 530000,
+              active_percent: 94.64,
+            },
+          ],
+        },
+      ],
+    },
     HIDDEN1: {
       report_code: "HIDDEN1",
       report_hidden: true,
@@ -194,20 +236,20 @@ async function assertFixtureOutput(tempRoot, expectedGlobalStatsText, expectedSe
 
   assert(usersIndex.generated_at_iso === "2026-01-02T03:04:05.000Z", "使用者索引應使用 ranking 更新時間作為 generated_at_iso。");
   assert(globalStats.generated_at_iso === "2026-01-02T03:04:05.000Z", "全服統計應使用 ranking 更新時間作為 generated_at_iso。");
-  assert(usersIndex.total_users === 3, "fixture 應產生兩位有公開成績的使用者與一位空白入口。");
-  assert(globalStats.total_character_count === 2, "全服角色數應包含同場兩位玩家。");
-  assert(globalStats.total_entry_count === 2, "全服 entry 數應包含兩筆玩家成績。");
+  assert(usersIndex.total_users === 4, "fixture 應產生三位有公開成績的使用者與一位空白入口。");
+  assert(globalStats.total_character_count === 3, `全服角色數應包含公開 report 中三位玩家，實際 ${globalStats.total_character_count}。`);
+  assert(globalStats.total_entry_count === 4, "全服 entry 數應包含四筆玩家成績。");
   const hiddenUser = usersIndex.users.find((user) => user.character_name === "隱藏角色");
   assert(hiddenUser, "預設使用者索引應保留空白成績單入口。");
   assert(hiddenUser.servers.includes("鳳凰"), "空白入口應保留伺服器，讓同名角色查詢仍可辨識。");
   assert(hiddenUser.best_rdps === null, "空白入口不可帶入最佳 rDPS。");
   assert(hiddenUser.last_recorded_at_iso === null, "空白入口不可帶入最後紀錄時間。");
-  assert(allUsersIndex.total_users === 3, "完整鏡像應納入所有 fixture 角色。");
-  assert(allGlobalStats.total_character_count === 3, "完整全服統計應納入所有 fixture 角色。");
-  assert(allGlobalStats.total_entry_count === 3, "完整全服統計應納入所有 fixture 成績。");
+  assert(allUsersIndex.total_users === 4, "完整鏡像應納入所有 fixture 角色。");
+  assert(allGlobalStats.total_character_count === 4, "完整全服統計應納入所有 fixture 角色。");
+  assert(allGlobalStats.total_entry_count === 5, "完整全服統計應納入所有 fixture 成績。");
   const allHiddenUser = allUsersIndex.users.find((user) => user.character_name === "隱藏角色");
   assert(allHiddenUser, "完整鏡像使用者索引應包含對應角色。");
-  assert(Array.isArray(globalStats.job_profiles) && globalStats.job_profiles.length === 2, "全服統計應產生職業專頁資料。");
+  assert(Array.isArray(globalStats.job_profiles) && globalStats.job_profiles.length === 3, "全服統計應產生職業專頁資料。");
   assert(serverCompare.summary.server_count === 2, "伺服器對比應包含兩個伺服器。");
   assert(serverCompare.servers.some((server) => server.server === "鳳凰"), "伺服器對比應包含鳳凰。");
 
@@ -230,7 +272,12 @@ async function assertFixtureOutput(tempRoot, expectedGlobalStatsText, expectedSe
   const mainUser = usersIndex.users.find((user) => user.character_name === "測試角色");
   assert(mainUser, "使用者索引應包含測試角色。");
   const mainUserData = await readJson(path.join(tempRoot, "public", mainUser.file_path));
-  assert(mainUserData.summary.best_rdps === 90, "測試角色最佳 rDPS 應正確彙整。");
+  assert(mainUserData.summary.best_rdps === 250, "測試角色最佳 rDPS 應正確彙整。");
+  assert(mainUserData.summary.profile_job === "Paladin", "個人成績單代表職業應優先採用同職排名最高的職業。");
+  assert(mainUserData.summary.profile_job_rank === 1, "個人成績單代表職業應保留最高職業 Rank。");
+  assert(mainUserData.encounters[0]?.best_entry?.job === "Paladin", "個人成績單副本代表列應優先顯示最高排名職業。");
+  const mainUserBlackMageEntry = mainUserData.encounters[0]?.public_entries?.find((entry) => entry.job === "BlackMage");
+  assert(mainUserBlackMageEntry?.job_rank === 2, "fixture 需保留較高 rDPS 但職業 Rank 較低的輸出紀錄。");
   const mainUserEntry = mainUserData.encounters[0]?.public_entries?.[0];
   assert(mainUserEntry?.gcd_coverage?.percent === 94.43, "個人成績單應保留 GCD 覆蓋率。");
   assert(mainUserEntry?.gcd_coverage_status?.state === "ok", "個人成績單應保留 GCD 覆蓋率狀態。");

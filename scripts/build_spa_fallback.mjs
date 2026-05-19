@@ -410,6 +410,7 @@ function buildUserDescription(user) {
   const encounterCount = formatNumber(user.encounter_count);
   const entryCount = formatNumber(user.public_entry_count);
   const rdps = formatNumber(user.best_rdps, 2);
+  const profileJob = user.profile_job ? displayJobName(user.profile_job) : "";
   const parts = [];
   if (encounterCount) {
     parts.push(`${encounterCount} 個副本`);
@@ -420,6 +421,9 @@ function buildUserDescription(user) {
   if (rdps) {
     parts.push(`最佳 rDPS ${rdps}`);
   }
+  if (profileJob) {
+    parts.push(`代表職業 ${profileJob}`);
+  }
 
   return `${user.character_name}${serverText}的 FFXIV 繁中服個人成績單，${parts.length > 0 ? `收錄 ${parts.join("、")}，` : ""}可查看最佳紀錄、分位表現、歷史紀錄與常同場隊友。`;
 }
@@ -427,6 +431,10 @@ function buildUserDescription(user) {
 function buildUserPage(user, rootHtml) {
   const imagePath = `og/users/${hashFileName(user.character_name)}`;
   const servers = Array.isArray(user.servers) ? user.servers.filter(Boolean) : [];
+  const profileHighlight = user.profile_job
+    ? `代表職業 ${displayJobName(user.profile_job)}${user.profile_job_rank ? ` #${formatNumber(user.profile_job_rank)}` : ""}`
+    : "";
+  const bestRdpsHighlight = user.best_rdps ? `最佳 rDPS ${formatNumber(user.best_rdps, 2)}` : "";
   const page = {
     path: userPath(user.character_name),
     title: `${user.character_name} 個人成績單 | ${siteName}`,
@@ -444,7 +452,7 @@ function buildUserPage(user, rootHtml) {
   const highlights = [
     servers.length > 0 ? servers.slice(0, 2).join(" / ") : "繁中服玩家",
     user.encounter_count ? `${formatNumber(user.encounter_count)} 個副本` : "",
-    user.best_rdps ? `最佳 rDPS ${formatNumber(user.best_rdps, 2)}` : `${formatNumber(user.public_entry_count)} 筆公開成績`,
+    profileHighlight || bestRdpsHighlight || `${formatNumber(user.public_entry_count)} 筆公開成績`,
   ];
 
   queueOgPng(

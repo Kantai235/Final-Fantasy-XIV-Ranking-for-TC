@@ -214,6 +214,61 @@ function isBetterEntry(candidate, currentBest) {
   return (Number.isNaN(candidateTime) ? 0 : candidateTime) > (Number.isNaN(currentTime) ? 0 : currentTime);
 }
 
+function toPositiveRank(value) {
+  const rank = toNumber(value);
+  return rank !== null && rank > 0 ? rank : null;
+}
+
+function entryJobRank(entry) {
+  return toPositiveRank(entry?.job_rank ?? entry?.rank);
+}
+
+function entryTopPercent(entry) {
+  const topPercent = toNumber(entry?.performance?.top_percent);
+  return topPercent !== null && topPercent >= 0 ? topPercent : null;
+}
+
+function isBetterProfileEntry(candidate, currentBest) {
+  // 個人成績單的代表職業不能直接跨職業比 raw rDPS，否則坦補玩家只要有一筆輸出職業紀錄，
+  // 預設履歷就容易被 DPS 數值蓋過。這裡優先用同副本同職業的 rank，才回退到 rDPS 最佳規則。
+  if (!candidate) {
+    return false;
+  }
+  if (!currentBest) {
+    return true;
+  }
+
+  const candidateRank = entryJobRank(candidate);
+  const currentRank = entryJobRank(currentBest);
+  if (candidateRank !== null || currentRank !== null) {
+    if (candidateRank === null) {
+      return false;
+    }
+    if (currentRank === null) {
+      return true;
+    }
+    if (candidateRank !== currentRank) {
+      return candidateRank < currentRank;
+    }
+  }
+
+  const candidateTopPercent = entryTopPercent(candidate);
+  const currentTopPercent = entryTopPercent(currentBest);
+  if (candidateTopPercent !== null || currentTopPercent !== null) {
+    if (candidateTopPercent === null) {
+      return false;
+    }
+    if (currentTopPercent === null) {
+      return true;
+    }
+    if (candidateTopPercent !== currentTopPercent) {
+      return candidateTopPercent < currentTopPercent;
+    }
+  }
+
+  return isBetterEntry(candidate, currentBest);
+}
+
 function compareEntriesByTimeThenScore(left, right) {
   const leftTime = new Date(left.recorded_at_iso || 0).getTime();
   const rightTime = new Date(right.recorded_at_iso || 0).getTime();
@@ -1410,8 +1465,17 @@ function buildEntryPayload(entry) {
   return payload;
 }
 
+function pickProfileEntry(entries) {
+  return (entries || []).reduce((best, entry) => (isBetterProfileEntry(entry, best) ? entry : best), null);
+}
+
 function buildUserPayload(user, generatedAtIso, updatedAtIsoByEncounter) {
   const frequentTeammates = buildFrequentTeammates(user);
+  const allValidEntries = Array.from(user.entriesByEncounter.values())
+    .flat()
+    .filter((entry) => !entry.is_obsolete_record);
+  const bestDamageEntry = pickBestEntry(allValidEntries);
+  const profileEntry = pickProfileEntry(allValidEntries);
   const encounters = Array.from(user.entriesByEncounter.entries())
     .map(([encounterKey, entries]) => {
       entries.sort(compareEntriesByTimeThenScore);
@@ -1420,7 +1484,7 @@ function buildUserPayload(user, generatedAtIso, updatedAtIsoByEncounter) {
       const validEntries = entries.filter((entry) => !entry.is_obsolete_record);
 
       for (const entry of validEntries) {
-        if (isBetterEntry(entry, bestEntry)) {
+        if (isBetterProfileEntry(entry, bestEntry)) {
           bestEntry = entry;
         }
         if (isBetterEntry(entry, bestByJob.get(entry.job))) {
@@ -1454,8 +1518,11 @@ function buildUserPayload(user, generatedAtIso, updatedAtIsoByEncounter) {
       encounter_count: encounters.length,
       public_entry_count: user.total_entries,
       teammate_count: user.teammates.size,
-      best_rdps: user.best_entry?.rdps ?? null,
-      best_encounter_key: user.best_entry?.encounter_key ?? null,
+      best_rdps: bestDamageEntry?.rdps ?? null,
+      best_encounter_key: bestDamageEntry?.encounter_key ?? null,
+      profile_job: profileEntry?.job ?? null,
+      profile_encounter_key: profileEntry?.encounter_key ?? null,
+      profile_job_rank: profileEntry ? entryJobRank(profileEntry) : null,
       last_recorded_at_iso: user.last_recorded_at_iso,
     },
     frequent_teammates: frequentTeammates,
@@ -2044,6 +2111,8 @@ async function buildDataset({
       encounter_count: payload.summary.encounter_count,
       public_entry_count: payload.summary.public_entry_count,
       best_rdps: payload.summary.best_rdps,
+      profile_job: payload.summary.profile_job,
+      profile_job_rank: payload.summary.profile_job_rank,
       last_recorded_at_iso: payload.summary.last_recorded_at_iso,
     });
   }

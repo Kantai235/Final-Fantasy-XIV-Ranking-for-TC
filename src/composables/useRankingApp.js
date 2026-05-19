@@ -806,6 +806,61 @@ function 使用者成績是否較佳(候選, 目前最佳) {
   return new Date(候選.recorded_at_iso || 0).getTime() > new Date(目前最佳.recorded_at_iso || 0).getTime();
 }
 
+function 取得有效排名數值(排名) {
+  const 數值 = 轉為數字(排名);
+  return 數值 !== null && 數值 > 0 ? 數值 : null;
+}
+
+function 取得成績職業排名值(成績) {
+  return 取得有效排名數值(成績?.job_rank ?? 成績?.rank);
+}
+
+function 取得成績前段百分位(成績) {
+  const 百分位 = 轉為數字(成績?.performance?.top_percent);
+  return 百分位 !== null && 百分位 >= 0 ? 百分位 : null;
+}
+
+function 使用者代表成績是否較佳(候選, 目前最佳) {
+  // 個人成績單未篩職業時，代表列應呈現玩家「同職排名最亮眼」的職業，
+  // 避免坦補主職因為 raw rDPS 天生低於輸出職業，而被偶爾打的 DPS 紀錄蓋掉履歷預設職業。
+  if (!候選) {
+    return false;
+  }
+  if (!目前最佳) {
+    return true;
+  }
+
+  const 候選排名 = 取得成績職業排名值(候選);
+  const 目前排名 = 取得成績職業排名值(目前最佳);
+  if (候選排名 !== null || 目前排名 !== null) {
+    if (候選排名 === null) {
+      return false;
+    }
+    if (目前排名 === null) {
+      return true;
+    }
+    if (候選排名 !== 目前排名) {
+      return 候選排名 < 目前排名;
+    }
+  }
+
+  const 候選百分位 = 取得成績前段百分位(候選);
+  const 目前百分位 = 取得成績前段百分位(目前最佳);
+  if (候選百分位 !== null || 目前百分位 !== null) {
+    if (候選百分位 === null) {
+      return false;
+    }
+    if (目前百分位 === null) {
+      return true;
+    }
+    if (候選百分位 !== 目前百分位) {
+      return 候選百分位 < 目前百分位;
+    }
+  }
+
+  return 使用者成績是否較佳(候選, 目前最佳);
+}
+
 // 同一角色在同一伺服器、同一職業可能因多份 report 或重抓資料重複出現。
 // 前端展示時只保留最佳列；原始歷史資料仍留在 data/rankings，不在 UI 層硬刪。
 function 只保留角色最佳成績(排行列) {
@@ -2326,11 +2381,11 @@ function 個人成績單分享描述() {
   const 伺服器文字 = 使用者伺服器篩選.value ? `（${使用者伺服器篩選.value}）` : "";
   const 副本數 = 分享數量文字(使用者統計.value.副本數, "個副本");
   const 成績數 = 分享數量文字(使用者統計.value.公開成績數, "筆公開成績");
-  const 最佳職業 = 使用者統計.value.最佳成績?.job ? 顯示職業名稱(使用者統計.value.最佳成績.job) : "";
-  const 最佳描述 = 最佳職業 ? `，最佳紀錄職業為 ${最佳職業}` : "";
+  const 代表職業 = 使用者統計.value.代表成績?.job ? 顯示職業名稱(使用者統計.value.代表成績.job) : "";
+  const 代表描述 = 代表職業 ? `，代表職業為 ${代表職業}` : "";
 
   return 正規化分享描述(
-    `${使用者資料.value.character_name}${伺服器文字}的 FFXIV 繁中服個人成績單，收錄 ${[副本數, 成績數].filter(Boolean).join("、") || "公開成績"}${最佳描述}，並整理分位表現與常同場隊友。`,
+    `${使用者資料.value.character_name}${伺服器文字}的 FFXIV 繁中服個人成績單，收錄 ${[副本數, 成績數].filter(Boolean).join("、") || "公開成績"}${代表描述}，並整理分位表現與常同場隊友。`,
   );
 }
 
@@ -2494,7 +2549,7 @@ const 比較副本選單文字 = computed(() => 比較範圍文字.value);
 const 顯示比較版本篩選 = computed(() => 副本支援版本篩選(目前比較副本.value));
 const 有效比較版本範圍 = computed(() => 取得有效版本紀錄範圍(目前比較副本.value, 比較版本範圍.value));
 
-function 取得使用者副本成績(資料, 伺服器 = "", 成績篩選 = () => true) {
+function 取得使用者副本成績(資料, 伺服器 = "", 成績篩選 = () => true, 最佳成績比較 = 使用者成績是否較佳) {
   const 副本列表 = Array.isArray(資料?.encounters) ? 資料.encounters : [];
 
   return 副本列表
@@ -2505,7 +2560,7 @@ function 取得使用者副本成績(資料, 伺服器 = "", 成績篩選 = () =
       }
 
       const 有效成績 = 公開成績.filter((成績) => !成績.is_obsolete_record);
-      const 最佳成績 = 有效成績.reduce((目前最佳, 成績) => (使用者成績是否較佳(成績, 目前最佳) ? 成績 : 目前最佳), null);
+      const 最佳成績 = 有效成績.reduce((目前最佳, 成績) => (最佳成績比較(成績, 目前最佳) ? 成績 : 目前最佳), null);
       return {
         ...副本,
         best_entry: 最佳成績,
@@ -2516,7 +2571,7 @@ function 取得使用者副本成績(資料, 伺服器 = "", 成績篩選 = () =
 }
 
 const 使用者完整副本成績 = computed(() => {
-  return 取得使用者副本成績(使用者資料.value, 使用者伺服器篩選.value);
+  return 取得使用者副本成績(使用者資料.value, 使用者伺服器篩選.value, () => true, 使用者代表成績是否較佳);
 });
 
 const 使用者可用職業列表 = computed(() => {
@@ -2585,15 +2640,19 @@ function 符合使用者職業篩選(成績) {
 }
 
 const 使用者副本成績 = computed(() => {
-  return 取得使用者副本成績(使用者資料.value, 使用者伺服器篩選.value, 符合使用者職業篩選);
+  return 取得使用者副本成績(使用者資料.value, 使用者伺服器篩選.value, 符合使用者職業篩選, 使用者代表成績是否較佳);
 });
 
 function 建立使用者統計(副本成績) {
   const 公開成績數 = 副本成績.reduce((總數, 副本) => 總數 + 副本.public_entries.length, 0);
   const 所有公開成績 = 副本成績.flatMap((副本) => 副本.public_entries || []);
   const 有效公開成績 = 所有公開成績.filter((成績) => !成績.is_obsolete_record);
-  const 最佳成績 = 副本成績.reduce(
-    (目前最佳, 副本) => (使用者成績是否較佳(副本.best_entry, 目前最佳) ? 副本.best_entry : 目前最佳),
+  const 最佳成績 = 有效公開成績.reduce(
+    (目前最佳, 成績) => (使用者成績是否較佳(成績, 目前最佳) ? 成績 : 目前最佳),
+    null,
+  );
+  const 代表成績 = 副本成績.reduce(
+    (目前最佳, 副本) => (使用者代表成績是否較佳(副本.best_entry, 目前最佳) ? 副本.best_entry : 目前最佳),
     null,
   );
   const 最高Gcd成績 = 有效公開成績.reduce((目前最佳, 成績) => {
@@ -2618,6 +2677,7 @@ function 建立使用者統計(副本成績) {
     副本數: 副本成績.length,
     公開成績數,
     最佳成績,
+    代表成績,
     最高Gcd成績,
     最後紀錄時間,
   };
