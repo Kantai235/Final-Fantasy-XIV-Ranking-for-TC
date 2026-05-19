@@ -375,7 +375,7 @@ npm run build:user-data
 `config/fflogs.json` 預設關閉歷史補查，避免本機一般執行時額外掃描舊時間窗。GitHub Actions 會在 workflow 內用環境變數暫時開啟：
 
 - `FFLOGS_HISTORY_SCAN_ENABLED`：是否啟用歷史補查，workflow 預設 `true`。
-- `FFLOGS_HISTORY_SCAN_WINDOW_HOURS`：每個歷史時間窗長度，workflow 預設 `24`。
+- `FFLOGS_HISTORY_SCAN_WINDOW_HOURS`：每個歷史時間窗長度，workflow 預設 `168`（一週）。
 - `FFLOGS_HISTORY_SCAN_WINDOWS_PER_RUN`：每輪每個副本最多巡幾個歷史時間窗，workflow 預設 `1`。
 - `FFLOGS_HISTORY_SCAN_RECENT_GAP_HOURS`：歷史補查避開最新掃描點前幾小時，workflow 預設 `6`。
 - `FFLOGS_HISTORY_MAX_DEEP_REPORTS_PER_RUN`：每輪最多挑幾份未知 report 進深層檢查，workflow 預設 `25`。
