@@ -85,26 +85,30 @@ jobs:
           FFLOGS_CLIENT_CREDENTIALS_JSON: ${{ secrets.FFLOGS_CLIENT_CREDENTIALS_JSON }}
         run: python scripts/fetch_fflogs.py
 
-      - name: 補齊缺漏 FFLogs 原始資料
-        env:
-          FFLOGS_CLIENT_ID: ${{ secrets.FFLOGS_CLIENT_ID }}
-          FFLOGS_CLIENT_SECRET: ${{ secrets.FFLOGS_CLIENT_SECRET }}
-          FFLOGS_CLIENT_IDS: ${{ secrets.FFLOGS_CLIENT_IDS }}
-          FFLOGS_CLIENT_SECRETS: ${{ secrets.FFLOGS_CLIENT_SECRETS }}
-          FFLOGS_CLIENT_CREDENTIALS_JSON: ${{ secrets.FFLOGS_CLIENT_CREDENTIALS_JSON }}
-        run: python scripts/backfill_missing_fflogs_data.py --limit 250
+      # 舊版資料修補工具暫停每輪自動執行，避免排程重複回查已不常需要補齊的歷史 report。
+      # 若未來需要人工修復既有缺漏，保留以下步驟作為手動恢復時的上下文。
+      # - name: 補齊缺漏 FFLogs 原始資料
+      #   env:
+      #     FFLOGS_CLIENT_ID: ${{ secrets.FFLOGS_CLIENT_ID }}
+      #     FFLOGS_CLIENT_SECRET: ${{ secrets.FFLOGS_CLIENT_SECRET }}
+      #     FFLOGS_CLIENT_IDS: ${{ secrets.FFLOGS_CLIENT_IDS }}
+      #     FFLOGS_CLIENT_SECRETS: ${{ secrets.FFLOGS_CLIENT_SECRETS }}
+      #     FFLOGS_CLIENT_CREDENTIALS_JSON: ${{ secrets.FFLOGS_CLIENT_CREDENTIALS_JSON }}
+      #   run: python scripts/backfill_missing_fflogs_data.py --limit 250
 
-      - name: 以本地 xivanalysis-like 演算法補齊 GCD 覆蓋率
-        env:
-          FFLOGS_CLIENT_ID: ${{ secrets.FFLOGS_CLIENT_ID }}
-          FFLOGS_CLIENT_SECRET: ${{ secrets.FFLOGS_CLIENT_SECRET }}
-          FFLOGS_CLIENT_IDS: ${{ secrets.FFLOGS_CLIENT_IDS }}
-          FFLOGS_CLIENT_SECRETS: ${{ secrets.FFLOGS_CLIENT_SECRETS }}
-          FFLOGS_CLIENT_CREDENTIALS_JSON: ${{ secrets.FFLOGS_CLIENT_CREDENTIALS_JSON }}
-          FFLOGS_GCD_BACKFILL_LIMIT: ${{ vars.FFLOGS_GCD_BACKFILL_LIMIT }}
-        run: |
-          python scripts/backfill_gcd_coverage.py \
-            --limit "${FFLOGS_GCD_BACKFILL_LIMIT:-2000}"
+      # GCD 覆蓋率目前仍保留在資料結構中，但前端已隱藏；排程暫停每輪補算以減少 FFLogs request 與資料變動量。
+      # 若未來恢復顯示或需要追平歷史資料，保留以下步驟作為手動恢復時的上下文。
+      # - name: 以本地 xivanalysis-like 演算法補齊 GCD 覆蓋率
+      #   env:
+      #     FFLOGS_CLIENT_ID: ${{ secrets.FFLOGS_CLIENT_ID }}
+      #     FFLOGS_CLIENT_SECRET: ${{ secrets.FFLOGS_CLIENT_SECRET }}
+      #     FFLOGS_CLIENT_IDS: ${{ secrets.FFLOGS_CLIENT_IDS }}
+      #     FFLOGS_CLIENT_SECRETS: ${{ secrets.FFLOGS_CLIENT_SECRETS }}
+      #     FFLOGS_CLIENT_CREDENTIALS_JSON: ${{ secrets.FFLOGS_CLIENT_CREDENTIALS_JSON }}
+      #     FFLOGS_GCD_BACKFILL_LIMIT: ${{ vars.FFLOGS_GCD_BACKFILL_LIMIT }}
+      #   run: |
+      #     python scripts/backfill_gcd_coverage.py \
+      #       --limit "${FFLOGS_GCD_BACKFILL_LIMIT:-2000}"
 
       - name: 分割完整排行榜資料供 Git 追蹤
         run: python scripts/fetch_fflogs.py --split-rankings
@@ -180,7 +184,7 @@ jobs:
             -m "chore(data): 自動更新排行榜資料" \
             -m "原因：GitHub Actions 定時同步 FFLogs 公開報告，讓靜態網站資料保持最新。" \
             -m "主要變更：更新 data 與 public/data 內的排行榜、個人成績單、全服統計或更新狀態產物。" \
-            -m "測試/驗證：本 workflow 已完成 fetch_fflogs.py、backfill_missing_fflogs_data.py、backfill_gcd_coverage.py、validate:data 與 npm run build。"
+            -m "測試/驗證：本 workflow 已完成 fetch_fflogs.py、validate:data 與 npm run build。"
           # rebase 前工作樹必須乾淨；若未來資料建置新增了已追蹤產物但忘記納入 DATA_PATHS，
           # 這裡會列出漏掉的檔案，避免只看到 Git 的「cannot rebase: You have unstaged changes」。
           if [ -n "$(git status --porcelain --untracked-files=no)" ]; then

@@ -214,7 +214,7 @@ npm run backfill:gcd -- --dry-run
 npm run backfill:gcd
 ```
 
-`backfill_gcd_coverage.py` 會依通關時間由新到舊挑選缺少 `gcd_coverage` key，或仍停在舊版 `calculation_version` 的玩家，預設每輪 2000 筆。執行時會先輸出待補筆數、需重算筆數、已為 null 的筆數與本輪選取筆數，更新過程也會逐筆顯示 `[目前/本輪總數]` 進度。同一個 report/fight 會優先只查一次整場 FFLogs `Casts` graph，再於本地依玩家 `sourceID` 切分，避免每位玩家各打一個 FFLogs request。若 FFLogs report 已無法存取，該玩家會寫入 `gcd_coverage: null` 與 `gcd_coverage_status.reason = "private_or_deleted"`；暫時性錯誤會保留缺 key 或舊版狀態，留待下次重試。目前網站前端仍隱藏 GCD 欄位，但 GitHub Actions 會持續補算資料，避免未來恢復顯示時需要從零開始。
+`backfill_gcd_coverage.py` 會依通關時間由新到舊挑選缺少 `gcd_coverage` key，或仍停在舊版 `calculation_version` 的玩家，預設每輪 2000 筆。執行時會先輸出待補筆數、需重算筆數、已為 null 的筆數與本輪選取筆數，更新過程也會逐筆顯示 `[目前/本輪總數]` 進度。同一個 report/fight 會優先只查一次整場 FFLogs `Casts` graph，再於本地依玩家 `sourceID` 切分，避免每位玩家各打一個 FFLogs request。若 FFLogs report 已無法存取，該玩家會寫入 `gcd_coverage: null` 與 `gcd_coverage_status.reason = "private_or_deleted"`；暫時性錯誤會保留缺 key 或舊版狀態，留待下次重試。目前網站前端仍隱藏 GCD 欄位，GitHub Actions 也已暫停每輪自動補算；需要恢復顯示或追平資料時再手動執行即可。
 
 本地計算會參照 xivanalysis `Always be casting` 的核心規則：以 GCD cast/recast 取最大覆蓋時間、扣除 downtime，並用 FFLogs 約 45ms 批次的 timestamp 分桶推估實際 recast。對於忍者 mudra/ninjutsu、毒蛇劍士獨立 `gcdRecast`，以及毒蛇劍士、武士、白魔法師等加速狀態，腳本會用小型規則表補上 `Action.csv` 無法表達的例外。xivanalysis 頁面本身容易被站端限流，因此 workflow 預設不再讀取該網站頁面。
 
@@ -375,13 +375,15 @@ npm run build:user-data
 1. 安裝 Python 與 Node.js。
 2. 安裝 Python 與 Node.js 依賴。
 3. 使用 GitHub Secrets 中的 FFLogs 憑證執行抓取腳本。
-4. 執行 `scripts/backfill_missing_fflogs_data.py --limit 250` 補齊缺漏的 FFLogs 戰鬥資料。
-5. 執行 `scripts/backfill_gcd_coverage.py --limit 2000`，由最新通關紀錄往舊紀錄以本地 xivanalysis-like 演算法補齊或重算玩家 GCD 覆蓋率；可用 Repository Variable `FFLOGS_GCD_BACKFILL_LIMIT` 調整每輪上限。
-6. 執行 `python scripts/fetch_fflogs.py --split-rankings`，將完整排行榜資料拆分成適合 Git 追蹤的檔案。
-7. 產生個人成績單、全服統計、近期動態、隊伍榜、伺服器對比資料與 `data/update_status.json`。
-8. 執行 `npm run build`，在提交前完成公開資料驗證與 Vite 建置。
-9. 若 `data` 或 `public/data` 有變更，提交並推送更新。
-10. 上傳 `dist/` 並部署到 GitHub Pages。
+4. 執行 `python scripts/fetch_fflogs.py --split-rankings`，將完整排行榜資料拆分成適合 Git 追蹤的檔案。
+5. 產生個人成績單、全服統計、近期動態、隊伍榜、伺服器對比資料與 `data/update_status.json`。
+6. 執行 `npm run build`，在提交前完成公開資料驗證與 Vite 建置。
+7. 若 `data` 或 `public/data` 有變更，提交並推送更新。
+8. 上傳 `dist/` 並部署到 GitHub Pages。
+
+`scripts/backfill_missing_fflogs_data.py --limit 250` 的自動步驟目前已在 workflow 內以註解保留，不會隨每輪排程執行。若需要修補既有 report 缺漏欄位，可手動執行 `npm run backfill:fflogs` 或原 Python 指令，再接續建置與驗證資料。
+
+`scripts/backfill_gcd_coverage.py --limit 2000` 的自動步驟目前也已在 workflow 內以註解保留，不會隨每輪排程執行。若未來恢復 GCD 欄位顯示或需要追平歷史資料，可手動執行 `npm run backfill:gcd -- --dry-run` 預覽，再正式執行 `npm run backfill:gcd`；Repository Variable `FFLOGS_GCD_BACKFILL_LIMIT` 只在重新啟用 workflow 註解步驟時生效。
 
 需要在 GitHub Repository Secrets 設定至少一組：
 
@@ -439,7 +441,7 @@ npm run cloudflare:estimate
 - 排行榜只統計公開報告中可解析且符合繁中服條件的資料。
 - 單場 FFLogs `playerDetails` / `damageDone` 查詢會同時帶 `fightIDs` 與 fight 的相對 `startTime` / `endTime`，避免少數舊報告只用 `fightIDs` 時拿到 partial damage table，造成 rDPS/aDPS 異常放大。
 - `active_percent` 對齊 FFLogs Damage Done CSV 的 Active%，使用 `fflogs_total_time_ms` 作為優先分母；DPS/rDPS/aDPS 仍使用 `damage_time_ms`。
-- GCD 覆蓋率目前前端隱藏：`顯示Gcd覆蓋率=false`，但 GitHub Actions 仍會持續補算資料。`backfill_gcd_coverage.py` 會以 FFLogs `Casts` graph 本地計算，`backfill_gcd_coverage_xivanalysis.py` 只保留為抽樣診斷工具。本地計算會使用 graph 內的 downtime 視窗同時扣除分母與分子；同一個 report/fight 優先查整場 graph，再於本地依玩家 `sourceID` 切分，降低 FFLogs request 數。技能的 GCD 分類與基礎 cast/recast 以 XIVAPI datamining 的 `Action.csv` 為底，並用小型 allow-list 補上 xivanalysis 也會視為 GCD 的例外，例如忍者 mudra/ninjutsu，以及毒蛇劍士同時具有技能冷卻與獨立 GCD recast 的技能。完整 Casts raw events 只在記憶體中計算，不會保存到 repo。
+- GCD 覆蓋率目前前端隱藏：`顯示Gcd覆蓋率=false`，GitHub Actions 也已暫停每輪自動補算資料。`backfill_gcd_coverage.py` 會以 FFLogs `Casts` graph 本地計算，`backfill_gcd_coverage_xivanalysis.py` 只保留為抽樣診斷工具；需要恢復顯示或追平資料時，先以 `npm run backfill:gcd -- --dry-run` 預覽。本地計算會使用 graph 內的 downtime 視窗同時扣除分母與分子；同一個 report/fight 優先查整場 graph，再於本地依玩家 `sourceID` 切分，降低 FFLogs request 數。技能的 GCD 分類與基礎 cast/recast 以 XIVAPI datamining 的 `Action.csv` 為底，並用小型 allow-list 補上 xivanalysis 也會視為 GCD 的例外，例如忍者 mudra/ninjutsu，以及毒蛇劍士同時具有技能冷卻與獨立 GCD recast 的技能。完整 Casts raw events 只在記憶體中計算，不會保存到 repo。
 
 ## 版本切點與過版紀錄
 
