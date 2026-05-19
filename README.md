@@ -394,12 +394,13 @@ npm run build:user-data
 
 1. 安裝 Python 與 Node.js。
 2. 安裝 Python 與 Node.js 依賴。
-3. 使用 GitHub Secrets 中的 FFLogs 憑證執行抓取腳本，掃描全部地區候選 report，以低量歷史補查檢查舊時間窗是否有新的公開 logs 可抓取，並對新落地 fight 即時計算 GCD 覆蓋率。
-4. 執行 `python scripts/fetch_fflogs.py --split-rankings`，將完整排行榜資料拆分成適合 Git 追蹤的檔案。
-5. 產生個人成績單、全服統計、近期動態、隊伍榜、伺服器對比資料與 `data/update_status.json`。
-6. 執行 `npm run build`，在提交前完成公開資料驗證與 Vite 建置。
-7. 若 `data` 或 `public/data` 有變更，提交並推送更新。
-8. 上傳 `dist/` 並部署到 GitHub Pages。
+3. 同步 Cloudflare CDN 規則；若 Cloudflare Rulesets API 只有 5xx、429 或網路暫時錯誤，會記錄 warning 並繼續抓取 FFLogs，4xx 設定或權限錯誤仍會中止。
+4. 使用 GitHub Secrets 中的 FFLogs 憑證執行抓取腳本，掃描全部地區候選 report，以低量歷史補查檢查舊時間窗是否有新的公開 logs 可抓取，並對新落地 fight 即時計算 GCD 覆蓋率。
+5. 執行 `python scripts/fetch_fflogs.py --split-rankings`，將完整排行榜資料拆分成適合 Git 追蹤的檔案。
+6. 產生個人成績單、全服統計、近期動態、隊伍榜、伺服器對比資料與 `data/update_status.json`。
+7. 執行 `npm run build`，在提交前完成公開資料驗證與 Vite 建置。
+8. 若 `data` 或 `public/data` 有變更，提交並推送更新。
+9. 上傳 `dist/` 並部署到 GitHub Pages。
 
 `scripts/backfill_missing_fflogs_data.py --limit 250` 的自動步驟目前已在 workflow 內以註解保留，不會隨每輪排程執行。若需要修補既有 report 缺漏欄位，可手動執行 `npm run backfill:fflogs` 或原 Python 指令，再接續建置與驗證資料。
 
@@ -442,7 +443,7 @@ npm run cloudflare:apply -- --dry-run
 npm run cloudflare:apply
 ```
 
-GitHub Actions 每次執行時會先嘗試用 `CLOUDFLARE_RULES_API_TOKEN` 同步 Cloudflare Cache Rules、Facebook 分享爬蟲例外與 Rate Limiting Rules；若這個 secret 沒設定，會自動略過。部署成功後會再用 `CLOUDFLARE_PURGE_API_TOKEN` 或相容的 `CLOUDFLARE_API_TOKEN` 執行 `npm run cloudflare:purge` 清除會變動的快取。
+GitHub Actions 每次執行時會先嘗試用 `CLOUDFLARE_RULES_API_TOKEN` 同步 Cloudflare Cache Rules、Facebook 分享爬蟲例外與 Rate Limiting Rules；若這個 secret 沒設定，會自動略過。Cloudflare Rulesets API 回傳 5xx、429 或網路暫時錯誤時，workflow 會先重試，最後仍失敗才略過本次規則同步，避免外部 API 波動阻斷 FFLogs 排行榜更新；權限或設定錯誤等 4xx 仍會讓 workflow 失敗。部署成功後會再用 `CLOUDFLARE_PURGE_API_TOKEN` 或相容的 `CLOUDFLARE_API_TOKEN` 執行 `npm run cloudflare:purge` 清除會變動的快取。
 
 估算目前 `dist/` 在不同 Cloudflare HIT ratio 下，大約能承載多少頁面載入：
 

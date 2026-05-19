@@ -82,6 +82,9 @@ npm run cloudflare:apply -- --dry-run
 CLOUDFLARE_ZONE_ID=你的 zone id
 CLOUDFLARE_RULES_API_TOKEN=你的規則管理 API token
 CLOUDFLARE_HOSTNAME=ranking.init.engineer
+# 可選：調整 Rulesets API 暫時性錯誤的重試次數與基礎等待毫秒數。
+CLOUDFLARE_RULES_API_MAX_ATTEMPTS=3
+CLOUDFLARE_RULES_API_RETRY_BASE_MS=750
 ```
 
 規則管理 token 最小權限：
@@ -111,7 +114,7 @@ CLOUDFLARE_RULES_API_TOKEN
 CLOUDFLARE_PURGE_API_TOKEN
 ```
 
-workflow 會在安裝依賴後先執行 `npm run cloudflare:apply`，確保 `/data/*`、HTML route、OG 圖、assets、Facebook 分享爬蟲例外與 Rate Limiting 規則存在；部署成功後再執行 `npm run cloudflare:purge`。如果不想讓 workflow 管理 Rate Limiting Rules，可在 repository variables 設定：
+workflow 會在安裝依賴後先執行 `npm run cloudflare:apply -- --allow-transient-failure`，確保 `/data/*`、HTML route、OG 圖、assets、Facebook 分享爬蟲例外與 Rate Limiting 規則存在。Cloudflare Rulesets API 回傳 5xx、429 或網路暫時錯誤時，腳本會先重試；若最後仍失敗，workflow 會把本次規則同步標成 warning 並繼續更新排行榜。這是為了避免 Cloudflare 外部 API 短暫異常阻斷 FFLogs 抓取；若是 4xx 權限不足、token 錯誤或 payload 不合法，仍會讓 workflow 失敗。部署成功後再執行 `npm run cloudflare:purge`。如果不想讓 workflow 管理 Rate Limiting Rules，可在 repository variables 設定：
 
 ```text
 CLOUDFLARE_MANAGE_RATE_LIMIT=false

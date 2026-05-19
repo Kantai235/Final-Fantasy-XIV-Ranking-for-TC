@@ -70,11 +70,11 @@ jobs:
             exit 0
           fi
 
+          CLOUDFLARE_APPLY_ARGS=(--allow-transient-failure)
           if [ "$CLOUDFLARE_MANAGE_RATE_LIMIT" = "false" ]; then
-            npm run cloudflare:apply -- --skip-rate-limit
-          else
-            npm run cloudflare:apply
+            CLOUDFLARE_APPLY_ARGS+=(--skip-rate-limit)
           fi
+          npm run cloudflare:apply -- "${CLOUDFLARE_APPLY_ARGS[@]}"
 
       - name: 執行 FFLogs 排行榜抓取腳本
         env:
