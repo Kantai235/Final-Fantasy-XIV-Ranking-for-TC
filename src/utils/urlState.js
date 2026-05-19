@@ -244,8 +244,9 @@ function 寫入頁面專屬參數(參數, 狀態) {
   }
 
   if (狀態.page === "jobs") {
-    // 職業分析只有「職業」是可分享的選擇；職能可由職業反推，
-    // 不寫入 jobType 可避免 /jobs 連結出現重複語意的 query。
+    // 單一職業使用 /jobs/{job}；職能範圍則寫入 jobScope，
+    // 避免把 role:* 放進路徑後和既有 /jobs/{job} 語意混在一起。
+    寫入參數(參數, "jobScope", 狀態.jobScope);
     return;
   }
 

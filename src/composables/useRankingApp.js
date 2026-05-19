@@ -84,6 +84,7 @@ const 預設統計職業範圍 = "all";
 const 預設伺服器拆分模式 = "none";
 const 預設統計傷害指標 = "rdps";
 const 預設隊伍榜副本鍵值 = "savage_m4s";
+const 預設職業分析範圍 = "role:tank";
 const 作者角色名稱 = "乾太";
 const 作者說明文字 = "這個網站的作者，可愛的乾太。";
 const 排行榜資料 = ref(null);
@@ -138,7 +139,7 @@ const 伺服器拆分模式 = ref(預設伺服器拆分模式);
 const 統計傷害指標 = ref(預設統計傷害指標);
 const 職業傷害提示鎖定職業 = ref("");
 const 職業傷害提示互動職業 = ref("");
-const 職業分析職業 = ref("");
+const 職業分析職業 = ref(預設職業分析範圍);
 const 職業分析展示類型 = ref("");
 const 職業分析選單開啟 = ref(false);
 const 近期動態資料 = ref(null);
@@ -335,7 +336,7 @@ function 目前頁面主色() {
     return 主色由職業範圍(比較職能篩選.value);
   }
   if (頁面模式.value === "jobs") {
-    return 主色由職業選擇(職業分析目前職業代碼.value, 職業分析目前類型代碼.value);
+    return 主色由職業範圍(職業分析目前範圍代碼.value);
   }
   if (頁面模式.value === "activity" || 頁面模式.value === "teams" || 頁面模式.value === "servers") {
     return "default";
@@ -557,9 +558,8 @@ function 切換職業分析選單() {
 }
 
 function 選擇職業分析類型(類型代碼) {
-  // 職業分析的職能只用來瀏覽右側職業子選項，不是篩選條件。
-  // 因此這裡不會改變目前職業，也不會觸發 /jobs 的 URL query 更新。
   if (職業分析職業分組.value.some((群組) => 群組.代碼 === 類型代碼)) {
+    職業分析職業.value = 類型代碼;
     職業分析展示類型.value = 類型代碼;
   }
 }
@@ -1543,25 +1543,13 @@ const 職業分析職業選項 = computed(() => {
   }));
 });
 
-const 職業分析目前職業代碼 = computed(() => {
-  if (職業分析職業.value) {
-    return 職業分析職業.value;
-  }
-
-  return 職業分析職業選項.value[0]?.job || "";
-});
-
-const 職業分析目前職業 = computed(() => {
-  return 職業分析職業選項.value.find((項目) => 項目.job === 職業分析目前職業代碼.value) || null;
-});
-
 const 職業分析有資料職業 = computed(() => {
   return new Set(職業分析職業選項.value.map((職業) => 職業.job).filter(Boolean));
 });
 
 const 職業分析職業分組 = computed(() => {
-  // 職業分析的職能只作為選單分組、右欄展示與主題色來源，不是可分享的篩選狀態。
-  // 因此 URL 只需要保存 job，職能則由 job 對應表反推，分享連結會更短也更穩定。
+  // 職業分析現在有 role / job 兩種範圍。職能本身是可分享、可分析的狀態；
+  // 右欄職業列表則讓使用者能從同一個選單繼續鑽到單一職業。
   return 職業群組設定
     .map((群組) => {
       const 職業列表 = 群組.職業
@@ -1582,7 +1570,51 @@ const 職業分析職業分組 = computed(() => {
     .filter((群組) => 群組.職業列表.length > 0);
 });
 
+const 職業分析預設範圍代碼 = computed(() => {
+  if (職業分析職業分組.value.some((群組) => 群組.代碼 === 預設職業分析範圍)) {
+    return 預設職業分析範圍;
+  }
+
+  return 職業分析職業分組.value[0]?.代碼 || "";
+});
+
+const 職業分析目前範圍代碼 = computed(() => {
+  const 範圍 = String(職業分析職業.value || "").trim();
+  if (!範圍) {
+    return 職業分析預設範圍代碼.value;
+  }
+  if (範圍.startsWith("role:") && 職業分析職業分組.value.some((群組) => 群組.代碼 === 範圍)) {
+    return 範圍;
+  }
+  if (職業分析職業選項.value.some((職業) => 職業.job === 範圍)) {
+    return 範圍;
+  }
+
+  return 職業分析預設範圍代碼.value;
+});
+
+const 職業分析目前範圍類型 = computed(() => {
+  const 範圍代碼 = 職業分析目前範圍代碼.value;
+  if (範圍代碼.startsWith("role:")) {
+    return "role";
+  }
+
+  return 範圍代碼 ? "job" : "";
+});
+
+const 職業分析目前職業代碼 = computed(() => {
+  return 職業分析目前範圍類型.value === "job" ? 職業分析目前範圍代碼.value : "";
+});
+
+const 職業分析目前職業 = computed(() => {
+  return 職業分析職業選項.value.find((項目) => 項目.job === 職業分析目前職業代碼.value) || null;
+});
+
 const 職業分析目前類型代碼 = computed(() => {
+  if (職業分析目前範圍類型.value === "role") {
+    return 職業分析目前範圍代碼.value;
+  }
+
   return (
     職業所屬類型(職業分析目前職業代碼.value)?.代碼 ||
     職業分析職業分組.value[0]?.代碼 ||
@@ -1606,37 +1638,217 @@ const 職業分析展示職業 = computed(() => {
   return 職業分析職業分組.value.find((群組) => 群組.代碼 === 職業分析展示類型代碼.value)?.職業列表 || [];
 });
 
-const 職業分析選單文字 = computed(() => {
-  if (!職業分析目前職業代碼.value) {
-    return "選擇職業";
+function 取得來源範圍統計(來源, 範圍代碼) {
+  const 類型 = 職業範圍類型(範圍代碼);
+  if (類型 === "role") {
+    return (來源?.role_stats || []).find((項目) => 項目.role === 範圍代碼) || null;
+  }
+  if (類型 === "job") {
+    return (來源?.job_stats || []).find((項目) => 項目.job === 範圍代碼) || null;
   }
 
-  return 職業分析目前類型.value
-    ? `${職業分析目前類型.value.名稱} / ${顯示職業名稱(職業分析目前職業代碼.value)}`
-    : 顯示職業名稱(職業分析目前職業代碼.value);
+  return null;
+}
+
+function 建立職業分析職能職業分布列(來源, 範圍代碼) {
+  if (職業範圍類型(範圍代碼) !== "role") {
+    return [];
+  }
+
+  const 職業順序 = new Map(
+    (職業分析職業分組.value.find((群組) => 群組.代碼 === 範圍代碼)?.職業列表 || [])
+      .map((職業, index) => [職業.代碼, index]),
+  );
+
+  return (來源?.job_stats || [])
+    .filter((項目) => 項目?.role === 範圍代碼 && 職業順序.has(項目.job))
+    .map((項目) => {
+      const 佔比 = 轉為數字(項目.percentage) || 0;
+      const 安全佔比 = Math.min(Math.max(佔比, 0), 100);
+
+      return {
+        job: 項目.job,
+        數量: 轉為數字(項目.clear_count) || 0,
+        佔比,
+        樣式: {
+          "--職能職業分布色": 職業比較圖色彩(項目.job),
+          "--職能職業分布寬度": `${安全佔比}%`,
+        },
+      };
+    })
+    .filter((項目) => 項目.數量 > 0)
+    .sort((前一個, 後一個) => {
+      const 順序差 = (職業順序.get(前一個.job) ?? Number.MAX_SAFE_INTEGER) - (職業順序.get(後一個.job) ?? Number.MAX_SAFE_INTEGER);
+      return 順序差 || 後一個.數量 - 前一個.數量 || 顯示職業名稱(前一個.job).localeCompare(顯示職業名稱(後一個.job), "zh-Hant-TW");
+    });
+}
+
+const 職業分析目前範圍 = computed(() => {
+  const 範圍代碼 = 職業分析目前範圍代碼.value;
+  const 範圍類型 = 職業分析目前範圍類型.value;
+
+  if (範圍類型 === "role") {
+    const 群組 = 職業群組設定.find((項目) => 項目.代碼 === 範圍代碼);
+    if (!群組) {
+      return null;
+    }
+
+    return {
+      類型: "role",
+      代碼: 群組.代碼,
+      名稱: 群組.名稱,
+      副標: "職能",
+      色彩: 群組.色彩,
+      Icon路徑: 職業類型Icon路徑(群組.代碼),
+    };
+  }
+
+  const 職業 = 職業分析目前職業.value;
+  if (!職業) {
+    return null;
+  }
+
+  return {
+    類型: "job",
+    代碼: 職業.job,
+    名稱: 顯示職業名稱(職業.job),
+    副標: 職業.role_name,
+    色彩: 職業代碼色彩(職業.job),
+    Icon路徑: 職業Icon路徑(職業.job),
+  };
+});
+
+const 職業分析選單文字 = computed(() => {
+  if (!職業分析目前範圍.value) {
+    return "選擇分析範圍";
+  }
+
+  return 職業分析目前範圍.value.類型 === "job"
+    ? `${職業分析目前範圍.value.副標} / ${職業分析目前範圍.value.名稱}`
+    : 職業分析目前範圍.value.名稱;
 });
 
 const 職業分析選單Icon路徑 = computed(() => {
-  if (職業分析目前職業代碼.value) {
-    return 職業Icon路徑(職業分析目前職業代碼.value);
+  return 職業分析目前範圍.value?.Icon路徑 || "";
+});
+
+const 職業分析分位來源 = computed(() => {
+  const 零式分位 = Array.isArray(全服統計資料.value?.savage_damage_stats)
+    ? 全服統計資料.value.savage_damage_stats
+    : [];
+
+  if (零式分位.length > 0) {
+    return {
+      標籤: "零式 M1S-M4S",
+      列表: 零式分位,
+    };
   }
 
-  return 職業類型Icon路徑(職業分析目前類型代碼.value);
+  return {
+    標籤: "全部副本",
+    列表: Array.isArray(全服統計資料.value?.damage_stats) ? 全服統計資料.value.damage_stats : [],
+  };
+});
+
+const 職業分析分位亮點條件文字 = computed(() => {
+  return `${職業分析分位來源.value.標籤}・Active 達標樣本・rDPS`;
+});
+
+function 建立職業分析分位亮點列(項目) {
+  const 指標統計 = 項目?.metrics?.rdps;
+  const 樣本數 = 轉為數字(指標統計?.count) || 0;
+  const 中位數 = 轉為數字(指標統計?.median);
+  const 前段值 = 轉為數字(指標統計?.q3) ?? 中位數;
+  const 最高值 = 轉為數字(指標統計?.max);
+
+  if (!項目?.job || 樣本數 <= 0 || 前段值 === null) {
+    return null;
+  }
+
+  return {
+    job: 項目.job,
+    role: 項目.role,
+    role_name: 項目.role_name,
+    樣本數,
+    中位數,
+    前段值,
+    最高值,
+  };
+}
+
+const 職業分析分位亮點基礎列 = computed(() => {
+  const 原始列表 = 職業分析分位來源.value.列表
+    .map((項目) => {
+      const 指標統計 = 項目?.metrics?.rdps;
+      const 前段值 = 轉為數字(指標統計?.q3) ?? 轉為數字(指標統計?.median);
+      return {
+        項目,
+        前段值,
+      };
+    })
+    .filter((列) => 列.項目?.job && 列.前段值 !== null);
+  return 原始列表
+    .map((列) => 建立職業分析分位亮點列(列.項目))
+    .filter(Boolean)
+    .sort((前一個, 後一個) => {
+      const 前段差 = 後一個.前段值 - 前一個.前段值;
+      if (前段差) {
+        return 前段差;
+      }
+      const 中位差 = (後一個.中位數 || 0) - (前一個.中位數 || 0);
+      return 中位差 || 顯示職業名稱(前一個.job).localeCompare(顯示職業名稱(後一個.job), "zh-Hant-TW");
+    });
+});
+
+const 職業分析分位亮點標題 = computed(() => {
+  if (!職業分析目前範圍.value) {
+    return "rDPS 分位";
+  }
+
+  return `${職業分析目前範圍.value.名稱} rDPS 分位`;
+});
+
+const 職業分析分位亮點列 = computed(() => {
+  const 範圍類型 = 職業分析目前範圍類型.value;
+  const 範圍代碼 = 職業分析目前範圍代碼.value;
+  if (範圍類型 !== "role") {
+    return [];
+  }
+
+  const 顯示列表 = 職業分析分位亮點基礎列.value.filter((列) => 列.role === 範圍代碼);
+  const 最大前段值 = Math.max(...顯示列表.map((列) => 列.前段值), 0);
+
+  // 這裡只排列 build_user_data.mjs 已完成的分位摘要，不在 Vue 重新掃描成績明細。
+  // 分位亮點只在職能範圍顯示，單一職業頁則保留給副本、伺服器與代表紀錄等深入資訊。
+  return 顯示列表.map((列) => ({
+    ...列,
+    樣式: {
+      "--職業分位色": 職業比較圖色彩(列.job),
+      "--職業分位強度": `${最大前段值 > 0 ? Number(((列.前段值 / 最大前段值) * 100).toFixed(2)) : 0}%`,
+    },
+  }));
 });
 
 const 職業分析副本列 = computed(() => {
-  const 職業 = 職業分析目前職業代碼.value;
-  const 總數 = 轉為數字(職業分析目前職業.value?.clear_count) || 0;
+  const 範圍代碼 = 職業分析目前範圍代碼.value;
+  const 是職能範圍 = 職業分析目前範圍類型.value === "role";
+  const 總數 = 轉為數字(取得來源範圍統計(全服統計資料.value, 範圍代碼)?.clear_count) || 0;
 
   return 全服統計副本列表.value
     .map((副本) => {
-      const 統計 = (副本.job_stats || []).find((項目) => 項目.job === 職業);
+      const 統計 = 取得來源範圍統計(副本, 範圍代碼);
       const 數量 = 轉為數字(統計?.clear_count) || 0;
+      const 範圍內佔比 = 總數 > 0 ? Number(((數量 / 總數) * 100).toFixed(2)) : 0;
       return {
         ...副本,
         數量,
-        副本內佔比: 轉為數字(統計?.percentage) || 0,
-        職業內佔比: 總數 > 0 ? Number(((數量 / 總數) * 100).toFixed(2)) : 0,
+        範圍內佔比,
+        職業內佔比: 範圍內佔比,
+        主要百分比文字: 是職能範圍 ? `職能分布 ${格式化百分比(範圍內佔比)}` : 格式化百分比(範圍內佔比),
+        補充: 是職能範圍
+          ? `副本內${職業分析目前範圍.value?.名稱 || "職能"}合計 ${格式化百分比(統計?.percentage)}`
+          : `副本內佔比 ${格式化百分比(統計?.percentage)}`,
+        職業分布列: 是職能範圍 ? 建立職業分析職能職業分布列(副本, 範圍代碼) : [],
       };
     })
     .filter((副本) => 副本.數量 > 0)
@@ -1647,18 +1859,24 @@ const 職業分析副本列 = computed(() => {
 });
 
 const 職業分析伺服器列 = computed(() => {
-  const 職業 = 職業分析目前職業代碼.value;
-  const 總數 = 轉為數字(職業分析目前職業.value?.clear_count) || 0;
+  const 範圍代碼 = 職業分析目前範圍代碼.value;
+  const 是職能範圍 = 職業分析目前範圍類型.value === "role";
+  const 總數 = 轉為數字(取得來源範圍統計(全服統計資料.value, 範圍代碼)?.clear_count) || 0;
 
   return (全服統計資料.value?.server_stats || [])
     .map((伺服器) => {
-      const 統計 = (伺服器.job_stats || []).find((項目) => 項目.job === 職業);
+      const 統計 = 取得來源範圍統計(伺服器, 範圍代碼);
       const 數量 = 轉為數字(統計?.clear_count) || 0;
+      const 範圍內佔比 = 總數 > 0 ? Number(((數量 / 總數) * 100).toFixed(2)) : 0;
       return {
         server: 伺服器.server,
         數量,
-        全職業佔比: 總數 > 0 ? Number(((數量 / 總數) * 100).toFixed(2)) : 0,
-        伺服器內佔比: 轉為數字(統計?.percentage) || 0,
+        全職業佔比: 範圍內佔比,
+        主要百分比文字: 是職能範圍 ? `職能落點 ${格式化百分比(範圍內佔比)}` : 格式化百分比(範圍內佔比),
+        補充: 是職能範圍
+          ? `伺服器內${職業分析目前範圍.value?.名稱 || "職能"}合計 ${格式化百分比(統計?.percentage)}`
+          : `伺服器內佔比 ${格式化百分比(統計?.percentage)}`,
+        職業分布列: 是職能範圍 ? 建立職業分析職能職業分布列(伺服器, 範圍代碼) : [],
       };
     })
     .filter((伺服器) => 伺服器.數量 > 0)
@@ -1666,18 +1884,33 @@ const 職業分析伺服器列 = computed(() => {
 });
 
 const 職業分析概要 = computed(() => {
-  const 職業 = 職業分析目前職業.value;
-  if (!職業) {
+  const 範圍 = 職業分析目前範圍.value;
+  const 統計 = 取得來源範圍統計(全服統計資料.value, 職業分析目前範圍代碼.value);
+  if (!範圍 || !統計) {
     return [];
   }
 
   const 主要副本 = 職業分析副本列.value.slice().sort((前一個, 後一個) => 後一個.數量 - 前一個.數量)[0] || null;
   const 主要伺服器 = 職業分析伺服器列.value[0] || null;
+  const 主要職業 = 職業分析職業選項.value
+    .filter((職業) => 範圍.類型 !== "role" || 職業.role === 範圍.代碼)
+    .slice()
+    .sort((前一個, 後一個) => (後一個.clear_count || 0) - (前一個.clear_count || 0))[0] || null;
+
+  if (範圍.類型 === "role") {
+    return [
+      { 標籤: "職能紀錄", 數值: 格式化整數(統計.clear_count) },
+      { 標籤: "公開成績", 數值: 格式化整數(統計.entry_count) },
+      { 標籤: "全職業佔比", 數值: 格式化百分比(統計.percentage) },
+      { 標籤: "主要職業", 數值: 主要職業 ? `${顯示職業名稱(主要職業.job)} ${格式化百分比(主要職業.percentage)}` : "-" },
+      { 標籤: "主要伺服器", 數值: 主要伺服器 ? `${主要伺服器.server} ${格式化百分比(主要伺服器.全職業佔比)}` : "-" },
+    ];
+  }
 
   return [
-    { 標籤: "通關紀錄", 數值: 格式化整數(職業.clear_count) },
-    { 標籤: "公開成績", 數值: 格式化整數(職業.entry_count) },
-    { 標籤: "全職業佔比", 數值: 格式化百分比(職業.percentage) },
+    { 標籤: "通關紀錄", 數值: 格式化整數(統計.clear_count) },
+    { 標籤: "公開成績", 數值: 格式化整數(統計.entry_count) },
+    { 標籤: "全職業佔比", 數值: 格式化百分比(統計.percentage) },
     { 標籤: "主要伺服器", 數值: 主要伺服器 ? `${主要伺服器.server} ${格式化百分比(主要伺服器.全職業佔比)}` : "-" },
     { 標籤: "主要副本", 數值: 主要副本 ? `${主要副本.encounter_name} ${格式化百分比(主要副本.職業內佔比)}` : "-" },
   ];
@@ -2316,7 +2549,7 @@ const 頁面標題 = computed(() => {
   }
 
   if (頁面模式.value === "jobs") {
-    return 職業分析目前職業代碼.value ? `${顯示職業名稱(職業分析目前職業代碼.value)} 職業分析` : "職業分析";
+    return 職業分析目前範圍.value ? `${職業分析目前範圍.value.名稱} 職業分析` : "職業分析";
   }
 
   if (頁面模式.value === "activity") {
@@ -2401,11 +2634,11 @@ function 玩家比較分享描述() {
 }
 
 function 職業分析分享描述() {
-  const 職業名稱 = 職業分析目前職業代碼.value ? 顯示職業名稱(職業分析目前職業代碼.value) : "指定職業";
+  const 範圍名稱 = 職業分析目前範圍.value?.名稱 || "指定範圍";
   const 代表紀錄數 = 分享數量文字(職業分析代表紀錄.value.length, "筆代表紀錄");
 
   return 正規化分享描述(
-    `${職業名稱}職業分析整理各副本、伺服器與 rDPS 分布${代表紀錄數 ? `，目前列出 ${代表紀錄數}` : ""}，協助查看繁中服公開紀錄中的職業落點。`,
+    `${範圍名稱}職業分析整理 rDPS 分位、各副本與伺服器分布${代表紀錄數 ? `，目前列出 ${代表紀錄數}` : ""}，協助查看繁中服公開紀錄中的職業落點。`,
   );
 }
 
@@ -3406,8 +3639,10 @@ function 更新網址為角色比較(選項 = {}) {
 }
 
 function 更新網址為職業分析(選項 = {}) {
+  const 範圍類型 = 職業分析目前範圍類型.value;
   更新分享網址("jobs", {
-    job: 非預設分享值(職業分析職業.value, 職業分析職業選項.value[0]?.job || ""),
+    job: 範圍類型 === "job" ? 職業分析目前職業代碼.value : "",
+    jobScope: 範圍類型 === "role" ? 職業分析目前範圍代碼.value : "",
   }, 選項);
 }
 
@@ -3723,10 +3958,10 @@ async function 套用角色比較網址狀態(網址狀態) {
 
 async function 套用職業分析網址狀態(網址狀態) {
   頁面模式.value = "jobs";
-  職業分析職業.value = 網址狀態.job || "";
+  職業分析職業.value = 網址狀態.job || 網址狀態.jobScope || 預設職業分析範圍;
   await 讀取全服統計();
-  if (職業分析職業.value && !職業分析職業選項.value.some((職業) => 職業.job === 職業分析職業.value)) {
-    職業分析職業.value = "";
+  if (職業分析目前範圍代碼.value !== String(職業分析職業.value || "").trim() && 職業分析預設範圍代碼.value) {
+    職業分析職業.value = 職業分析預設範圍代碼.value;
   }
   更新網址為職業分析({ replace: true, 強制: true });
 }
@@ -3887,11 +4122,14 @@ watch([統計副本鍵值, 統計版本範圍, 統計伺服器篩選, 統計職�
 });
 
 watch([全服統計資料, 職業分析職業選項], () => {
-  if (職業分析職業.value && !職業分析職業選項.value.some((職業) => 職業.job === 職業分析職業.value)) {
-    職業分析職業.value = "";
+  if (職業分析目前範圍代碼.value !== String(職業分析職業.value || "").trim() && 職業分析預設範圍代碼.value) {
+    職業分析職業.value = 職業分析預設範圍代碼.value;
   }
   if (職業分析展示類型.value && !職業分析職業分組.value.some((群組) => 群組.代碼 === 職業分析展示類型.value)) {
     職業分析展示類型.value = "";
+  }
+  if (頁面模式.value === "jobs" && 職業分析目前範圍代碼.value) {
+    更新網址為職業分析({ replace: true });
   }
 });
 
@@ -4197,6 +4435,9 @@ onUnmounted(() => {
     伺服器生態矩陣,
     熱力格樣式,
     職業分析職業選項,
+    職業分析目前範圍代碼,
+    職業分析目前範圍類型,
+    職業分析目前範圍,
     職業分析目前職業代碼,
     職業分析目前職業,
     職業分析有資料職業,
@@ -4207,6 +4448,9 @@ onUnmounted(() => {
     職業分析展示職業,
     職業分析選單文字,
     職業分析選單Icon路徑,
+    職業分析分位亮點條件文字,
+    職業分析分位亮點標題,
+    職業分析分位亮點列,
     職業分析副本列,
     職業分析伺服器列,
     職業分析概要,

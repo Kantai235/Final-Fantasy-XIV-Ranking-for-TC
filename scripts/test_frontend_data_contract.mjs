@@ -512,6 +512,11 @@ async function validateShareUrlStateCompatibility() {
       expected: { page: "jobs", job: "Paladin" },
     },
     {
+      label: "職業分析職能 query",
+      href: "https://ranking.init.engineer/jobs?jobScope=role%3Atank",
+      expected: { page: "jobs", jobScope: "role:tank" },
+    },
+    {
       label: "伺服器對比乾淨路徑",
       href: "https://ranking.init.engineer/servers/%E9%B3%B3%E5%87%B0/vs/%E4%BC%8A%E5%BC%97%E5%88%A9%E7%89%B9",
       expected: { page: "servers", left: "鳳凰", right: "伊弗利特" },
@@ -539,6 +544,13 @@ async function validateShareUrlStateCompatibility() {
     "子路徑部署下從 /stats/{副本} 寫入 /jobs/{職業} 時，必須保留部署基底路徑",
   );
   assert(events.includes("ffxivtc:urlchange"), "寫入分享網址後必須送出自訂事件，讓 SEO/OG meta 同步更新");
+
+  installUrlStateWindow("https://example.test/repo/jobs/Paladin", events);
+  module.writeState({ page: "jobs", jobScope: "role:tank" }, { replace: true });
+  assert(
+    globalThis.window.location.href === "https://example.test/repo/jobs?jobScope=role%3Atank",
+    "職業分析寫入職能範圍時，應保留 /jobs 路徑並以 jobScope query 表示職能",
+  );
 
   installUrlStateWindow("https://ranking.init.engineer/?encounter=savage_m1s&version=valid", events);
   module.writeState({ page: "ranking", encounter: "extreme_zoraal_ja", version: "obsolete" }, { replace: true });

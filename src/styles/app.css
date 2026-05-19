@@ -1218,6 +1218,150 @@ button:disabled {
   gap: 16px;
 }
 
+.職業分位亮點區 {
+  display: grid;
+  gap: 12px;
+}
+
+.職業分位亮點標題 {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.職業分位亮點標題 span {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.職業分位亮點標題 small {
+  color: var(--次要文字);
+  font-size: 0.8rem;
+  font-weight: 720;
+}
+
+.職業分位亮點標題 strong {
+  color: var(--主要文字);
+  font-size: 1.12rem;
+  font-weight: 850;
+}
+
+.職業分位亮點卡 {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--邊框色);
+  border-radius: 8px;
+  background: var(--表面背景);
+}
+
+.職業分位亮點列表 {
+  display: grid;
+  gap: 1px;
+  background: var(--邊框柔和色);
+}
+
+.職業分位亮點列 {
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(126px, 1.05fr) repeat(3, minmax(74px, 0.42fr)) auto;
+  gap: 6px 12px;
+  align-items: center;
+  border: 0;
+  border-radius: 0;
+  padding: 9px 12px;
+  color: var(--主要文字);
+  background: var(--表面背景);
+  font-weight: 720;
+  line-height: 1.25;
+  text-align: left;
+}
+
+.職業分位亮點列:hover:not(:disabled),
+.職業分位亮點列.已選取 {
+  background: color-mix(in srgb, var(--職業分位色) 12%, var(--表面背景));
+}
+
+.職業分位亮點列:focus {
+  outline: 3px solid var(--焦點陰影);
+  outline-offset: -3px;
+}
+
+.職業分位亮點職業 {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.職業分位亮點職業 strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--主要文字);
+  font-size: 0.82rem;
+  font-weight: 850;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.職業分位亮點數值 {
+  min-width: 0;
+  display: grid;
+  justify-items: end;
+  gap: 2px;
+  text-align: right;
+}
+
+.職業分位亮點數值 small,
+.職業分位亮點樣本 {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--次要文字);
+  font-size: 0.68rem;
+  font-weight: 720;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.職業分位亮點數值 strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--主要文字);
+  font-size: 0.78rem;
+  font-weight: 850;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.職業分位亮點主值 strong {
+  color: var(--職業分位色);
+}
+
+.職業分位亮點樣本 {
+  justify-self: end;
+}
+
+.職業分位亮點強度條 {
+  grid-column: 1 / -1;
+  display: block;
+  overflow: hidden;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--表面背景柔和);
+}
+
+.職業分位亮點強度條 span {
+  display: block;
+  width: var(--職業分位強度);
+  height: 100%;
+  border-radius: inherit;
+  background: var(--職業分位色);
+}
+
 .職業焦點卡 {
   overflow: hidden;
   border: 1px solid var(--邊框色);
@@ -1288,6 +1432,84 @@ button:disabled {
 
 .職業分析補充 {
   display: block;
+}
+
+.職能職業分布列表 {
+  display: grid;
+  gap: 7px;
+  padding-top: 2px;
+}
+
+.職能職業分布堆疊條 {
+  display: flex;
+  overflow: hidden;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--表面背景柔和);
+}
+
+.職能職業分布堆疊段 {
+  flex: 0 0 var(--職能職業分布寬度);
+  min-width: 2px;
+  height: 100%;
+  background: var(--職能職業分布色);
+}
+
+.職能職業分布堆疊段:first-child {
+  border-radius: 999px 0 0 999px;
+}
+
+.職能職業分布堆疊段:last-child {
+  border-radius: 0 999px 999px 0;
+}
+
+.職能職業分布堆疊段:only-child {
+  border-radius: 999px;
+}
+
+.職能職業分布標籤列 {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 7px;
+}
+
+.職能職業分布標籤 {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 6px;
+  border: 1px solid color-mix(in srgb, var(--職能職業分布色) 32%, var(--邊框色));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--職能職業分布色) 9%, var(--表面背景));
+}
+
+.職能職業分布標籤 .職業圖示 {
+  width: 16px;
+  height: 16px;
+}
+
+.職能職業分布標籤 strong,
+.職能職業分布標籤 em {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.職能職業分布標籤 strong {
+  color: var(--主要文字);
+  font-size: 0.72rem;
+  font-weight: 820;
+}
+
+.職能職業分布標籤 em {
+  color: var(--職能職業分布色);
+  font-size: 0.68rem;
+  font-style: normal;
+  font-weight: 720;
+  font-variant-numeric: tabular-nums;
 }
 
 .職業深化版面 {
@@ -4343,6 +4565,44 @@ td a:hover {
   .職業深化版面,
   .職業代表紀錄列 {
     grid-template-columns: 1fr;
+  }
+
+  .職業分位亮點列 {
+    grid-template-columns: minmax(0, 1fr) minmax(86px, auto);
+    gap: 5px 8px;
+    padding: 9px 10px;
+  }
+
+  .職業分位亮點職業 {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .職業分位亮點主值 {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .職業分位亮點中位值 {
+    grid-column: 1;
+    grid-row: 2;
+    justify-items: start;
+    text-align: left;
+  }
+
+  .職業分位亮點最高值 {
+    grid-column: 2;
+    grid-row: 2;
+  }
+
+  .職業分位亮點樣本 {
+    grid-column: 1 / -1;
+    grid-row: 3;
+    justify-self: start;
+  }
+
+  .職業分位亮點強度條 {
+    grid-row: 4;
   }
 
   .伺服器對比工具列 {
