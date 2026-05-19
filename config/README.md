@@ -17,7 +17,7 @@
 
 ## `fflogs.json` 的判讀重點
 
-- `report_page_limit`、`report_max_pages` 與 `scan_window_hours` 控制淺層 reports 掃描範圍；報告太多時 `fetch_fflogs.py` 會自動切半查詢。
+- `report_page_limit`、`report_max_pages`、`report_region_scope` 與 `scan_window_hours` 控制淺層 reports 掃描範圍；專案預設 `report_region_scope=all`，保留全部地區候選，後續仍會用繁中服伺服器名稱做深層過濾。若短期維護需要降低掃描量，可暫時改成 `china` 只把中國區域 report 放入候選。報告太多時 `fetch_fflogs.py` 會自動切半查詢。
 - `history_scan_enabled`、`history_scan_window_hours`、`history_scan_windows_per_run`、`history_scan_recent_gap_hours` 與 `history_max_deep_reports_per_run` 控制歷史補查。專案預設在 `config/fflogs.json` 關閉，GitHub Actions 會用同名大寫 `FFLOGS_` 環境變數暫時開啟低量巡檢，避免本機一般執行時額外掃描舊時間窗。
 - `fetch_gcd_coverage_enabled` 與 `fetch_gcd_coverage_max_fights_per_run` 控制新 report 落地時是否即時計算 GCD 覆蓋率，以及每輪最多查幾場 fight 的 Casts graph。專案預設關閉，GitHub Actions 會用 `FFLOGS_FETCH_GCD_COVERAGE_ENABLED=true` 與 `FFLOGS_FETCH_GCD_COVERAGE_MAX_FIGHTS_PER_RUN=500` 開啟。
 - `rate_limit_requests`、`rate_limit_window_seconds`、`rate_limit_padding_seconds` 與 `rate_limited_cooldown_seconds` 控制 FFLogs API 限流與多憑證輪替。

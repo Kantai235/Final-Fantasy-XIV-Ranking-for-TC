@@ -35,6 +35,7 @@ FFLogs執行設定檔路徑 = 專案根目錄 / "config" / "fflogs.json"
 FFLogs執行設定預設值: dict[str, Any] = {
     "report_page_limit": 100,
     "report_max_pages": 25,
+    "report_region_scope": "all",
     "scan_window_hours": 24,
     "min_scan_window_seconds": 60,
     "initial_lookback_hours": 24,
@@ -185,9 +186,19 @@ def 布林設定(名稱: str) -> bool:
             return False
     raise RuntimeError(f"FFLogs 執行設定 {名稱} 必須是布林值。")
 
+
+def 正規化報告地區範圍(值: Any) -> str:
+    範圍 = str(值 or "all").strip().lower()
+    if 範圍 in 報告地區範圍選項:
+        return 範圍
+    raise RuntimeError("FFLogs 執行設定 report_region_scope 必須是 china 或 all。")
+
+
 中國區域_ID = 4
-# FFLogs 的中國區域會同時包含中國服與繁中服；目前 API 的 reports 查詢不能直接以伺服器過濾。
-# 因此管線先以 region=China 的報告作為候選，再用 masterData.actors 的 server 欄位篩出繁中服玩家。
+報告地區範圍選項 = {"china", "all"}
+# FFLogs reports 查詢目前不能直接以伺服器過濾。過去只先看 region=China，但玩家可能把繁中服角色
+# 的 report 上傳到其他地區；因此 workflow 會用 all 掃全部地區候選，再用 masterData.actors 的 server
+# 欄位篩出真正的繁中服玩家。若短期維護需要降低掃描量，可暫時改用 china。
 繁中服伺服器名稱 = {"伊弗利特", "迦樓羅", "利維坦", "鳳凰", "奧汀", "巴哈姆特", "泰坦"}
 有效職業名稱 = {
     "Paladin",
@@ -256,6 +267,8 @@ def 布林設定(名稱: str) -> bool:
 
 每頁報告數量 = 整數設定("report_page_limit")
 報告查詢最大頁數 = 整數設定("report_max_pages")
+報告地區範圍 = 正規化報告地區範圍(FFLogs執行設定.get("report_region_scope"))
+掃描全部地區報告 = 報告地區範圍 == "all"
 淺層掃描區間小時 = 整數設定("scan_window_hours")
 最小切分區間毫秒 = 整數設定("min_scan_window_seconds") * 1000
 初次掃描回溯小時 = 整數設定("initial_lookback_hours")
@@ -905,7 +918,22 @@ def 轉_int_or_none(值: Any) -> int | None:
         return None
 
 
-淺層掃描快取版本 = 1
+def 是否中國區域報告(報告: dict[str, Any]) -> bool:
+    區域 = 報告.get("region") or {}
+    return 轉_int_or_none(區域.get("id")) == 中國區域_ID
+
+
+def 報告符合淺層地區範圍(報告: dict[str, Any]) -> bool:
+    if 掃描全部地區報告:
+        return True
+    return 是否中國區域報告(報告)
+
+
+def 淺層地區範圍說明() -> str:
+    return "全部地區" if 掃描全部地區報告 else "中國區域"
+
+
+淺層掃描快取版本 = 2
 
 
 def 建立淺層掃描快取路徑(副本設定: dict[str, Any], 起始時間戳記: int, 掃描區間小時: int) -> Path:
@@ -915,6 +943,7 @@ def 建立淺層掃描快取路徑(副本設定: dict[str, Any], 起始時間戳
         "zone_id": zone_id,
         "start_at": int(起始時間戳記),
         "scan_window_hours": int(掃描區間小時),
+        "report_region_scope": 報告地區範圍,
     }
     雜湊 = hashlib.sha256(json.dumps(快取識別, sort_keys=True).encode("utf-8")).hexdigest()[:16]
     return 淺層掃描快取目錄 / f"zone_{zone_id}_{起始時間戳記}_{掃描區間小時}_{雜湊}.json"
@@ -948,6 +977,8 @@ def 讀取淺層掃描快取(
         return 快取路徑, None, []
     if 轉_int_or_none(快取內容.get("scan_window_hours")) != int(掃描區間小時):
         return 快取路徑, None, []
+    if str(快取內容.get("report_region_scope") or "all") != 報告地區範圍:
+        return 快取路徑, None, []
 
     完成至 = 轉_int_or_none(快取內容.get("completed_until"))
     報告列表 = [
@@ -980,6 +1011,7 @@ def 寫入淺層掃描快取(
         "target_end_at": int(結束時間戳記),
         "target_end_at_iso": 毫秒轉_iso(結束時間戳記),
         "scan_window_hours": int(掃描區間小時),
+        "report_region_scope": 報告地區範圍,
         "completed_until": int(完成至),
         "completed_until_iso": 毫秒轉_iso(完成至),
         "updated_at": 更新時間戳記,
@@ -1653,12 +1685,11 @@ def 擷取時間區間報告(
 
         for 報告 in 分頁.get("data") or []:
             代碼 = 報告.get("code")
-            區域 = 報告.get("region") or {}
             if not 代碼 or 代碼 in 已看過代碼:
                 continue
 
-            # FFLogs 目前 reports 查詢沒有 regionID 參數，因此先抓指定時間與 zone，再以 report.region.id 過濾。
-            if int(區域.get("id") or -1) != 中國區域_ID:
+            # reports 查詢無法用繁中服伺服器過濾；地區只決定候選池大小，真正身分仍看 masterData server。
+            if not 報告符合淺層地區範圍(報告):
                 continue
 
             已看過代碼.add(代碼)
@@ -3262,6 +3293,7 @@ def main() -> int:
             "待標記已儲存報告": [],
             "scan_start_at": None,
             "scan_end_at": 掃描結束時間戳記,
+            "candidate_reports": 0,
             "china_region_reports": 0,
             "recent_reports": 0,
             "history_reports_found": 0,
@@ -3569,13 +3601,23 @@ def main() -> int:
 
             淺層報告列表 = 合併淺層報告列表(最新報告列表, 歷史報告候選列表)
             目前處理狀態["recent_reports"] = len(最新報告列表)
+            最新中國區域候選數 = sum(1 for 報告 in 最新報告列表 if 是否中國區域報告(報告))
+            中國區域說明 = (
+                f"（其中中國區域 {最新中國區域候選數} 份）"
+                if 掃描全部地區報告
+                else ""
+            )
             print(
-                f"{副本設定['name']} 淺層掃描取得 {len(最新報告列表)} 份中國區域報告；"
+                f"{副本設定['name']} 淺層掃描取得 "
+                f"{len(最新報告列表)} 份{淺層地區範圍說明()}候選報告{中國區域說明}；"
                 f"歷史補查找到 {len(歷史報告代碼)} 份，選入 {歷史候選統計['selected']} 份"
                 f"（已知略過 {歷史候選統計['skipped_known']}，延後 {歷史候選統計['deferred']}）。"
             )
 
-        目前處理狀態["china_region_reports"] = len(淺層報告列表)
+        目前處理狀態["candidate_reports"] = len(淺層報告列表)
+        目前處理狀態["china_region_reports"] = sum(
+            1 for 報告 in 淺層報告列表 if 是否中國區域報告(報告)
+        )
         總報告數量 = len(淺層報告列表)
 
         for 報告序號, 報告 in enumerate(淺層報告列表, start=1):
@@ -3726,6 +3768,8 @@ def main() -> int:
             "scan_start_at_iso": 毫秒轉_iso(掃描起始時間戳記),
             "scan_end_at": 掃描結束時間戳記_副本,
             "scan_end_at_iso": 毫秒轉_iso(掃描結束時間戳記_副本),
+            "report_region_scope": 報告地區範圍,
+            "candidate_reports": 處理狀態["candidate_reports"],
             "china_region_reports": 處理狀態["china_region_reports"],
             "recent_reports": 處理狀態["recent_reports"],
             "history_reports_found": 處理狀態["history_reports_found"],
@@ -3750,6 +3794,7 @@ def main() -> int:
     統計 = {
         "scan_end_at": 掃描結束時間戳記,
         "scan_end_at_iso": 毫秒轉_iso(掃描結束時間戳記),
+        "report_region_scope": 報告地區範圍,
         "enabled_encounters": [副本["key"] for 副本 in 副本清單],
         "completed_encounters": [副本["key"] for 副本 in 已完成副本清單],
         "deferred_encounters": 暫時失敗副本鍵值,

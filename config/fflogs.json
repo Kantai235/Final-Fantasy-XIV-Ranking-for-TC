@@ -1,6 +1,7 @@
 {
   "report_page_limit": 100,
   "report_max_pages": 25,
+  "report_region_scope": "all",
   "scan_window_hours": 24,
   "min_scan_window_seconds": 60,
   "initial_lookback_hours": 72,

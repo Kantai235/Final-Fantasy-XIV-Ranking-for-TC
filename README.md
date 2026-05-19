@@ -316,7 +316,7 @@ python scripts/fetch_fflogs.py
 
 1. `python scripts/fetch_fflogs.py`
    - 讀取 `config/encounters.json` 的啟用副本。
-   - 透過 FFLogs API 掃描中國區域公開報告。
+   - 透過 FFLogs API 掃描公開報告；預設掃全部地區。
    - 若 workflow 以 `FFLOGS_HISTORY_SCAN_ENABLED=true` 開啟歷史補查，會沿著各副本的 `history_scan_cursor_at` 輪巡較舊時間窗，檢查是否有後來才公開或延後匯出的 logs 可以補抓。
    - 篩選繁中服伺服器玩家。
    - 更新 `data/rankings/*.json`、`public/data/rankings/*.json` 與 `data/state.json`。
@@ -374,6 +374,7 @@ npm run build:user-data
 
 `config/fflogs.json` 預設關閉歷史補查，避免本機一般執行時額外掃描舊時間窗。GitHub Actions 會在 workflow 內用環境變數暫時開啟：
 
+- `FFLOGS_REPORT_REGION_SCOPE`：淺層 reports 候選地區，`china` 只看中國區域，`all` 會掃全部地區；專案與 workflow 預設 `all`。
 - `FFLOGS_HISTORY_SCAN_ENABLED`：是否啟用歷史補查，workflow 預設 `true`。
 - `FFLOGS_HISTORY_SCAN_WINDOW_HOURS`：每個歷史時間窗長度，workflow 預設 `168`（一週）。
 - `FFLOGS_HISTORY_SCAN_WINDOWS_PER_RUN`：每輪每個副本最多巡幾個歷史時間窗，workflow 預設 `1`。
@@ -393,7 +394,7 @@ npm run build:user-data
 
 1. 安裝 Python 與 Node.js。
 2. 安裝 Python 與 Node.js 依賴。
-3. 使用 GitHub Secrets 中的 FFLogs 憑證執行抓取腳本，以低量歷史補查檢查舊時間窗是否有新的公開 logs 可抓取，並對新落地 fight 即時計算 GCD 覆蓋率。
+3. 使用 GitHub Secrets 中的 FFLogs 憑證執行抓取腳本，掃描全部地區候選 report，以低量歷史補查檢查舊時間窗是否有新的公開 logs 可抓取，並對新落地 fight 即時計算 GCD 覆蓋率。
 4. 執行 `python scripts/fetch_fflogs.py --split-rankings`，將完整排行榜資料拆分成適合 Git 追蹤的檔案。
 5. 產生個人成績單、全服統計、近期動態、隊伍榜、伺服器對比資料與 `data/update_status.json`。
 6. 執行 `npm run build`，在提交前完成公開資料驗證與 Vite 建置。
@@ -457,7 +458,7 @@ npm run cloudflare:estimate
 - `public/data/users/` 是由 `scripts/build_user_data.mjs` 重新產生的資料。
 - `public/data/rankings/` 是由 `fetch_fflogs.py --rebuild-public` 或 `--split-rankings` 重新產生的公開排行榜資料；若副本列在 `public/data/encounters.json`，就必須有對應公開 ranking 檔案。
 - FFLogs API 有限流，`config/fflogs.json` 可調整請求限制、重試、冷卻時間與單一 report 多 fight 的玩家成績批次大小。
-- 排行榜只統計公開報告中可解析且符合繁中服條件的資料。
+- 排行榜只統計公開報告中可解析且符合繁中服條件的資料；地區只決定淺層候選池，真正的玩家身分仍以 FFLogs `masterData.actors` / `playerDetails` 的伺服器欄位判斷。
 - 單場 FFLogs `playerDetails` / `damageDone` 查詢會同時帶 `fightIDs` 與 fight 的相對 `startTime` / `endTime`，避免少數舊報告只用 `fightIDs` 時拿到 partial damage table，造成 rDPS/aDPS 異常放大。
 - `active_percent` 對齊 FFLogs Damage Done CSV 的 Active%，使用 `fflogs_total_time_ms` 作為優先分母；DPS/rDPS/aDPS 仍使用 `damage_time_ms`。
 - GCD 覆蓋率目前前端已開啟：`顯示Gcd覆蓋率=true`。GitHub Actions 會在新 report 落地時即時計算 GCD 衍生結果；既有玩家的全量 backfill 仍維持手動。`fetch_fflogs.py` 與 `backfill_gcd_coverage.py` 都共用 `gcd_coverage_core.py`，以 FFLogs `Casts` graph 本地計算，`backfill_gcd_coverage_xivanalysis.py` 只保留為抽樣診斷工具；需要追平舊資料時，先以 `npm run backfill:gcd -- --dry-run` 預覽。本地計算會使用 graph 內的 downtime 視窗同時扣除分母與分子；同一個 report/fight 優先查整場 graph，再於本地依玩家 `sourceID` 切分，降低 FFLogs request 數。技能的 GCD 分類與基礎 cast/recast 以 XIVAPI datamining 的 `Action.csv` 為底，並用小型 allow-list 補上 xivanalysis 也會視為 GCD 的例外，例如忍者 mudra/ninjutsu，以及毒蛇劍士同時具有技能冷卻與獨立 GCD recast 的技能。完整 Casts raw events 只在記憶體中計算，不會保存到 repo。

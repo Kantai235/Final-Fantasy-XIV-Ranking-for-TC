@@ -57,6 +57,7 @@ class FetchFFLogsBatchTest(unittest.TestCase):
             "history_scan_windows_per_run": 0,
             "history_scan_window_hours": 24,
             "history_max_deep_reports_per_run": 0,
+            "report_region_scope": "china",
             "fetch_gcd_coverage_enabled": False,
             "fetch_gcd_coverage_max_fights_per_run": 0,
             "request_timeout": 30,
@@ -70,6 +71,7 @@ class FetchFFLogsBatchTest(unittest.TestCase):
                 "FFLOGS_HISTORY_SCAN_WINDOWS_PER_RUN": "2",
                 "FFLOGS_HISTORY_SCAN_WINDOW_HOURS": "12",
                 "FFLOGS_HISTORY_MAX_DEEP_REPORTS_PER_RUN": "10",
+                "FFLOGS_REPORT_REGION_SCOPE": "all",
                 "FFLOGS_FETCH_GCD_COVERAGE_ENABLED": "true",
                 "FFLOGS_FETCH_GCD_COVERAGE_MAX_FIGHTS_PER_RUN": "500",
                 "FFLOGS_REQUEST_TIMEOUT": "12.5",
@@ -82,10 +84,67 @@ class FetchFFLogsBatchTest(unittest.TestCase):
         self.assertEqual(覆寫後設定["history_scan_windows_per_run"], 2)
         self.assertEqual(覆寫後設定["history_scan_window_hours"], 12)
         self.assertEqual(覆寫後設定["history_max_deep_reports_per_run"], 10)
+        self.assertEqual(覆寫後設定["report_region_scope"], "all")
         self.assertTrue(覆寫後設定["fetch_gcd_coverage_enabled"])
         self.assertEqual(覆寫後設定["fetch_gcd_coverage_max_fights_per_run"], 500)
         self.assertEqual(覆寫後設定["request_timeout"], 12.5)
         self.assertEqual(覆寫後設定["retry_report_codes"], ["abc123", "def456"])
+
+    def test_shallow_report_scan_filters_to_china_scope_when_configured(self) -> None:
+        def 假_graphql(
+            session: Any,
+            認證池: Any,
+            查詢: str,
+            變數: dict[str, Any] | None = None,
+        ) -> dict[str, Any]:
+            return {
+                "reportData": {
+                    "reports": {
+                        "data": [
+                            {"code": "china", "region": {"id": fflogs.中國區域_ID, "name": "China"}},
+                            {"code": "global", "region": {"id": 1, "name": "North America"}},
+                        ],
+                        "has_more_pages": False,
+                    }
+                }
+            }
+
+        with (
+            patch.object(fflogs, "執行_graphql", 假_graphql),
+            patch.object(fflogs, "掃描全部地區報告", False),
+            patch.object(fflogs, "報告地區範圍", "china"),
+        ):
+            報告列表 = fflogs.擷取時間區間報告(None, None, {"zone_id": 62}, 1, 2)
+
+        self.assertEqual([報告["code"] for 報告 in 報告列表], ["china"])
+
+    def test_shallow_report_scan_can_keep_all_regions_for_workflow(self) -> None:
+        def 假_graphql(
+            session: Any,
+            認證池: Any,
+            查詢: str,
+            變數: dict[str, Any] | None = None,
+        ) -> dict[str, Any]:
+            return {
+                "reportData": {
+                    "reports": {
+                        "data": [
+                            {"code": "china", "region": {"id": fflogs.中國區域_ID, "name": "China"}},
+                            {"code": "global", "region": {"id": 1, "name": "North America"}},
+                        ],
+                        "has_more_pages": False,
+                    }
+                }
+            }
+
+        with (
+            patch.object(fflogs, "執行_graphql", 假_graphql),
+            patch.object(fflogs, "掃描全部地區報告", True),
+            patch.object(fflogs, "報告地區範圍", "all"),
+        ):
+            報告列表 = fflogs.擷取時間區間報告(None, None, {"zone_id": 62}, 1, 2)
+
+        self.assertEqual([報告["code"] for 報告 in 報告列表], ["china", "global"])
 
     def test_graphql_503_is_treated_as_transient_api_error(self) -> None:
         class 假回應:
