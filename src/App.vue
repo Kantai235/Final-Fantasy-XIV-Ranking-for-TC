@@ -2,7 +2,6 @@
 import { provide, proxyRefs } from "vue";
 import AppFooter from "./components/AppFooter.vue";
 import AppHeader from "./components/AppHeader.vue";
-import PageNavigation from "./components/PageNavigation.vue";
 import ActivityPage from "./pages/ActivityPage.vue";
 import ComparePage from "./pages/ComparePage.vue";
 import GlobalStatsPage from "./pages/GlobalStatsPage.vue";
@@ -24,7 +23,6 @@ useShareMeta(rankingApp.分享資訊);
 <template>
   <main class="頁面" :data-accent="view.主色模式">
     <AppHeader />
-    <PageNavigation />
 
     <RankingPage v-if="view.頁面模式 === 'ranking'" />
     <GlobalStatsPage v-else-if="view.頁面模式 === 'stats'" />

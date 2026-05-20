@@ -1,5 +1,6 @@
 <script>
 import { nextTick, ref } from "vue";
+import PageNavigation from "./PageNavigation.vue";
 import { injectRankingApp } from "../composables/useRankingApp";
 import { 顯示社群連結 } from "../utils/siteFeatures";
 
@@ -8,6 +9,9 @@ const TelegramQrCode網址 = `${import.meta.env.BASE_URL}telegram.png`;
 
 export default {
   name: "AppHeader",
+  components: {
+    PageNavigation,
+  },
   setup() {
     const Telegram開啟按鈕 = ref(null);
     const Telegram關閉按鈕 = ref(null);
@@ -48,7 +52,8 @@ export default {
 
 <template>
 <section class="標題區">
-  <div>
+  <PageNavigation />
+  <div class="標題文字">
     <p class="副標">{{ 頁面副標 }}</p>
     <h1>{{ 頁面標題 }}</h1>
   </div>
@@ -66,13 +71,36 @@ export default {
         :aria-expanded="顯示Telegram交流視窗 ? 'true' : 'false'"
         @click="開啟Telegram交流視窗"
       >
-        Telegram 交流群
+        <span class="標題按鈕圖示" aria-hidden="true">✈</span>
+        <span class="標題按鈕文字">Telegram 交流群</span>
       </button>
-      <button class="分享按鈕" type="button" :disabled="正在分享" @click="分享目前頁面">
-        {{ 正在分享 ? "分享中" : "分享" }}
+      <button class="分享按鈕" type="button" :aria-label="正在分享 ? '分享中' : '分享目前頁面'" :disabled="正在分享" @click="分享目前頁面">
+        <span v-if="正在分享" class="標題按鈕圖示" aria-hidden="true">…</span>
+        <svg v-else class="標題按鈕圖示" viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="18" cy="5" r="3"></circle>
+          <circle cx="6" cy="12" r="3"></circle>
+          <circle cx="18" cy="19" r="3"></circle>
+          <path d="M8.7 10.6 15.3 6.4"></path>
+          <path d="M8.7 13.4 15.3 17.6"></path>
+        </svg>
+        <span class="標題按鈕文字">{{ 正在分享 ? "分享中" : "分享" }}</span>
       </button>
       <button class="主題切換" type="button" :aria-label="`切換為${主題按鈕文字}模式`" @click="切換主題">
-        {{ 目前主題文字 }}
+        <svg v-if="主題模式 === 'dark'" class="標題按鈕圖示" viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="12" cy="12" r="4"></circle>
+          <path d="M12 2v2"></path>
+          <path d="M12 20v2"></path>
+          <path d="m4.9 4.9 1.4 1.4"></path>
+          <path d="m17.7 17.7 1.4 1.4"></path>
+          <path d="M2 12h2"></path>
+          <path d="M20 12h2"></path>
+          <path d="m4.9 19.1 1.4-1.4"></path>
+          <path d="m17.7 6.3 1.4-1.4"></path>
+        </svg>
+        <svg v-else class="標題按鈕圖示" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M20.4 14.5A8.5 8.5 0 0 1 9.5 3.6 8.7 8.7 0 1 0 20.4 14.5Z"></path>
+        </svg>
+        <span class="標題按鈕文字">{{ 目前主題文字 }}</span>
       </button>
     </div>
     <p v-if="分享狀態訊息" class="分享狀態" role="status">

@@ -144,13 +144,21 @@ a {
 }
 
 .標題區 {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "title actions"
+    "nav nav";
   align-items: end;
-  justify-content: space-between;
-  gap: 24px;
+  gap: 16px 24px;
   margin-bottom: 24px;
   border-bottom: 1px solid var(--邊框色);
   padding-bottom: 20px;
+}
+
+.標題文字 {
+  grid-area: title;
+  min-width: 0;
 }
 
 .副標,
@@ -161,6 +169,7 @@ a {
 }
 
 .標題右側 {
+  grid-area: actions;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
@@ -194,6 +203,23 @@ h1 {
 .主題切換 {
   min-width: 94px;
 }
+
+.標題按鈕圖示 {
+  display: none;
+}
+
+svg.標題按鈕圖示 {
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+}
+
+.標題按鈕文字 {
+  display: inline;
+}
+
 .Telegram交流按鈕 {
   min-width: 138px;
   border-color: var(--Telegram色);
@@ -331,14 +357,32 @@ h1 {
   outline-offset: 2px;
 }
 
+.頁面切換容器 {
+  grid-area: nav;
+  margin-bottom: 0;
+}
+
+.頁面選單開關,
+.頁面切換遮罩,
+.頁面切換抽屜標題列 {
+  display: none;
+}
+
 .頁面切換 {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
-  margin-bottom: 18px;
+  margin-bottom: 0;
+}
+
+.手機頁面抽屜 {
+  display: none;
 }
 
 .頁面切換 button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border-color: var(--輸入邊框);
   color: var(--次要文字);
   background: var(--輸入背景);
@@ -636,6 +680,10 @@ h1 {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .頁面切換 {
+    transition: none;
+  }
+
   .作者浮出面板 {
     transition: none;
   }
@@ -4283,21 +4331,82 @@ td a:hover {
 @media (max-width: 720px) {
   .頁面 {
     width: min(100% - 20px, 1120px);
-    padding-top: 22px;
+    padding-top: 0;
   }
 
   .標題區 {
+    position: sticky;
+    z-index: 110;
+    top: 0;
+    grid-template-columns: 44px minmax(0, 1fr) auto;
+    grid-template-areas:
+      "nav title actions"
+      "status status status";
     display: grid;
-    gap: 10px;
-    align-items: start;
+    align-items: center;
+    gap: 0 8px;
+    margin: 0 -10px 16px;
+    border-bottom: 1px solid var(--邊框色);
+    padding: max(8px, env(safe-area-inset-top)) 10px 10px;
+    background: color-mix(in srgb, var(--頁面背景) 94%, transparent);
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.18);
+    backdrop-filter: blur(12px);
+  }
+
+  .標題文字 {
+    align-self: center;
   }
 
   .標題右側 {
-    align-items: flex-start;
+    display: contents;
   }
 
   .標題操作 {
-    justify-content: flex-start;
+    grid-area: actions;
+    flex-wrap: nowrap;
+    justify-content: flex-end;
+    gap: 6px;
+  }
+
+  .更新時間 {
+    display: none;
+  }
+
+  .分享狀態 {
+    grid-area: status;
+    min-height: 0;
+    margin-top: 2px;
+    font-size: 0.75rem;
+    text-align: right;
+  }
+
+  .標題按鈕圖示 {
+    width: 18px;
+    height: 18px;
+    display: block;
+    font-size: 1rem;
+    line-height: 1;
+  }
+
+  .標題按鈕文字 {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
+  .Telegram交流按鈕,
+  .分享按鈕,
+  .主題切換 {
+    width: 38px;
+    min-width: 38px;
+    min-height: 38px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
   }
   .Telegram視窗遮罩 {
     align-items: start;
@@ -4324,13 +4433,21 @@ td a:hover {
   }
 
   h1 {
-    font-size: 1.55rem;
+    overflow: hidden;
+    margin-top: 2px;
+    font-size: 1.08rem;
+    line-height: 1.2;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .副標,
   .更新時間 {
-    font-size: 0.86rem;
-    line-height: 1.45;
+    overflow: hidden;
+    font-size: 0.68rem;
+    line-height: 1.2;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .工具列 {
@@ -4348,16 +4465,149 @@ td a:hover {
     grid-template-columns: 1fr;
   }
 
+  body.頁面選單鎖定 {
+    overflow: hidden;
+  }
+
+  .頁面切換容器 {
+    align-self: center;
+    margin-bottom: 0;
+  }
+
+  .桌機頁面切換 {
+    display: none;
+  }
+
+  .頁面選單開關 {
+    width: 40px;
+    min-width: 40px;
+    min-height: 40px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border-color: var(--輸入邊框);
+    color: var(--主要文字);
+    background: var(--輸入背景);
+  }
+
+  .頁面選單開關:hover:not(:disabled) {
+    border-color: var(--重點色);
+    color: var(--重點文字);
+    background: var(--重點色);
+  }
+
+  .頁面選單圖示,
+  .頁面選單圖示::before,
+  .頁面選單圖示::after {
+    width: 18px;
+    height: 2px;
+    display: block;
+    border-radius: 999px;
+    background: currentColor;
+  }
+
+  .頁面選單圖示 {
+    position: relative;
+  }
+
+  .頁面選單圖示::before,
+  .頁面選單圖示::after {
+    content: "";
+    position: absolute;
+    left: 0;
+  }
+
+  .頁面選單圖示::before {
+    top: -6px;
+  }
+
+  .頁面選單圖示::after {
+    top: 6px;
+  }
+
+  .頁面選單文字 {
+    display: none;
+  }
+
+  .頁面選單開關 strong {
+    display: none;
+  }
+
+  .頁面切換遮罩 {
+    position: fixed;
+    z-index: 130;
+    inset: 0;
+    display: block;
+    background: rgba(0, 0, 0, 0.52);
+  }
+
   .頁面切換 {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(104px, 1fr));
+    position: fixed;
+    z-index: 131;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: min(320px, calc(100vw - 56px));
+    max-width: none;
+    display: flex;
+    flex-direction: column;
+    flex-wrap: nowrap;
     gap: 8px;
+    margin: 0;
+    border-right: 1px solid var(--邊框色);
+    padding: max(18px, env(safe-area-inset-top)) 14px max(18px, env(safe-area-inset-bottom));
+    overflow-y: auto;
+    background: var(--表面背景);
+    box-shadow: 18px 0 42px rgba(0, 0, 0, 0.34);
+    opacity: 0;
+    pointer-events: none;
+    transform: translateX(-105%);
+    transition:
+      opacity 0.18s ease,
+      transform 0.18s ease;
+    visibility: hidden;
+  }
+
+  .頁面切換.展開 {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateX(0);
+    visibility: visible;
+  }
+
+  .頁面切換抽屜標題列 {
+    min-height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 4px;
+    color: var(--主要文字);
+    font-weight: 800;
   }
 
   .頁面切換 button {
-    min-height: 42px;
-    padding: 0 8px;
-    font-size: 0.9rem;
+    width: 100%;
+    min-height: 46px;
+    justify-content: flex-start;
+    padding: 0 12px;
+    font-size: 0.95rem;
+    text-align: left;
+  }
+
+  .頁面切換關閉 {
+    width: 38px !important;
+    min-width: 38px;
+    min-height: 38px !important;
+    justify-content: center !important;
+    padding: 0 !important;
+    border-color: var(--輸入邊框);
+    color: var(--次要文字);
+    background: var(--輸入背景);
+    font-size: 1.25rem !important;
+    line-height: 1;
+    text-align: center !important;
   }
 
   .作者浮出面板 {
@@ -6604,18 +6854,6 @@ td a:hover {
   .頁數文字 {
     align-self: center;
     justify-self: end;
-  }
-
-  .頁面切換 {
-    max-width: 100%;
-    display: flex;
-    flex-wrap: wrap;
-    overflow: visible;
-  }
-
-  .頁面切換 button {
-    min-width: 0;
-    flex: 1 1 calc(50% - 4px);
   }
 
   .分頁控制 {
