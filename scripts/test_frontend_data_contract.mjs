@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { buildReportExternalLinks } from "../src/utils/reportLinks.js";
 import { 建立職業佔比分組 } from "../src/utils/statsDisplay.js";
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -474,6 +475,42 @@ function installUrlStateWindow(href, events) {
   };
 }
 
+function validateReportExternalLinks() {
+  const links = buildReportExternalLinks({
+    report_code: "BAgFha92HkfQ4vKP",
+    fight_id: 15,
+    fflogs_source_id: 26,
+  });
+  const linksByKey = new Map(links.map((link) => [link.key, link.url]));
+  const labelsByKey = new Map(links.map((link) => [link.key, link.label]));
+
+  assert(
+    linksByKey.get("fflogs") === "https://www.fflogs.com/reports/BAgFha92HkfQ4vKP?fight=15",
+    "報告工具連結應把 FFLogs 指到實際通關 fight。",
+  );
+  assert(
+    linksByKey.get("xivanalysis") === "https://xivanalysis.com/fflogs/BAgFha92HkfQ4vKP/15/26",
+    "報告工具連結應用 FFLogs sourceID 組出 xivanalysis 玩家深連結。",
+  );
+  assert(labelsByKey.get("xivanalysis") === "XIV Analysis", "報告工具連結應顯示 XIV Analysis。");
+  assert(
+    linksByKey.get("ffreplay") ===
+      "https://ffreplay.vjoi.cn/ffreplay.html?url=https%3A%2F%2Fwww.fflogs.com%2Freports%2FBAgFha92HkfQ4vKP%3Ffight%3D15",
+    "報告工具連結應把含 fight 的 FFLogs URL 編碼後交給 ffreplay。",
+  );
+  assert(labelsByKey.get("ffreplay") === "FF Repley", "報告工具連結應顯示 FF Repley。");
+
+  const teamLinks = buildReportExternalLinks({
+    report_code: "BAgFha92HkfQ4vKP",
+    fight_id: 15,
+  });
+  const teamLinksByKey = new Map(teamLinks.map((link) => [link.key, link.url]));
+  assert(
+    teamLinksByKey.get("xivanalysis") === "https://xivanalysis.com/fflogs/BAgFha92HkfQ4vKP/15",
+    "隊伍榜報告工具連結不帶 FFLogs sourceID 時，XIV Analysis 應只指到 fight 場次頁。",
+  );
+}
+
 async function validateShareUrlStateCompatibility() {
   const module = await loadUrlStateTestModule();
   if (!module) {
@@ -597,6 +634,7 @@ async function main() {
   await validateSiteFeatureFlags();
   await validateEncounterSwitchFilterPersistence();
   await validatePublicDataForFrontend();
+  validateReportExternalLinks();
   validateScopedJobShareRecalculation();
   await validateUserSearchResolution();
   await validateShareUrlStateCompatibility();

@@ -109,6 +109,7 @@ async function createFixture(tempRoot) {
               rdps: 90,
               adps: 95,
               total_damage: 55000,
+              fflogs_id: 101,
               active_time_ms: 500000,
               active_percent: 90.91,
               gcd_coverage: {
@@ -164,6 +165,7 @@ async function createFixture(tempRoot) {
               rdps: 250,
               adps: 250,
               total_damage: 140000,
+              fflogs_id: 202,
               active_time_ms: 520000,
               active_percent: 92.86,
             },
@@ -276,8 +278,10 @@ async function assertFixtureOutput(tempRoot, expectedGlobalStatsText, expectedSe
   assert(mainUserData.summary.profile_job === "Paladin", "個人成績單代表職業應優先採用同職排名最高的職業。");
   assert(mainUserData.summary.profile_job_rank === 1, "個人成績單代表職業應保留最高職業 Rank。");
   assert(mainUserData.encounters[0]?.best_entry?.job === "Paladin", "個人成績單副本代表列應優先顯示最高排名職業。");
+  assert(mainUserData.encounters[0]?.best_entry?.fflogs_source_id === 101, "個人成績單代表列應保留 FFLogs sourceID。");
   const mainUserBlackMageEntry = mainUserData.encounters[0]?.public_entries?.find((entry) => entry.job === "BlackMage");
   assert(mainUserBlackMageEntry?.job_rank === 2, "fixture 需保留較高 rDPS 但職業 Rank 較低的輸出紀錄。");
+  assert(mainUserBlackMageEntry?.fflogs_source_id === 202, "個人成績歷史列應保留 FFLogs sourceID 供外部工具深連結使用。");
   const mainUserEntry = mainUserData.encounters[0]?.public_entries?.[0];
   assert(mainUserEntry?.gcd_coverage?.percent === 94.43, "個人成績單應保留 GCD 覆蓋率。");
   assert(mainUserEntry?.gcd_coverage_status?.state === "ok", "個人成績單應保留 GCD 覆蓋率狀態。");

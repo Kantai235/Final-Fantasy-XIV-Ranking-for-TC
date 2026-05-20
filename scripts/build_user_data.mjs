@@ -113,6 +113,34 @@ async function writeJson(filePath, data) {
   }
 }
 
+async function waitForUserOutputReady(outputDir, expectedUserCount, label) {
+  const expectedEntryCount = expectedUserCount + 1; // 每位玩家一檔，加上 users/index.json。
+
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    let entries = [];
+    try {
+      entries = await readdir(outputDir);
+    } catch (error) {
+      if (error?.code !== "ENOENT") {
+        throw error;
+      }
+    }
+
+    if (entries.includes("index.json") && entries.length >= expectedEntryCount) {
+      return;
+    }
+
+    // Windows 在大量重建 users JSON 後，下一個 Vite copy 有時會先看到半更新的目錄狀態。
+    // 這裡等到 index 與檔案數都可穩定列舉，避免 production build 偶發 ENOENT。
+    await sleep(250);
+  }
+
+  const entries = await readdir(outputDir).catch(() => []);
+  throw new Error(
+    `${label} 使用者資料輸出尚未穩定：${path.relative(rootDir, outputDir)} 目前 ${entries.length} 筆，預期至少 ${expectedEntryCount} 筆。`,
+  );
+}
+
 function resolveGeneratedAtIso(latestRankingUpdatedAt) {
   const override = String(process.env.FFXIV_TC_GENERATED_AT_ISO || "").trim();
   if (override) {
@@ -217,6 +245,11 @@ function isBetterEntry(candidate, currentBest) {
 function toPositiveRank(value) {
   const rank = toNumber(value);
   return rank !== null && rank > 0 ? rank : null;
+}
+
+function toFflogsSourceId(value) {
+  const sourceId = toNumber(value);
+  return sourceId !== null && sourceId > 0 ? Math.trunc(sourceId) : null;
 }
 
 function entryJobRank(entry) {
@@ -449,6 +482,9 @@ function buildEntrySummary(entry) {
     recorded_at_iso: entry.recorded_at_iso,
     report_code: entry.report_code,
     report_url: entry.report_url,
+    ...(entry.fflogs_source_id !== null && entry.fflogs_source_id !== undefined
+      ? { fflogs_source_id: entry.fflogs_source_id }
+      : {}),
     rank: entry.rank,
     job_rank: entry.job_rank,
     performance: entry.performance || null,
@@ -890,6 +926,7 @@ function makePublicEntry({ encounter, report, reportCode, fight, player, fightPl
   const damageDowntimeSeconds =
     toNumber(fight.damage_downtime_seconds) ?? (damageDowntimeMs === null ? null : damageDowntimeMs / 1000);
   const damageTimeSeconds = toNumber(fight.damage_time_seconds) ?? (damageTimeMs === null ? null : damageTimeMs / 1000);
+  const fflogsSourceId = toFflogsSourceId(player.fflogs_source_id ?? player.fflogs_id ?? player.source_id);
   // FFLogs Damage Done CSV 的 Active% 使用 totalTime，而 DPS/rDPS 使用 combatTime - downtime。
   // 這兩個分母不同；這裡優先用 fflogs_total_time_ms，避免個人成績單與排行榜重建時偏離 FFLogs 顯示值。
   const activePercentDurationMs = fflogsTotalTimeMs ?? clearTimeMs;
@@ -940,6 +977,7 @@ function makePublicEntry({ encounter, report, reportCode, fight, player, fightPl
     recorded_at_iso: fight.recorded_at_iso || report.report_start_time_iso || null,
     report_code: reportCode,
     report_url: report.url || (reportCode ? `https://www.fflogs.com/reports/${reportCode}` : null),
+    ...(fflogsSourceId !== null ? { fflogs_source_id: fflogsSourceId } : {}),
     report_title: report.title || null,
     fight_id: fight.fight_id ?? null,
     rank: null,
@@ -1041,6 +1079,7 @@ function collectEntriesFromRankingEntries({ ranking, encounter, includeHiddenRep
     .filter((entry) => includeHiddenReports || !isHiddenEntry(entry))
     .map((entry) => {
       const ranks = rankIndex.get(characterJobKey(entry)) || {};
+      const fflogsSourceId = toFflogsSourceId(entry.fflogs_source_id ?? entry.fflogs_id ?? entry.source_id);
       const normalizedEntry = {
         id: entry.id || createId({ encounter_key: encounter.key, entry }),
         encounter_key: encounter.key,
@@ -1068,6 +1107,7 @@ function collectEntriesFromRankingEntries({ ranking, encounter, includeHiddenRep
         recorded_at_iso: entry.recorded_at_iso || entry.report_start_time_iso || null,
         report_code: entry.report_code,
         report_url: entry.report_url,
+        ...(fflogsSourceId !== null ? { fflogs_source_id: fflogsSourceId } : {}),
         report_title: entry.report_title || null,
         fight_id: entry.fight_id ?? null,
         rank: ranks.job_rank ?? null,
@@ -1170,19 +1210,23 @@ function summarizeTeamPlayers(players) {
       const characterName = player?.name || player?.character_name;
       return characterName && player?.server && player?.job && toNumber(player?.dps) !== null;
     })
-    .map((player) => ({
-      character_name: player.name || player.character_name,
-      server: player.server,
-      job: player.job,
-      role: getJobRole(player.job).role,
-      role_name: getJobRole(player.job).role_name,
-      dps: toNumber(player.dps),
-      rdps: toNumber(player.rdps ?? player.dps),
-      adps: toNumber(player.adps),
-      active_percent: toNumber(player.active_percent),
-      ...(Object.hasOwn(player, "gcd_coverage") ? { gcd_coverage: player.gcd_coverage } : {}),
-      ...(Object.hasOwn(player, "gcd_coverage_status") ? { gcd_coverage_status: player.gcd_coverage_status } : {}),
-    }))
+    .map((player) => {
+      const fflogsSourceId = toFflogsSourceId(player.fflogs_source_id ?? player.fflogs_id ?? player.source_id);
+      return {
+        character_name: player.name || player.character_name,
+        server: player.server,
+        job: player.job,
+        role: getJobRole(player.job).role,
+        role_name: getJobRole(player.job).role_name,
+        dps: toNumber(player.dps),
+        rdps: toNumber(player.rdps ?? player.dps),
+        adps: toNumber(player.adps),
+        active_percent: toNumber(player.active_percent),
+        ...(fflogsSourceId !== null ? { fflogs_source_id: fflogsSourceId } : {}),
+        ...(Object.hasOwn(player, "gcd_coverage") ? { gcd_coverage: player.gcd_coverage } : {}),
+        ...(Object.hasOwn(player, "gcd_coverage_status") ? { gcd_coverage_status: player.gcd_coverage_status } : {}),
+      };
+    })
     .sort(compareTeamPlayers);
 }
 
@@ -2157,6 +2201,7 @@ async function buildDataset({
   await writeJson(activityPath, buildActivityPayload(allEntries, generatedAtIso, latestRankingUpdatedAt));
   await writeJson(teamRankingsPath, buildTeamRankingsPayload(teamRecordsByEncounter, generatedAtIso, latestRankingUpdatedAt));
   await writeJson(serverComparePath, buildServerComparePayload(allEntries, normalizedEncounterStats, generatedAtIso, latestRankingUpdatedAt));
+  await waitForUserOutputReady(outputDir, indexUsers.length, label);
 
   console.log(`Built ${label} ${indexUsers.length} user data files in ${path.relative(rootDir, outputDir)}.`);
   console.log(`Built ${label} global stats in ${path.relative(rootDir, globalStatsPath)}.`);

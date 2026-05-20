@@ -4282,6 +4282,317 @@ td a:hover {
   font-weight: 680;
 }
 
+.報告按鈕 {
+  min-height: 0;
+  border: 0;
+  padding: 0;
+  color: var(--次要文字);
+  background: transparent;
+  font-size: 0.82rem;
+  font-weight: 760;
+  line-height: 1.35;
+  text-align: left;
+}
+
+.報告按鈕:hover:not(:disabled) {
+  color: var(--重點色深);
+  background: transparent;
+  text-decoration: underline;
+}
+
+.報告工具連結列 {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  vertical-align: baseline;
+}
+
+.報告工具連結列.次要連結 {
+  display: inline-flex;
+}
+
+.報告工具連結 {
+  white-space: nowrap;
+}
+
+.歷史報告欄位 .報告工具連結列 {
+  justify-content: flex-end;
+}
+
+.報告彈窗遮罩 {
+  position: fixed;
+  z-index: 260;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.54);
+  opacity: 0;
+  transition: opacity 0.18s ease;
+}
+
+.報告彈窗遮罩.顯示 {
+  opacity: 1;
+}
+
+.報告彈窗 {
+  width: min(560px, 100%);
+  max-height: min(720px, calc(100vh - 48px));
+  overflow: auto;
+  border: 1px solid var(--邊框色);
+  border-radius: 8px;
+  padding: 20px;
+  color: var(--主要文字);
+  background: var(--表面背景);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.36);
+  opacity: 0;
+  transform: translateY(14px) scale(0.97);
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.報告彈窗遮罩.顯示 .報告彈窗 {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.報告彈窗標題列 {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.報告彈窗副標,
+.報告彈窗身份 {
+  margin: 0;
+  color: var(--次要文字);
+  font-size: 0.86rem;
+  font-weight: 680;
+}
+
+.報告彈窗 h2 {
+  margin: 4px 0;
+  color: var(--主要文字);
+  font-size: 1.35rem;
+  line-height: 1.2;
+}
+
+.報告彈窗關閉 {
+  width: 38px;
+  min-width: 38px;
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-color: var(--輸入邊框);
+  padding: 0;
+  color: var(--次要文字);
+  background: var(--輸入背景);
+  font-size: 1.3rem;
+  line-height: 1;
+}
+
+.報告彈窗關閉:hover:not(:disabled) {
+  border-color: var(--重點色);
+  color: var(--重點文字);
+  background: var(--重點色);
+}
+
+.報告彈窗數值格 {
+  display: grid;
+  gap: 10px;
+  margin: 18px 0;
+}
+
+.報告彈窗數值列 {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.報告彈窗狀態列 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.報告彈窗傷害列 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.報告彈窗追溯列 {
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+}
+
+.報告彈窗數值項 {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  border: 1px solid var(--邊框柔和色);
+  border-radius: 8px;
+  padding: 12px;
+  background: var(--表面背景柔和);
+}
+
+.報告彈窗狀態列 .報告彈窗數值項 {
+  background: color-mix(in srgb, var(--重點色) 9%, var(--表面背景));
+}
+
+.報告彈窗主要數值 {
+  border-color: color-mix(in srgb, var(--重點色) 38%, var(--邊框柔和色));
+}
+
+.報告彈窗全寬項 {
+  grid-column: 1 / -1;
+}
+
+.報告彈窗標籤列 {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.報告彈窗提示 .說明提示按鈕 {
+  width: 16px;
+  min-width: 16px;
+  height: 16px;
+  min-height: 16px;
+  font-size: 0.66rem;
+}
+
+.報告彈窗提示 .說明提示內容 {
+  top: calc(100% + 8px);
+  bottom: auto;
+  width: min(240px, calc(100vw - 56px));
+}
+
+.報告彈窗數值格 dt {
+  color: var(--靜音文字);
+  font-size: 0.72rem;
+  font-weight: 820;
+}
+
+.報告彈窗數值格 dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--主要文字);
+  font-size: 0.95rem;
+  font-weight: 820;
+  font-variant-numeric: tabular-nums;
+}
+
+.報告彈窗排名項 dd,
+.報告彈窗主要數值 dd,
+.報告彈窗時間項 dd {
+  font-size: 1.08rem;
+}
+
+.報告彈窗主要數值 dd {
+  color: var(--重點色深);
+}
+
+.報告彈窗連結區 {
+  display: grid;
+  gap: 8px;
+}
+
+.報告彈窗連結區 > span {
+  color: var(--次要文字);
+  font-size: 0.82rem;
+  font-weight: 760;
+}
+
+.報告彈窗工具連結 {
+  display: flex;
+  gap: 8px;
+}
+
+.報告彈窗工具連結 .報告工具連結 {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--邊框柔和色);
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: var(--重點色);
+  background: var(--表面背景柔和);
+  font-weight: 820;
+  text-decoration: none;
+}
+
+.報告彈窗工具連結 .報告工具連結:hover {
+  border-color: var(--重點色);
+  color: var(--重點文字);
+  background: var(--重點色);
+  text-decoration: none;
+}
+
+@media (max-width: 560px) {
+  .報告彈窗遮罩 {
+    align-items: flex-end;
+    padding: 12px;
+  }
+
+  .報告彈窗 {
+    max-height: calc(100vh - 24px);
+    padding: 16px;
+  }
+
+  .報告彈窗標題列 {
+    gap: 12px;
+  }
+
+  .報告彈窗 h2 {
+    font-size: 1.15rem;
+  }
+
+  .報告彈窗數值格 {
+    gap: 8px;
+  }
+
+  .報告彈窗狀態列 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .報告彈窗傷害列 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .報告彈窗追溯列 {
+    grid-template-columns: 1fr;
+  }
+
+  .報告彈窗數值項 {
+    padding: 10px;
+  }
+
+  .報告彈窗數值格 dd {
+    font-size: 0.88rem;
+  }
+
+  .報告彈窗排名項 dd,
+  .報告彈窗主要數值 dd,
+  .報告彈窗時間項 dd {
+    font-size: 0.98rem;
+  }
+
+  .報告彈窗工具連結 {
+    flex-direction: column;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .報告彈窗遮罩,
+  .報告彈窗 {
+    transition: none;
+  }
+}
+
 .手機排行卡 {
   display: none;
 }
@@ -6473,7 +6784,8 @@ td a:hover {
     white-space: nowrap;
   }
 
-  .手機排行資訊列 a {
+  .手機排行資訊列 a,
+  .手機排行資訊列 .報告按鈕 {
     min-width: 0;
     border: 1px solid var(--邊框柔和色);
     border-radius: 999px;
@@ -6483,6 +6795,18 @@ td a:hover {
     font-weight: 780;
     line-height: 1.1;
     text-decoration: none;
+  }
+
+  .手機排行資訊列 .報告按鈕:hover:not(:disabled) {
+    border-color: var(--重點色);
+    color: var(--重點文字);
+    background: var(--重點色);
+    text-decoration: none;
+  }
+
+  .手機排行資訊列 .報告工具連結列 {
+    justify-content: flex-end;
+    gap: 3px;
   }
 
   .統計表格:not(.近期動態表格):not(.比較表格):not(.隊伍榜表格):not(.伺服器對比表格) td:nth-child(1),

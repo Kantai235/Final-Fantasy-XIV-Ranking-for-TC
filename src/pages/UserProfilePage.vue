@@ -1,10 +1,117 @@
 <script>
+import { ref } from "vue";
+import ReportDetailDialog from "../components/ReportDetailDialog.vue";
 import { injectRankingApp } from "../composables/useRankingApp";
 
 export default {
   name: "UserProfilePage",
+  components: {
+    ReportDetailDialog,
+  },
   setup() {
-    return injectRankingApp();
+    const app = injectRankingApp();
+    const 報告彈窗資料 = ref(null);
+
+    function 取值(可能Ref) {
+      return 可能Ref && typeof 可能Ref === "object" && "value" in 可能Ref ? 可能Ref.value : 可能Ref;
+    }
+
+    function 建立個人成績報告詳細資料(成績, 副本) {
+      const 顯示Gcd = Boolean(取值(app.顯示Gcd覆蓋率));
+      const 角色名稱 = 成績.character_name || 取值(app.使用者資料)?.character_name || "個人成績";
+      const 伺服器 = 成績.server || 取值(app.使用者伺服器篩選) || "";
+      const 職業名稱 = app.顯示職業名稱(成績.job);
+
+      return {
+        subtitle: 副本?.encounter_name || 成績.encounter_name || "個人成績歷史",
+        title: 角色名稱,
+        identity: [伺服器, 職業名稱].filter(Boolean).join(" · "),
+        record: 成績,
+        statusItems: [
+          {
+            key: "rank",
+            label: "排名",
+            value: app.格式化排名(成績.job_rank ?? 成績.rank),
+            className: "報告彈窗排名項",
+          },
+          {
+            key: "active",
+            label: "Active",
+            value: app.格式化Active(成績.active_percent),
+            tooltip: app.統計說明文字("Active"),
+            tooltipLabel: "Active 說明",
+          },
+          ...(顯示Gcd
+            ? [
+                {
+                  key: "gcd",
+                  label: "GCD",
+                  value: app.格式化Gcd覆蓋率(成績.gcd_coverage),
+                  tooltip: app.統計說明文字("GCD 覆蓋率"),
+                  tooltipLabel: "GCD 覆蓋率說明",
+                },
+              ]
+            : []),
+          {
+            key: "clearTime",
+            label: "通關時間",
+            value: app.格式化通關時間(成績.clear_time_seconds),
+            className: "報告彈窗時間項",
+          },
+        ],
+        damageItems: [
+          {
+            key: "dps",
+            label: "DPS",
+            value: app.格式化傷害數值(成績.dps),
+            tooltip: app.統計說明文字("DPS"),
+            tooltipLabel: "DPS 說明",
+          },
+          {
+            key: "rdps",
+            label: "rDPS",
+            value: app.格式化傷害數值(成績.rdps),
+            tooltip: app.統計說明文字("rDPS"),
+            tooltipLabel: "rDPS 說明",
+            className: "報告彈窗主要數值",
+          },
+          {
+            key: "adps",
+            label: "aDPS",
+            value: app.格式化傷害數值(成績.adps),
+            tooltip: app.統計說明文字("aDPS"),
+            tooltipLabel: "aDPS 說明",
+          },
+        ],
+        traceItems: [
+          {
+            key: "reportFight",
+            label: "Report / Fight",
+            value: `${成績.report_code || "-"}${成績.fight_id ? ` · ${成績.fight_id}` : ""}`,
+          },
+          {
+            key: "recordedAt",
+            label: "紀錄時間",
+            value: app.格式化紀錄時間(成績.recorded_at_iso),
+          },
+        ],
+      };
+    }
+
+    function 開啟個人成績報告彈窗(成績, 副本) {
+      報告彈窗資料.value = 建立個人成績報告詳細資料(成績, 副本);
+    }
+
+    function 關閉個人成績報告彈窗() {
+      報告彈窗資料.value = null;
+    }
+
+    return {
+      ...app,
+      報告彈窗資料,
+      開啟個人成績報告彈窗,
+      關閉個人成績報告彈窗,
+    };
   },
 };
 </script>
@@ -541,7 +648,14 @@ export default {
                     </span>
                   </td>
                   <td class="歷史報告欄位">
-                    <a v-if="成績.report_url" :href="成績.report_url" target="_blank" rel="noreferrer">FFLogs</a>
+                    <button
+                      v-if="成績.report_code || 成績.report_url"
+                      class="報告按鈕"
+                      type="button"
+                      @click="開啟個人成績報告彈窗(成績, 副本)"
+                    >
+                      報告
+                    </button>
                     <span v-else>-</span>
                   </td>
                   <td class="數字">{{ 成績.is_obsolete_record ? "過時紀錄" : 格式化前段百分位(成績.performance?.rank, 成績.performance?.sample_count) }}</td>
@@ -559,4 +673,6 @@ export default {
       </section>
     </template>
   </section>
+
+  <ReportDetailDialog :details="報告彈窗資料" @close="關閉個人成績報告彈窗" />
 </template>

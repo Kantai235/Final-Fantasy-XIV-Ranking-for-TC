@@ -90,6 +90,7 @@
 9. `scripts/backfill_gcd_coverage.py` 會以 FFLogs `Casts` graph 本地補算 GCD 覆蓋率；GraphQL 查詢必須帶 `fightIDs` 與該 fight 的相對 `startTime` / `endTime`，同一個 report/fight 優先查整場 graph 後再依玩家 `sourceID` 於本地切分，避免每位玩家各打一個 request。計算仍使用 graph downtime 視窗同時扣除分母與分子。
 10. GCD 技能分類與基礎 cast/recast 以 XIVAPI datamining `Action.csv` 為底；腳本只於執行時讀入記憶體，不落地完整遊戲資料。`Action.csv` 無法表達的 xivanalysis-like 例外，例如忍者 mudra/ninjutsu 屬於 GCD 流程、毒蛇劍士部分技能有獨立 `gcdRecast`，需在腳本 allow-list 補上。實際 recast 參照 xivanalysis 的 45ms timestamp 分桶估計，並拆分忍者/武僧職業加速與毒蛇劍士、武士、白魔法師等加速狀態，避免把有 buff 的短 GCD 誤套到開場或 buff 斷掉的 GCD；最後仍以下一個 GCD timestamp 夾住覆蓋區間，避免 FFLogs 偏短 cast packet 間隔讓高施放密度職業被高估。
 11. `scripts/backfill_gcd_coverage_xivanalysis.py` 只保留為人工抽樣診斷工具，會以 Playwright 開啟 xivanalysis report/fight/player 頁面並解析 Checklist 的 `Always be casting` 百分比；GitHub Actions 預設不得使用此入口，避免觸發 xivanalysis 的 `Slow down / Too many requests` 限流。xivanalysis 沒有正式結果 JSON API；此腳本不得保存頁面或 FFLogs raw events。
+12. 排行榜報告欄以「報告」按鈕開啟可關閉的彈跳視窗，集中呈現該筆成績數值與外部工具連結。前端外部報告工具連結依 `report_code`、`fight_id` 與 `fflogs_source_id` 組成；`fflogs_source_id` 來自 FFLogs `playerDetails` 的 sourceID，只用於 xivanalysis `/fflogs/{report}/{fight}/{sourceID}` 深連結，不得取代角色名稱、伺服器與職業組成的排行榜身分判定；ffreplay 連結則使用含 `fight` query 的 FFLogs URL 進行 URL encode。
 
 ### E. 驗證與同步
 1. 文件或註解變更仍需至少執行語法檢查與 `npm run build:user-data`，確認資料聚合可完成。

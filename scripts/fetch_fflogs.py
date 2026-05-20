@@ -256,6 +256,7 @@ def 正規化報告地區範圍(值: Any) -> str:
     "report_code",
     "report_url",
     "fight_id",
+    "fflogs_source_id",
     "duplicate_count",
     "report_hidden",
     "hidden_reason",
@@ -2882,6 +2883,9 @@ def 建立排行榜條目(
                     "report_url": 報告.get("url"),
                     "report_title": 報告.get("title"),
                     "fight_id": 戰鬥.get("fight_id"),
+                    # xivanalysis 的精準玩家頁需要 FFLogs 在該 report/fight 內的 sourceID。
+                    # 這個 ID 只用來組外部工具深連結，仍以角色名稱、伺服器與職業作為排行榜身分主鍵。
+                    "fflogs_source_id": 玩家.get("fflogs_id"),
                     "fight_hash": 戰鬥簽章,
                     "source_reports": [報告代碼],
                     "duplicate_count": 1,

@@ -1,10 +1,117 @@
 <script>
+import { ref } from "vue";
+import ReportDetailDialog from "../components/ReportDetailDialog.vue";
 import { injectRankingApp } from "../composables/useRankingApp";
 
 export default {
   name: "RankingPage",
+  components: {
+    ReportDetailDialog,
+  },
   setup() {
-    return injectRankingApp();
+    const app = injectRankingApp();
+    const 報告彈窗資料 = ref(null);
+
+    function 取值(可能Ref) {
+      return 可能Ref && typeof 可能Ref === "object" && "value" in 可能Ref ? 可能Ref.value : 可能Ref;
+    }
+
+    function 建立排行報告詳細資料(列, 排名 = null) {
+      const 顯示Gcd = Boolean(取值(app.顯示Gcd覆蓋率));
+      const 實際排名 = 排名 ?? 列.原始排名 ?? null;
+      const 目前副本 = 取值(app.目前副本);
+      const 狀態項目 = [
+        {
+          key: "rank",
+          label: "排名",
+          value: app.格式化排名(實際排名),
+          className: "報告彈窗排名項",
+        },
+        {
+          key: "active",
+          label: "Active",
+          value: app.格式化Active(列.active),
+          tooltip: app.統計說明文字("Active"),
+          tooltipLabel: "Active 說明",
+        },
+        ...(顯示Gcd
+          ? [
+              {
+                key: "gcd",
+                label: "GCD",
+                value: app.格式化Gcd覆蓋率(列.gcd_coverage),
+                tooltip: app.統計說明文字("GCD 覆蓋率"),
+                tooltipLabel: "GCD 覆蓋率說明",
+              },
+            ]
+          : []),
+        {
+          key: "clearTime",
+          label: "通關時間",
+          value: app.格式化通關時間(列.通關秒數),
+          className: "報告彈窗時間項",
+        },
+      ];
+
+      return {
+        subtitle: 目前副本?.name || "排行榜成績",
+        title: 列.角色名稱,
+        identity: `${列.伺服器} · ${列.職業}`,
+        record: 列,
+        statusItems: 狀態項目,
+        damageItems: [
+          {
+            key: "dps",
+            label: "DPS",
+            value: app.格式化傷害數值(列.dps),
+            tooltip: app.統計說明文字("DPS"),
+            tooltipLabel: "DPS 說明",
+          },
+          {
+            key: "rdps",
+            label: "rDPS",
+            value: app.格式化傷害數值(列.rdps),
+            tooltip: app.統計說明文字("rDPS"),
+            tooltipLabel: "rDPS 說明",
+            className: "報告彈窗主要數值",
+          },
+          {
+            key: "adps",
+            label: "aDPS",
+            value: app.格式化傷害數值(列.adps),
+            tooltip: app.統計說明文字("aDPS"),
+            tooltipLabel: "aDPS 說明",
+          },
+        ],
+        traceItems: [
+          {
+            key: "reportFight",
+            label: "Report / Fight",
+            value: `${列.reportCode || "-"}${列.fightId ? ` · ${列.fightId}` : ""}`,
+          },
+          {
+            key: "recordedAt",
+            label: "紀錄時間",
+            value: app.格式化紀錄時間(列.紀錄時間),
+          },
+        ],
+      };
+    }
+
+    function 開啟排行報告彈窗(列, 排名 = null) {
+      報告彈窗資料.value = 建立排行報告詳細資料(列, 排名);
+    }
+
+    function 關閉排行報告彈窗() {
+      報告彈窗資料.value = null;
+    }
+
+    return {
+      ...app,
+      報告彈窗資料,
+      開啟排行報告彈窗,
+      關閉排行報告彈窗,
+    };
   },
 };
 </script>
@@ -337,7 +444,14 @@ export default {
               <button class="說明提示按鈕 作者勾勾按鈕" type="button" aria-label="網站作者說明">✓</button>
               <span class="說明提示內容" role="tooltip">{{ 作者說明文字 }}</span>
             </span>
-            <a v-if="列.reportUrl" class="次要連結" :href="列.reportUrl" target="_blank" rel="noreferrer">報告</a>
+            <button
+              v-if="列.reportCode || 列.reportUrl"
+              class="次要連結 報告按鈕"
+              type="button"
+              @click="開啟排行報告彈窗(列, 排行列顯示排名(index))"
+            >
+              報告
+            </button>
             <div class="手機排行卡">
               <div class="手機排行主列">
                 <span class="手機排行職業" :title="列.職業">
@@ -393,7 +507,14 @@ export default {
                     {{ 格式化紀錄日期(列.紀錄時間) }} {{ 格式化紀錄時刻(列.紀錄時間) }}
                   </time>
                 </span>
-                <a v-if="列.reportUrl" :href="列.reportUrl" target="_blank" rel="noreferrer">報告</a>
+                <button
+                  v-if="列.reportCode || 列.reportUrl"
+                  class="報告按鈕"
+                  type="button"
+                  @click="開啟排行報告彈窗(列, 排行列顯示排名(index))"
+                >
+                  報告
+                </button>
               </div>
             </div>
           </td>
@@ -442,4 +563,6 @@ export default {
     </div>
   </template>
 </section>
+
+<ReportDetailDialog :details="報告彈窗資料" @close="關閉排行報告彈窗" />
 </template>

@@ -493,6 +493,7 @@ npm run cloudflare:estimate
 - 排行榜只統計公開報告中可解析且符合繁中服條件的資料；地區只決定淺層候選池，真正的玩家身分仍以 FFLogs `masterData.actors` / `playerDetails` 的伺服器欄位判斷。
 - 單場 FFLogs `playerDetails` / `damageDone` 查詢會同時帶 `fightIDs` 與 fight 的相對 `startTime` / `endTime`，避免少數舊報告只用 `fightIDs` 時拿到 partial damage table，造成 rDPS/aDPS 異常放大。
 - `active_percent` 對齊 FFLogs Damage Done CSV 的 Active%，使用 `fflogs_total_time_ms` 作為優先分母；DPS/rDPS/aDPS 仍使用 `damage_time_ms`。
+- 排行榜報告欄以「報告」按鈕開啟可關閉的彈跳視窗，集中呈現該筆成績數值與 FFLogs、xivanalysis、ffreplay 外部工具連結。精準 xivanalysis 玩家頁使用公開 JSON 的 `report_code`、`fight_id` 與 `fflogs_source_id` 組成 `/fflogs/{report}/{fight}/{sourceID}`；`fflogs_source_id` 來自 FFLogs `playerDetails` 的 sourceID，只用於外部工具深連結，不作為排行榜角色身分主鍵。
 - GCD 覆蓋率目前前端已開啟：`顯示Gcd覆蓋率=true`。GitHub Actions 會在新 report 落地時即時計算 GCD 衍生結果；既有玩家的全量 backfill 仍維持手動。`fetch_fflogs.py` 與 `backfill_gcd_coverage.py` 都共用 `gcd_coverage_core.py`，以 FFLogs `Casts` graph 本地計算，`backfill_gcd_coverage_xivanalysis.py` 只保留為抽樣診斷工具；需要追平舊資料時，先以 `npm run backfill:gcd -- --dry-run` 預覽。本地計算會使用 graph 內的 downtime 視窗同時扣除分母與分子；同一個 report/fight 優先查整場 graph，再於本地依玩家 `sourceID` 切分，降低 FFLogs request 數。技能的 GCD 分類與基礎 cast/recast 以 XIVAPI datamining 的 `Action.csv` 為底，並用小型 allow-list 補上 xivanalysis 也會視為 GCD 的例外，例如忍者 mudra/ninjutsu，以及毒蛇劍士同時具有技能冷卻與獨立 GCD recast 的技能。完整 Casts raw events 只在記憶體中計算，不會保存到 repo。
 
 ## 版本切點與過版紀錄
