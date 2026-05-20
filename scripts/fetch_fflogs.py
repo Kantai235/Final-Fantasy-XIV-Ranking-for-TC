@@ -41,6 +41,7 @@ FFLogs執行設定預設值: dict[str, Any] = {
     "min_scan_window_seconds": 60,
     "initial_lookback_hours": 24,
     "incremental_lookback_hours": 6,
+    "no_clear_retry_hours": 72,
     "history_scan_enabled": True,
     "history_scan_full_run": False,
     "history_scan_window_hours": 24,
@@ -270,6 +271,7 @@ def 正規化報告地區範圍(值: Any) -> str:
 
 版本紀錄範圍清單 = ("all", "valid", "obsolete")
 報告尚未完整匯出狀態 = "deferred_incomplete_export"
+無通關報告狀態 = "skipped_no_clear"
 報告無法存取隱藏原因 = "private_or_deleted"
 可重試報告處理狀態 = {報告尚未完整匯出狀態}
 暫時性HTTP狀態碼 = {500, 502, 503, 504}
@@ -282,6 +284,8 @@ def 正規化報告地區範圍(值: Any) -> str:
 最小切分區間毫秒 = 整數設定("min_scan_window_seconds") * 1000
 初次掃描回溯小時 = 整數設定("initial_lookback_hours")
 增量掃描回溯小時 = max(0, 整數設定("incremental_lookback_hours"))
+無通關報告重試小時 = max(0, 整數設定("no_clear_retry_hours"))
+無通關報告重試毫秒 = 無通關報告重試小時 * 60 * 60 * 1000
 歷史補查已啟用 = 布林設定("history_scan_enabled")
 歷史補查完整執行 = 布林設定("history_scan_full_run")
 歷史補查區間小時 = max(1, 整數設定("history_scan_window_hours"))
@@ -3413,7 +3417,24 @@ def 合併寫入排行榜(副本設定: dict[str, Any], 新成績列表: list[di
 
 
 def 報告處理記錄可重試(記錄: Any) -> bool:
-    return isinstance(記錄, dict) and 記錄.get("status") in 可重試報告處理狀態
+    if not isinstance(記錄, dict):
+        return False
+
+    處理狀態 = 記錄.get("status")
+    if 處理狀態 in 可重試報告處理狀態:
+        return True
+
+    if 處理狀態 != 無通關報告狀態 or 無通關報告重試毫秒 <= 0:
+        return False
+
+    處理時間戳記 = 轉_int_or_none(記錄.get("processed_at"))
+    if 處理時間戳記 is None:
+        return False
+
+    # FFLogs report 可能在上傳過程中先出現在 reports 清單，實際通關 fight 則稍後才匯出完成。
+    # `skipped_no_clear` 因此不能立刻成為永久快取；只在近期重試窗內放行深層查詢，
+    # 讓 workflow 能補抓 HtgYr71cqz3K2LwC 這類「先被掃到、後來才有 kill」的紀錄。
+    return 處理時間戳記 + 無通關報告重試毫秒 >= 現在毫秒()
 
 
 def 讀取已處理報告代碼(狀態: dict[str, Any], 副本設定: dict[str, Any]) -> set[str]:
@@ -4186,7 +4207,7 @@ def main() -> int:
                     if len(目標處理狀態["待寫入成績清單"]) >= 排行榜批次寫入報告數:
                         批次寫入排行榜(目標處理狀態, "達到批次門檻")
                 else:
-                    標記報告略過(目標處理狀態, 報告代碼, "skipped_no_clear")
+                    標記報告略過(目標處理狀態, 報告代碼, 無通關報告狀態)
                     print(f"{目標副本['name']} {進度文字} 未找到通關戰鬥，已略過：{報告代碼}")
 
         for 處理狀態 in 副本處理狀態.values():

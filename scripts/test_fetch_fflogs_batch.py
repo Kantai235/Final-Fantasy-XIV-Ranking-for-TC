@@ -63,6 +63,7 @@ class FetchFFLogsBatchTest(unittest.TestCase):
             "fetch_gcd_coverage_enabled": False,
             "fetch_gcd_coverage_max_fights_per_run": 0,
             "request_timeout": 30,
+            "no_clear_retry_hours": 72,
             "retry_report_codes": [],
         }
 
@@ -79,6 +80,7 @@ class FetchFFLogsBatchTest(unittest.TestCase):
                 "FFLOGS_FETCH_GCD_COVERAGE_ENABLED": "true",
                 "FFLOGS_FETCH_GCD_COVERAGE_MAX_FIGHTS_PER_RUN": "500",
                 "FFLOGS_REQUEST_TIMEOUT": "12.5",
+                "FFLOGS_NO_CLEAR_RETRY_HOURS": "48",
                 "FFLOGS_RETRY_REPORT_CODES": "abc123, def456",
             },
         ):
@@ -94,6 +96,7 @@ class FetchFFLogsBatchTest(unittest.TestCase):
         self.assertTrue(覆寫後設定["fetch_gcd_coverage_enabled"])
         self.assertEqual(覆寫後設定["fetch_gcd_coverage_max_fights_per_run"], 500)
         self.assertEqual(覆寫後設定["request_timeout"], 12.5)
+        self.assertEqual(覆寫後設定["no_clear_retry_hours"], 48)
         self.assertEqual(覆寫後設定["retry_report_codes"], ["abc123", "def456"])
 
     def test_report_fight_list_query_does_not_request_ranked_character_claimed(self) -> None:
@@ -618,6 +621,41 @@ class FetchFFLogsBatchTest(unittest.TestCase):
 
         self.assertNotIn("retry-me", 已處理)
         self.assertNotIn("retry-me-too", 已處理)
+        self.assertIn("done", 已處理)
+
+    def test_recent_no_clear_status_is_retried_only_inside_retry_window(self) -> None:
+        副本設定 = {"key": "savage_m3s"}
+        現在 = 1_000_000_000
+        一小時 = 60 * 60 * 1000
+        狀態 = {
+            "encounters": {
+                "savage_m3s": {
+                    "processed_reports": {
+                        "recent-no-clear": {
+                            "status": fflogs.無通關報告狀態,
+                            "processed_at": 現在 - 一小時,
+                        },
+                    },
+                    "checked_reports": {
+                        "old-no-clear": {
+                            "status": fflogs.無通關報告狀態,
+                            "processed_at": 現在 - 73 * 一小時,
+                        },
+                        "done": {"status": "saved"},
+                    },
+                }
+            }
+        }
+
+        with (
+            patch.object(fflogs, "讀取排行榜檔案", return_value={"reports": {}}),
+            patch.object(fflogs, "現在毫秒", return_value=現在),
+            patch.object(fflogs, "無通關報告重試毫秒", 72 * 一小時),
+        ):
+            已處理 = fflogs.讀取已處理報告代碼(狀態, 副本設定)
+
+        self.assertNotIn("recent-no-clear", 已處理)
+        self.assertIn("old-no-clear", 已處理)
         self.assertIn("done", 已處理)
 
     def test_ranking_rebuild_prefers_reports_over_stale_flat_entries(self) -> None:

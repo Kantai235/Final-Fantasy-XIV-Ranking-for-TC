@@ -404,6 +404,7 @@ GitHub Actions 會透過既有 report 狀態巡檢，每輪由舊到新抽查既
 `config/fflogs.json` 預設關閉歷史補查，避免本機一般執行時額外掃描舊時間窗。GitHub Actions 會在 workflow 內用環境變數暫時開啟：
 
 - `FFLOGS_REPORT_REGION_SCOPE`：淺層 reports 候選地區，`china` 只看中國區域，`all` 會掃全部地區；專案與 workflow 預設 `all`。
+- `FFLOGS_NO_CLEAR_RETRY_HOURS`：`skipped_no_clear` 的近期重試時數，workflow 預設 `72`。這會讓剛上傳但尚未匯出通關 fight 的 report 在三天內繼續被深層檢查，避免後續出現 kill 時被舊快取擋掉。
 - `FFLOGS_HISTORY_SCAN_ENABLED`：是否啟用歷史補查，workflow 預設 `true`。
 - `FFLOGS_HISTORY_SCAN_WINDOW_HOURS`：每個歷史時間窗長度，workflow 預設 `168`（一週）。
 - `FFLOGS_HISTORY_SCAN_WINDOWS_PER_RUN`：每輪每個副本最多巡幾個歷史時間窗，workflow 預設 `1`。
@@ -415,7 +416,7 @@ GitHub Actions 會透過既有 report 狀態巡檢，每輪由舊到新抽查既
 - `FFLOGS_FETCH_GCD_COVERAGE_ENABLED`：新 report 落地時是否即時計算 GCD 覆蓋率，workflow 預設 `true`。
 - `FFLOGS_FETCH_GCD_COVERAGE_MAX_FIGHTS_PER_RUN`：每輪最多查幾場 fight 的 Casts graph，workflow 預設 `500`；`0` 代表不設上限。
 
-歷史補查會從副本的 `history_scan_start_date`、`scan_start_date` 或 `initial_scan_start_date` 開始，依 `data/state.json` 內各副本的 `history_scan_cursor_at` 往後輪巡。它只會把尚未在 state 或排行榜中的 report 選入候選，適合抓回「當時未公開、後來改成公開」或「FFLogs 延後完成匯出」的歷史 logs；一般最新資料仍由增量掃描負責。
+歷史補查會從副本的 `history_scan_start_date`、`scan_start_date` 或 `initial_scan_start_date` 開始，依 `data/state.json` 內各副本的 `history_scan_cursor_at` 往後輪巡。它只會把尚未在 state 或排行榜中的 report 選入候選，適合抓回「當時未公開、後來改成公開」或「FFLogs 延後完成匯出」的歷史 logs；一般最新資料仍由增量掃描負責。增量掃描若遇到 `skipped_no_clear`，會在 `FFLOGS_NO_CLEAR_RETRY_HOURS` 時間窗內重新檢查，專門處理 report 先被掃到、後續才匯出通關 fight 的情境。
 
 ## 自動更新
 
