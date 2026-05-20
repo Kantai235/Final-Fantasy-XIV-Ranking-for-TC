@@ -63,7 +63,7 @@ class FetchFFLogsBatchTest(unittest.TestCase):
             "fetch_gcd_coverage_enabled": False,
             "fetch_gcd_coverage_max_fights_per_run": 0,
             "request_timeout": 30,
-            "no_clear_retry_hours": 72,
+            "no_clear_retry_hours": 24,
             "retry_report_codes": [],
         }
 
@@ -674,7 +674,7 @@ class FetchFFLogsBatchTest(unittest.TestCase):
                     "checked_reports": {
                         "old-no-clear": {
                             "status": fflogs.無通關報告狀態,
-                            "processed_at": 現在 - 73 * 一小時,
+                            "processed_at": 現在 - 25 * 一小時,
                         },
                         "done": {"status": "saved"},
                     },
@@ -685,7 +685,7 @@ class FetchFFLogsBatchTest(unittest.TestCase):
         with (
             patch.object(fflogs, "讀取排行榜檔案", return_value={"reports": {}}),
             patch.object(fflogs, "現在毫秒", return_value=現在),
-            patch.object(fflogs, "無通關報告重試毫秒", 72 * 一小時),
+            patch.object(fflogs, "無通關報告重試毫秒", 24 * 一小時),
         ):
             已處理 = fflogs.讀取已處理報告代碼(狀態, 副本設定)
 

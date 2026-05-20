@@ -41,7 +41,7 @@ FFLogs執行設定預設值: dict[str, Any] = {
     "min_scan_window_seconds": 60,
     "initial_lookback_hours": 24,
     "incremental_lookback_hours": 6,
-    "no_clear_retry_hours": 72,
+    "no_clear_retry_hours": 24,
     "history_scan_enabled": True,
     "history_scan_full_run": False,
     "history_scan_window_hours": 24,

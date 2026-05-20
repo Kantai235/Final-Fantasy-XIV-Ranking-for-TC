@@ -85,8 +85,8 @@ jobs:
           FFLOGS_CLIENT_CREDENTIALS_JSON: ${{ secrets.FFLOGS_CLIENT_CREDENTIALS_JSON }}
           # 玩家可能把繁中服角色的 report 上傳到其他地區；workflow 掃全部地區候選，再由 Python 以伺服器名稱篩繁中服玩家。
           FFLOGS_REPORT_REGION_SCOPE: ${{ vars.FFLOGS_REPORT_REGION_SCOPE || 'all' }}
-          # 近期 report 可能先被掃到但尚未出現通關 fight；保留 72 小時重試窗，避免 skipped_no_clear 永久擋掉後續匯出的 kill。
-          FFLOGS_NO_CLEAR_RETRY_HOURS: ${{ vars.FFLOGS_NO_CLEAR_RETRY_HOURS || '72' }}
+          # 近期 report 可能先被掃到但尚未出現通關 fight；保留 24 小時重試窗，避免 skipped_no_clear 永久擋掉後續匯出的 kill。
+          FFLOGS_NO_CLEAR_RETRY_HOURS: ${{ vars.FFLOGS_NO_CLEAR_RETRY_HOURS || '24' }}
           # config/fflogs.json 預設關閉歷史補查；workflow 以低量輪巡方式檢查舊時間窗是否新增公開 logs。
           FFLOGS_HISTORY_SCAN_ENABLED: ${{ vars.FFLOGS_HISTORY_SCAN_ENABLED || 'true' }}
           FFLOGS_HISTORY_SCAN_FULL_RUN: ${{ vars.FFLOGS_HISTORY_SCAN_FULL_RUN || 'false' }}

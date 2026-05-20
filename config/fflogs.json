@@ -6,7 +6,7 @@
   "min_scan_window_seconds": 60,
   "initial_lookback_hours": 72,
   "incremental_lookback_hours": 72,
-  "no_clear_retry_hours": 72,
+  "no_clear_retry_hours": 24,
   "history_scan_enabled": false,
   "history_scan_full_run": false,
   "history_scan_window_hours": 24,
