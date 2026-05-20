@@ -1,6 +1,9 @@
 <script>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { injectRankingApp } from "../composables/useRankingApp";
+import { 顯示Telegram連結 } from "../utils/siteFeatures";
+
+const Telegram連結 = "https://t.me/ffxiv_tc";
 
 const 頁面切換項目 = [
   { 模式: "ranking", 名稱: "排行榜", 動作: "切換到排行榜" },
@@ -88,6 +91,8 @@ export default {
       手機選單開啟,
       頁面選單開關,
       頁面選單按鈕文字,
+      Telegram連結,
+      顯示Telegram連結,
       開啟頁面選單,
       關閉頁面選單,
       關閉頁面選單並回到開關,
@@ -149,6 +154,18 @@ export default {
         >
           {{ 項目.名稱 }}
         </button>
+
+        <a
+          v-if="顯示Telegram連結"
+          class="頁面切換Telegram連結"
+          :href="Telegram連結"
+          target="_blank"
+          rel="noopener noreferrer"
+          @click="關閉頁面選單"
+        >
+          <span aria-hidden="true">✈</span>
+          <span>Telegram 交流群</span>
+        </a>
       </nav>
     </Teleport>
   </div>

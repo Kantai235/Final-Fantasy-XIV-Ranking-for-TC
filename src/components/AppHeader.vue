@@ -1,8 +1,8 @@
 <script>
-import { nextTick, ref } from "vue";
+import { nextTick, onBeforeUnmount, ref } from "vue";
 import PageNavigation from "./PageNavigation.vue";
 import { injectRankingApp } from "../composables/useRankingApp";
-import { 顯示社群連結 } from "../utils/siteFeatures";
+import { 顯示Telegram連結 } from "../utils/siteFeatures";
 
 const Telegram連結 = "https://t.me/ffxiv_tc";
 const TelegramQrCode網址 = `${import.meta.env.BASE_URL}telegram.png`;
@@ -16,35 +16,89 @@ export default {
     const Telegram開啟按鈕 = ref(null);
     const Telegram關閉按鈕 = ref(null);
     const 顯示Telegram交流視窗 = ref(false);
+    const Telegram交流視窗顯示中 = ref(false);
+    const TelegramQrCode載入中 = ref(true);
+    let Telegram關閉計時器 = null;
+    let Telegram動畫序號 = 0;
+
+    function 清除Telegram關閉計時器() {
+      if (Telegram關閉計時器 !== null) {
+        clearTimeout(Telegram關閉計時器);
+        Telegram關閉計時器 = null;
+      }
+    }
 
     function 開啟Telegram交流視窗() {
-      if (!顯示社群連結) {
+      if (!顯示Telegram連結) {
         return;
       }
 
+      清除Telegram關閉計時器();
+      Telegram動畫序號 += 1;
+      const 本次動畫序號 = Telegram動畫序號;
+      TelegramQrCode載入中.value = true;
       顯示Telegram交流視窗.value = true;
-      nextTick(() => Telegram關閉按鈕.value?.focus());
+      Telegram交流視窗顯示中.value = false;
+
+      nextTick(() => {
+        const 啟動進場動畫 = () => {
+          if (本次動畫序號 !== Telegram動畫序號 || !顯示Telegram交流視窗.value) {
+            return;
+          }
+
+          Telegram交流視窗顯示中.value = true;
+          Telegram關閉按鈕.value?.focus();
+        };
+
+        if (typeof window !== "undefined" && typeof window.requestAnimationFrame === "function") {
+          window.requestAnimationFrame(啟動進場動畫);
+        } else {
+          setTimeout(啟動進場動畫, 0);
+        }
+      });
     }
 
     function 關閉Telegram交流視窗() {
-      顯示Telegram交流視窗.value = false;
+      if (!顯示Telegram交流視窗.value) {
+        return;
+      }
+
+      清除Telegram關閉計時器();
+      Telegram動畫序號 += 1;
+      Telegram交流視窗顯示中.value = false;
+      // 和報告彈窗一樣保留 DOM 到離場動畫結束，避免關閉時瞬間消失。
+      Telegram關閉計時器 = setTimeout(() => {
+        顯示Telegram交流視窗.value = false;
+        Telegram關閉計時器 = null;
+      }, 200);
     }
 
     function 關閉Telegram交流視窗並回焦() {
       關閉Telegram交流視窗();
-      nextTick(() => Telegram開啟按鈕.value?.focus());
+      setTimeout(() => Telegram開啟按鈕.value?.focus(), 200);
     }
+
+    function 標記TelegramQrCode載入完成() {
+      TelegramQrCode載入中.value = false;
+    }
+
+    onBeforeUnmount(() => {
+      清除Telegram關閉計時器();
+    });
 
     return {
       ...injectRankingApp(),
       Telegram連結,
       TelegramQrCode網址,
-      顯示社群連結,
+      顯示Telegram連結,
       Telegram開啟按鈕,
       Telegram關閉按鈕,
       顯示Telegram交流視窗,
+      Telegram交流視窗顯示中,
+      TelegramQrCode載入中,
       開啟Telegram交流視窗,
       關閉Telegram交流視窗並回焦,
+      標記TelegramQrCode載入完成,
     };
   },
 };
@@ -63,7 +117,7 @@ export default {
     </p>
     <div class="標題操作">
       <button
-        v-if="顯示社群連結"
+        v-if="顯示Telegram連結"
         ref="Telegram開啟按鈕"
         class="Telegram交流按鈕"
         type="button"
@@ -110,8 +164,9 @@ export default {
 </section>
 <Teleport to="body">
   <div
-    v-if="顯示社群連結 && 顯示Telegram交流視窗"
+    v-if="顯示Telegram連結 && 顯示Telegram交流視窗"
     class="Telegram視窗遮罩"
+    :class="{ 顯示: Telegram交流視窗顯示中 }"
     @click.self="關閉Telegram交流視窗並回焦"
     @keydown.escape="關閉Telegram交流視窗並回焦"
   >
@@ -137,8 +192,16 @@ export default {
         <h2 id="Telegram交流標題">Telegram 交流群</h2>
         <p id="Telegram交流說明">排行榜更新、資料回報與高難度副本交流都會集中在這裡。</p>
       </div>
-      <figure class="TelegramQRCode">
-        <img class="TelegramQRCode圖片" :src="TelegramQrCode網址" alt="FFXIV 繁中服排行榜 Telegram 交流群 QR Code" />
+      <figure class="TelegramQRCode" :class="{ 載入中: TelegramQrCode載入中 }">
+        <span v-if="TelegramQrCode載入中" class="TelegramQRCode載入動畫" aria-hidden="true"></span>
+        <img
+          class="TelegramQRCode圖片"
+          :class="{ 載入完成: !TelegramQrCode載入中 }"
+          :src="TelegramQrCode網址"
+          alt="FFXIV 繁中服排行榜 Telegram 交流群 QR Code"
+          @load="標記TelegramQrCode載入完成"
+          @error="標記TelegramQrCode載入完成"
+        />
       </figure>
       <div class="Telegram視窗行動列">
         <a class="Telegram主要連結" :href="Telegram連結" target="_blank" rel="noopener noreferrer">

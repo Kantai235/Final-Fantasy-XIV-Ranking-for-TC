@@ -244,6 +244,12 @@ svg.標題按鈕圖示 {
   place-items: center;
   padding: 24px;
   background: rgba(0, 0, 0, 0.62);
+  opacity: 0;
+  transition: opacity 0.18s ease;
+}
+
+.Telegram視窗遮罩.顯示 {
+  opacity: 1;
 }
 
 .Telegram視窗 {
@@ -259,6 +265,16 @@ svg.標題按鈕圖示 {
   color: var(--主要文字);
   background: var(--表面背景);
   box-shadow: 0 24px 64px rgba(0, 0, 0, 0.36);
+  opacity: 0;
+  transform: translateY(14px) scale(0.97);
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.Telegram視窗遮罩.顯示 .Telegram視窗 {
+  opacity: 1;
+  transform: translateY(0) scale(1);
 }
 
 .Telegram視窗關閉 {
@@ -316,14 +332,39 @@ svg.標題按鈕圖示 {
 }
 
 .TelegramQRCode {
+  position: relative;
+  min-height: 250px;
   display: grid;
   justify-items: center;
+  align-items: center;
   margin: 0;
+}
+
+.TelegramQRCode載入動畫 {
+  width: 36px;
+  height: 36px;
+  border: 3px solid color-mix(in srgb, var(--Telegram色) 22%, var(--邊框色));
+  border-top-color: var(--Telegram色);
+  border-radius: 50%;
+  animation: TelegramQRCode旋轉 0.82s linear infinite;
 }
 
 .TelegramQRCode圖片 {
   width: min(250px, 100%);
   height: auto;
+  opacity: 0;
+  transition: opacity 0.16s ease;
+}
+
+.TelegramQRCode圖片.載入完成 {
+  opacity: 1;
+}
+
+.TelegramQRCode.載入中 .TelegramQRCode圖片 {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  pointer-events: none;
 }
 
 .Telegram視窗行動列 {
@@ -357,6 +398,12 @@ svg.標題按鈕圖示 {
   outline-offset: 2px;
 }
 
+@keyframes TelegramQRCode旋轉 {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .頁面切換容器 {
   grid-area: nav;
   margin-bottom: 0;
@@ -376,6 +423,10 @@ svg.標題按鈕圖示 {
 }
 
 .手機頁面抽屜 {
+  display: none;
+}
+
+.頁面切換Telegram連結 {
   display: none;
 }
 
@@ -682,6 +733,20 @@ svg.標題按鈕圖示 {
 @media (prefers-reduced-motion: reduce) {
   .頁面切換 {
     transition: none;
+  }
+
+  .Telegram視窗遮罩,
+  .Telegram視窗,
+  .TelegramQRCode圖片 {
+    transition: none;
+  }
+
+  .TelegramQRCode載入動畫 {
+    animation: none;
+  }
+
+  .Telegram視窗遮罩.顯示 .Telegram視窗 {
+    transform: none;
   }
 
   .作者浮出面板 {
@@ -4719,6 +4784,11 @@ td a:hover {
     justify-content: center;
     padding: 0;
   }
+
+  .標題操作 .Telegram交流按鈕 {
+    display: none;
+  }
+
   .Telegram視窗遮罩 {
     align-items: start;
     overflow-y: auto;
@@ -4905,6 +4975,33 @@ td a:hover {
     padding: 0 12px;
     font-size: 0.95rem;
     text-align: left;
+  }
+
+  .頁面切換Telegram連結 {
+    min-height: 46px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin-top: auto;
+    border: 1px solid var(--Telegram色);
+    border-radius: 8px;
+    padding: 0 12px;
+    color: var(--Telegram文字);
+    background: var(--Telegram色);
+    font-weight: 820;
+    text-align: center;
+    text-decoration: none;
+  }
+
+  .頁面切換Telegram連結:hover {
+    border-color: var(--Telegram色深);
+    background: var(--Telegram色深);
+  }
+
+  .頁面切換Telegram連結:focus {
+    outline: 3px solid var(--Telegram焦點陰影);
+    outline-offset: 2px;
   }
 
   .頁面切換關閉 {
