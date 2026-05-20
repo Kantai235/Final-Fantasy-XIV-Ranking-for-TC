@@ -544,7 +544,6 @@ query ReportFightList($code: String!, $encounterID: Int!, $difficulty: Int!) {
         lodestoneID
         name
         hidden
-        claimed
         server {
           ...ServerFields
         }

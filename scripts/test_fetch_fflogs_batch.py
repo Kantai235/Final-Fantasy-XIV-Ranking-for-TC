@@ -90,6 +90,12 @@ class FetchFFLogsBatchTest(unittest.TestCase):
         self.assertEqual(覆寫後設定["request_timeout"], 12.5)
         self.assertEqual(覆寫後設定["retry_report_codes"], ["abc123", "def456"])
 
+    def test_report_fight_list_query_does_not_request_ranked_character_claimed(self) -> None:
+        # claimed 是 FFLogs 帳號認領狀態，部分 report 會因這個欄位回傳權限錯誤；
+        # 目前資料管線不使用它，避免查詢非必要欄位造成整份 report 整理失敗。
+        self.assertIn("rankedCharacters", fflogs.戰鬥清單查詢)
+        self.assertNotIn("claimed", fflogs.戰鬥清單查詢)
+
     def test_shallow_report_scan_filters_to_china_scope_when_configured(self) -> None:
         def 假_graphql(
             session: Any,
