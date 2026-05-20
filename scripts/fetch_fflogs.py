@@ -1876,6 +1876,35 @@ def 報告是否包含繁中服玩家(
     return bool(有效玩家), 有效玩家
 
 
+def 取得本輪報告繁中服檢查結果(
+    本輪快取: dict[str, dict[str, Any]],
+    session: requests.Session,
+    認證池: FFLogs認證池,
+    報告代碼: str,
+) -> tuple[bool, list[dict[str, Any]]]:
+    if 報告代碼 not in 本輪快取:
+        try:
+            # masterData.actors 是 report 層級資料，與 M1S/M2S 這類 encounter 無關；
+            # 同一輪 workflow 只需要查一次，後續同 code 來自其他副本或歷史補查來源時重用結果。
+            有繁中服玩家, 繁中服玩家 = 報告是否包含繁中服玩家(session, 認證池, 報告代碼)
+            本輪快取[報告代碼] = {
+                "ok": True,
+                "has_traditional_chinese_players": 有繁中服玩家,
+                "traditional_chinese_players": 繁中服玩家,
+            }
+        except Exception as 錯誤:
+            本輪快取[報告代碼] = {"ok": False, "error": 錯誤}
+
+    記錄 = 本輪快取[報告代碼]
+    if 記錄.get("ok"):
+        return bool(記錄.get("has_traditional_chinese_players")), list(記錄.get("traditional_chinese_players") or [])
+
+    錯誤 = 記錄.get("error")
+    if isinstance(錯誤, Exception):
+        raise 錯誤
+    raise RuntimeError(f"本輪 report 檢查快取缺少錯誤內容：{報告代碼}")
+
+
 def 查詢報告目前狀態(
     session: requests.Session,
     認證池: FFLogs認證池,
@@ -3626,6 +3655,7 @@ def main() -> int:
         }
 
     淺層掃描快取: dict[tuple[int, int, int, int | None], list[dict[str, Any]]] = {}
+    本輪報告繁中服檢查快取: dict[str, dict[str, Any]] = {}
     歷史補查候選報告代碼: set[str] = set()
     已完成副本清單: list[dict[str, Any]] = []
     暫時失敗副本清單: list[dict[str, Any]] = []
@@ -4121,7 +4151,12 @@ def main() -> int:
                 print(f"{副本設定['name']} {進度文字} 處理報告：{報告代碼}{同步說明}")
 
             try:
-                有繁中服玩家, 繁中服玩家 = 報告是否包含繁中服玩家(session, 認證池, 報告代碼)
+                有繁中服玩家, 繁中服玩家 = 取得本輪報告繁中服檢查結果(
+                    本輪報告繁中服檢查快取,
+                    session,
+                    認證池,
+                    報告代碼,
+                )
             except FFLogs報告存取錯誤 as 錯誤:
                 for 目標副本 in 待處理副本:
                     標記不可存取報告隱藏(目標副本, 報告代碼, 錯誤)

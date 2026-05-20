@@ -335,7 +335,7 @@ python scripts/fetch_fflogs.py
    - 透過 FFLogs API 掃描公開報告；預設掃全部地區。
    - 若 workflow 以 `FFLOGS_HISTORY_SCAN_ENABLED=true` 開啟歷史補查，會沿著各副本的 `history_scan_cursor_at` 輪巡較舊時間窗，檢查是否有後來才公開或延後匯出的 logs 可以補抓。
    - 若 workflow 以 `FFLOGS_EXISTING_REPORT_STATUS_CHECK_ENABLED=true` 開啟既有 report 狀態巡檢，每輪會依 report 時間由舊到新檢查固定數量；游標記在 `data/state.json`，跑完會回到最舊紀錄繼續輪巡。
-   - 篩選繁中服伺服器玩家。
+   - 篩選繁中服伺服器玩家；同一輪若已檢查過某個 report code，會重用本輪快取，不重複查 `masterData.actors`。
    - 更新 `data/rankings/*.json`、`public/data/rankings/*.json` 與 `data/state.json`。
    - 若 FFLogs 暫時回傳 500/502/503/504 或連線逾時，該副本會保留原掃描點並在 `active_scan.last_error_*` 記錄錯誤摘要；已完成副本仍會更新掃描點，下一輪排程會自動補掃延後副本。
 

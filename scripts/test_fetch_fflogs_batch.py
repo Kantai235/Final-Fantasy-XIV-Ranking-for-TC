@@ -127,6 +127,41 @@ class FetchFFLogsBatchTest(unittest.TestCase):
             )
         )
 
+    def test_report_tc_player_check_is_cached_per_run(self) -> None:
+        呼叫報告代碼: list[str] = []
+
+        def 假繁中服檢查(session: Any, 認證池: Any, 報告代碼: str) -> tuple[bool, list[dict[str, Any]]]:
+            呼叫報告代碼.append(報告代碼)
+            return True, [{"name": "測試角色", "server": "巴哈姆特"}]
+
+        快取: dict[str, dict[str, Any]] = {}
+
+        with patch.object(fflogs, "報告是否包含繁中服玩家", 假繁中服檢查):
+            第一次 = fflogs.取得本輪報告繁中服檢查結果(快取, None, None, "same-report")
+            第二次 = fflogs.取得本輪報告繁中服檢查結果(快取, None, None, "same-report")
+
+        self.assertEqual(呼叫報告代碼, ["same-report"])
+        self.assertEqual(第一次, 第二次)
+        self.assertTrue(第二次[0])
+
+    def test_report_tc_player_check_cached_error_is_reused(self) -> None:
+        呼叫次數 = 0
+
+        def 假繁中服檢查(session: Any, 認證池: Any, 報告代碼: str) -> tuple[bool, list[dict[str, Any]]]:
+            nonlocal 呼叫次數
+            呼叫次數 += 1
+            raise fflogs.FFLogs報告存取錯誤("private")
+
+        快取: dict[str, dict[str, Any]] = {}
+
+        with patch.object(fflogs, "報告是否包含繁中服玩家", 假繁中服檢查):
+            with self.assertRaises(fflogs.FFLogs報告存取錯誤):
+                fflogs.取得本輪報告繁中服檢查結果(快取, None, None, "same-report")
+            with self.assertRaises(fflogs.FFLogs報告存取錯誤):
+                fflogs.取得本輪報告繁中服檢查結果(快取, None, None, "same-report")
+
+        self.assertEqual(呼叫次數, 1)
+
     def test_existing_report_status_check_candidates_are_oldest_first(self) -> None:
         副本清單 = [
             {"key": "encounter_a", "name": "副本 A"},

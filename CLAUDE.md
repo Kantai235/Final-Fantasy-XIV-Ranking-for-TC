@@ -112,6 +112,7 @@
 17. GitHub Actions 會用 `FFLOGS_EXISTING_REPORT_STATUS_CHECK_*` 開啟既有 report 狀態巡檢；每輪依 report 時間由舊到新檢查固定數量，游標保存在 `data/state.json` 的 `existing_report_status_check`，跑完後會回到最舊紀錄繼續輪巡。
 18. `scripts/check_missing_gcd_report_status.py` 是一次性維護工具，只針對缺少 `gcd_coverage` key 或 `gcd_coverage: null` 的既有 report code 做輕量狀態查詢；不可存取時標記 report hidden，不補算 GCD，也不取代 `backfill_gcd_coverage.py`。
 19. `skipped_no_clear` 只在近期重試窗外才視為永久已檢查；workflow 預設 `FFLOGS_NO_CLEAR_RETRY_HOURS=72`，讓剛上傳但尚未匯出通關 fight 的 report 在三天內會被重新深查，避免後續出現 kill 時被舊快取擋掉。
+20. 單次 `fetch_fflogs.py` 執行內，report code 是深層檢查去重單位；`masterData.actors` 的繁中服玩家判斷會寫入本輪記憶體快取，後續同 report code 來自其他副本、recent 或 history 來源時直接重用結果或錯誤，不重複打 FFLogs API。
 
 ### F. 版本切點與過版紀錄
 1. `config/encounters.json` 的 `version_cutoff` 用來描述副本版本有效期限；目前 `極 佐拉加` 與 `極 豔翼蛇鳥` 的過版切點是台灣時間 2026-04-21 18:00，對應 `2026-04-21T10:00:00.000Z`。
