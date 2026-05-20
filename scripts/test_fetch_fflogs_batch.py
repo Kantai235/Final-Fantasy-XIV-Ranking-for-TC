@@ -57,6 +57,8 @@ class FetchFFLogsBatchTest(unittest.TestCase):
             "history_scan_windows_per_run": 0,
             "history_scan_window_hours": 24,
             "history_max_deep_reports_per_run": 0,
+            "existing_report_status_check_enabled": False,
+            "existing_report_status_check_limit": 0,
             "report_region_scope": "china",
             "fetch_gcd_coverage_enabled": False,
             "fetch_gcd_coverage_max_fights_per_run": 0,
@@ -71,6 +73,8 @@ class FetchFFLogsBatchTest(unittest.TestCase):
                 "FFLOGS_HISTORY_SCAN_WINDOWS_PER_RUN": "2",
                 "FFLOGS_HISTORY_SCAN_WINDOW_HOURS": "12",
                 "FFLOGS_HISTORY_MAX_DEEP_REPORTS_PER_RUN": "10",
+                "FFLOGS_EXISTING_REPORT_STATUS_CHECK_ENABLED": "true",
+                "FFLOGS_EXISTING_REPORT_STATUS_CHECK_LIMIT": "200",
                 "FFLOGS_REPORT_REGION_SCOPE": "all",
                 "FFLOGS_FETCH_GCD_COVERAGE_ENABLED": "true",
                 "FFLOGS_FETCH_GCD_COVERAGE_MAX_FIGHTS_PER_RUN": "500",
@@ -84,6 +88,8 @@ class FetchFFLogsBatchTest(unittest.TestCase):
         self.assertEqual(覆寫後設定["history_scan_windows_per_run"], 2)
         self.assertEqual(覆寫後設定["history_scan_window_hours"], 12)
         self.assertEqual(覆寫後設定["history_max_deep_reports_per_run"], 10)
+        self.assertTrue(覆寫後設定["existing_report_status_check_enabled"])
+        self.assertEqual(覆寫後設定["existing_report_status_check_limit"], 200)
         self.assertEqual(覆寫後設定["report_region_scope"], "all")
         self.assertTrue(覆寫後設定["fetch_gcd_coverage_enabled"])
         self.assertEqual(覆寫後設定["fetch_gcd_coverage_max_fights_per_run"], 500)
@@ -95,6 +101,100 @@ class FetchFFLogsBatchTest(unittest.TestCase):
         # 目前資料管線不使用它，避免查詢非必要欄位造成整份 report 整理失敗。
         self.assertIn("rankedCharacters", fflogs.戰鬥清單查詢)
         self.assertNotIn("claimed", fflogs.戰鬥清單查詢)
+
+    def test_graphql_private_report_error_is_report_access_error(self) -> None:
+        self.assertTrue(
+            fflogs.GraphQL錯誤是否為報告存取錯誤(
+                [
+                    {
+                        "message": "This report is private.",
+                        "path": ["reportData", "report"],
+                    }
+                ]
+            )
+        )
+        self.assertFalse(
+            fflogs.GraphQL錯誤是否為報告存取錯誤(
+                [
+                    {
+                        "message": "You do not have permission to view the claimed characters for this user.",
+                        "path": ["reportData", "report", "rankedCharacters", 0, "claimed"],
+                    }
+                ]
+            )
+        )
+
+    def test_existing_report_status_check_candidates_are_oldest_first(self) -> None:
+        副本清單 = [
+            {"key": "encounter_a", "name": "副本 A"},
+            {"key": "encounter_b", "name": "副本 B"},
+        ]
+        排行榜索引 = {
+            "encounter_a": {
+                "reports": {
+                    "new": {"report_start_time": 3000, "fights": []},
+                    "hidden": {
+                        "report_start_time": 1000,
+                        "report_hidden": True,
+                        "fights": [],
+                    },
+                }
+            },
+            "encounter_b": {
+                "reports": {
+                    "old": {"report_start_time": 1000, "fights": []},
+                    "middle": {
+                        "fights": [
+                            {
+                                "recorded_at": 2000,
+                            }
+                        ]
+                    },
+                }
+            },
+        }
+
+        候選列表 = fflogs.建立既有報告狀態巡檢候選(副本清單, 排行榜索引)
+
+        self.assertEqual([候選["report_code"] for 候選 in 候選列表], ["old", "middle", "new"])
+        self.assertNotIn("hidden", [候選["report_code"] for 候選 in 候選列表])
+
+    def test_existing_report_status_check_batch_wraps_after_newest(self) -> None:
+        候選列表 = [
+            {"report_code": "old", "sort_key": [1000, "a", "old"]},
+            {"report_code": "middle", "sort_key": [2000, "a", "middle"]},
+            {"report_code": "new", "sort_key": [3000, "a", "new"]},
+        ]
+        狀態 = {
+            "existing_report_status_check": {
+                "last_sort_key": [2000, "a", "middle"],
+            }
+        }
+
+        選取列表, 選取狀態 = fflogs.選取既有報告狀態巡檢批次(候選列表, 狀態, 2)
+
+        self.assertEqual([候選["report_code"] for 候選 in 選取列表], ["new", "old"])
+        self.assertTrue(選取狀態["wrapped"])
+
+    def test_report_status_query_marks_inaccessible_archive_status(self) -> None:
+        def 假_graphql(
+            session: Any,
+            認證池: Any,
+            查詢: str,
+            變數: dict[str, Any] | None = None,
+        ) -> dict[str, Any]:
+            return {
+                "reportData": {
+                    "report": {
+                        "code": 變數["code"] if 變數 else "unknown",
+                        "archiveStatus": {"isAccessible": False},
+                    }
+                }
+            }
+
+        with patch.object(fflogs, "執行_graphql", 假_graphql):
+            with self.assertRaises(fflogs.FFLogs報告狀態不可存取錯誤):
+                fflogs.查詢報告目前狀態(None, None, "hidden-code")
 
     def test_shallow_report_scan_filters_to_china_scope_when_configured(self) -> None:
         def 假_graphql(

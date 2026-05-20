@@ -233,6 +233,20 @@ npm run validate:data
 
 `backfill:gcd:all` 會帶 `--all --limit 999999`，連已是目前 `calculation_version` 的玩家也會重新計算；已標為 `gcd_coverage: null` 的不可用 report 仍會略過，避免反覆查詢 Private、刪除或無權限的報告。若只想重算單場，可使用 `npm run backfill:gcd -- --report-code A4cf9kg7Xbmt6vDh --fight-id 3`。
 
+若只是要一次性排查「仍缺少 `gcd_coverage` key 或 `gcd_coverage: null` 的 report 是否已無法讀取」，可先預覽：
+
+```bash
+npm run check:gcd-missing-report-status -- --dry-run
+```
+
+確認候選後正式執行：
+
+```bash
+npm run check:gcd-missing-report-status
+```
+
+這個腳本只對沒有可用 GCD 資料的既有 report code 做輕量 report 狀態查詢；候選包含缺少 `gcd_coverage` key 與 `gcd_coverage: null`。若 FFLogs 回報無權限、report 不存在或找不到，會將同一 report code 在所有排行榜來源中標記為 hidden。它不會查 Casts graph，也不會補算 GCD 覆蓋率。
+
 `scripts/backfill_gcd_coverage_xivanalysis.py` 保留為人工診斷工具，用來抽樣比對 xivanalysis 頁面顯示值；它不是 GitHub Actions 的預設流程。若臨時需要使用，請先安裝 Playwright Chromium，並把 worker 與速率調低，避免再次觸發 xivanalysis 的 `Slow down / Too many requests` 限流。
 
 清理既有 `data/rankings/*.reports/*.json` 裡可重查的大型 FFLogs raw 欄位時，先預覽再正式執行：
@@ -320,6 +334,7 @@ python scripts/fetch_fflogs.py
    - 讀取 `config/encounters.json` 的啟用副本。
    - 透過 FFLogs API 掃描公開報告；預設掃全部地區。
    - 若 workflow 以 `FFLOGS_HISTORY_SCAN_ENABLED=true` 開啟歷史補查，會沿著各副本的 `history_scan_cursor_at` 輪巡較舊時間窗，檢查是否有後來才公開或延後匯出的 logs 可以補抓。
+   - 若 workflow 以 `FFLOGS_EXISTING_REPORT_STATUS_CHECK_ENABLED=true` 開啟既有 report 狀態巡檢，每輪會依 report 時間由舊到新檢查固定數量；游標記在 `data/state.json`，跑完會回到最舊紀錄繼續輪巡。
    - 篩選繁中服伺服器玩家。
    - 更新 `data/rankings/*.json`、`public/data/rankings/*.json` 與 `data/state.json`。
    - 若 FFLogs 暫時回傳 500/502/503/504 或連線逾時，該副本會保留原掃描點並在 `active_scan.last_error_*` 記錄錯誤摘要；已完成副本仍會更新掃描點，下一輪排程會自動補掃延後副本。
@@ -376,6 +391,8 @@ npm run build:user-data
 
 資料管線可在 report 上標記 `report_hidden: true`、`hidden_reason`、`hidden_detected_at_iso` 與 `hidden_source`。一般公開資料會排除這類 report，讓前端不需要在 Vue 元件內重做資料狀態判斷。
 
+GitHub Actions 會透過既有 report 狀態巡檢，每輪由舊到新抽查既有排行榜 report 是否仍可存取；若 FFLogs 回報不可存取，會套用同一套 hidden 標記，並讓一般公開資料自動排除。
+
 `python scripts/fetch_fflogs.py --rebuild-public` 會輸出兩套排行榜 JSON：一般 `public/data/rankings/*.json` 與完整 `public/data/all/rankings/*.json`。`npm run build:user-data` 也會同步輸出一般 `public/data/` 聚合產物與 `public/data/all/` 完整鏡像。
 
 若玩家的公開成績沒有可列出的 entry，一般 `public/data/users/index.json` 仍會保留空白成績單入口與伺服器資訊，讓 `/user/{玩家}` 頁面可以開啟；預設成績單不會輸出副本成績、分數、隊友或紀錄時間。
@@ -393,6 +410,8 @@ npm run build:user-data
 - `FFLOGS_HISTORY_SCAN_RECENT_GAP_HOURS`：歷史補查避開最新掃描點前幾小時，workflow 預設 `6`。
 - `FFLOGS_HISTORY_MAX_DEEP_REPORTS_PER_RUN`：每輪最多挑幾份未知 report 進深層檢查，workflow 預設 `25`。
 - `FFLOGS_HISTORY_SCAN_FULL_RUN`：是否一次跑完整歷史區間；預設 `false`，只建議人工短期維護時開啟。
+- `FFLOGS_EXISTING_REPORT_STATUS_CHECK_ENABLED`：是否啟用既有 report 狀態巡檢，workflow 預設 `true`。
+- `FFLOGS_EXISTING_REPORT_STATUS_CHECK_LIMIT`：每輪最多檢查幾筆既有副本/report 紀錄，workflow 預設 `200`。
 - `FFLOGS_FETCH_GCD_COVERAGE_ENABLED`：新 report 落地時是否即時計算 GCD 覆蓋率，workflow 預設 `true`。
 - `FFLOGS_FETCH_GCD_COVERAGE_MAX_FIGHTS_PER_RUN`：每輪最多查幾場 fight 的 Casts graph，workflow 預設 `500`；`0` 代表不設上限。
 

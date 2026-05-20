@@ -47,6 +47,8 @@ FFLogs執行設定預設值: dict[str, Any] = {
     "history_scan_windows_per_run": 1,
     "history_scan_recent_gap_hours": 6,
     "history_max_deep_reports_per_run": 25,
+    "existing_report_status_check_enabled": False,
+    "existing_report_status_check_limit": 0,
     "fetch_gcd_coverage_enabled": False,
     "fetch_gcd_coverage_max_fights_per_run": 0,
     "report_status_cache_limit": 50000,
@@ -288,6 +290,8 @@ def 正規化報告地區範圍(值: Any) -> str:
     整數設定("history_scan_recent_gap_hours"),
 )
 歷史補查深層報告上限 = 整數設定("history_max_deep_reports_per_run")
+既有報告狀態巡檢已啟用 = 布林設定("existing_report_status_check_enabled")
+既有報告狀態巡檢上限 = max(0, 整數設定("existing_report_status_check_limit"))
 即時GCD覆蓋率已啟用 = 布林設定("fetch_gcd_coverage_enabled")
 即時GCD覆蓋率戰鬥上限 = max(0, 整數設定("fetch_gcd_coverage_max_fights_per_run"))
 報告檢查快取上限 = max(0, 整數設定("report_status_cache_limit"))
@@ -406,6 +410,10 @@ class FFLogs報告存取錯誤(FFLogsGraphQL錯誤):
     pass
 
 
+class FFLogs報告狀態不可存取錯誤(RuntimeError):
+    pass
+
+
 class FFLogs報告尚未完整匯出錯誤(RuntimeError):
     def __init__(
         self,
@@ -435,8 +443,11 @@ def GraphQL錯誤是否為報告存取錯誤(錯誤列表: list[Any]) -> bool:
         是報告路徑 = isinstance(路徑, list) and "report" in 路徑
         if 是報告路徑 and (
             "permission to view this report" in 訊息
+            or "permission to view the report" in 訊息
             or "report does not exist" in 訊息
             or "not found" in 訊息
+            or "private" in 訊息
+            or "deleted" in 訊息
         ):
             return True
 
@@ -485,6 +496,26 @@ query ReportMasterData($code: String!) {
           subType
           type
         }
+      }
+    }
+  }
+}
+"""
+
+
+報告狀態查詢 = """
+query ReportStatus($code: String!) {
+  reportData {
+    report(code: $code) {
+      code
+      title
+      startTime
+      endTime
+      visibility
+      archiveStatus {
+        isArchived
+        isAccessible
+        archiveDate
       }
     }
   }
@@ -1840,6 +1871,27 @@ def 報告是否包含繁中服玩家(
     return bool(有效玩家), 有效玩家
 
 
+def 查詢報告目前狀態(
+    session: requests.Session,
+    認證池: FFLogs認證池,
+    報告代碼: str,
+) -> dict[str, Any]:
+    # 既有 report 狀態巡檢只需要確認 report 是否還可讀，不重查戰鬥與玩家表格。
+    # 這讓 workflow 能用固定 request 預算輪巡舊紀錄，並在 report 轉為不可存取時套用同一套 hidden 標記。
+    資料 = 執行_graphql(session, 認證池, 報告狀態查詢, {"code": 報告代碼})
+    報告 = ((資料.get("reportData") or {}).get("report")) or None
+    if not isinstance(報告, dict):
+        raise FFLogs報告狀態不可存取錯誤(f"FFLogs report 無法讀取或不存在：{報告代碼}")
+
+    封存狀態 = 報告.get("archiveStatus")
+    if isinstance(封存狀態, dict) and 封存狀態.get("isAccessible") is False:
+        raise FFLogs報告狀態不可存取錯誤(
+            f"FFLogs report archiveStatus.isAccessible=false：{報告代碼}"
+        )
+
+    return 報告
+
+
 def 查詢通關戰鬥(
     session: requests.Session,
     認證池: FFLogs認證池,
@@ -2588,6 +2640,156 @@ def 標記排行榜報告隱藏(
     if 已變更:
         報告.update(欄位更新)
     return 已變更
+
+
+既有報告狀態巡檢狀態鍵 = "existing_report_status_check"
+
+
+def 取得既有報告排序時間(報告: dict[str, Any]) -> int:
+    # 巡檢順序以 report 本身的時間為主；舊資料若缺 report_start_time，才退回 fight 的實際紀錄時間。
+    # fight.start_time 是 report 內相對時間，不能直接拿來跨 report 排序。
+    候選時間: list[int] = []
+    for 欄位 in ("report_start_time", "startTime", "fetched_at"):
+        時間 = 轉_float(報告.get(欄位))
+        if 時間 is not None and 時間 >= 0:
+            候選時間.append(int(時間))
+
+    for 欄位 in ("report_start_time_iso", "startTimeISO", "fetched_at_iso"):
+        時間 = 解析_iso_時間毫秒(報告.get(欄位))
+        if 時間 is not None and 時間 >= 0:
+            候選時間.append(時間)
+
+    for 戰鬥 in 報告.get("fights") or []:
+        if not isinstance(戰鬥, dict):
+            continue
+        for 欄位 in ("recorded_at", "recordedAt"):
+            時間 = 轉_float(戰鬥.get(欄位))
+            if 時間 is not None and 時間 >= 0:
+                候選時間.append(int(時間))
+        for 欄位 in ("recorded_at_iso", "recordedAtISO"):
+            時間 = 解析_iso_時間毫秒(戰鬥.get(欄位))
+            if 時間 is not None and 時間 >= 0:
+                候選時間.append(時間)
+
+    return min(候選時間, default=0)
+
+
+def 建立既有報告狀態巡檢候選(
+    副本清單: list[dict[str, Any]],
+    排行榜索引: dict[str, dict[str, Any]],
+) -> list[dict[str, Any]]:
+    候選列表: list[dict[str, Any]] = []
+    for 副本設定 in 副本清單:
+        副本鍵值 = 副本設定["key"]
+        排行榜 = 排行榜索引.get(副本鍵值) or {}
+        報告索引 = 排行榜.get("reports") if isinstance(排行榜.get("reports"), dict) else {}
+        for 原始報告代碼, 報告 in 報告索引.items():
+            if not isinstance(報告, dict) or 報告已標記隱藏(報告):
+                continue
+
+            報告代碼 = str(原始報告代碼)
+            排序時間 = 取得既有報告排序時間(報告)
+            候選列表.append(
+                {
+                    "encounter_key": 副本鍵值,
+                    "encounter_name": 副本設定.get("name") or 副本鍵值,
+                    "report_code": 報告代碼,
+                    "report_start_at": 排序時間,
+                    "report_start_at_iso": 毫秒轉_iso(排序時間),
+                    "sort_key": [排序時間, 副本鍵值, 報告代碼],
+                }
+            )
+
+    return sorted(候選列表, key=lambda 候選: tuple(候選["sort_key"]))
+
+
+def 讀取既有報告狀態巡檢游標(狀態: dict[str, Any]) -> tuple[int, str, str] | None:
+    巡檢狀態 = 狀態.get(既有報告狀態巡檢狀態鍵)
+    if not isinstance(巡檢狀態, dict):
+        return None
+
+    原始游標 = 巡檢狀態.get("last_sort_key")
+    if not isinstance(原始游標, list) or len(原始游標) != 3:
+        return None
+
+    時間 = 轉_float(原始游標[0])
+    副本鍵值 = 原始游標[1]
+    報告代碼 = 原始游標[2]
+    if 時間 is None or not isinstance(副本鍵值, str) or not isinstance(報告代碼, str):
+        return None
+    return (int(時間), 副本鍵值, 報告代碼)
+
+
+def 選取既有報告狀態巡檢批次(
+    候選列表: list[dict[str, Any]],
+    狀態: dict[str, Any],
+    上限: int,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    if 上限 <= 0 or not 候選列表:
+        return [], {"candidate_reports": len(候選列表), "wrapped": False}
+
+    游標 = 讀取既有報告狀態巡檢游標(狀態)
+    起始索引 = 0
+    if 游標 is not None:
+        for 索引, 候選 in enumerate(候選列表):
+            if tuple(候選["sort_key"]) > 游標:
+                起始索引 = 索引
+                break
+        else:
+            起始索引 = 0
+
+    最大選取數 = min(上限, len(候選列表))
+    選取列表: list[dict[str, Any]] = []
+    for 偏移 in range(最大選取數):
+        選取列表.append(候選列表[(起始索引 + 偏移) % len(候選列表)])
+
+    最後索引 = (起始索引 + len(選取列表) - 1) % len(候選列表) if 選取列表 else None
+    已繞回 = bool(選取列表) and 起始索引 + len(選取列表) > len(候選列表)
+    return 選取列表, {
+        "candidate_reports": len(候選列表),
+        "start_index": 起始索引,
+        "last_index": 最後索引,
+        "wrapped": 已繞回,
+        "previous_cursor": list(游標) if 游標 is not None else None,
+    }
+
+
+def 更新既有報告狀態巡檢狀態(
+    狀態: dict[str, Any],
+    統計: dict[str, Any],
+    最後排序鍵: list[Any] | None,
+) -> None:
+    巡檢狀態 = 狀態.setdefault(既有報告狀態巡檢狀態鍵, {})
+    if not isinstance(巡檢狀態, dict):
+        巡檢狀態 = {}
+        狀態[既有報告狀態巡檢狀態鍵] = 巡檢狀態
+
+    現在時間戳記 = 現在毫秒()
+    巡檢狀態.update(
+        {
+            "enabled": 統計.get("enabled"),
+            "limit": 統計.get("limit"),
+            "candidate_reports": 統計.get("candidate_reports"),
+            "last_checked_at": 現在時間戳記,
+            "last_checked_at_iso": 毫秒轉_iso(現在時間戳記),
+            "last_selected_reports": 統計.get("selected_reports", 0),
+            "last_checked_reports": 統計.get("checked_reports", 0),
+            "last_unique_codes_checked": 統計.get("unique_codes_checked", 0),
+            "last_inaccessible_reports": 統計.get("inaccessible_reports", 0),
+            "last_unique_inaccessible_codes": 統計.get("unique_inaccessible_codes", 0),
+            "last_hidden_reports_changed": 統計.get("hidden_reports_changed", 0),
+            "last_failed_reports": 統計.get("failed_reports", 0),
+            "last_wrapped": 統計.get("wrapped", False),
+            "last_deferred": 統計.get("deferred", False),
+            "last_error": 統計.get("error"),
+        }
+    )
+    if 最後排序鍵 is not None:
+        巡檢狀態["last_sort_key"] = 最後排序鍵
+        巡檢狀態["last_sort_key_report_start_at"] = 最後排序鍵[0]
+        巡檢狀態["last_sort_key_report_start_at_iso"] = 毫秒轉_iso(最後排序鍵[0])
+        巡檢狀態["last_sort_key_encounter_key"] = 最後排序鍵[1]
+        巡檢狀態["last_sort_key_report_code"] = 最後排序鍵[2]
 
 
 def 建立排行榜條目(
@@ -3574,6 +3776,136 @@ def main() -> int:
         寫入排行榜檔案(目標副本設定, 目標處理狀態["排行榜"])
         print(f"{目標副本設定['name']} 已將無法存取的既有 report 標記為隱藏：{報告代碼}")
 
+    def 標記所有排行榜不可存取報告隱藏(
+        報告代碼: str,
+        錯誤: Exception,
+        處理狀態索引: dict[str, dict[str, Any]] | None = None,
+    ) -> int:
+        變更數量 = 0
+        for 目標處理狀態 in (處理狀態索引 or 副本處理狀態).values():
+            目標副本設定 = 目標處理狀態["副本設定"]
+            排行榜 = 目標處理狀態["排行榜"]
+            報告索引 = 排行榜.get("reports") if isinstance(排行榜.get("reports"), dict) else {}
+            報告 = 報告索引.get(報告代碼)
+            if not isinstance(報告, dict) or 報告已標記隱藏(報告):
+                continue
+
+            if 標記排行榜報告隱藏(
+                排行榜,
+                報告代碼,
+                原因=報告無法存取隱藏原因,
+                來源="existing_report_status_check",
+                詳細原因=str(錯誤),
+            ):
+                寫入排行榜檔案(目標副本設定, 排行榜)
+                變更數量 += 1
+                print(f"{目標副本設定['name']} 巡檢發現 report 無法存取，已標記為隱藏：{報告代碼}")
+
+        return 變更數量
+
+    def 執行既有報告狀態巡檢() -> dict[str, Any]:
+        統計 = {
+            "enabled": 既有報告狀態巡檢已啟用,
+            "limit": 既有報告狀態巡檢上限,
+            "candidate_reports": 0,
+            "selected_reports": 0,
+            "checked_reports": 0,
+            "unique_codes_checked": 0,
+            "inaccessible_reports": 0,
+            "unique_inaccessible_codes": 0,
+            "hidden_reports_changed": 0,
+            "failed_reports": 0,
+            "wrapped": False,
+            "deferred": False,
+            "error": None,
+        }
+        if not 既有報告狀態巡檢已啟用 or 既有報告狀態巡檢上限 <= 0:
+            return 統計
+        if 只處理指定報告模式:
+            統計["enabled"] = False
+            統計["skipped_reason"] = "manual_report_mode"
+            return 統計
+
+        巡檢副本清單 = 讀取全部有效副本設定清單()
+        巡檢處理狀態索引 = {
+            副本鍵值: 處理狀態
+            for 副本鍵值, 處理狀態 in 副本處理狀態.items()
+        }
+        for 巡檢副本設定 in 巡檢副本清單:
+            巡檢副本鍵值 = 巡檢副本設定["key"]
+            if 巡檢副本鍵值 in 巡檢處理狀態索引:
+                continue
+            巡檢處理狀態索引[巡檢副本鍵值] = {
+                "副本設定": 巡檢副本設定,
+                "排行榜": 讀取排行榜檔案(巡檢副本設定),
+            }
+
+        排行榜索引 = {
+            副本鍵值: 處理狀態["排行榜"]
+            for 副本鍵值, 處理狀態 in 巡檢處理狀態索引.items()
+        }
+        候選列表 = 建立既有報告狀態巡檢候選(巡檢副本清單, 排行榜索引)
+        選取列表, 選取狀態 = 選取既有報告狀態巡檢批次(候選列表, 狀態, 既有報告狀態巡檢上限)
+        統計.update(選取狀態)
+        統計["selected_reports"] = len(選取列表)
+        統計["wrapped"] = 選取狀態.get("wrapped", False)
+        if not 選取列表:
+            更新既有報告狀態巡檢狀態(狀態, 統計, None)
+            return 統計
+
+        print(
+            f"既有 report 狀態巡檢：本輪選入 {len(選取列表)}/{len(候選列表)} 筆，"
+            f"由舊到新檢查，游標繞回={統計['wrapped']}。"
+        )
+
+        查詢結果快取: dict[str, Exception | None] = {}
+        已查詢代碼: set[str] = set()
+        不可存取代碼: set[str] = set()
+        最後排序鍵: list[Any] | None = None
+
+        for 候選 in 選取列表:
+            報告代碼 = 候選["report_code"]
+            if 報告代碼 not in 查詢結果快取:
+                try:
+                    查詢報告目前狀態(session, 認證池, 報告代碼)
+                    查詢結果快取[報告代碼] = None
+                except (FFLogs報告存取錯誤, FFLogs報告狀態不可存取錯誤) as 錯誤:
+                    查詢結果快取[報告代碼] = 錯誤
+                except FFLogs暫時性API錯誤 as 錯誤:
+                    統計["deferred"] = True
+                    統計["error"] = str(錯誤)
+                    print(f"既有 report 狀態巡檢因 FFLogs 暫時性錯誤暫停：{錯誤}", file=sys.stderr)
+                    break
+                except Exception as 錯誤:
+                    查詢結果快取[報告代碼] = None
+                    統計["failed_reports"] += 1
+                    print(f"既有 report 狀態巡檢檢查 {報告代碼} 時失敗：{錯誤}", file=sys.stderr)
+                已查詢代碼.add(報告代碼)
+
+            錯誤 = 查詢結果快取[報告代碼]
+            if 錯誤 is not None:
+                統計["inaccessible_reports"] += 1
+                不可存取代碼.add(報告代碼)
+                統計["hidden_reports_changed"] += 標記所有排行榜不可存取報告隱藏(
+                    報告代碼,
+                    錯誤,
+                    巡檢處理狀態索引,
+                )
+
+            統計["checked_reports"] += 1
+            最後排序鍵 = list(候選["sort_key"])
+
+        統計["unique_codes_checked"] = len(已查詢代碼)
+        統計["unique_inaccessible_codes"] = len(不可存取代碼)
+        更新既有報告狀態巡檢狀態(狀態, 統計, 最後排序鍵)
+        print(
+            f"既有 report 狀態巡檢完成：檢查 {統計['checked_reports']} 筆、"
+            f"{統計['unique_codes_checked']} 個 report code，"
+            f"不可存取 {統計['unique_inaccessible_codes']} 個，"
+            f"更新 hidden 標記 {統計['hidden_reports_changed']} 筆。"
+        )
+        return 統計
+
     def 延後副本掃描(
         副本設定: dict[str, Any],
         處理狀態: dict[str, Any],
@@ -3862,6 +4194,8 @@ def main() -> int:
             批次寫入排行榜(處理狀態, 原因)
         已完成副本清單.append(副本設定)
 
+    既有報告狀態巡檢統計 = 執行既有報告狀態巡檢()
+
     副本統計: dict[str, Any] = {}
     for 副本設定 in 副本清單:
         處理狀態 = 副本處理狀態[副本設定["key"]]
@@ -3909,6 +4243,7 @@ def main() -> int:
         "reports_failed": 總失敗報告數量,
         "scan_deferred_encounters": len(暫時失敗副本鍵值),
         "fetch_gcd_coverage": 即時GCD統計,
+        "existing_report_status_check": 既有報告狀態巡檢統計,
     }
     if 只處理指定報告模式:
         if 總失敗報告數量 == 0:

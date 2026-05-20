@@ -12,6 +12,8 @@
   "history_scan_windows_per_run": 0,
   "history_scan_recent_gap_hours": 6,
   "history_max_deep_reports_per_run": 0,
+  "existing_report_status_check_enabled": false,
+  "existing_report_status_check_limit": 0,
   "report_status_cache_limit": 50000,
   "request_timeout": 30,
   "request_retries": 3,
