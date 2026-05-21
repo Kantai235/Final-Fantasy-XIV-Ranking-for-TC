@@ -62,9 +62,10 @@ Final Fantasy XIV 繁中服排行榜是一個以 FFLogs 公開資料為來源的
 │   └── site.json              # 站台網址、Vite base path 與允許 host
 ├── data/
 │   ├── rankings/              # 原始排行榜資料
-│   └── state.json             # 掃描進度與處理狀態
+│   ├── state.json             # 掃描進度與處理狀態
+│   └── update_status.json     # GitHub Actions 最近一次資料更新摘要
 ├── public/
-│   ├── data/                  # 網站讀取的公開資料
+│   ├── data/                  # 網站讀取的公開資料，含 all/ 完整鏡像
 │   ├── favicon.svg            # 網站 icon 的向量來源
 │   ├── site.webmanifest       # 瀏覽器安裝與 app icon 設定
 │   └── icons/jobs/            # 職業圖示
@@ -152,6 +153,15 @@ FFLOGS_CLIENT_SECRET=your_client_secret
 ```env
 FFLOGS_CLIENT_IDS=client_id_1,client_id_2
 FFLOGS_CLIENT_SECRETS=client_secret_1,client_secret_2
+```
+
+也支援編號欄位，適合不想把多組憑證放在同一個 secret 時使用：
+
+```env
+FFLOGS_CLIENT_ID_1=client_id_1
+FFLOGS_CLIENT_SECRET_1=client_secret_1
+FFLOGS_CLIENT_ID_2=client_id_2
+FFLOGS_CLIENT_SECRET_2=client_secret_2
 ```
 
 或使用 JSON 格式：
@@ -500,7 +510,8 @@ npm run cloudflare:estimate
 - `data/state.json` 是抓取進度狀態，手動修改前請先確認目前掃描狀態。
 - `public/data/users/` 是由 `scripts/build_user_data.mjs` 重新產生的資料。
 - `public/data/rankings/` 是由 `fetch_fflogs.py --rebuild-public` 或 `--split-rankings` 重新產生的公開排行榜資料；若副本列在 `public/data/encounters.json`，就必須有對應公開 ranking 檔案。
-- FFLogs API 有限流，`config/fflogs.json` 可調整請求限制、重試、冷卻時間與單一 report 多 fight 的玩家成績批次大小。
+- `public/data/all/` 是完整資料鏡像，包含一般公開資料會排除的 hidden report。一般前端流程仍讀取 `public/data/`，額外檢視流程只應改寫資料 URL，不應改動 Vue 聚合邏輯。
+- FFLogs API 有限流，`config/fflogs.json` 可調整請求限制、重試、冷卻時間、淺層掃描快取、連線/讀取逾時、即時 GCD 計算，以及單一 report 多 fight 的玩家成績批次大小。
 - 排行榜只統計公開報告中可解析且符合繁中服條件的資料；地區只決定淺層候選池，真正的玩家身分仍以 FFLogs `masterData.actors` / `playerDetails` 的伺服器欄位判斷。
 - 單場 FFLogs `playerDetails` / `damageDone` 查詢會同時帶 `fightIDs` 與 fight 的相對 `startTime` / `endTime`，避免少數舊報告只用 `fightIDs` 時拿到 partial damage table，造成 rDPS/aDPS 異常放大。
 - `active_percent` 對齊 FFLogs Damage Done CSV 的 Active%，使用 `fflogs_total_time_ms` 作為優先分母；DPS/rDPS/aDPS 仍使用 `damage_time_ms`。

@@ -120,8 +120,8 @@ jobs:
       #     FFLOGS_CLIENT_CREDENTIALS_JSON: ${{ secrets.FFLOGS_CLIENT_CREDENTIALS_JSON }}
       #   run: python scripts/backfill_missing_fflogs_data.py --limit 250
 
-      # GCD 覆蓋率目前仍保留在資料結構中，但前端已隱藏；排程暫停每輪補算以減少 FFLogs request 與資料變動量。
-      # 若未來恢復顯示或需要追平歷史資料，保留以下步驟作為手動恢復時的上下文。
+      # GCD 覆蓋率目前已在前端開啟，新落地 report 會由 fetch_fflogs.py 即時計算衍生結果。
+      # 以下 backfill 步驟只保留給需要追平既有歷史資料時手動恢復，不隨每輪排程重掃，避免過量 FFLogs request 與大型資料 diff。
       # - name: 以本地 xivanalysis-like 演算法補齊 GCD 覆蓋率
       #   env:
       #     FFLOGS_CLIENT_ID: ${{ secrets.FFLOGS_CLIENT_ID }}
