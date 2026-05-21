@@ -51,7 +51,7 @@ import {
   解析使用者搜尋目標,
   讀取使用者資料檔,
 } from "../utils/userData";
-import { 建立職業佔比分組, 職業範圍類型 } from "../utils/statsDisplay";
+import { 建立職業佔比分組, 取得統計範圍計數, 職業範圍類型 } from "../utils/statsDisplay";
 import { 顯示Gcd覆蓋率, 顯示作者相關標示 } from "../utils/siteFeatures";
 import { 寫入網址狀態, 讀取目前網址狀態 } from "../utils/urlState";
 import { 排名色彩類別, 比例條樣式, 熱力格樣式, 趨勢點樣式, 隱藏載入失敗圖片 } from "../utils/viewHelpers";
@@ -1214,19 +1214,7 @@ function 切換職業傷害提示(職業代碼) {
 }
 
 function 取得統計計數(統計項目, 職業範圍 = 統計職業範圍.value) {
-  if (!統計項目) {
-    return 0;
-  }
-
-  const 類型 = 職業範圍類型(職業範圍);
-  if (類型 === "role") {
-    return 轉為數字((統計項目.role_stats || []).find((項目) => 項目.role === 職業範圍)?.clear_count) || 0;
-  }
-  if (類型 === "job") {
-    return 轉為數字((統計項目.job_stats || []).find((項目) => 項目.job === 職業範圍)?.clear_count) || 0;
-  }
-
-  return 轉為數字(統計項目.character_count ?? 統計項目.clear_count) || 0;
+  return 取得統計範圍計數(統計項目, 職業範圍);
 }
 
 function 取得職業範圍文字(範圍 = 統計職業範圍.value) {

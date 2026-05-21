@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildReportExternalLinks } from "../src/utils/reportLinks.js";
-import { 建立職業佔比分組 } from "../src/utils/statsDisplay.js";
+import { 建立職業佔比分組, 取得統計範圍計數 } from "../src/utils/statsDisplay.js";
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const srcDir = path.join(rootDir, "src");
@@ -388,6 +388,26 @@ function validateScopedJobShareRecalculation() {
   assert(paladinGroup?.jobs[0]?.percentage === 100, "單一職業範圍的職業佔比應顯示為 100%。");
 }
 
+function validateGlobalStatsOverviewDenominator() {
+  const globalStats = {
+    total_character_count: 10,
+    total_encounter_clear_count: 25,
+    role_stats: [{ role: "role:tank", role_name: "防護職業", clear_count: 6 }],
+    job_stats: [{ job: "Paladin", role: "role:tank", role_name: "防護職業", clear_count: 4 }],
+  };
+
+  assert(
+    取得統計範圍計數(globalStats, "all") === 10,
+    "副本通關概覽在全服全職業範圍下，分母應使用全服公開玩家數，避免範圍佔比變成 0%。",
+  );
+  assert(取得統計範圍計數(globalStats, "role:tank") === 6, "職能範圍分母應使用該職能通關紀錄數。");
+  assert(取得統計範圍計數(globalStats, "Paladin") === 4, "單一職業範圍分母應使用該職業通關紀錄數。");
+  assert(
+    取得統計範圍計數({ character_count: 3, clear_count: 2 }, "all") === 3,
+    "單一副本統計仍應優先使用 character_count 作為通關玩家分母。",
+  );
+}
+
 async function loadUrlStateTestModule() {
   const filePath = path.join(srcDir, "utils", "urlState.js");
   let source = await readText(filePath);
@@ -636,6 +656,7 @@ async function main() {
   await validatePublicDataForFrontend();
   validateReportExternalLinks();
   validateScopedJobShareRecalculation();
+  validateGlobalStatsOverviewDenominator();
   await validateUserSearchResolution();
   await validateShareUrlStateCompatibility();
 
