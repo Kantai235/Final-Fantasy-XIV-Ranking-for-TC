@@ -538,24 +538,25 @@ export default {
                 <strong>{{ 分組.分類 }}</strong>
                 <small>{{ 格式化整數(分組.已收錄數) }} / {{ 格式化整數(分組.總數) }} 已收錄</small>
               </span>
-              <em>{{ 格式化百分比(分組.收錄比例) }}</em>
+              <div class="資料狀態分組進度">
+                <div class="分布條" aria-hidden="true">
+                  <span class="分布條填滿" :style="比例條樣式(分組.收錄比例)"></span>
+                </div>
+                <em>{{ 格式化百分比(分組.收錄比例) }}</em>
+              </div>
             </header>
-            <div class="分布條" aria-hidden="true">
-              <span class="分布條填滿" :style="比例條樣式(分組.收錄比例)"></span>
-            </div>
             <div class="資料狀態列表">
               <article
                 v-for="副本 in 分組.副本列表"
                 :key="副本.encounter_key"
                 class="資料狀態項"
                 :class="{ 已收錄: 副本.有資料 }"
+                :title="`${副本.encounter_name}｜${副本.有資料 ? `${格式化整數(副本.character_count)} 玩家` : '尚無公開成績'}`"
+                :aria-label="`${副本.encounter_name}：${副本.有資料 ? `${格式化整數(副本.character_count)} 玩家` : '尚無公開成績'}`"
               >
-                <span>
-                  <small>{{ 副本.encounter_category || "副本" }}</small>
-                  <strong>{{ 副本.encounter_name }}</strong>
-                </span>
-                <em>{{ 副本.狀態文字 }}</em>
-                <small>{{ 副本.有資料 ? `${格式化整數(副本.character_count)} 玩家` : "尚無公開成績" }}</small>
+                <i class="資料狀態點" aria-hidden="true"></i>
+                <strong>{{ 副本.encounter_name }}</strong>
+                <em>{{ 副本.有資料 ? `${格式化整數(副本.character_count)} 位` : 副本.狀態文字 }}</em>
               </article>
             </div>
           </section>

@@ -2644,24 +2644,26 @@ button:disabled {
 
 .資料狀態分組列表 {
   display: grid;
-  gap: 12px;
-  padding: 12px;
-  background: var(--表面背景柔和);
+  gap: 10px;
+  padding: 10px 12px 12px;
+  background: transparent;
 }
 
 .資料狀態分組 {
-  overflow: hidden;
-  border: 1px solid var(--邊框柔和色);
-  border-radius: 8px;
-  background: var(--表面背景);
+  min-width: 0;
+}
+
+.資料狀態分組 + .資料狀態分組 {
+  border-top: 1px solid var(--邊框柔和色);
+  padding-top: 10px;
 }
 
 .資料狀態分組標題 {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  padding: 12px 14px 10px;
+  gap: 12px;
+  padding: 0 0 8px;
 }
 
 .資料狀態分組標題 span {
@@ -2678,84 +2680,83 @@ button:disabled {
 
 .資料狀態分組標題 small {
   color: var(--次要文字);
-  font-size: 0.78rem;
+  font-size: 0.74rem;
   font-weight: 720;
 }
 
-.資料狀態分組標題 em {
+.資料狀態分組進度 {
+  min-width: min(180px, 42%);
+  display: grid;
+  grid-template-columns: minmax(72px, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.資料狀態分組進度 em {
   flex: 0 0 auto;
   color: var(--重點色);
-  font-size: 0.82rem;
+  font-size: 0.78rem;
   font-style: normal;
   font-weight: 850;
   font-variant-numeric: tabular-nums;
 }
 
-.資料狀態分組 > .分布條 {
-  margin: 0 14px 12px;
-}
-
 .資料狀態列表 {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 1px;
-  border-top: 1px solid var(--邊框柔和色);
-  background: var(--邊框柔和色);
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 6px;
 }
 
 .資料狀態項 {
   min-width: 0;
   display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 4px 10px;
-  padding: 12px 14px;
-  background: var(--表面背景);
+  grid-template-columns: 7px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  border: 1px solid var(--邊框柔和色);
+  border-radius: 7px;
+  padding: 6px 8px;
+  background: var(--表面背景柔和);
 }
 
-.資料狀態項 span {
-  min-width: 0;
-  display: grid;
-  gap: 3px;
+.資料狀態點 {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--停用文字);
 }
 
-.資料狀態項 small,
 .資料狀態項 strong {
   min-width: 0;
   overflow: hidden;
+  color: var(--主要文字);
+  font-size: 0.82rem;
+  font-weight: 810;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.資料狀態項 small {
-  color: var(--次要文字);
-  font-size: 0.76rem;
-  font-weight: 700;
-}
-
-.資料狀態項 strong {
-  color: var(--主要文字);
-  font-size: 0.9rem;
-  font-weight: 810;
-}
-
-.資料狀態項 > small {
-  grid-column: 1 / -1;
-}
-
 .資料狀態項 em {
-  border-radius: 999px;
-  padding: 4px 8px;
   color: var(--次要文字);
-  background: var(--表面背景柔和);
-  font-size: 0.74rem;
+  font-size: 0.72rem;
   font-style: normal;
-  font-weight: 820;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
-.資料狀態項.已收錄 em {
-  color: var(--職業重點文字);
+.資料狀態項.已收錄 {
+  border-color: var(--治療色柔和);
+  background: var(--治療色柔和);
+}
+
+.資料狀態項.已收錄 .資料狀態點 {
   background: var(--治療色);
+}
+
+.資料狀態項.已收錄 em {
+  color: var(--治療色);
 }
 
 .統計表格外框 {
@@ -5206,6 +5207,12 @@ td a:hover {
   .資料狀態分組標題 {
     display: grid;
     gap: 6px;
+  }
+
+  .資料狀態分組進度 {
+    width: 100%;
+    min-width: 0;
+    grid-template-columns: minmax(0, 1fr) auto;
   }
 
   .成績趨勢標題 {
