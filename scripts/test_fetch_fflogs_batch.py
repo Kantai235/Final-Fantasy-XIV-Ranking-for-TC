@@ -136,6 +136,59 @@ class FetchFFLogsBatchTest(unittest.TestCase):
         self.assertEqual(狀態["recent_gap_hours"], 24)
         self.assertEqual(狀態["lookback_hours"], 72)
 
+    def test_history_scan_cursor_stays_at_last_selected_report_when_limit_is_full(self) -> None:
+        歷史補查狀態 = {
+            "current_cursor_at": 1000,
+            "current_cursor_at_iso": fflogs.毫秒轉_iso(1000),
+            "next_cursor_at": 8000,
+            "next_cursor_at_iso": fflogs.毫秒轉_iso(8000),
+            "windows": [
+                {
+                    "start_at": 1000,
+                    "start_at_iso": fflogs.毫秒轉_iso(1000),
+                    "end_at": 7999,
+                    "end_at_iso": fflogs.毫秒轉_iso(7999),
+                }
+            ],
+        }
+        候選列表 = [
+            {"code": "first", "startTime": 2000},
+            {"code": "last-selected", "startTime": 5000},
+        ]
+
+        fflogs.套用歷史補查深查上限游標(
+            歷史補查狀態,
+            候選列表,
+            {"selected": 2, "skipped_known": 0, "deferred": 3},
+        )
+
+        self.assertEqual(歷史補查狀態["next_cursor_at"], 5000)
+        self.assertEqual(歷史補查狀態["cursor_resume_source"], "last_selected_report_start_time")
+        self.assertEqual(歷史補查狀態["cursor_resume_report_code"], "last-selected")
+        self.assertTrue(歷史補查狀態["cursor_limited_by_deep_report_limit"])
+
+    def test_history_scan_cursor_stays_at_window_start_when_limit_was_used_by_previous_encounter(self) -> None:
+        歷史補查狀態 = {
+            "current_cursor_at": 1000,
+            "next_cursor_at": 8000,
+            "windows": [
+                {
+                    "start_at": 1000,
+                    "end_at": 7999,
+                }
+            ],
+        }
+
+        fflogs.套用歷史補查深查上限游標(
+            歷史補查狀態,
+            [],
+            {"selected": 0, "skipped_known": 5, "deferred": 20},
+        )
+
+        self.assertEqual(歷史補查狀態["next_cursor_at"], 1000)
+        self.assertEqual(歷史補查狀態["cursor_resume_source"], "current_window_start")
+        self.assertIsNone(歷史補查狀態["cursor_resume_report_code"])
+
     def test_graphql_private_report_error_is_report_access_error(self) -> None:
         self.assertTrue(
             fflogs.GraphQL錯誤是否為報告存取錯誤(
