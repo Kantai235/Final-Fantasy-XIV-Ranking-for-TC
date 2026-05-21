@@ -16,7 +16,15 @@ export default {
       return 可能Ref && typeof 可能Ref === "object" && "value" in 可能Ref ? 可能Ref.value : 可能Ref;
     }
 
-    function 建立個人成績報告詳細資料(成績, 副本) {
+    function 建立個人成績報告分頁標籤(來源, index) {
+      return {
+        key: 來源.key || `${來源.report_code || "report"}-${來源.fight_id || index}`,
+        label: `報告 ${index + 1}`,
+        caption: 來源.report_code || "",
+      };
+    }
+
+    function 建立個人成績報告單筆詳細資料(成績, 副本) {
       const 顯示Gcd = Boolean(取值(app.顯示Gcd覆蓋率));
       const 角色名稱 = 成績.character_name || 取值(app.使用者資料)?.character_name || "個人成績";
       const 伺服器 = 成績.server || 取值(app.使用者伺服器篩選) || "";
@@ -95,6 +103,32 @@ export default {
             value: app.格式化紀錄時間(成績.recorded_at_iso),
           },
         ],
+      };
+    }
+
+    function 建立個人成績報告詳細資料(成績, 副本) {
+      const details = 建立個人成績報告單筆詳細資料(成績, 副本);
+      const 來源清單 = Array.isArray(成績.report_variants) && 成績.report_variants.length > 1 ? 成績.report_variants : [];
+      if (來源清單.length === 0) {
+        return details;
+      }
+
+      return {
+        ...details,
+        tabs: 來源清單.map((來源, index) => {
+          const 分頁成績 = {
+            ...成績,
+            ...來源,
+            report_variants: 成績.report_variants,
+            duplicate_count: 成績.duplicate_count,
+            source_reports: 成績.source_reports,
+          };
+          return {
+            ...details,
+            ...建立個人成績報告分頁標籤(來源, index),
+            ...建立個人成績報告單筆詳細資料(分頁成績, 副本),
+          };
+        }),
       };
     }
 

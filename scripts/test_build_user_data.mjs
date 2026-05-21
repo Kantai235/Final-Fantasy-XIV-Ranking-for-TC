@@ -141,6 +141,62 @@ async function createFixture(tempRoot) {
         },
       ],
     },
+    RPT1B: {
+      report_code: "RPT1B",
+      title: "Fixture mirrored report",
+      url: "https://www.fflogs.com/reports/RPT1B",
+      report_start_time_iso: "2026-01-02T02:51:00.000Z",
+      fights: [
+        {
+          fight_id: 9,
+          fight_hash: "fixture-fight",
+          clear_time_ms: 600000,
+          clear_time_seconds: 600,
+          damage_time_ms: 550000,
+          damage_time_seconds: 550,
+          recorded_at: 1767322800000,
+          recorded_at_iso: "2026-01-02T03:00:00.000Z",
+          players: [
+            {
+              name: "測試角色",
+              server: "鳳凰",
+              job: "Paladin",
+              dps: 100.5,
+              rdps: 90,
+              adps: 95,
+              total_damage: 55275,
+              fflogs_id: 303,
+              active_time_ms: 500000,
+              active_percent: 90.91,
+              gcd_coverage: {
+                percent: 94.43,
+                covered_time_ms: 519365,
+                denominator_ms: 550000,
+                gcd_cast_count: 220,
+                calculation_version: 1,
+                source: "fflogs_casts_graph",
+              },
+              gcd_coverage_status: {
+                state: "ok",
+                calculation_version: 1,
+                checked_at_iso: "2026-01-02T03:10:00.000Z",
+              },
+            },
+            {
+              name: "治療隊友",
+              server: "伊弗利特",
+              job: "WhiteMage",
+              dps: 50,
+              rdps: 60,
+              adps: 55,
+              total_damage: 27500,
+              active_time_ms: 480000,
+              active_percent: 87.27,
+            },
+          ],
+        },
+      ],
+    },
     RPT2: {
       report_code: "RPT2",
       title: "Fixture DPS report",
@@ -275,10 +331,18 @@ async function assertFixtureOutput(tempRoot, expectedGlobalStatsText, expectedSe
   assert(mainUser, "使用者索引應包含測試角色。");
   const mainUserData = await readJson(path.join(tempRoot, "public", mainUser.file_path));
   assert(mainUserData.summary.best_rdps === 250, "測試角色最佳 rDPS 應正確彙整。");
+  assert(mainUserData.summary.public_entry_count === 2, "同一場戰鬥由多份 report 上傳時，個人成績單只能保留一筆公開成績。");
   assert(mainUserData.summary.profile_job === "Paladin", "個人成績單代表職業應優先採用同職排名最高的職業。");
   assert(mainUserData.summary.profile_job_rank === 1, "個人成績單代表職業應保留最高職業 Rank。");
   assert(mainUserData.encounters[0]?.best_entry?.job === "Paladin", "個人成績單副本代表列應優先顯示最高排名職業。");
   assert(mainUserData.encounters[0]?.best_entry?.fflogs_source_id === 101, "個人成績單代表列應保留 FFLogs sourceID。");
+  assert(mainUserData.encounters[0]?.best_entry?.duplicate_count === 2, "合併後的個人成績應保留來源 report 數。");
+  assert(mainUserData.encounters[0]?.best_entry?.source_reports?.length === 2, "合併後的個人成績應保留來源 report code。");
+  assert(mainUserData.encounters[0]?.best_entry?.report_variants?.length === 2, "合併後的個人成績應輸出報告彈窗分頁資料。");
+  assert(
+    mainUserData.encounters[0]?.best_entry?.report_variants?.some((variant) => variant.report_code === "RPT1B" && variant.fight_id === 9),
+    "報告分頁資料應包含另一位上傳者的 report 與 fight。",
+  );
   const mainUserBlackMageEntry = mainUserData.encounters[0]?.public_entries?.find((entry) => entry.job === "BlackMage");
   assert(mainUserBlackMageEntry?.job_rank === 2, "fixture 需保留較高 rDPS 但職業 Rank 較低的輸出紀錄。");
   assert(mainUserBlackMageEntry?.fflogs_source_id === 202, "個人成績歷史列應保留 FFLogs sourceID 供外部工具深連結使用。");
@@ -286,6 +350,7 @@ async function assertFixtureOutput(tempRoot, expectedGlobalStatsText, expectedSe
   assert(mainUserEntry?.gcd_coverage?.percent === 94.43, "個人成績單應保留 GCD 覆蓋率。");
   assert(mainUserEntry?.gcd_coverage_status?.state === "ok", "個人成績單應保留 GCD 覆蓋率狀態。");
   assert(mainUserData.frequent_teammates[0]?.character_name === "治療隊友", "測試角色應彙整同場隊友。");
+  assert(mainUserData.frequent_teammates[0]?.co_clear_count === 1, "同一場戰鬥的重複 report 不應灌水常同場隊友次數。");
 
   if (expectedGlobalStatsText !== null) {
     assert(globalStatsText === expectedGlobalStatsText, "同一批 ranking 重建時 global_stats.json 應完全一致。");

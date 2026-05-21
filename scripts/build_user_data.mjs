@@ -93,11 +93,42 @@ function isTransientWriteError(error) {
   return transientWriteErrorCodes.has(error?.code);
 }
 
+function isTransientTempWriteError(error) {
+  return error?.code === "ENOENT" || isTransientWriteError(error);
+}
+
 function formatWritePath(filePath) {
   const relativePath = path.relative(rootDir, filePath);
   return relativePath && !relativePath.startsWith("..") && !path.isAbsolute(relativePath)
     ? relativePath
     : filePath;
+}
+
+async function writeTempJsonFile(tempPath, payload) {
+  for (let attempt = 1; attempt <= jsonWriteRetryCount; attempt += 1) {
+    try {
+      await mkdir(path.dirname(tempPath), { recursive: true });
+      await writeFile(tempPath, payload, "utf8");
+      return;
+    } catch (error) {
+      if (!isTransientTempWriteError(error)) {
+        throw error;
+      }
+
+      if (attempt === jsonWriteRetryCount) {
+        throw new Error(
+          `無法建立 JSON 暫存檔：${formatWritePath(tempPath)}，請確認輸出目錄未被編輯器、同步軟體或防護軟體鎖定。`,
+          { cause: error },
+        );
+      }
+
+      const waitMs = jsonWriteRetryDelayMs * attempt;
+      console.warn(
+        `JSON 暫存檔暫時無法建立，${(waitMs / 1000).toFixed(1)} 秒後重試：${formatWritePath(tempPath)}`,
+      );
+      await sleep(waitMs);
+    }
+  }
 }
 
 async function overwriteFileInPlace(filePath, payload) {
@@ -133,7 +164,7 @@ async function writeJson(filePath, data) {
 
   let lastTransientError = null;
   try {
-    await writeFile(tempPath, payload, "utf8");
+    await writeTempJsonFile(tempPath, payload);
 
     for (let attempt = 1; attempt <= jsonWriteRetryCount; attempt += 1) {
       try {
@@ -589,6 +620,116 @@ function buildEntrySummary(entry) {
     version_status: entry.version_status || null,
     version_cutoff_iso: entry.version_cutoff_iso || null,
   };
+}
+
+function buildReportVariant(entry) {
+  const variant = {
+    report_code: entry.report_code || null,
+    report_url: entry.report_url || null,
+    report_title: entry.report_title || null,
+    fight_id: entry.fight_id ?? null,
+    recorded_at: toNumber(entry.recorded_at),
+    recorded_at_iso: entry.recorded_at_iso || null,
+    dps: toNumber(entry.dps),
+    rdps: toNumber(entry.rdps ?? entry.dps),
+    adps: toNumber(entry.adps),
+    ndps: toNumber(entry.ndps),
+    total_damage: toNumber(entry.total_damage),
+    active_time_ms: toNumber(entry.active_time_ms),
+    active_percent: toNumber(entry.active_percent),
+    clear_time_ms: toNumber(entry.clear_time_ms),
+    clear_time_seconds: toNumber(entry.clear_time_seconds),
+    damage_downtime_ms: toNumber(entry.damage_downtime_ms),
+    damage_downtime_seconds: toNumber(entry.damage_downtime_seconds),
+    damage_time_ms: toNumber(entry.damage_time_ms),
+    damage_time_seconds: toNumber(entry.damage_time_seconds),
+    ...hiddenReportFields(entry),
+  };
+
+  if (entry.fflogs_source_id !== null && entry.fflogs_source_id !== undefined) {
+    variant.fflogs_source_id = entry.fflogs_source_id;
+  }
+  if (Object.hasOwn(entry, "gcd_coverage")) {
+    variant.gcd_coverage = entry.gcd_coverage;
+  }
+  if (Object.hasOwn(entry, "gcd_coverage_status")) {
+    variant.gcd_coverage_status = entry.gcd_coverage_status;
+  }
+
+  variant.key = reportVariantKey(variant);
+  return variant;
+}
+
+function reportVariantKey(variant) {
+  if (variant?.key) {
+    return variant.key;
+  }
+  return createId({
+    report_code: variant?.report_code || null,
+    report_url: variant?.report_url || null,
+    fight_id: variant?.fight_id ?? null,
+    fflogs_source_id: variant?.fflogs_source_id ?? null,
+    recorded_at_iso: variant?.recorded_at_iso || null,
+  });
+}
+
+function mergeReportVariants(...variantGroups) {
+  const variantsByKey = new Map();
+
+  for (const variantGroup of variantGroups) {
+    for (const variant of variantGroup || []) {
+      if (!variant || (!variant.report_code && !variant.report_url)) {
+        continue;
+      }
+      const key = reportVariantKey(variant);
+      variantsByKey.set(key, {
+        ...variant,
+        key,
+      });
+    }
+  }
+
+  return Array.from(variantsByKey.values());
+}
+
+function getEntryReportVariants(entry) {
+  return Array.isArray(entry?._reportVariants) && entry._reportVariants.length > 0
+    ? entry._reportVariants
+    : [buildReportVariant(entry)];
+}
+
+function orderReportVariantsForEntry(variants, entry) {
+  const primaryKey = reportVariantKey(buildReportVariant(entry));
+  return variants.slice().sort((left, right) => {
+    const leftIsPrimary = reportVariantKey(left) === primaryKey;
+    const rightIsPrimary = reportVariantKey(right) === primaryKey;
+    if (leftIsPrimary !== rightIsPrimary) {
+      return leftIsPrimary ? -1 : 1;
+    }
+
+    const leftTime = new Date(left.recorded_at_iso || 0).getTime();
+    const rightTime = new Date(right.recorded_at_iso || 0).getTime();
+    const normalizedLeftTime = Number.isNaN(leftTime) ? 0 : leftTime;
+    const normalizedRightTime = Number.isNaN(rightTime) ? 0 : rightTime;
+    return (
+      normalizedRightTime - normalizedLeftTime ||
+      compareByLocale(left.report_code || left.report_url || "", right.report_code || right.report_url || "")
+    );
+  });
+}
+
+function mergeDuplicateEntry(existing, candidate) {
+  const mergedVariants = mergeReportVariants(getEntryReportVariants(existing), getEntryReportVariants(candidate));
+  const representative = isBetterEntry(candidate, existing) ? candidate : existing;
+
+  if (representative === candidate) {
+    Object.assign(existing, candidate);
+  }
+
+  // 同一場 fight 可能由多名隊員各自上傳；個人成績列只保留一筆代表成績，
+  // 但每個 report code 都必須留在 report_variants，讓彈窗可以切換來源並追溯外部工具連結。
+  existing._reportVariants = orderReportVariantsForEntry(mergedVariants, existing);
+  existing.duplicate_count = existing._reportVariants.length;
 }
 
 function attachRdpsPerformance(entries) {
@@ -1093,12 +1234,14 @@ function makePublicEntry({ encounter, report, reportCode, fight, player, fightPl
         job: teammate.job,
       })),
   };
+  entry._reportVariants = [buildReportVariant(entry)];
   return attachVersionState(entry, encounter);
 }
 
 function collectEntriesFromReports({ ranking, encounter, includeHiddenReports = false }) {
   // 完整 reports 是最可信來源：它能辨識同場玩家、重複上傳與 fight_hash。
-  // exactKey 不含 report_code，讓同一場戰鬥被多名隊員上傳時只算一次，duplicate_count 保留來源數。
+  // fight_hash 是同一場戰鬥跨 report 的共同指紋；有它時不再把輸出數值納入去重 key，
+  // 避免同一場戰鬥因不同上傳者的 table 細節差異被拆成多筆個人成績。
   const entriesByExactKey = new Map();
   const rankIndex = buildJobRankIndex(ranking.ranking_entries || []);
 
@@ -1123,22 +1266,30 @@ function collectEntriesFromReports({ ranking, encounter, includeHiddenReports = 
           continue;
         }
 
-        const exactKey = createId({
-          encounter_key: entry.encounter_key,
-          fight_hash: fight.fight_hash || null,
-          character_name: entry.character_name,
-          server: entry.server,
-          job: entry.job,
-          active_time_ms: entry.active_time_ms,
-          rdps: entry.rdps,
-          adps: entry.adps,
-          dps: entry.dps,
-          total_damage: entry.total_damage,
-          damage_time_ms: entry.damage_time_ms,
-        });
+        const exactKey = fight.fight_hash
+          ? createId({
+              encounter_key: entry.encounter_key,
+              fight_hash: fight.fight_hash,
+              character_name: entry.character_name,
+              server: entry.server,
+              job: entry.job,
+            })
+          : createId({
+              encounter_key: entry.encounter_key,
+              fight_hash: null,
+              character_name: entry.character_name,
+              server: entry.server,
+              job: entry.job,
+              active_time_ms: entry.active_time_ms,
+              rdps: entry.rdps,
+              adps: entry.adps,
+              dps: entry.dps,
+              total_damage: entry.total_damage,
+              damage_time_ms: entry.damage_time_ms,
+            });
         const existing = entriesByExactKey.get(exactKey);
         if (existing) {
-          existing.duplicate_count += 1;
+          mergeDuplicateEntry(existing, entry);
           continue;
         }
 
@@ -1602,7 +1753,13 @@ function buildFrequentTeammates(user) {
 }
 
 function buildEntryPayload(entry) {
-  const { teammates, ...payload } = entry;
+  const { teammates, _reportVariants, ...payload } = entry;
+  const reportVariants = orderReportVariantsForEntry(mergeReportVariants(_reportVariants), entry);
+  if (reportVariants.length > 1) {
+    payload.report_variants = reportVariants;
+    payload.source_reports = reportVariants.map((variant) => variant.report_code).filter(Boolean);
+    payload.duplicate_count = reportVariants.length;
+  }
   return payload;
 }
 

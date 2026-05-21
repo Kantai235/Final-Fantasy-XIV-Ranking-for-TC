@@ -4469,6 +4469,54 @@ td a:hover {
   background: var(--重點色);
 }
 
+.報告彈窗分頁列 {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.報告彈窗分頁 {
+  min-width: 96px;
+  min-height: 42px;
+  display: grid;
+  gap: 2px;
+  border: 1px solid var(--邊框柔和色);
+  border-radius: 8px;
+  padding: 7px 10px;
+  color: var(--次要文字);
+  background: var(--表面背景柔和);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.報告彈窗分頁:hover,
+.報告彈窗分頁:focus-visible,
+.報告彈窗分頁.目前 {
+  border-color: var(--重點色);
+  color: var(--重點色深);
+  background: color-mix(in srgb, var(--重點色) 12%, var(--表面背景));
+}
+
+.報告彈窗分頁 span,
+.報告彈窗分頁 small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.報告彈窗分頁 span {
+  font-size: 0.82rem;
+  font-weight: 840;
+}
+
+.報告彈窗分頁 small {
+  color: var(--靜音文字);
+  font-size: 0.68rem;
+  font-weight: 760;
+}
+
 .報告彈窗數值格 {
   display: grid;
   gap: 10px;
@@ -4615,6 +4663,10 @@ td a:hover {
 
   .報告彈窗 h2 {
     font-size: 1.15rem;
+  }
+
+  .報告彈窗分頁 {
+    min-width: 88px;
   }
 
   .報告彈窗數值格 {
