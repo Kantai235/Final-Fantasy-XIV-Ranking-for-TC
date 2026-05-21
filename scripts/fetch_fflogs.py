@@ -51,7 +51,7 @@ FFLogs執行設定預設值: dict[str, Any] = {
     "history_scan_window_hours": 24,
     "history_scan_windows_per_run": 1,
     "history_scan_recent_gap_hours": 6,
-    "history_max_deep_reports_per_run": 25,
+    "history_max_deep_reports_per_run": 200,
     "existing_report_status_check_enabled": False,
     "existing_report_status_check_limit": 0,
     "fetch_gcd_coverage_enabled": False,

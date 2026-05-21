@@ -417,7 +417,7 @@ GitHub Actions 會透過既有 report 狀態巡檢，每輪由舊到新抽查既
 - `FFLOGS_HISTORY_SCAN_WINDOW_HOURS`：每個歷史時間窗長度，workflow 預設 `168`（一週）。
 - `FFLOGS_HISTORY_SCAN_WINDOWS_PER_RUN`：每輪每個副本最多巡幾個歷史時間窗，workflow 預設 `1`。
 - `FFLOGS_HISTORY_SCAN_RECENT_GAP_HOURS`：歷史補查避開最新掃描點前幾小時，workflow 預設 `6`。
-- `FFLOGS_HISTORY_MAX_DEEP_REPORTS_PER_RUN`：每輪最多挑幾份未知 report 進深層檢查，workflow 預設 `25`。若上限打滿且仍有 deferred report，歷史游標會停在最後一筆已選候選的 `startTime`；若該副本本輪未分到深查額度，則停回本輪時間窗起點，讓下次排程接續同一段未更新資料。
+- `FFLOGS_HISTORY_MAX_DEEP_REPORTS_PER_RUN`：每輪最多挑幾份未知 report 進深層檢查，workflow 預設 `200`。若上限打滿且仍有 deferred report，歷史游標會停在最後一筆已選候選的 `startTime`；若該副本本輪未分到深查額度，則停回本輪時間窗起點，讓下次排程接續同一段未更新資料。
 - `FFLOGS_HISTORY_SCAN_FULL_RUN`：是否一次跑完整歷史區間；預設 `false`，只建議人工短期維護時開啟。
 - `FFLOGS_EXISTING_REPORT_STATUS_CHECK_ENABLED`：是否啟用既有 report 狀態巡檢，workflow 預設 `true`。
 - `FFLOGS_EXISTING_REPORT_STATUS_CHECK_LIMIT`：每輪最多檢查幾筆既有副本/report 紀錄，workflow 預設 `200`。

@@ -51,6 +51,9 @@ def 建立測試原始成績(總傷害: int) -> dict[str, Any]:
 
 
 class FetchFFLogsBatchTest(unittest.TestCase):
+    def test_history_scan_deep_report_default_limit_matches_workflow_budget(self) -> None:
+        self.assertEqual(fflogs.FFLogs執行設定預設值["history_max_deep_reports_per_run"], 200)
+
     def test_fflogs_runtime_settings_can_be_overridden_by_environment(self) -> None:
         原始設定 = {
             "history_scan_enabled": False,
