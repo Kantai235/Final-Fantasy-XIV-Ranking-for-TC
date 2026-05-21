@@ -168,7 +168,14 @@ export default {
             </thead>
             <tbody>
               <tr v-for="紀錄 in 隊伍榜列" :key="紀錄.id" :class="{ 過版紀錄列: 紀錄.is_obsolete_record }">
-                <td class="數字">{{ 格式化排名(紀錄.顯示排名) }}</td>
+                <td class="數字 排名 隊伍榜排名" :class="排名色彩類別(紀錄.顯示排名)">
+                  <span class="排名徽章" :aria-label="格式化排名(紀錄.顯示排名)">
+                    <span v-if="格式化排名(紀錄.顯示排名).startsWith('#')" class="排名井號" aria-hidden="true">
+                      #
+                    </span>
+                    <span class="排名數字">{{ 格式化排名(紀錄.顯示排名).replace(/^#/, "") }}</span>
+                  </span>
+                </td>
                 <td>
                   <span class="比較副本">
                     <small>{{ 紀錄.encounter_category || "副本" }}</small>

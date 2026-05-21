@@ -435,7 +435,16 @@ export default {
       <tbody>
         <tr v-for="(列, index) in 當頁排行列" :key="列.id" :class="{ 過版紀錄列: 列.過版紀錄 }">
           <td class="排名" :class="排名色彩類別(排行列顯示排名(index))">
-            {{ 格式化排名(排行列顯示排名(index)) }}
+            <span class="排名徽章" :aria-label="格式化排名(排行列顯示排名(index))">
+              <span
+                v-if="格式化排名(排行列顯示排名(index)).startsWith('#')"
+                class="排名井號"
+                aria-hidden="true"
+              >
+                #
+              </span>
+              <span class="排名數字">{{ 格式化排名(排行列顯示排名(index)).replace(/^#/, "") }}</span>
+            </span>
           </td>
           <td class="排行榜角色欄位">
             <button class="文字連結" type="button" @click="開啟個人成績單(列)">

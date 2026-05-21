@@ -1836,6 +1836,11 @@ button:disabled {
   min-width: 1120px;
 }
 
+.隊伍榜表格 td.隊伍榜排名 {
+  text-align: center;
+  text-overflow: clip;
+}
+
 .隊伍成員欄位 {
   min-width: 360px;
 }
@@ -4234,6 +4239,11 @@ td {
   text-overflow: ellipsis;
 }
 
+.排行榜表格 td.排名 {
+  overflow: visible;
+  text-overflow: clip;
+}
+
 .排行榜表格 .排行榜角色欄位 {
   overflow: visible;
 }
@@ -4726,26 +4736,69 @@ td a:hover {
   font-weight: 720;
 }
 
-.排名.第一名,
-.排名.第二名,
-.排名.第三名 {
-  border-radius: 999px;
+.排名徽章 {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  min-width: 50px;
+  min-height: 30px;
+  overflow: hidden;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  padding: 5px 8px;
+  font-size: 0.88rem;
+  font-weight: 860;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.排名井號 {
+  align-self: baseline;
+  opacity: 0.78;
+  font-size: 0.72em;
   font-weight: 820;
+  line-height: 1;
+  transform: translateY(-0.04em);
 }
 
-.排名.第一名 {
-  color: var(--第一名色);
-  background: var(--第一名柔和);
+.排名數字 {
+  font-size: 1.16em;
+  font-weight: 930;
+  letter-spacing: 0;
+  line-height: 1;
 }
 
-.排名.第二名 {
-  color: var(--第二名色);
-  background: var(--第二名柔和);
+.排名.第一名 .排名徽章,
+.排名.第二名 .排名徽章,
+.排名.第三名 .排名徽章 {
+  --排名徽章色: currentColor;
+  --排名徽章底色: transparent;
+  border-color: var(--排名徽章色);
+  color: var(--排名徽章色);
+  background-color: var(--排名徽章底色);
+  font-weight: 900;
+  background-image: linear-gradient(var(--排名徽章色), var(--排名徽章色));
+  background-repeat: no-repeat;
+  background-size: calc(100% - 2px) 3px;
+  background-position: 1px 0;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.14);
 }
 
-.排名.第三名 {
-  color: var(--第三名色);
-  background: var(--第三名柔和);
+.排名.第一名 .排名徽章 {
+  --排名徽章色: var(--第一名色);
+  --排名徽章底色: var(--第一名柔和);
+}
+
+.排名.第二名 .排名徽章 {
+  --排名徽章色: var(--第二名色);
+  --排名徽章底色: var(--第二名柔和);
+}
+
+.排名.第三名 .排名徽章 {
+  --排名徽章色: var(--第三名色);
+  --排名徽章底色: var(--第三名柔和);
 }
 
 .數字 {
@@ -5924,29 +5977,38 @@ td a:hover {
   }
 
   .統計表格.隊伍榜表格 tr {
-    grid-template-columns: 38px minmax(0, 1fr) auto;
+    grid-template-columns: 48px minmax(0, 1fr) auto;
     gap: 10px 12px;
     padding: 12px;
   }
 
   .隊伍榜表格 td:nth-child(1) {
-    width: 34px;
-    height: 34px;
+    width: auto;
+    height: auto;
+    display: flex;
     grid-column: 1;
     grid-row: 1 / span 2;
-    place-items: center;
+    justify-content: center;
     align-self: start;
-    border: 1px solid var(--邊框柔和色);
-    border-radius: 999px;
-    color: var(--重點色);
-    background: var(--表面背景柔和);
-    font-size: 0.82rem;
-    font-weight: 880;
+    border: 0;
+    border-radius: 0;
+    padding: 0;
+    color: var(--靜音文字);
+    background: transparent;
+    text-align: center;
+    text-overflow: clip;
   }
 
   .隊伍榜表格 td:nth-child(1)::before,
   .隊伍榜表格 td:nth-child(6)::before {
     display: none;
+  }
+
+  .隊伍榜表格 .排名徽章 {
+    min-width: 44px;
+    min-height: 24px;
+    padding: 4px 8px;
+    font-size: 0.78rem;
   }
 
   .隊伍榜表格 td:nth-child(2) {
@@ -6497,10 +6559,16 @@ td a:hover {
   .排行榜表格 .排名 {
     min-height: 26px;
     align-self: center;
-    border-radius: 999px;
-    padding: 0 4px;
+    padding: 0;
     font-size: 0.78rem;
     line-height: 1;
+  }
+
+  .排行榜表格 .排名徽章 {
+    min-width: 44px;
+    min-height: 24px;
+    padding: 4px 8px;
+    font-size: 0.78rem;
   }
 
   .排行榜表格 td:nth-child(2) {
