@@ -184,7 +184,7 @@ export default {
           >
             <strong>{{ 角色.character_name }}</strong>
             <span>
-              {{ 角色.server }}・{{ 格式化整數(角色.encounter_count) }} 副本・{{ 格式化傷害數值(角色.best_entry?.rdps) }}
+              {{ 角色.server }}・{{ 格式化整數(角色.encounter_count) }} 副本・rDPS {{ 格式化傷害數值(角色.best_entry?.rdps) }}
               <template v-if="顯示Gcd覆蓋率">・GCD {{ 格式化Gcd覆蓋率(角色.best_entry?.gcd_coverage) }}</template>
             </span>
           </button>
