@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, open, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
@@ -24,6 +24,11 @@ const activityWindowDays = 7;
 const recentActivityLimit = 40;
 const teamRecordsPerEncounterLimit = 50;
 const versionRecordModes = ["all", "valid", "obsolete"];
+const jsonWriteRetryCount = 10;
+const jsonWriteRetryDelayMs = 500;
+const jsonWriteChunkBytes = 1024 * 1024;
+const transientWriteErrorCodes = new Set(["EBUSY", "EPERM", "UNKNOWN"]);
+const transientRemoveErrorCodes = new Set(["EBUSY", "EMFILE", "ENFILE", "ENOTEMPTY", "EPERM", "UNKNOWN"]);
 
 const jobRoleGroups = [
   {
@@ -84,31 +89,123 @@ async function readJson(filePath, fallback = null) {
   }
 }
 
+function isTransientWriteError(error) {
+  return transientWriteErrorCodes.has(error?.code);
+}
+
+function formatWritePath(filePath) {
+  const relativePath = path.relative(rootDir, filePath);
+  return relativePath && !relativePath.startsWith("..") && !path.isAbsolute(relativePath)
+    ? relativePath
+    : filePath;
+}
+
+async function overwriteFileInPlace(filePath, payload) {
+  const buffer = Buffer.from(payload, "utf8");
+  const file = await open(filePath, "r+");
+
+  try {
+    let offset = 0;
+    while (offset < buffer.length) {
+      const length = Math.min(jsonWriteChunkBytes, buffer.length - offset);
+      const { bytesWritten } = await file.write(buffer, offset, length, offset);
+      if (bytesWritten === 0) {
+        throw new Error(`無法繼續寫入 JSON 檔案：${formatWritePath(filePath)}`);
+      }
+      offset += bytesWritten;
+    }
+
+    await file.truncate(buffer.length);
+    await file.sync();
+  } finally {
+    await file.close();
+  }
+}
+
 async function writeJson(filePath, data) {
   const payload = `${JSON.stringify(data)}\n`;
-  const transientWriteErrorCodes = new Set(["EBUSY", "EPERM", "UNKNOWN"]);
+  const tempPath = path.join(
+    path.dirname(filePath),
+    `.${path.basename(filePath)}.${process.pid}.${Date.now()}.tmp`,
+  );
 
-  for (let attempt = 0; attempt < 5; attempt += 1) {
-    const tempPath = path.join(
-      path.dirname(filePath),
-      `.${path.basename(filePath)}.${process.pid}.${attempt}.tmp`,
+  await mkdir(path.dirname(filePath), { recursive: true });
+
+  let lastTransientError = null;
+  try {
+    await writeFile(tempPath, payload, "utf8");
+
+    for (let attempt = 1; attempt <= jsonWriteRetryCount; attempt += 1) {
+      try {
+        await rename(tempPath, filePath);
+        return;
+      } catch (error) {
+        if (!isTransientWriteError(error)) {
+          throw error;
+        }
+
+        lastTransientError = error;
+        if (attempt === jsonWriteRetryCount) {
+          break;
+        }
+
+        const waitMs = jsonWriteRetryDelayMs * attempt;
+        console.warn(
+          `JSON 檔案暫時被鎖定，${(waitMs / 1000).toFixed(1)} 秒後重試寫入：${formatWritePath(filePath)}`,
+        );
+        await sleep(waitMs);
+      }
+    }
+
+    if (process.platform === "win32" && existsSync(filePath) && lastTransientError) {
+      // Windows 上有些讀取端允許讀取但不允許替換或刪除共享權限，導致 rename 連續失敗。
+      // 這裡保留「先寫暫存檔」的驗證流程，只在替換語意被鎖住時才退回就地覆寫既有檔案。
+      try {
+        await overwriteFileInPlace(filePath, payload);
+        console.warn(`JSON 檔案無法原子替換，已改用就地覆寫：${formatWritePath(filePath)}`);
+        return;
+      } catch (error) {
+        lastTransientError = error;
+      }
+    }
+
+    throw new Error(
+      `無法寫入 JSON 檔案：${formatWritePath(filePath)}，請確認檔案未被編輯器、同步軟體、本機伺服器或防護軟體鎖定。`,
+      { cause: lastTransientError },
     );
+  } finally {
+    await rm(tempPath, { force: true }).catch(() => {});
+  }
+}
 
+async function removeGeneratedDirectory(dirPath) {
+  for (let attempt = 1; attempt <= jsonWriteRetryCount; attempt += 1) {
     try {
-      await writeFile(tempPath, payload, "utf8");
-      await rename(tempPath, filePath);
+      await rm(dirPath, {
+        recursive: true,
+        force: true,
+        maxRetries: 2,
+        retryDelay: 100,
+      });
       return;
     } catch (error) {
-      await rm(tempPath, { force: true }).catch(() => {});
-
-      if (!transientWriteErrorCodes.has(error?.code) || attempt === 4) {
+      if (!transientRemoveErrorCodes.has(error?.code)) {
         throw error;
       }
 
-      // Windows 本機常見的索引、同步或防護軟體短暫鎖檔，會讓大型公開 JSON 直接覆寫時
-      // 偶發開檔失敗。先寫同資料夾暫存檔再 rename，可降低留下半寫入檔的風險；這裡
-      // 只針對暫時性檔案錯誤退避重試，不吞掉真實的 JSON 建置或路徑錯誤。
-      await sleep(100 * 2 ** attempt);
+      if (attempt === jsonWriteRetryCount) {
+        throw new Error(
+          `無法清理衍生資料目錄：${formatWritePath(dirPath)}，`
+            + "請確認目錄內檔案未被編輯器、同步軟體、本機伺服器或防護軟體鎖定。",
+          { cause: error },
+        );
+      }
+
+      const waitMs = jsonWriteRetryDelayMs * attempt;
+      console.warn(
+        `衍生資料目錄暫時無法清理，${(waitMs / 1000).toFixed(1)} 秒後重試：${formatWritePath(dirPath)}`,
+      );
+      await sleep(waitMs);
     }
   }
 }
@@ -2131,7 +2228,7 @@ async function buildDataset({
 
   // public/data/users 是完整衍生產物，可以整包重建；append-only 保護的是 data/state 與 data/rankings。
   // 使用者檔名以角色名稱正規化，index.json 的 file_path 才是前端實際讀取入口。
-  await rm(outputDir, { recursive: true, force: true });
+  await removeGeneratedDirectory(outputDir);
   await mkdir(outputDir, { recursive: true });
 
   const latestRankingUpdatedAt = Array.from(updatedAtIsoByEncounter.values()).sort().at(-1) || null;
