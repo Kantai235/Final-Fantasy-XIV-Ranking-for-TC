@@ -4141,6 +4141,12 @@ th .說明提示內容 {
   gap: 10px;
 }
 
+.頁碼群組 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .分頁控制 label {
   display: flex;
   align-items: center;
@@ -4886,7 +4892,17 @@ td a:hover {
 
   .工具列 {
     display: grid;
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .工具列 > .欄位 {
+    grid-column: 1 / -1;
+  }
+
+  .工具列 > .排行榜伺服器欄位,
+  .工具列 > .職業選單欄位 {
+    grid-column: auto;
   }
 
   .工具列 > .職業選單欄位,
@@ -5146,6 +5162,12 @@ td a:hover {
     grid-template-columns: minmax(112px, 0.82fr) minmax(0, 1fr);
     gap: 6px;
     padding: 8px;
+  }
+
+  .工具列 .職業選單面板 {
+    left: auto;
+    right: 0;
+    width: min(360px, calc(100vw - 20px));
   }
 
   .職業選單職業欄 {
@@ -7308,45 +7330,45 @@ td a:hover {
   }
 
   .分頁資訊列 {
+    width: 100%;
     min-width: 0;
     display: grid;
-    justify-items: start;
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: stretch;
     gap: 10px;
     padding: 12px;
   }
 
+  .分頁資訊列 p {
+    width: 100%;
+  }
+
   .分頁控制 {
     width: 100%;
+    max-width: 360px;
     display: grid;
-    grid-template-columns: auto minmax(0, 1fr) auto auto;
-    justify-content: stretch;
+    align-items: stretch;
+    justify-self: stretch;
     gap: 8px;
+    margin-inline: auto;
   }
 
-  .分頁控制 label {
-    min-width: 0;
-  }
-
-  .分頁控制 input {
-    width: min(70px, 100%);
-  }
-
-  .頁數文字 {
-    align-self: center;
-    justify-self: end;
-  }
-
-  .分頁控制 {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    grid-template-areas:
-      "prev next"
-      "jump count";
+  .分頁控制頂部,
+  .分頁控制底部 {
+    grid-template-columns: minmax(64px, 1fr) minmax(0, auto) minmax(64px, 1fr);
+    grid-template-areas: "prev page next";
   }
 
   .分頁控制 button {
     width: 100%;
     min-width: 0;
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
     justify-content: center;
+    padding: 0 8px;
+    font-size: 0.86rem;
+    white-space: nowrap;
   }
 
   .分頁控制 button:first-child {
@@ -7357,11 +7379,44 @@ td a:hover {
     grid-area: next;
   }
 
-  .分頁控制 label {
-    grid-area: jump;
+  .分頁控制頂部 .頁碼群組 {
+    grid-area: page;
+    min-width: 0;
+    justify-self: center;
+    gap: 5px;
   }
 
-  .分頁控制 .頁數文字 {
-    grid-area: count;
+  .分頁控制 label {
+    min-height: 36px;
+    min-width: 0;
+    gap: 5px;
+    font-size: 0.82rem;
+  }
+
+  .分頁控制 input {
+    width: 56px;
+    min-height: 36px;
+    padding: 0 6px;
+  }
+
+  .頁數文字 {
+    align-self: center;
+    grid-area: page;
+    justify-self: center;
+    min-width: 0;
+    min-height: 36px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--邊框柔和色);
+    border-radius: 7px;
+    padding: 0 8px;
+    background: var(--表面背景柔和);
+    font-size: 0.84rem;
+    text-align: center;
+  }
+
+  .分頁控制底部 .頁數文字 {
+    min-height: 44px;
   }
 }

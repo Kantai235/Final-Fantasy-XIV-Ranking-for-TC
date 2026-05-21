@@ -159,7 +159,7 @@ export default {
     </select>
   </label>
 
-  <label class="欄位">
+  <label class="欄位 排行榜伺服器欄位">
     <span>伺服器</span>
     <select v-model="伺服器篩選">
       <option value="">全部伺服器</option>
@@ -265,20 +265,22 @@ export default {
   <template v-else>
     <div class="分頁資訊列">
       <p>顯示第 {{ 顯示起始排名 }}-{{ 顯示結束排名 }} 名，共 {{ 過濾後排行列.length }} 筆</p>
-      <div class="分頁控制" aria-label="排行榜分頁">
+      <div class="分頁控制 分頁控制頂部" aria-label="排行榜分頁">
         <button type="button" :disabled="!有上一頁" @click="前一頁">上一頁</button>
-        <label>
-          <span>頁碼</span>
-          <input
-            v-model.number="目前頁碼"
-            type="number"
-            min="1"
-            :max="總頁數"
-            inputmode="numeric"
-            @change="前往頁碼(目前頁碼)"
-          />
-        </label>
-        <span class="頁數文字">/ {{ 總頁數 }}</span>
+        <div class="頁碼群組">
+          <label>
+            <span>頁碼</span>
+            <input
+              v-model.number="目前頁碼"
+              type="number"
+              min="1"
+              :max="總頁數"
+              inputmode="numeric"
+              @change="前往頁碼(目前頁碼)"
+            />
+          </label>
+          <span class="頁數文字">/ {{ 總頁數 }}</span>
+        </div>
         <button type="button" :disabled="!有下一頁" @click="下一頁">下一頁</button>
       </div>
     </div>
@@ -555,7 +557,7 @@ export default {
 
     <div class="分頁資訊列 分頁資訊列底部">
       <p>每頁 {{ 每頁筆數 }} 筆</p>
-      <div class="分頁控制" aria-label="排行榜底部分頁">
+      <div class="分頁控制 分頁控制底部" aria-label="排行榜底部分頁">
         <button type="button" :disabled="!有上一頁" @click="前一頁">上一頁</button>
         <span class="頁數文字">第 {{ 安全目前頁碼 }} / {{ 總頁數 }} 頁</span>
         <button type="button" :disabled="!有下一頁" @click="下一頁">下一頁</button>
