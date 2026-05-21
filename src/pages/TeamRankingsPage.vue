@@ -1,11 +1,13 @@
 <script>
 import { ref } from "vue";
+import JobIcon from "../components/JobIcon.vue";
 import ReportDetailDialog from "../components/ReportDetailDialog.vue";
 import { injectRankingApp } from "../composables/useRankingApp";
 
 export default {
   name: "TeamRankingsPage",
   components: {
+    JobIcon,
     ReportDetailDialog,
   },
   setup() {
@@ -192,13 +194,9 @@ export default {
                       type="button"
                       @click="載入使用者成績(成員.character_name, 成員.server)"
                     >
-                      <img
-                        v-if="職業Icon路徑(成員.job)"
+                      <JobIcon
                         class="職業圖示"
-                        :src="職業Icon路徑(成員.job)"
-                        alt=""
-                        loading="lazy"
-                        @error="隱藏載入失敗圖片"
+                        :code="成員.job"
                       />
                       <span>{{ 成員.character_name }}</span>
                       <small>{{ 成員.server }}</small>

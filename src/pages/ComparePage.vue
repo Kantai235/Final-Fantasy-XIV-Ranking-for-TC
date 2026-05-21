@@ -1,8 +1,12 @@
 <script>
+import JobIcon from "../components/JobIcon.vue";
 import { injectRankingApp } from "../composables/useRankingApp";
 
 export default {
   name: "ComparePage",
+  components: {
+    JobIcon,
+  },
   setup() {
     return injectRankingApp();
   },
@@ -25,13 +29,10 @@ export default {
             :aria-checked="比較職能篩選 === 職能.代碼"
             @click="比較職能篩選 = 職能.代碼"
           >
-            <img
-              v-if="職業類型Icon路徑(職能.圖示代碼)"
+            <JobIcon
               class="職業圖示 職業標籤圖示"
-              :src="職業類型Icon路徑(職能.圖示代碼)"
-              alt=""
-              loading="lazy"
-              @error="隱藏載入失敗圖片"
+              kind="role"
+              :code="職能.圖示代碼"
             />
             <span>{{ 職能.名稱 }}</span>
           </button>
@@ -214,13 +215,9 @@ export default {
                   <div v-if="列.左" class="比較成績格" :class="{ 過版紀錄列: 列.左.best_entry.is_obsolete_record }">
                     <span class="比較成績主列">
                       <span class="職業標籤" :class="職業色彩類別(職業代碼色彩(列.左.best_entry.job))">
-                        <img
-                          v-if="職業Icon路徑(列.左.best_entry.job)"
+                        <JobIcon
                           class="職業圖示 職業標籤圖示"
-                          :src="職業Icon路徑(列.左.best_entry.job)"
-                          alt=""
-                          loading="lazy"
-                          @error="隱藏載入失敗圖片"
+                          :code="列.左.best_entry.job"
                         />
                         <span>{{ 顯示職業名稱(列.左.best_entry.job) }}</span>
                       </span>
@@ -239,13 +236,9 @@ export default {
                   <div v-if="列.右" class="比較成績格" :class="{ 過版紀錄列: 列.右.best_entry.is_obsolete_record }">
                     <span class="比較成績主列">
                       <span class="職業標籤" :class="職業色彩類別(職業代碼色彩(列.右.best_entry.job))">
-                        <img
-                          v-if="職業Icon路徑(列.右.best_entry.job)"
+                        <JobIcon
                           class="職業圖示 職業標籤圖示"
-                          :src="職業Icon路徑(列.右.best_entry.job)"
-                          alt=""
-                          loading="lazy"
-                          @error="隱藏載入失敗圖片"
+                          :code="列.右.best_entry.job"
                         />
                         <span>{{ 顯示職業名稱(列.右.best_entry.job) }}</span>
                       </span>
