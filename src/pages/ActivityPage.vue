@@ -28,6 +28,7 @@ export default {
           <h2>刷新個人最佳</h2>
           <span>依 rDPS 提升幅度排序</span>
         </header>
+        <p v-if="近期刷新版本說明文字" class="版本紀錄說明">{{ 近期刷新版本說明文字 }}</p>
         <div class="統計表格外框">
           <table class="統計表格 近期動態表格 近期刷新表格">
             <thead>
@@ -42,7 +43,7 @@ export default {
               </tr>
             </thead>
             <tbody>
-              <tr v-for="成績 in 近期刷新紀錄列表" :key="成績.id">
+              <tr v-for="成績 in 近期刷新紀錄列表" :key="成績.id" :class="{ 過版紀錄列: 成績.is_obsolete_record }">
                 <td>
                   <button class="文字連結" type="button" @click="載入使用者成績(成績.character_name, 成績.server)">
                     {{ 成績.character_name }}
@@ -70,7 +71,10 @@ export default {
                   <span v-else>-</span>
                 </td>
                 <td class="數字">{{ 格式化帶號整數(成績.rdps_gain) }}</td>
-                <td class="數字">{{ 格式化前段百分位(成績.performance?.rank, 成績.performance?.sample_count) }}</td>
+                <td class="數字">
+                  <span v-if="成績.is_obsolete_record" class="版本紀錄標籤">過版紀錄</span>
+                  <template v-else>{{ 格式化前段百分位(成績.performance?.rank, 成績.performance?.sample_count) }}</template>
+                </td>
                 <td v-show="顯示Gcd覆蓋率" class="數字">{{ 格式化Gcd覆蓋率(成績.gcd_coverage) }}</td>
                 <td>{{ 格式化紀錄時間(成績.recorded_at_iso) }}</td>
               </tr>
