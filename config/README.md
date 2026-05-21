@@ -17,7 +17,8 @@
 
 ## `fflogs.json` 的判讀重點
 
-- `report_page_limit`、`report_max_pages`、`report_region_scope` 與 `scan_window_hours` 控制淺層 reports 掃描範圍；專案預設 `report_region_scope=all`，保留全部地區候選，後續仍會用繁中服伺服器名稱做深層過濾。若短期維護需要降低掃描量，可暫時改成 `china` 只把中國區域 report 放入候選。報告太多時 `fetch_fflogs.py` 會自動切半查詢。
+- `report_page_limit`、`report_max_pages`、`report_region_scope`、`scan_window_hours` 與 `incremental_lookback_hours` 控制近期 reports 掃描範圍；專案預設 `report_region_scope=all`，保留全部地區候選，後續仍會用繁中服伺服器名稱做深層過濾。`scan_window_hours=24` 代表 API 查詢會以 24 小時為一段切開；`incremental_lookback_hours=24` 則讓最近一天的 no-clear / incomplete report 保持可重查。若短期維護需要降低掃描量，可暫時改成 `china` 只把中國區域 report 放入候選。報告太多時 `fetch_fflogs.py` 會自動切半查詢。
+- `delayed_scan_enabled`、`delayed_scan_recent_gap_hours`、`delayed_scan_lookback_hours` 與 `delayed_max_deep_reports_per_run` 控制延遲淺層掃描。GitHub Actions 預設開啟 24-72 小時前的固定區段，只把 state 與排行榜都沒見過的新 report 選入深層處理，不重查既有 report。
 - `history_scan_enabled`、`history_scan_window_hours`、`history_scan_windows_per_run`、`history_scan_recent_gap_hours` 與 `history_max_deep_reports_per_run` 控制歷史補查。專案預設在 `config/fflogs.json` 關閉，GitHub Actions 會用同名大寫 `FFLOGS_` 環境變數暫時開啟低量巡檢，避免本機一般執行時額外掃描舊時間窗。
 - `existing_report_status_check_enabled` 與 `existing_report_status_check_limit` 控制既有排行榜 report 狀態巡檢。專案預設關閉，GitHub Actions 預設每輪由舊到新檢查 200 筆副本/report 紀錄，游標保存在 `data/state.json`，跑完後會回到最舊紀錄繼續輪巡。
 - `fetch_gcd_coverage_enabled` 與 `fetch_gcd_coverage_max_fights_per_run` 控制新 report 落地時是否即時計算 GCD 覆蓋率，以及每輪最多查幾場 fight 的 Casts graph。專案預設關閉，GitHub Actions 會用 `FFLOGS_FETCH_GCD_COVERAGE_ENABLED=true` 與 `FFLOGS_FETCH_GCD_COVERAGE_MAX_FIGHTS_PER_RUN=500` 開啟。

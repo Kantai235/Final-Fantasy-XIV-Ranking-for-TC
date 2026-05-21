@@ -333,6 +333,8 @@ python scripts/fetch_fflogs.py
 1. `python scripts/fetch_fflogs.py`
    - 讀取 `config/encounters.json` 的啟用副本。
    - 透過 FFLogs API 掃描公開報告；預設掃全部地區。
+   - 近期掃描回溯 24 小時，會讓一天內的 no-clear / incomplete report 重新深查，補抓後續才匯出的通關 fight。
+   - 若 workflow 以 `FFLOGS_DELAYED_SCAN_ENABLED=true` 開啟延遲掃描，會額外掃描 24-72 小時前的 reports，但只挑 state 與排行榜都沒見過的新 report 進深層處理。
    - 若 workflow 以 `FFLOGS_HISTORY_SCAN_ENABLED=true` 開啟歷史補查，會沿著各副本的 `history_scan_cursor_at` 輪巡較舊時間窗，檢查是否有後來才公開或延後匯出的 logs 可以補抓。
    - 若 workflow 以 `FFLOGS_EXISTING_REPORT_STATUS_CHECK_ENABLED=true` 開啟既有 report 狀態巡檢，每輪會依 report 時間由舊到新檢查固定數量；游標記在 `data/state.json`，跑完會回到最舊紀錄繼續輪巡。
    - 篩選繁中服伺服器玩家；同一輪若已檢查過某個 report code，會重用本輪快取，不重複查 `masterData.actors`。
@@ -399,12 +401,17 @@ GitHub Actions 會透過既有 report 狀態巡檢，每輪由舊到新抽查既
 
 額外檢視流程若需要完整資料，應只把 `/data/...` 改寫到 `/data/all/...`；若部署端尚未產生鏡像，應退回一般公開資料，避免網站載入失敗。
 
-## 歷史補查
+## 近期、延遲與歷史補查
 
-`config/fflogs.json` 預設關閉歷史補查，避免本機一般執行時額外掃描舊時間窗。GitHub Actions 會在 workflow 內用環境變數暫時開啟：
+`config/fflogs.json` 預設只讓近期掃描回溯 24 小時，並關閉延遲掃描與歷史補查，避免本機一般執行時額外掃描舊時間窗。GitHub Actions 會在 workflow 內用環境變數暫時開啟延遲掃描與低量歷史補查：
 
 - `FFLOGS_REPORT_REGION_SCOPE`：淺層 reports 候選地區，`china` 只看中國區域，`all` 會掃全部地區；專案與 workflow 預設 `all`。
+- `FFLOGS_INCREMENTAL_LOOKBACK_HOURS`：近期完整重查回溯時數，workflow 預設 `24`。這段會搭配 no-clear 重試窗，重新深查一天內可能剛匯出通關 fight 的 report。
 - `FFLOGS_NO_CLEAR_RETRY_HOURS`：`skipped_no_clear` 的近期重試時數，workflow 預設 `24`。這會讓剛上傳但尚未匯出通關 fight 的 report 在一天內繼續被深層檢查，避免後續出現 kill 時被舊快取擋掉。
+- `FFLOGS_DELAYED_SCAN_ENABLED`：是否啟用延遲淺層掃描，workflow 預設 `true`。
+- `FFLOGS_DELAYED_SCAN_RECENT_GAP_HOURS`：延遲掃描避開最近幾小時，workflow 預設 `24`。
+- `FFLOGS_DELAYED_SCAN_LOOKBACK_HOURS`：延遲掃描最遠回溯幾小時，workflow 預設 `72`，因此預設固定掃描 24-72 小時前的 reports。
+- `FFLOGS_DELAYED_MAX_DEEP_REPORTS_PER_RUN`：延遲掃描每輪最多挑幾份未知 report 進深層檢查，workflow 預設 `0` 代表不設上限。
 - `FFLOGS_HISTORY_SCAN_ENABLED`：是否啟用歷史補查，workflow 預設 `true`。
 - `FFLOGS_HISTORY_SCAN_WINDOW_HOURS`：每個歷史時間窗長度，workflow 預設 `168`（一週）。
 - `FFLOGS_HISTORY_SCAN_WINDOWS_PER_RUN`：每輪每個副本最多巡幾個歷史時間窗，workflow 預設 `1`。
@@ -416,7 +423,9 @@ GitHub Actions 會透過既有 report 狀態巡檢，每輪由舊到新抽查既
 - `FFLOGS_FETCH_GCD_COVERAGE_ENABLED`：新 report 落地時是否即時計算 GCD 覆蓋率，workflow 預設 `true`。
 - `FFLOGS_FETCH_GCD_COVERAGE_MAX_FIGHTS_PER_RUN`：每輪最多查幾場 fight 的 Casts graph，workflow 預設 `500`；`0` 代表不設上限。
 
-歷史補查會從副本的 `history_scan_start_date`、`scan_start_date` 或 `initial_scan_start_date` 開始，依 `data/state.json` 內各副本的 `history_scan_cursor_at` 往後輪巡。它只會把尚未在 state 或排行榜中的 report 選入候選，適合抓回「當時未公開、後來改成公開」或「FFLogs 延後完成匯出」的歷史 logs；一般最新資料仍由增量掃描負責。增量掃描若遇到 `skipped_no_clear`，會在 `FFLOGS_NO_CLEAR_RETRY_HOURS` 時間窗內重新檢查，專門處理 report 先被掃到、後續才匯出通關 fight 的情境。
+近期掃描負責最近 24 小時的完整重查：`skipped_no_clear` 與 `deferred_incomplete_export` 會在重試窗內被視為未完成，重新進入深層檢查。延遲掃描固定檢查 24-72 小時前的 reports，但使用嚴格已知 report 集合，凡是已在 state 或排行榜出現過的 report 都會略過；它只補抓「這個時間段後來才出現在 reports 查詢中的新 report」，不重查既有 no-clear 紀錄。
+
+歷史補查會從副本的 `history_scan_start_date`、`scan_start_date` 或 `initial_scan_start_date` 開始，依 `data/state.json` 內各副本的 `history_scan_cursor_at` 往後輪巡。它只會把尚未在 state 或排行榜中的 report 選入候選，適合抓回「當時未公開、後來改成公開」或「FFLogs 延後完成匯出」的更舊 logs；一般最新資料與 24-72 小時固定區段仍分別由近期掃描與延遲掃描負責。
 
 ## 自動更新
 
@@ -427,7 +436,7 @@ GitHub Actions 會透過既有 report 狀態巡檢，每輪由舊到新抽查既
 1. 安裝 Python 與 Node.js。
 2. 安裝 Python 與 Node.js 依賴。
 3. 同步 Cloudflare CDN 規則；若 Cloudflare Rulesets API 只有 5xx、429 或網路暫時錯誤，會記錄 warning 並繼續抓取 FFLogs，4xx 設定或權限錯誤仍會中止。
-4. 使用 GitHub Secrets 中的 FFLogs 憑證執行抓取腳本，掃描全部地區候選 report，以低量歷史補查檢查舊時間窗是否有新的公開 logs 可抓取，並對新落地 fight 即時計算 GCD 覆蓋率。
+4. 使用 GitHub Secrets 中的 FFLogs 憑證執行抓取腳本，掃描全部地區候選 report，近期 24 小時完整重查、24-72 小時只選未知 report，並以低量歷史補查檢查更舊時間窗是否有新的公開 logs 可抓取，同時對新落地 fight 即時計算 GCD 覆蓋率。
 5. 執行 `python scripts/fetch_fflogs.py --split-rankings`，將完整排行榜資料拆分成適合 Git 追蹤的檔案。
 6. 產生個人成績單、全服統計、近期動態、隊伍榜、伺服器對比資料與 `data/update_status.json`。
 7. 執行 `npm run build`，在提交前完成公開資料驗證與 Vite 建置。

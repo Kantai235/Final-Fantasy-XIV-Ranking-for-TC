@@ -40,8 +40,12 @@ FFLogs執行設定預設值: dict[str, Any] = {
     "scan_window_hours": 24,
     "min_scan_window_seconds": 60,
     "initial_lookback_hours": 24,
-    "incremental_lookback_hours": 6,
+    "incremental_lookback_hours": 24,
     "no_clear_retry_hours": 24,
+    "delayed_scan_enabled": False,
+    "delayed_scan_recent_gap_hours": 24,
+    "delayed_scan_lookback_hours": 72,
+    "delayed_max_deep_reports_per_run": 0,
     "history_scan_enabled": True,
     "history_scan_full_run": False,
     "history_scan_window_hours": 24,
@@ -286,6 +290,13 @@ def 正規化報告地區範圍(值: Any) -> str:
 增量掃描回溯小時 = max(0, 整數設定("incremental_lookback_hours"))
 無通關報告重試小時 = max(0, 整數設定("no_clear_retry_hours"))
 無通關報告重試毫秒 = 無通關報告重試小時 * 60 * 60 * 1000
+延遲掃描已啟用 = 布林設定("delayed_scan_enabled")
+延遲掃描最近避讓小時 = max(0, 整數設定("delayed_scan_recent_gap_hours"))
+延遲掃描回溯小時 = max(
+    延遲掃描最近避讓小時,
+    整數設定("delayed_scan_lookback_hours"),
+)
+延遲掃描深層報告上限 = max(0, 整數設定("delayed_max_deep_reports_per_run"))
 歷史補查已啟用 = 布林設定("history_scan_enabled")
 歷史補查完整執行 = 布林設定("history_scan_full_run")
 歷史補查區間小時 = max(1, 整數設定("history_scan_window_hours"))
@@ -1276,6 +1287,48 @@ def 讀取副本狀態整數欄位(狀態: dict[str, Any], 副本鍵值: str, �
     if isinstance(值, str) and 值.strip().isdigit():
         return int(值)
     return None
+
+
+def 建立延遲掃描區間(
+    副本設定: dict[str, Any],
+    掃描結束時間戳記: int,
+) -> tuple[dict[str, int] | None, dict[str, Any] | None]:
+    if not 延遲掃描已啟用:
+        return None, None
+
+    避讓毫秒 = 延遲掃描最近避讓小時 * 60 * 60 * 1000
+    回溯毫秒 = 延遲掃描回溯小時 * 60 * 60 * 1000
+    區間起點 = max(0, 掃描結束時間戳記 - 回溯毫秒)
+    區間終點 = max(0, 掃描結束時間戳記 - 避讓毫秒 - 1)
+    初次掃描起始時間戳記 = 取得副本掃描起始時間戳記(副本設定, "scan_start_date", "initial_scan_start_date")
+    if 初次掃描起始時間戳記 is not None:
+        區間起點 = max(區間起點, 初次掃描起始時間戳記)
+
+    狀態 = {
+        "enabled": True,
+        "recent_gap_hours": 延遲掃描最近避讓小時,
+        "lookback_hours": 延遲掃描回溯小時,
+        "range_start_at": 區間起點,
+        "range_start_at_iso": 毫秒轉_iso(區間起點),
+        "range_end_at": 區間終點,
+        "range_end_at_iso": 毫秒轉_iso(區間終點),
+        "reports_found": 0,
+        "reports_selected": 0,
+        "reports_skipped_known": 0,
+        "reports_deferred": 0,
+    }
+    if 區間終點 <= 區間起點:
+        狀態["window"] = None
+        return None, 狀態
+
+    區間 = {"start_at": 區間起點, "end_at": 區間終點}
+    狀態["window"] = {
+        "start_at": 區間起點,
+        "start_at_iso": 毫秒轉_iso(區間起點),
+        "end_at": 區間終點,
+        "end_at_iso": 毫秒轉_iso(區間終點),
+    }
+    return 區間, 狀態
 
 
 def 建立歷史補查區間(
@@ -3466,18 +3519,31 @@ def 報告處理記錄可重試(記錄: Any) -> bool:
     return 處理時間戳記 + 無通關報告重試毫秒 >= 現在毫秒()
 
 
-def 讀取已處理報告代碼(狀態: dict[str, Any], 副本設定: dict[str, Any]) -> set[str]:
+def 讀取已處理報告代碼(
+    狀態: dict[str, Any],
+    副本設定: dict[str, Any],
+    *,
+    可重試報告視為未處理: bool = True,
+) -> set[str]:
     副本鍵值 = 副本設定["key"]
     已處理 = set()
 
     副本狀態 = (狀態.get("encounters") or {}).get(副本鍵值) or {}
     已處理報告 = 副本狀態.get("processed_reports") or {}
     if isinstance(已處理報告, dict):
-        已處理.update(str(代碼) for 代碼, 記錄 in 已處理報告.items() if not 報告處理記錄可重試(記錄))
+        已處理.update(
+            str(代碼)
+            for 代碼, 記錄 in 已處理報告.items()
+            if not (可重試報告視為未處理 and 報告處理記錄可重試(記錄))
+        )
 
     已檢查報告 = 副本狀態.get("checked_reports") or {}
     if isinstance(已檢查報告, dict):
-        已處理.update(str(代碼) for 代碼, 記錄 in 已檢查報告.items() if not 報告處理記錄可重試(記錄))
+        已處理.update(
+            str(代碼)
+            for 代碼, 記錄 in 已檢查報告.items()
+            if not (可重試報告視為未處理 and 報告處理記錄可重試(記錄))
+        )
 
     排行榜 = 讀取排行榜檔案(副本設定)
     報告索引 = 排行榜.get("reports") if isinstance(排行榜, dict) else {}
@@ -3501,6 +3567,39 @@ def 清理報告檢查快取(副本狀態: dict[str, Any]) -> None:
         reverse=True,
     )
     副本狀態["checked_reports"] = dict(排序後項目[:報告檢查快取上限])
+
+
+def 套用延遲掃描執行狀態(
+    狀態: dict[str, Any],
+    副本設定: dict[str, Any],
+    處理狀態: dict[str, Any],
+) -> None:
+    延遲掃描狀態 = 處理狀態.get("delayed_scan")
+    if not isinstance(延遲掃描狀態, dict):
+        return
+
+    副本狀態索引 = 狀態.setdefault("encounters", {})
+    副本狀態 = 副本狀態索引.setdefault(副本設定["key"], {})
+    現在時間戳記 = 現在毫秒()
+    視窗 = 延遲掃描狀態.get("window") if isinstance(延遲掃描狀態.get("window"), dict) else {}
+
+    副本狀態["delayed_scan_enabled"] = bool(延遲掃描狀態.get("enabled"))
+    副本狀態["delayed_scan_recent_gap_hours"] = 延遲掃描狀態.get("recent_gap_hours")
+    副本狀態["delayed_scan_lookback_hours"] = 延遲掃描狀態.get("lookback_hours")
+    副本狀態["delayed_scan_range_start_at"] = 延遲掃描狀態.get("range_start_at")
+    副本狀態["delayed_scan_range_start_at_iso"] = 延遲掃描狀態.get("range_start_at_iso")
+    副本狀態["delayed_scan_range_end_at"] = 延遲掃描狀態.get("range_end_at")
+    副本狀態["delayed_scan_range_end_at_iso"] = 延遲掃描狀態.get("range_end_at_iso")
+    副本狀態["delayed_last_checked_at"] = 現在時間戳記
+    副本狀態["delayed_last_checked_at_iso"] = 毫秒轉_iso(現在時間戳記)
+    副本狀態["delayed_last_window_start_at"] = 視窗.get("start_at")
+    副本狀態["delayed_last_window_start_at_iso"] = 視窗.get("start_at_iso")
+    副本狀態["delayed_last_window_end_at"] = 視窗.get("end_at")
+    副本狀態["delayed_last_window_end_at_iso"] = 視窗.get("end_at_iso")
+    副本狀態["delayed_last_reports_found"] = 延遲掃描狀態.get("reports_found", 0)
+    副本狀態["delayed_last_reports_selected"] = 延遲掃描狀態.get("reports_selected", 0)
+    副本狀態["delayed_last_reports_skipped_known"] = 延遲掃描狀態.get("reports_skipped_known", 0)
+    副本狀態["delayed_last_reports_deferred"] = 延遲掃描狀態.get("reports_deferred", 0)
 
 
 def 套用歷史補查執行狀態(
@@ -3631,6 +3730,9 @@ def main() -> int:
         副本處理狀態[副本設定["key"]] = {
             "副本設定": 副本設定,
             "已處理報告代碼": 讀取已處理報告代碼(狀態, 副本設定),
+            # 24-72 小時的延遲掃描只找「真正沒見過」的新 report。
+            # 因此這裡保留一份不放行 retryable 狀態的嚴格集合，避免該區段重查既有 no-clear 紀錄。
+            "已知報告代碼": 讀取已處理報告代碼(狀態, 副本設定, 可重試報告視為未處理=False),
             "本輪已嘗試報告代碼": set(),
             "排行榜": 讀取排行榜檔案(副本設定),
             "待寫入成績清單": [],
@@ -3640,6 +3742,11 @@ def main() -> int:
             "candidate_reports": 0,
             "china_region_reports": 0,
             "recent_reports": 0,
+            "delayed_reports_found": 0,
+            "delayed_reports_selected": 0,
+            "delayed_reports_skipped_known": 0,
+            "delayed_reports_deferred": 0,
+            "delayed_scan": None,
             "history_reports_found": 0,
             "history_reports_selected": 0,
             "history_reports_skipped_known": 0,
@@ -3656,6 +3763,7 @@ def main() -> int:
 
     淺層掃描快取: dict[tuple[int, int, int, int | None], list[dict[str, Any]]] = {}
     本輪報告繁中服檢查快取: dict[str, dict[str, Any]] = {}
+    延遲掃描候選報告代碼: set[str] = set()
     歷史補查候選報告代碼: set[str] = set()
     已完成副本清單: list[dict[str, Any]] = []
     暫時失敗副本清單: list[dict[str, Any]] = []
@@ -3718,6 +3826,48 @@ def main() -> int:
             return True
         return 歷史補查深層報告上限 <= 0 or len(歷史補查候選報告代碼) < 歷史補查深層報告上限
 
+    def 延遲掃描仍可加入候選(報告代碼: str) -> bool:
+        if 報告代碼 in 延遲掃描候選報告代碼:
+            return True
+        return 延遲掃描深層報告上限 <= 0 or len(延遲掃描候選報告代碼) < 延遲掃描深層報告上限
+
+    def 是否為任何同區副本的未知報告(目前副本設定: dict[str, Any], 報告代碼: str) -> bool:
+        for 目標副本設定 in 取得同區同難度副本清單(目前副本設定):
+            目標處理狀態 = 副本處理狀態[目標副本設定["key"]]
+            if 報告代碼 in 目標處理狀態["本輪已嘗試報告代碼"]:
+                continue
+            if 報告代碼 not in 目標處理狀態["已知報告代碼"]:
+                return True
+        return False
+
+    def 篩選延遲掃描候選(
+        副本設定: dict[str, Any],
+        報告列表: list[dict[str, Any]],
+        最新報告代碼: set[str],
+    ) -> tuple[list[dict[str, Any]], dict[str, int]]:
+        候選列表: list[dict[str, Any]] = []
+        統計 = {"selected": 0, "skipped_known": 0, "deferred": 0}
+
+        for 報告 in 報告列表:
+            報告代碼 = str(報告.get("code") or "")
+            if not 報告代碼:
+                continue
+            if 報告代碼 in 最新報告代碼:
+                統計["skipped_known"] += 1
+                continue
+            if not 是否為任何同區副本的未知報告(副本設定, 報告代碼):
+                統計["skipped_known"] += 1
+                continue
+            if not 延遲掃描仍可加入候選(報告代碼):
+                統計["deferred"] += 1
+                continue
+
+            延遲掃描候選報告代碼.add(報告代碼)
+            候選列表.append(報告)
+            統計["selected"] += 1
+
+        return 候選列表, 統計
+
     def 篩選歷史補查候選(
         副本設定: dict[str, Any],
         報告列表: list[dict[str, Any]],
@@ -3767,6 +3917,7 @@ def main() -> int:
                 立即寫入=False,
             )
             處理狀態["已處理報告代碼"].add(已儲存報告代碼)
+            處理狀態["已知報告代碼"].add(已儲存報告代碼)
         寫入_json(狀態檔案路徑, 狀態)
 
         處理狀態["rankings_inserted_or_updated"] += 批次新增或更新數量
@@ -3814,6 +3965,7 @@ def main() -> int:
         副本設定 = 處理狀態["副本設定"]
         標記報告處理狀態(狀態, 副本設定, 報告代碼, 處理狀態文字, 額外內容, 立即寫入=立即寫入)
         處理狀態["已處理報告代碼"].add(報告代碼)
+        處理狀態["已知報告代碼"].add(報告代碼)
         處理狀態["本輪已嘗試報告代碼"].add(報告代碼)
 
     def 標記不可存取報告隱藏(目標副本設定: dict[str, Any], 報告代碼: str, 錯誤: Exception) -> None:
@@ -4039,6 +4191,51 @@ def main() -> int:
             最新報告列表 = 加入掃描來源(最新報告列表, "recent")
             最新報告代碼 = {str(報告.get("code")) for 報告 in 最新報告列表 if 報告.get("code")}
 
+            延遲報告列表: list[dict[str, Any]] = []
+            延遲掃描區間, 延遲掃描狀態 = 建立延遲掃描區間(副本設定, 掃描結束時間戳記)
+            目前處理狀態["delayed_scan"] = 延遲掃描狀態
+            延遲掃描暫停 = False
+
+            if 延遲掃描區間:
+                def 記錄延遲掃描進度(進度: dict[str, Any]) -> None:
+                    更新副本掃描進度(
+                        狀態,
+                        副本設定,
+                        scan_start_at=起始時間戳記,
+                        scan_start_at_iso=毫秒轉_iso(起始時間戳記),
+                        scan_end_at=掃描結束時間戳記,
+                        scan_end_at_iso=毫秒轉_iso(掃描結束時間戳記),
+                        **進度,
+                    )
+
+                try:
+                    延遲報告列表 = 擷取並快取淺層報告(
+                        副本設定,
+                        延遲掃描區間["start_at"],
+                        延遲掃描區間["end_at"],
+                        記錄延遲掃描進度,
+                        階段名稱="延遲淺層掃描",
+                    )
+                except FFLogs暫時性API錯誤 as 錯誤:
+                    延後副本掃描(副本設定, 目前處理狀態, 錯誤)
+                    延遲掃描暫停 = True
+
+            if 延遲掃描暫停:
+                continue
+
+            延遲報告列表 = 加入掃描來源(延遲報告列表, "delayed")
+            延遲報告候選列表, 延遲候選統計 = 篩選延遲掃描候選(副本設定, 延遲報告列表, 最新報告代碼)
+            延遲報告代碼 = {str(報告.get("code")) for 報告 in 延遲報告列表 if 報告.get("code")}
+            目前處理狀態["delayed_reports_found"] = len(延遲報告代碼)
+            目前處理狀態["delayed_reports_selected"] = 延遲候選統計["selected"]
+            目前處理狀態["delayed_reports_skipped_known"] = 延遲候選統計["skipped_known"]
+            目前處理狀態["delayed_reports_deferred"] = 延遲候選統計["deferred"]
+            if 延遲掃描狀態 is not None:
+                延遲掃描狀態["reports_found"] = len(延遲報告代碼)
+                延遲掃描狀態["reports_selected"] = 延遲候選統計["selected"]
+                延遲掃描狀態["reports_skipped_known"] = 延遲候選統計["skipped_known"]
+                延遲掃描狀態["reports_deferred"] = 延遲候選統計["deferred"]
+
             歷史報告列表: list[dict[str, Any]] = []
             歷史區間列表, 歷史補查狀態 = 建立歷史補查區間(狀態, 副本設定, 狀態時間戳記)
             目前處理狀態["history_scan"] = 歷史補查狀態
@@ -4077,7 +4274,8 @@ def main() -> int:
                 continue
 
             歷史報告列表 = 加入掃描來源(歷史報告列表, "history")
-            歷史報告候選列表, 歷史候選統計 = 篩選歷史補查候選(副本設定, 歷史報告列表, 最新報告代碼)
+            近期已涵蓋報告代碼 = 最新報告代碼 | 延遲報告代碼
+            歷史報告候選列表, 歷史候選統計 = 篩選歷史補查候選(副本設定, 歷史報告列表, 近期已涵蓋報告代碼)
             歷史報告代碼 = {str(報告.get("code")) for 報告 in 歷史報告列表 if 報告.get("code")}
             目前處理狀態["history_reports_found"] = len(歷史報告代碼)
             目前處理狀態["history_reports_selected"] = 歷史候選統計["selected"]
@@ -4089,7 +4287,7 @@ def main() -> int:
                 歷史補查狀態["reports_skipped_known"] = 歷史候選統計["skipped_known"]
                 歷史補查狀態["reports_deferred"] = 歷史候選統計["deferred"]
 
-            淺層報告列表 = 合併淺層報告列表(最新報告列表, 歷史報告候選列表)
+            淺層報告列表 = 合併淺層報告列表(最新報告列表, 延遲報告候選列表 + 歷史報告候選列表)
             目前處理狀態["recent_reports"] = len(最新報告列表)
             最新中國區域候選數 = sum(1 for 報告 in 最新報告列表 if 是否中國區域報告(報告))
             中國區域說明 = (
@@ -4100,6 +4298,8 @@ def main() -> int:
             print(
                 f"{副本設定['name']} 淺層掃描取得 "
                 f"{len(最新報告列表)} 份{淺層地區範圍說明()}候選報告{中國區域說明}；"
+                f"延遲掃描找到 {len(延遲報告代碼)} 份，選入 {延遲候選統計['selected']} 份"
+                f"（已知略過 {延遲候選統計['skipped_known']}，延後 {延遲候選統計['deferred']}）；"
                 f"歷史補查找到 {len(歷史報告代碼)} 份，選入 {歷史候選統計['selected']} 份"
                 f"（已知略過 {歷史候選統計['skipped_known']}，延後 {歷史候選統計['deferred']}）。"
             )
@@ -4212,7 +4412,11 @@ def main() -> int:
                             "fight_id": 錯誤.戰鬥_id,
                         },
                     )
-                    目標處理狀態["history_reports_deferred"] += 1
+                    掃描來源 = str(報告.get("_scan_source") or "")
+                    if 掃描來源 == "delayed":
+                        目標處理狀態["delayed_reports_deferred"] += 1
+                    elif 掃描來源 == "history":
+                        目標處理狀態["history_reports_deferred"] += 1
                     print(f"{目標副本['name']} {進度文字} FFLogs 尚未完整匯出，延後重抓：{報告代碼}")
                     continue
                 except FFLogs報告存取錯誤 as 錯誤:
@@ -4235,6 +4439,7 @@ def main() -> int:
                     目標處理狀態["待寫入成績清單"].append(成績)
                     目標處理狀態["待標記已儲存報告"].append(報告代碼)
                     目標處理狀態["已處理報告代碼"].add(報告代碼)
+                    目標處理狀態["已知報告代碼"].add(報告代碼)
                     print(
                         f"{目標副本['name']} {進度文字} 已整理有效報告：{報告代碼}"
                         f"（待寫入 {len(目標處理狀態['待寫入成績清單'])}/{排行榜批次寫入報告數}）"
@@ -4271,6 +4476,11 @@ def main() -> int:
             "candidate_reports": 處理狀態["candidate_reports"],
             "china_region_reports": 處理狀態["china_region_reports"],
             "recent_reports": 處理狀態["recent_reports"],
+            "delayed_reports_found": 處理狀態["delayed_reports_found"],
+            "delayed_reports_selected": 處理狀態["delayed_reports_selected"],
+            "delayed_reports_skipped_known": 處理狀態["delayed_reports_skipped_known"],
+            "delayed_reports_deferred": 處理狀態["delayed_reports_deferred"],
+            "delayed_scan": 處理狀態.get("delayed_scan"),
             "history_reports_found": 處理狀態["history_reports_found"],
             "history_reports_selected": 處理狀態["history_reports_selected"],
             "history_reports_skipped_known": 處理狀態["history_reports_skipped_known"],
@@ -4315,6 +4525,7 @@ def main() -> int:
         寫入_json(狀態檔案路徑, 狀態)
     else:
         for 副本設定 in 已完成副本清單:
+            套用延遲掃描執行狀態(狀態, 副本設定, 副本處理狀態[副本設定["key"]])
             套用歷史補查執行狀態(狀態, 副本設定, 副本處理狀態[副本設定["key"]])
         更新狀態(
             狀態,

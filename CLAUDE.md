@@ -107,12 +107,13 @@
 12. `scripts/apply_cloudflare_rules.mjs` 必須維護 Meta/Facebook 分享爬蟲例外規則；`AS32934`、`AS63293` 與 Cloudflare verified Facebook bot 的 GET/HEAD 請求需跳過會造成 OG 抓取 403 的 Security Level、BIC、UA Blocking、Rate Limiting 與後續自訂規則。
 13. GCD 覆蓋率目前已在前端開啟：`src/utils/siteFeatures.js` 的 `顯示Gcd覆蓋率=true`。GitHub Actions 會在新 report 落地時由 `fetch_fflogs.py` 即時計算 GCD 衍生結果；既有玩家的全量補算仍維持手動。`npm run backfill:gcd -- --dry-run` 可手動列出待以本地演算法更新的 GCD 覆蓋率筆數與本輪候選；若需要追平舊資料，再正式執行 `npm run backfill:gcd`。若要本機全量重算所有非 null 玩家 GCD，使用 `npm run backfill:gcd:all`。
 14. `scripts/fetch_fflogs.py` 遇到 FFLogs 暫時性 500/502/503/504 或連線逾時時，只延後受影響副本並保留該副本原掃描點；`active_scan.last_error_*` 會記錄錯誤摘要，已完成副本仍可推進掃描點，避免單一 API 波動中斷整輪資料更新。
-15. GitHub Actions 會用 `FFLOGS_HISTORY_SCAN_*` 環境變數暫時開啟低量歷史補查，並用 `FFLOGS_FETCH_GCD_COVERAGE_*` 在新 report 落地時即時計算 GCD；`config/fflogs.json` 仍預設關閉，避免本機一般執行時額外掃描舊時間窗或查 Casts graph。歷史補查依各副本 `history_scan_cursor_at` 輪巡，專門補抓後來才公開或延後匯出的 report，不取代最新增量掃描。
+15. GitHub Actions 會用 `FFLOGS_INCREMENTAL_LOOKBACK_HOURS=24` 與 `FFLOGS_NO_CLEAR_RETRY_HOURS=24` 讓最近 24 小時內的 no-clear / incomplete report 重新深查；另用 `FFLOGS_DELAYED_SCAN_*` 開啟 24-72 小時固定延遲掃描，只選入 state 與排行榜都沒見過的新 report，不重查既有紀錄。
 16. 額外檢視流程若需要完整資料，應只把 `/data/...` 改寫到 `/data/all/...`，不應改動前端邏輯；因此 `build:public-rankings` 與 `build:user-data` 必須維持一般公開資料與完整鏡像同步。
 17. GitHub Actions 會用 `FFLOGS_EXISTING_REPORT_STATUS_CHECK_*` 開啟既有 report 狀態巡檢；每輪依 report 時間由舊到新檢查固定數量，游標保存在 `data/state.json` 的 `existing_report_status_check`，跑完後會回到最舊紀錄繼續輪巡。
 18. `scripts/check_missing_gcd_report_status.py` 是一次性維護工具，只針對缺少 `gcd_coverage` key 或 `gcd_coverage: null` 的既有 report code 做輕量狀態查詢；不可存取時標記 report hidden，不補算 GCD，也不取代 `backfill_gcd_coverage.py`。
 19. `skipped_no_clear` 只在近期重試窗外才視為永久已檢查；workflow 預設 `FFLOGS_NO_CLEAR_RETRY_HOURS=24`，讓剛上傳但尚未匯出通關 fight 的 report 在一天內會被重新深查，避免後續出現 kill 時被舊快取擋掉。
-20. 單次 `fetch_fflogs.py` 執行內，report code 是深層檢查去重單位；`masterData.actors` 的繁中服玩家判斷會寫入本輪記憶體快取，後續同 report code 來自其他副本、recent 或 history 來源時直接重用結果或錯誤，不重複打 FFLogs API。
+20. 單次 `fetch_fflogs.py` 執行內，report code 是深層檢查去重單位；`masterData.actors` 的繁中服玩家判斷會寫入本輪記憶體快取，後續同 report code 來自其他副本、recent、delayed 或 history 來源時直接重用結果或錯誤，不重複打 FFLogs API。
+21. GitHub Actions 會用 `FFLOGS_HISTORY_SCAN_*` 環境變數暫時開啟低量歷史補查，並用 `FFLOGS_FETCH_GCD_COVERAGE_*` 在新 report 落地時即時計算 GCD；`config/fflogs.json` 仍預設關閉延遲掃描、歷史補查與 Casts graph 即時計算，避免本機一般執行時額外掃描舊時間窗或查 Casts graph。歷史補查依各副本 `history_scan_cursor_at` 輪巡，專門補抓後來才公開或延後匯出的更舊 report，不取代最新增量掃描與 24-72 小時延遲掃描。
 
 ### F. 版本切點與過版紀錄
 1. `config/encounters.json` 的 `version_cutoff` 用來描述副本版本有效期限；目前 `極 佐拉加` 與 `極 豔翼蛇鳥` 的過版切點是台灣時間 2026-04-21 18:00，對應 `2026-04-21T10:00:00.000Z`。

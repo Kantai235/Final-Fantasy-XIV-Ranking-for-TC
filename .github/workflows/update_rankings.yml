@@ -85,8 +85,15 @@ jobs:
           FFLOGS_CLIENT_CREDENTIALS_JSON: ${{ secrets.FFLOGS_CLIENT_CREDENTIALS_JSON }}
           # 玩家可能把繁中服角色的 report 上傳到其他地區；workflow 掃全部地區候選，再由 Python 以伺服器名稱篩繁中服玩家。
           FFLOGS_REPORT_REGION_SCOPE: ${{ vars.FFLOGS_REPORT_REGION_SCOPE || 'all' }}
+          # 近期完整重查只回溯 24 小時；這段會放行近期 no-clear report 重新深查，避免剛匯出的 kill 被快取擋住。
+          FFLOGS_INCREMENTAL_LOOKBACK_HOURS: ${{ vars.FFLOGS_INCREMENTAL_LOOKBACK_HOURS || '24' }}
           # 近期 report 可能先被掃到但尚未出現通關 fight；保留 24 小時重試窗，避免 skipped_no_clear 永久擋掉後續匯出的 kill。
           FFLOGS_NO_CLEAR_RETRY_HOURS: ${{ vars.FFLOGS_NO_CLEAR_RETRY_HOURS || '24' }}
+          # 延遲淺層掃描固定檢查 24-72 小時前的 reports，只選入 state 與排行榜都沒見過的新 report，不重查既有紀錄。
+          FFLOGS_DELAYED_SCAN_ENABLED: ${{ vars.FFLOGS_DELAYED_SCAN_ENABLED || 'true' }}
+          FFLOGS_DELAYED_SCAN_RECENT_GAP_HOURS: ${{ vars.FFLOGS_DELAYED_SCAN_RECENT_GAP_HOURS || '24' }}
+          FFLOGS_DELAYED_SCAN_LOOKBACK_HOURS: ${{ vars.FFLOGS_DELAYED_SCAN_LOOKBACK_HOURS || '72' }}
+          FFLOGS_DELAYED_MAX_DEEP_REPORTS_PER_RUN: ${{ vars.FFLOGS_DELAYED_MAX_DEEP_REPORTS_PER_RUN || '0' }}
           # config/fflogs.json 預設關閉歷史補查；workflow 以低量輪巡方式檢查舊時間窗是否新增公開 logs。
           FFLOGS_HISTORY_SCAN_ENABLED: ${{ vars.FFLOGS_HISTORY_SCAN_ENABLED || 'true' }}
           FFLOGS_HISTORY_SCAN_FULL_RUN: ${{ vars.FFLOGS_HISTORY_SCAN_FULL_RUN || 'false' }}

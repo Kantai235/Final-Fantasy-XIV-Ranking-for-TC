@@ -63,7 +63,12 @@ class FetchFFLogsBatchTest(unittest.TestCase):
             "fetch_gcd_coverage_enabled": False,
             "fetch_gcd_coverage_max_fights_per_run": 0,
             "request_timeout": 30,
+            "incremental_lookback_hours": 24,
             "no_clear_retry_hours": 24,
+            "delayed_scan_enabled": False,
+            "delayed_scan_recent_gap_hours": 24,
+            "delayed_scan_lookback_hours": 72,
+            "delayed_max_deep_reports_per_run": 0,
             "retry_report_codes": [],
         }
 
@@ -80,7 +85,12 @@ class FetchFFLogsBatchTest(unittest.TestCase):
                 "FFLOGS_FETCH_GCD_COVERAGE_ENABLED": "true",
                 "FFLOGS_FETCH_GCD_COVERAGE_MAX_FIGHTS_PER_RUN": "500",
                 "FFLOGS_REQUEST_TIMEOUT": "12.5",
+                "FFLOGS_INCREMENTAL_LOOKBACK_HOURS": "24",
                 "FFLOGS_NO_CLEAR_RETRY_HOURS": "48",
+                "FFLOGS_DELAYED_SCAN_ENABLED": "true",
+                "FFLOGS_DELAYED_SCAN_RECENT_GAP_HOURS": "24",
+                "FFLOGS_DELAYED_SCAN_LOOKBACK_HOURS": "72",
+                "FFLOGS_DELAYED_MAX_DEEP_REPORTS_PER_RUN": "30",
                 "FFLOGS_RETRY_REPORT_CODES": "abc123, def456",
             },
         ):
@@ -96,7 +106,12 @@ class FetchFFLogsBatchTest(unittest.TestCase):
         self.assertTrue(覆寫後設定["fetch_gcd_coverage_enabled"])
         self.assertEqual(覆寫後設定["fetch_gcd_coverage_max_fights_per_run"], 500)
         self.assertEqual(覆寫後設定["request_timeout"], 12.5)
+        self.assertEqual(覆寫後設定["incremental_lookback_hours"], 24)
         self.assertEqual(覆寫後設定["no_clear_retry_hours"], 48)
+        self.assertTrue(覆寫後設定["delayed_scan_enabled"])
+        self.assertEqual(覆寫後設定["delayed_scan_recent_gap_hours"], 24)
+        self.assertEqual(覆寫後設定["delayed_scan_lookback_hours"], 72)
+        self.assertEqual(覆寫後設定["delayed_max_deep_reports_per_run"], 30)
         self.assertEqual(覆寫後設定["retry_report_codes"], ["abc123", "def456"])
 
     def test_report_fight_list_query_does_not_request_ranked_character_claimed(self) -> None:
@@ -104,6 +119,22 @@ class FetchFFLogsBatchTest(unittest.TestCase):
         # 目前資料管線不使用它，避免查詢非必要欄位造成整份 report 整理失敗。
         self.assertIn("rankedCharacters", fflogs.戰鬥清單查詢)
         self.assertNotIn("claimed", fflogs.戰鬥清單查詢)
+
+    def test_delayed_scan_window_targets_24_to_72_hours_before_scan_end(self) -> None:
+        一小時 = 60 * 60 * 1000
+        掃描結束 = 100 * 一小時
+
+        with (
+            patch.object(fflogs, "延遲掃描已啟用", True),
+            patch.object(fflogs, "延遲掃描最近避讓小時", 24),
+            patch.object(fflogs, "延遲掃描回溯小時", 72),
+        ):
+            區間, 狀態 = fflogs.建立延遲掃描區間({"key": "savage_m1s"}, 掃描結束)
+
+        self.assertEqual(區間, {"start_at": 28 * 一小時, "end_at": 76 * 一小時 - 1})
+        self.assertIsNotNone(狀態)
+        self.assertEqual(狀態["recent_gap_hours"], 24)
+        self.assertEqual(狀態["lookback_hours"], 72)
 
     def test_graphql_private_report_error_is_report_access_error(self) -> None:
         self.assertTrue(
@@ -688,10 +719,18 @@ class FetchFFLogsBatchTest(unittest.TestCase):
             patch.object(fflogs, "無通關報告重試毫秒", 24 * 一小時),
         ):
             已處理 = fflogs.讀取已處理報告代碼(狀態, 副本設定)
+            嚴格已知 = fflogs.讀取已處理報告代碼(
+                狀態,
+                副本設定,
+                可重試報告視為未處理=False,
+            )
 
         self.assertNotIn("recent-no-clear", 已處理)
         self.assertIn("old-no-clear", 已處理)
         self.assertIn("done", 已處理)
+        self.assertIn("recent-no-clear", 嚴格已知)
+        self.assertIn("old-no-clear", 嚴格已知)
+        self.assertIn("done", 嚴格已知)
 
     def test_ranking_rebuild_prefers_reports_over_stale_flat_entries(self) -> None:
         排行榜 = {
