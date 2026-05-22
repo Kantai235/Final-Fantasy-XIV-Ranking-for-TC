@@ -2368,7 +2368,11 @@ class 即時GCD覆蓋率計算器:
         self._已提示停用原因: str | None = None
         self._metadata_store = gcd_core.ActionMetadataStore()
         self._metadata_已載入 = False
+        self._status_store = gcd_core.StatusMetadataStore()
+        self._status_metadata_已載入 = False
         self._graph_cache: dict[tuple[str, int, float, float], dict[str, Any]] = {}
+        self._damage_event_cache: dict[tuple[str, int, float, float], list[dict[str, Any]]] = {}
+        self._raw_event_cache: dict[tuple[str, int, float, float], list[dict[str, Any]]] = {}
         self.checked_at_iso = 毫秒轉_iso(現在毫秒()) or ""
 
     def 可查詢下一場(self) -> bool:
@@ -2396,11 +2400,19 @@ class 即時GCD覆蓋率計算器:
         self._metadata_已載入 = True
         return True
 
+    def 載入狀態資料(self) -> bool:
+        if self._status_metadata_已載入:
+            return True
+        self._status_store.preload()
+        self._status_metadata_已載入 = True
+        return True
+
     def 補齊戰鬥玩家GCD覆蓋率(
         self,
         session: requests.Session,
         認證池: FFLogs認證池,
         報告代碼: str,
+        副本設定: dict[str, Any],
         戰鬥: dict[str, Any],
         玩家列表: list[dict[str, Any]],
     ) -> None:
@@ -2420,10 +2432,20 @@ class 即時GCD覆蓋率計算器:
         self.已查詢戰鬥數 += 1
         graph_cache_key = (報告代碼, fight_id, start_time, end_time)
         try:
-            graph = self._graph_cache.get(graph_cache_key)
-            if graph is None:
-                graph = gcd_core.query_fight_casts_graph(執行_graphql, session, 認證池, 報告代碼, 戰鬥)
-                self._graph_cache[graph_cache_key] = graph
+            base_graph = self._graph_cache.get(graph_cache_key)
+            if base_graph is None:
+                base_graph = gcd_core.query_fight_casts_graph(執行_graphql, session, 認證池, 報告代碼, 戰鬥)
+                self._graph_cache[graph_cache_key] = base_graph
+            graph = base_graph
+            if 副本設定.get("key") == "unreal_byakko":
+                events = self._damage_event_cache.get(graph_cache_key)
+                if events is None:
+                    events = gcd_core.query_fight_damage_done_events(執行_graphql, session, 認證池, 報告代碼, 戰鬥)
+                    self._damage_event_cache[graph_cache_key] = events
+                windows = gcd_core.infer_main_target_damage_downtime_windows(events)
+                if windows:
+                    graph = dict(graph)
+                    graph["encounter_downtime"] = windows
         except Exception as 錯誤:  # noqa: BLE001
             # GCD 是衍生欄位；Casts graph 暫時失敗不能阻擋排行榜主資料落地。
             self.失敗戰鬥數 += 1
@@ -2436,18 +2458,52 @@ class 即時GCD覆蓋率計算器:
             if source_id is None:
                 continue
 
-            coverage = gcd_core.calculate_gcd_coverage_from_graph(
-                graph,
-                self._metadata_store,
-                source_id=source_id,
-                job=玩家.get("job"),
-                fight_end_time=end_time,
-                fallback_denominator_ms=gcd_core.first_number(
-                    戰鬥.get("clear_time_ms"),
-                    end_time - start_time,
-                    戰鬥.get("damage_time_ms"),
-                ),
-            )
+            coverage = None
+            if 副本設定.get("key") == "unreal_byakko" and self.載入狀態資料():
+                raw_events = self._raw_event_cache.get(graph_cache_key)
+                if raw_events is None:
+                    raw_events = gcd_core.query_fight_raw_events(執行_graphql, session, 認證池, 報告代碼, 戰鬥)
+                    self._raw_event_cache[graph_cache_key] = raw_events
+                friendly_ids = {
+                    friendly_id
+                    for friendly_id in (gcd_core.to_int(隊友.get("fflogs_id")) for 隊友 in 玩家列表)
+                    if friendly_id is not None
+                }
+                downtime_source = gcd_core.raw_event_downtime_source(
+                    base_graph,
+                    raw_events,
+                    source_id=source_id,
+                    friendly_ids=friendly_ids,
+                    fight_start_time=start_time,
+                    fight_end_time=end_time,
+                    unable_to_act_status_ids=self._status_store.unable_to_act_status_ids(),
+                )
+                coverage = gcd_core.calculate_gcd_coverage_from_raw_events(
+                    raw_events,
+                    self._metadata_store,
+                    source_id=source_id,
+                    job=玩家.get("job"),
+                    fight_end_time=end_time,
+                    fallback_denominator_ms=gcd_core.first_number(
+                        戰鬥.get("clear_time_ms"),
+                        end_time - start_time,
+                        戰鬥.get("damage_time_ms"),
+                    ),
+                    downtime_source=downtime_source,
+                )
+            if not coverage:
+                coverage = gcd_core.calculate_gcd_coverage_from_graph(
+                    graph,
+                    self._metadata_store,
+                    source_id=source_id,
+                    job=玩家.get("job"),
+                    fight_end_time=end_time,
+                    fallback_denominator_ms=gcd_core.first_number(
+                        戰鬥.get("clear_time_ms"),
+                        end_time - start_time,
+                        戰鬥.get("damage_time_ms"),
+                    ),
+                )
             if not coverage:
                 continue
 
@@ -3317,7 +3373,7 @@ def 建立報告成績(
             "players": 玩家列表,
         }
         if gcd計算器 is not None:
-            gcd計算器.補齊戰鬥玩家GCD覆蓋率(session, 認證池, 報告代碼, 整理後戰鬥, 玩家列表)
+            gcd計算器.補齊戰鬥玩家GCD覆蓋率(session, 認證池, 報告代碼, 副本設定, 整理後戰鬥, 玩家列表)
 
         整理後戰鬥列表.append(整理後戰鬥)
 

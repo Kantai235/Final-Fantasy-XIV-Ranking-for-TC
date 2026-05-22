@@ -356,6 +356,7 @@ class LocalGcdFallback:
         self.auth_pool: Any = None
         self.metadata_store: local_gcd.ActionMetadataStore | None = None
         self.fight_graph_cache: dict[tuple[str, int, float, float], dict[str, Any]] = {}
+        self.damage_event_cache: dict[tuple[str, int, float, float], list[dict[str, Any]]] = {}
 
     def calculate(self, candidate: local_gcd.GcdCandidate) -> dict[str, Any] | None:
         if self.session is None:
@@ -375,7 +376,13 @@ class LocalGcdFallback:
         if graph is None:
             graph = local_gcd.query_fight_casts_graph(self.session, self.auth_pool, candidate)
             self.fight_graph_cache[cache_key] = graph
-
+        graph = local_gcd.add_encounter_specific_downtime(
+            graph,
+            session=self.session,
+            auth_pool=self.auth_pool,
+            candidate=candidate,
+            damage_event_cache=self.damage_event_cache,
+        )
         assert self.metadata_store is not None
         return local_gcd.calculate_gcd_coverage_from_graph(
             graph,

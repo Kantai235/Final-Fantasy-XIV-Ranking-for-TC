@@ -110,6 +110,57 @@ class GcdCoverageBackfillTest(unittest.TestCase):
         # 這比直接取分位數更接近它在 Always Be Casting 使用的 GCD recast 估算。
         self.assertEqual(multipliers[2500], 0.972)
 
+    def test_samurai_cast_packet_does_not_shorten_gcd_recast(self) -> None:
+        metadata = gcd.ActionMetadata(
+            action_id=7487,
+            name="Midare Setsugekka",
+            action_category_id=3,
+            cast_ms=1800,
+            recast_ms=2500,
+        )
+        attempt = {
+            "timestamp": 0,
+            "cast_duration_ms": 1300,
+            "metadata": metadata,
+        }
+        timing = gcd.gcd_core.RecastTimingEstimate(
+            multiplier_by_base={2500: 0.86},
+            dominant_speed_modifier_by_base={2500: 1.0},
+        )
+
+        recast = gcd.gcd_core.adjusted_recast_ms(
+            attempt,
+            0.86,
+            timing,
+            job="Samurai",
+            speed_windows=[],
+        )
+
+        # 武士居合的 FFLogs cast duration 會比遊戲內 GCD lock 短；若用 1300/1800
+        # 比例縮短 recast，Always Be Casting 會系統性低估武士覆蓋率。
+        self.assertEqual(recast, 2150)
+
+    def test_xivanalysis_like_action_overrides_cover_job_specific_gcd_locks(self) -> None:
+        overrides = gcd.gcd_core.GCD_ACTION_OVERRIDES
+
+        self.assertEqual(overrides[24290].gcd_recast_ms, 1000)
+        self.assertFalse(overrides[24290].speed_adjusted)
+        self.assertEqual(overrides[36978].gcd_recast_ms, 1500)
+        self.assertFalse(overrides[36978].speed_adjusted)
+        self.assertEqual(overrides[36984].gcd_recast_ms, 2500)
+        self.assertTrue(overrides[36984].speed_adjusted)
+        self.assertEqual(overrides[15999].gcd_recast_ms, 1000)
+        self.assertFalse(overrides[15999].speed_adjusted)
+        self.assertEqual(overrides[16196].gcd_recast_ms, 1500)
+        self.assertFalse(overrides[16196].speed_adjusted)
+        self.assertEqual(overrides[34620].gcd_recast_ms, 3000)
+        self.assertTrue(overrides[34620].speed_adjusted)
+        self.assertIn(34620, gcd.gcd_core.RECAST_SUBSTAT_EXCLUDED_ACTION_IDS)
+        self.assertEqual(overrides[4242].gcd_recast_ms, 8200)
+        self.assertFalse(overrides[4242].speed_adjusted)
+        self.assertEqual(overrides[36968].gcd_recast_ms, 3200)
+        self.assertTrue(overrides[36968].speed_adjusted)
+
     def test_speed_status_does_not_leak_to_pre_buff_gcds(self) -> None:
         metadata_store = FakeMetadataStore(
             {
@@ -198,6 +249,71 @@ class GcdCoverageBackfillTest(unittest.TestCase):
         self.assertEqual(result["denominator_ms"], 9000)
         self.assertEqual(result["downtime_ms"], 1000)
         self.assertEqual(result["percent"], 83.33)
+
+    def test_denominator_only_downtime_does_not_remove_player_activity(self) -> None:
+        metadata_store = FakeMetadataStore(
+            {
+                100: gcd.ActionMetadata(
+                    action_id=100,
+                    name="測試用 GCD",
+                    action_category_id=2,
+                    cast_ms=0,
+                    recast_ms=2500,
+                )
+            }
+        )
+        graph = {
+            "combatTime": 10000,
+            "denominator_downtime": [{"startTime": 4000, "endTime": 5000}],
+            "series": [
+                {
+                    "guid": 100,
+                    "events": [
+                        make_cast_group(0, 100),
+                        make_cast_group(3000, 100),
+                        make_cast_group(6000, 100),
+                        make_cast_group(9000, 100),
+                    ],
+                }
+            ],
+        }
+
+        result = gcd.calculate_gcd_coverage_from_graph(
+            graph,
+            metadata_store,  # type: ignore[arg-type]
+            fight_end_time=10000,
+        )
+
+        self.assertIsNotNone(result)
+        assert result is not None
+        self.assertEqual(result["denominator_ms"], 9000)
+        self.assertEqual(result["covered_time_ms"], 8500)
+        self.assertEqual(result["downtime_ms"], 1000)
+        self.assertEqual(result["coverage_downtime_ms"], 0)
+        self.assertEqual(result["denominator_downtime_ms"], 1000)
+        self.assertEqual(result["percent"], 94.44)
+
+    def test_infers_main_target_downtime_from_damage_gaps(self) -> None:
+        events = [
+            {"timestamp": 0, "targetID": 11},
+            {"timestamp": 1000, "targetID": 11},
+            {"timestamp": 2000, "targetID": 11},
+            {"timestamp": 3000, "targetID": 17},
+            {"timestamp": 4000, "targetID": 17},
+            {"timestamp": 20000, "targetID": 11},
+            {"timestamp": 21000, "targetID": 11},
+        ]
+
+        windows = gcd.gcd_core.infer_main_target_damage_downtime_windows(
+            events,
+            min_gap_ms=10_000,
+            min_event_share=0.50,
+        )
+
+        self.assertEqual(
+            windows,
+            [{"startTime": 2000, "endTime": 20000, "targetID": 11, "source": "main_target_damage_gap"}],
+        )
 
     def test_ninja_ability_overrides_count_as_gcd_locks(self) -> None:
         metadata_store = FakeMetadataStore(
@@ -328,6 +444,186 @@ class GcdCoverageBackfillTest(unittest.TestCase):
         self.assertEqual(result["gcd_cast_count"], 2)
         self.assertEqual(result["covered_time_ms"], 5000)
         self.assertEqual(result["percent"], 50.0)
+
+    def test_raw_events_use_combatantinfo_speed_and_status_windows(self) -> None:
+        metadata_store = FakeMetadataStore(
+            {
+                100: gcd.ActionMetadata(
+                    action_id=100,
+                    name="Raw Fixture GCD",
+                    action_category_id=3,
+                    cast_ms=0,
+                    recast_ms=2500,
+                )
+            }
+        )
+        raw_events = [
+            {
+                "type": "combatantinfo",
+                "timestamp": 0,
+                "sourceID": 10,
+                "skillSpeed": 582,
+                "spellSpeed": 420,
+                "auras": [],
+            },
+            {"type": "applybuff", "timestamp": 1000, "sourceID": 10, "targetID": 10, "abilityGameID": 1001299, "duration": 4000},
+            {"type": "cast", "timestamp": 1000, "sourceID": 10, "abilityGameID": 100},
+            {"type": "cast", "timestamp": 4000, "sourceID": 10, "abilityGameID": 100},
+            {"type": "cast", "timestamp": 7000, "sourceID": 10, "abilityGameID": 100},
+        ]
+
+        result = gcd.gcd_core.calculate_gcd_coverage_from_raw_events(
+            raw_events,
+            metadata_store,  # type: ignore[arg-type]
+            source_id=10,
+            job="Samurai",
+            fight_end_time=10000,
+            fallback_denominator_ms=10000,
+        )
+
+        self.assertIsNotNone(result)
+        assert result is not None
+        self.assertEqual(result["source"], gcd.gcd_core.GCD_SOURCE_RAW_EVENTS)
+        self.assertEqual(result["speed_stat_source"], "combatantinfo")
+        self.assertEqual(result["gcd_cast_count"], 3)
+        self.assertEqual(result["covered_time_ms"], 7110)
+        self.assertEqual(result["percent"], 71.1)
+
+    def test_raw_events_infer_unable_to_act_status_windows(self) -> None:
+        raw_events = [
+            {"type": "applydebuff", "timestamp": 1000, "targetID": 10, "abilityGameID": 1000783},
+            {"type": "refreshdebuff", "timestamp": 1500, "targetID": 10, "abilityGameID": 1000783},
+            {"type": "removedebuff", "timestamp": 3000, "targetID": 10, "abilityGameID": 1000783},
+            {"type": "applybuff", "timestamp": 3500, "targetID": 11, "abilityGameID": 1001513},
+            {"type": "applydebuff", "timestamp": 4000, "targetID": 10, "abilityGameID": 1001513},
+        ]
+
+        windows = gcd.gcd_core.infer_unable_to_act_windows(
+            raw_events,
+            source_id=10,
+            unable_to_act_status_ids={783, 1513},
+            fight_end_time=5000,
+        )
+
+        self.assertEqual(
+            windows,
+            [
+                {"startTime": 1000, "endTime": 3000, "statusID": 783, "source": "unable_to_act_status"},
+                {"startTime": 4000, "endTime": 5000, "statusID": 1513, "source": "unable_to_act_status"},
+            ],
+        )
+
+    def test_raw_events_infer_all_foes_untargetable_after_midfight_add_leaves(self) -> None:
+        raw_events = [
+            {"type": "damage", "timestamp": 250, "sourceID": 10, "targetID": 99, "abilityGameID": 100},
+            {"type": "targetabilityupdate", "timestamp": 500, "sourceID": 17, "targetable": 1},
+            {"type": "targetabilityupdate", "timestamp": 1000, "sourceID": 11, "targetable": 0},
+            {"type": "targetabilityupdate", "timestamp": 1500, "sourceID": 17, "targetable": 0},
+            {"type": "targetabilityupdate", "timestamp": 3000, "sourceID": 11, "targetable": 1},
+        ]
+
+        windows = gcd.gcd_core.infer_all_foes_untargetable_windows(
+            raw_events,
+            friendly_ids={10},
+            fight_start_time=0,
+            fight_end_time=5000,
+        )
+
+        self.assertEqual(windows, [{"startTime": 1500, "endTime": 3000, "source": "all_foes_untargetable"}])
+
+    def test_raw_events_use_xivanalysis_tendo_kaeshi_recast_override(self) -> None:
+        metadata_store = FakeMetadataStore(
+            {
+                36968: gcd.ActionMetadata(
+                    action_id=36968,
+                    name="Tendo Kaeshi Setsugekka",
+                    action_category_id=3,
+                    cast_ms=0,
+                    recast_ms=2500,
+                    gcd_recast_ms=3200,
+                )
+            }
+        )
+        raw_events = [
+            {"type": "cast", "timestamp": 0, "sourceID": 10, "abilityGameID": 36968},
+        ]
+
+        result = gcd.gcd_core.calculate_gcd_coverage_from_raw_events(
+            raw_events,
+            metadata_store,  # type: ignore[arg-type]
+            source_id=10,
+            job="Samurai",
+            fight_end_time=4000,
+            fallback_denominator_ms=4000,
+        )
+
+        self.assertIsNotNone(result)
+        assert result is not None
+        self.assertEqual(result["covered_time_ms"], 3200)
+        self.assertEqual(result["percent"], 80.0)
+
+    def test_raw_events_infer_recast_when_combatantinfo_has_no_speed_stats(self) -> None:
+        metadata_store = FakeMetadataStore(
+            {
+                100: gcd.ActionMetadata(
+                    action_id=100,
+                    name="Raw Fixture GCD",
+                    action_category_id=3,
+                    cast_ms=0,
+                    recast_ms=2500,
+                )
+            }
+        )
+        raw_events = [
+            {"type": "combatantinfo", "timestamp": 0, "sourceID": 10, "auras": []},
+            {"type": "cast", "timestamp": 0, "sourceID": 10, "abilityGameID": 100},
+            {"type": "cast", "timestamp": 2400, "sourceID": 10, "abilityGameID": 100},
+        ]
+
+        result = gcd.gcd_core.calculate_gcd_coverage_from_raw_events(
+            raw_events,
+            metadata_store,  # type: ignore[arg-type]
+            source_id=10,
+            fight_end_time=10000,
+            fallback_denominator_ms=10000,
+        )
+
+        self.assertIsNotNone(result)
+        assert result is not None
+        self.assertEqual(result["covered_time_ms"], 4820)
+        self.assertEqual(result["percent"], 48.2)
+
+    def test_raw_events_cap_viper_overlap_at_next_gcd(self) -> None:
+        metadata_store = FakeMetadataStore(
+            {
+                100: gcd.ActionMetadata(
+                    action_id=100,
+                    name="Viper Fixture GCD",
+                    action_category_id=3,
+                    cast_ms=0,
+                    recast_ms=2500,
+                    recast_speed_adjusted=False,
+                )
+            }
+        )
+        raw_events = [
+            {"type": "cast", "timestamp": 0, "sourceID": 10, "abilityGameID": 100},
+            {"type": "cast", "timestamp": 2000, "sourceID": 10, "abilityGameID": 100},
+        ]
+
+        result = gcd.gcd_core.calculate_gcd_coverage_from_raw_events(
+            raw_events,
+            metadata_store,  # type: ignore[arg-type]
+            source_id=10,
+            job="Viper",
+            fight_end_time=5000,
+            fallback_denominator_ms=5000,
+        )
+
+        self.assertIsNotNone(result)
+        assert result is not None
+        self.assertEqual(result["covered_time_ms"], 4500)
+        self.assertEqual(result["percent"], 90.0)
 
     def test_scan_candidates_counts_missing_and_null_gcd_keys(self) -> None:
         encounter = {"key": "fixture", "name": "測試副本", "zone_id": 1, "encounter_id": 2, "difficulty": 100}

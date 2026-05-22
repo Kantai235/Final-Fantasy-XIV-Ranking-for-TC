@@ -50,6 +50,7 @@ Final Fantasy XIV 繁中服排行榜是一個以 FFLogs 公開資料為來源的
 │   ├── gcd_coverage_core.py   # fetch/backfill 共用的本地 GCD 覆蓋率計算核心
 │   ├── backfill_gcd_coverage.py # 以 xivanalysis 規則參照的本地 GCD 覆蓋率計算
 │   ├── backfill_gcd_coverage_xivanalysis.py # 診斷用：解析 xivanalysis 頁面結果，不作為 workflow 預設
+│   ├── audit_xivanalysis_gcd_sample.py # 診斷用：抽樣比對本地 GCD 與 xivanalysis 頁面值
 │   ├── build_user_data.mjs    # 產生個人成績單、全服統計、近期動態、隊伍榜與伺服器對比資料
 │   ├── validate_data.mjs      # 驗證公開資料、分片與使用者索引完整性
 │   ├── test_build_user_data.mjs # 使用 fixture 驗證資料建置規則
@@ -218,11 +219,13 @@ npm run backfill:gcd -- --dry-run
 npm run backfill:gcd
 ```
 
-`fetch_fflogs.py` 抓到新 report 時，workflow 會在每場 fight 的玩家成績整理完成後，順手查同一場 FFLogs `Casts` graph，並用 `scripts/gcd_coverage_core.py` 的本地 xivanalysis-like 演算法計算 GCD 覆蓋率；只保存 `gcd_coverage` 與 `gcd_coverage_status` 衍生結果，不保存 Casts raw events。這讓最新增量掃描與歷史巡檢補回來的新公開 logs 都能當場補 GCD。
+`fetch_fflogs.py` 抓到新 report 時，workflow 會在每場 fight 的玩家成績整理完成後，順手查同一場 FFLogs `Casts` graph，並用 `scripts/gcd_coverage_core.py` 的本地 xivanalysis-like 演算法計算 GCD 覆蓋率；只保存 `gcd_coverage` 與 `gcd_coverage_status` 衍生結果，不保存 Casts graph 或 raw events。幻白虎 `unreal_byakko` 會自動改查同場 FFLogs `All` raw events，因為 xivanalysis 的 Always Be Casting 需要玩家無法行動狀態與 Boss/add targetability 才能精準扣 downtime。這讓最新增量掃描與歷史巡檢補回來的新公開 logs 都能當場補 GCD。
 
-`backfill_gcd_coverage.py` 則保留為修補既有歷史資料的手動工具。它會依通關時間由新到舊挑選缺少 `gcd_coverage` key，或仍停在舊版 `calculation_version` 的玩家，預設每輪 2000 筆。執行時會先輸出待補筆數、需重算筆數、已為 null 的筆數與本輪選取筆數，更新過程也會逐筆顯示 `[目前/本輪總數]` 進度。同一個 report/fight 會優先只查一次整場 FFLogs `Casts` graph，再於本地依玩家 `sourceID` 切分，避免每位玩家各打一個 FFLogs request。若 FFLogs report 已無法存取，該玩家會寫入 `gcd_coverage: null` 與 `gcd_coverage_status.reason = "private_or_deleted"`，並同步標記來源 report，讓一般公開資料排除整份 report；暫時性錯誤會保留缺 key 或舊版狀態，留待下次重試。
+`backfill_gcd_coverage.py` 則保留為修補既有歷史資料的手動工具。它會依通關時間由新到舊挑選缺少 `gcd_coverage` key，或仍停在舊版 `calculation_version` 的玩家，預設每輪 2000 筆。執行時會先輸出待補筆數、需重算筆數、已為 null 的筆數與本輪選取筆數，更新過程也會逐筆顯示 `[目前/本輪總數]` 進度。同一個 report/fight 會優先只查一次整場 FFLogs `Casts` graph 或 raw events，再於本地依玩家 `sourceID` 切分，避免每位玩家各打一個 FFLogs request。`unreal_byakko` 預設使用 raw events；其他副本若加上 `--raw-events`，可強制改用 FFLogs `All` events 做診斷性重算，但正式啟用前仍要用 xivanalysis 抽樣驗證各職業模組語意。若 FFLogs report 已無法存取，該玩家會寫入 `gcd_coverage: null` 與 `gcd_coverage_status.reason = "private_or_deleted"`，並同步標記來源 report，讓一般公開資料排除整份 report；暫時性錯誤會保留缺 key 或舊版狀態，留待下次重試。
 
-本地計算會參照 xivanalysis `Always be casting` 的核心規則：以 GCD cast/recast 取最大覆蓋時間、扣除 downtime，並用 FFLogs 約 45ms 批次的 timestamp 分桶推估實際 recast。對於忍者 mudra/ninjutsu、毒蛇劍士獨立 `gcdRecast`，以及毒蛇劍士、武士、白魔法師等加速狀態，腳本會用小型規則表補上 `Action.csv` 無法表達的例外。xivanalysis 頁面本身容易被站端限流，因此 workflow 預設不再讀取該網站頁面。
+本地計算會參照 xivanalysis `Always be casting` 的核心規則：以 GCD cast/recast 取最大覆蓋時間、扣除 downtime，並用 FFLogs 約 45ms 批次的 timestamp 分桶推估實際 recast。對於忍者 mudra/ninjutsu、召喚師三種召喚、舞者步舞與 Finish 類技能、舞者 Finishing Move、賢者 Eukrasia、絕槍戰士部分長冷卻 GCD、占星巨集宇宙、毒蛇劍士獨立 `gcdRecast`，以及毒蛇劍士、武士、白魔法師等加速狀態，腳本會用小型規則表補上 `Action.csv` 無法表達的例外；武士 `Tendo Kaeshi Setsugekka` 會依 xivanalysis 視為 3.2 秒 GCD，毒蛇 `Dreadwinder/Vicepit` 則拆分為不吃副屬性但吃 `Swiftscaled` 狀態加速。若 raw `combatantinfo` 沒提供技速/詠速，會退回同場 GCD timestamp 分桶推估實際 recast；武士居合類技能也不會用 FFLogs 偏短的 cast packet 比例縮短 GCD lock。xivanalysis 頁面本身容易被站端限流，因此 workflow 預設不再讀取該網站頁面。
+
+少數副本的 FFLogs `Casts` graph 不會回傳 downtime 視窗，但 boss 轉場仍應從 GCD 覆蓋率分母扣除。`unreal_byakko` 不再用「主目標傷害長斷窗」近似 downtime，而是從 raw `targetabilityupdate` 推出所有敵人都不可選取的窗口，並用 `Status.csv` 的 `LockActions/LockControl` 狀態補上玩家 UnableToAct；推導 targetability 時只使用實際出現 targetability 事件的敵方 actor，避免把雜項 actor 誤當成仍可攻擊敵人。這是為了對齊 xivanalysis 對幻白虎轉場、白帝階段與玩家被控制狀態的處理。
 
 若要在本機把既有玩家 GCD 都以目前本地演算法重新計算，執行：
 
@@ -233,6 +236,8 @@ npm run validate:data
 ```
 
 `backfill:gcd:all` 會帶 `--all --limit 999999`，連已是目前 `calculation_version` 的玩家也會重新計算；已標為 `gcd_coverage: null` 的不可用 report 仍會略過，避免反覆查詢 Private、刪除或無權限的報告。若只想重算單場，可使用 `npm run backfill:gcd -- --report-code A4cf9kg7Xbmt6vDh --fight-id 3`。
+
+若要針對單場差異追查 raw events 與 Casts graph 的差別，可在單場指令後加上 `--raw-events`。這會即時讀取 FFLogs `All` events、使用 `combatantinfo` 的技速/詠速、狀態視窗與 raw targetability 重算；若 FFLogs 沒提供副屬性，會改用同場 GCD timestamp 分桶推估 recast。raw events 仍只在記憶體中使用，不會寫入 repo。
 
 若只是要一次性排查「仍缺少 `gcd_coverage` key 或 `gcd_coverage: null` 的 report 是否已無法讀取」，可先預覽：
 
@@ -248,7 +253,7 @@ npm run check:gcd-missing-report-status
 
 這個腳本只對沒有可用 GCD 資料的既有 report code 做輕量 report 狀態查詢；候選包含缺少 `gcd_coverage` key 與 `gcd_coverage: null`。若 FFLogs 回報無權限、report 不存在或找不到，會將同一 report code 在所有排行榜來源中標記為 hidden。它不會查 Casts graph，也不會補算 GCD 覆蓋率。
 
-`scripts/backfill_gcd_coverage_xivanalysis.py` 保留為人工診斷工具，用來抽樣比對 xivanalysis 頁面顯示值；它不是 GitHub Actions 的預設流程。若臨時需要使用，請先安裝 Playwright Chromium，並把 worker 與速率調低，避免再次觸發 xivanalysis 的 `Slow down / Too many requests` 限流。
+`scripts/backfill_gcd_coverage_xivanalysis.py` 保留為人工診斷工具，用來對指定 report/fight/player 抓取 xivanalysis 頁面顯示值；它不是 GitHub Actions 的預設流程。若臨時需要使用，請先安裝 Playwright Chromium，並把 worker 與速率調低，避免再次觸發 xivanalysis 的 `Slow down / Too many requests` 限流。若要隨機抽樣零式、極、幻共 100 場戰鬥並輸出比對報告，可執行 `npm run audit:gcd:xivanalysis`；預設會用 `--local-mode recompute` 從 FFLogs Casts graph 即時計算本地值再比對 xivanalysis。需要把不相符的抽樣玩家寫回 xivanalysis 頁面值時，直接呼叫 `python scripts/audit_xivanalysis_gcd_sample.py --sample-size 100 --local-mode stored --apply --delay-ms 2500`，並在完成後重建 `build:public-rankings`、`build:user-data` 與 `validate:data`。
 
 清理既有 `data/rankings/*.reports/*.json` 裡可重查的大型 FFLogs raw 欄位時，先預覽再正式執行：
 
@@ -505,7 +510,7 @@ npm run cloudflare:estimate
 - 單場 FFLogs `playerDetails` / `damageDone` 查詢會同時帶 `fightIDs` 與 fight 的相對 `startTime` / `endTime`，避免少數舊報告只用 `fightIDs` 時拿到 partial damage table，造成 rDPS/aDPS 異常放大。
 - `active_percent` 對齊 FFLogs Damage Done CSV 的 Active%，使用 `fflogs_total_time_ms` 作為優先分母；DPS/rDPS/aDPS 仍使用 `damage_time_ms`。
 - 排行榜報告欄以「報告」按鈕開啟可關閉的彈跳視窗，集中呈現該筆成績數值與 FFLogs、xivanalysis、ffreplay 外部工具連結。個人成績單若同場戰鬥有多份 report 來源，彈窗會依 `report_variants` 顯示分頁。精準 xivanalysis 玩家頁使用公開 JSON 的 `report_code`、`fight_id` 與 `fflogs_source_id` 組成 `/fflogs/{report}/{fight}/{sourceID}`；`fflogs_source_id` 來自 FFLogs `playerDetails` 的 sourceID，只用於外部工具深連結，不作為排行榜角色身分主鍵。
-- GCD 覆蓋率目前前端已開啟：`顯示Gcd覆蓋率=true`。GitHub Actions 會在新 report 落地時即時計算 GCD 衍生結果；既有玩家的全量 backfill 仍維持手動。`fetch_fflogs.py` 與 `backfill_gcd_coverage.py` 都共用 `gcd_coverage_core.py`，以 FFLogs `Casts` graph 本地計算，`backfill_gcd_coverage_xivanalysis.py` 只保留為抽樣診斷工具；需要追平舊資料時，先以 `npm run backfill:gcd -- --dry-run` 預覽。本地計算會使用 graph 內的 downtime 視窗同時扣除分母與分子；同一個 report/fight 優先查整場 graph，再於本地依玩家 `sourceID` 切分，降低 FFLogs request 數。技能的 GCD 分類與基礎 cast/recast 以 XIVAPI datamining 的 `Action.csv` 為底，並用小型 allow-list 補上 xivanalysis 也會視為 GCD 的例外，例如忍者 mudra/ninjutsu，以及毒蛇劍士同時具有技能冷卻與獨立 GCD recast 的技能。完整 Casts raw events 只在記憶體中計算，不會保存到 repo。
+- GCD 覆蓋率目前前端已開啟：`顯示Gcd覆蓋率=true`。GitHub Actions 會在新 report 落地時即時計算 GCD 衍生結果；既有玩家的全量 backfill 仍維持手動。`fetch_fflogs.py` 與 `backfill_gcd_coverage.py` 都共用 `gcd_coverage_core.py`，預設以 FFLogs `Casts` graph 本地計算；`unreal_byakko` 會改用 FFLogs `All` raw events，從 targetability 與 UnableToAct 狀態推導 xivanalysis-like downtime。`backfill_gcd_coverage_xivanalysis.py` 與 `audit_xivanalysis_gcd_sample.py` 只保留為人工診斷工具；需要追平舊資料時，先以 `npm run backfill:gcd -- --dry-run` 預覽。同一個 report/fight 優先查整場 graph 或 raw events，再於本地依玩家 `sourceID` 切分，降低 FFLogs request 數。技能的 GCD 分類與基礎 cast/recast 以 XIVAPI datamining 的 `Action.csv` 為底，並用小型 allow-list 補上 xivanalysis 也會視為 GCD 的例外，例如忍者 mudra/ninjutsu、Limit Break、機工士 Hypercharge 與長冷卻 GCD、召喚師召喚、舞者步舞與 Finish 類技能、賢者 Eukrasia、占星巨集宇宙、武士 `Tendo Kaeshi Setsugekka` 3.2 秒 GCD，以及毒蛇劍士同時具有技能冷卻、獨立 GCD recast 與只吃狀態加速的技能。完整 raw events 只在記憶體中計算，不會保存到 repo。
 
 ## 版本切點與過版紀錄
 

@@ -87,11 +87,12 @@
 5. `backfill_missing_fflogs_data.py` 只應補齊影響建置的欄位，例如 `fights[].players`、`clear_time_ms` 與 `damage_time_ms`；不得因缺少 raw 欄位而把大型原始資料補回 repo。
 6. 單場 `playerDetails` 與 `damageDone` GraphQL 查詢必須同時帶 `fightIDs` 以及該 fight 的相對 `startTime` / `endTime`。少數 FFLogs 舊報告的 `report.endTime` 可能停在 fight 中途；只用 `fightIDs` 會拿到 partial table，導致 rDPS/aDPS 異常放大。
 7. `active_percent` 對齊 FFLogs Damage Done CSV 的 Active%，優先使用 `fflogs_total_time_ms` 作為分母；DPS/rDPS/aDPS 仍使用 `damage_time_ms` 作為分母。
-8. `gcd_coverage` 只保存衍生結果，不保存 FFLogs Casts raw events。key 不存在代表尚未嘗試補齊；值為 `null` 代表已嘗試但 report 已轉為 Private、刪除或無權限。
-9. `scripts/backfill_gcd_coverage.py` 會以 FFLogs `Casts` graph 本地補算 GCD 覆蓋率；GraphQL 查詢必須帶 `fightIDs` 與該 fight 的相對 `startTime` / `endTime`，同一個 report/fight 優先查整場 graph 後再依玩家 `sourceID` 於本地切分，避免每位玩家各打一個 request。計算仍使用 graph downtime 視窗同時扣除分母與分子。
-10. GCD 技能分類與基礎 cast/recast 以 XIVAPI datamining `Action.csv` 為底；腳本只於執行時讀入記憶體，不落地完整遊戲資料。`Action.csv` 無法表達的 xivanalysis-like 例外，例如忍者 mudra/ninjutsu 屬於 GCD 流程、毒蛇劍士部分技能有獨立 `gcdRecast`，需在腳本 allow-list 補上。實際 recast 參照 xivanalysis 的 45ms timestamp 分桶估計，並拆分忍者/武僧職業加速與毒蛇劍士、武士、白魔法師等加速狀態，避免把有 buff 的短 GCD 誤套到開場或 buff 斷掉的 GCD；最後仍以下一個 GCD timestamp 夾住覆蓋區間，避免 FFLogs 偏短 cast packet 間隔讓高施放密度職業被高估。
+8. `gcd_coverage` 只保存衍生結果，不保存 FFLogs Casts graph 或 raw events。key 不存在代表尚未嘗試補齊；值為 `null` 代表已嘗試但 report 已轉為 Private、刪除或無權限。
+9. `scripts/backfill_gcd_coverage.py` 會以 FFLogs `Casts` graph 本地補算 GCD 覆蓋率；GraphQL 查詢必須帶 `fightIDs` 與該 fight 的相對 `startTime` / `endTime`，同一個 report/fight 優先查整場 graph 後再依玩家 `sourceID` 於本地切分，避免每位玩家各打一個 request。`unreal_byakko` 預設改用 FFLogs `All` raw events，因為幻白虎需要 raw targetability 與玩家 UnableToAct 狀態才能對齊 xivanalysis。
+10. GCD 技能分類與基礎 cast/recast 以 XIVAPI datamining `Action.csv` 為底；腳本只於執行時讀入記憶體，不落地完整遊戲資料。`Action.csv` 無法表達的 xivanalysis-like 例外，例如忍者 mudra/ninjutsu 屬於 GCD 流程、Limit Break、機工士 Hypercharge 與長冷卻 GCD、舞者步舞與 Finish 類技能、賢者 Eukrasia、武士 `Tendo Kaeshi Setsugekka` 3.2 秒 GCD、毒蛇劍士部分技能有獨立 `gcdRecast`，需在腳本 allow-list 補上。實際 recast 參照 xivanalysis 的 45ms timestamp 分桶估計；若 raw `combatantinfo` 沒有技速/詠速，必須退回同場 GCD timestamp 分桶推估。毒蛇 `Dreadwinder/Vicepit` 不吃副屬性但會吃 `Swiftscaled` 狀態加速；武士居合類技能不可用 FFLogs 偏短的 cast packet 比例縮短 GCD lock；毒蛇 raw packet 需以下一個 GCD timestamp 夾住覆蓋區間，避免轉化 GCD 重疊被重複加分。
 11. `scripts/backfill_gcd_coverage_xivanalysis.py` 只保留為人工抽樣診斷工具，會以 Playwright 開啟 xivanalysis report/fight/player 頁面並解析 Checklist 的 `Always be casting` 百分比；GitHub Actions 預設不得使用此入口，避免觸發 xivanalysis 的 `Slow down / Too many requests` 限流。xivanalysis 沒有正式結果 JSON API；此腳本不得保存頁面或 FFLogs raw events。
 12. 排行榜報告欄以「報告」按鈕開啟可關閉的彈跳視窗，集中呈現該筆成績數值與外部工具連結。前端外部報告工具連結依 `report_code`、`fight_id` 與 `fflogs_source_id` 組成；`fflogs_source_id` 來自 FFLogs `playerDetails` 的 sourceID，只用於 xivanalysis `/fflogs/{report}/{fight}/{sourceID}` 深連結，不得取代角色名稱、伺服器與職業組成的排行榜身分判定；ffreplay 連結則使用含 `fight` query 的 FFLogs URL 進行 URL encode。
+13. 少數副本的 FFLogs `Casts` graph 不會回傳 downtime，但 Boss 轉場仍應從 GCD 覆蓋率分母扣除；`unreal_byakko` 以 raw `targetabilityupdate` 推出所有敵人都不可選取的窗口，並以 XIVAPI `Status.csv` 的 `LockActions/LockControl` 狀態補上玩家 UnableToAct。推導 targetability 時只使用實際出現 targetability 事件的敵方 actor，避免把雜項 actor 誤當成仍可攻擊敵人；此規則應限縮在已驗證的副本 key，避免多目標或換目標副本被錯誤套用。
 
 ### E. 驗證與同步
 1. 文件或註解變更仍需至少執行語法檢查與 `npm run build:user-data`，確認資料聚合可完成。
@@ -115,6 +116,7 @@
 19. `skipped_no_clear` 只在近期重試窗外才視為永久已檢查；workflow 預設 `FFLOGS_NO_CLEAR_RETRY_HOURS=24`，讓剛上傳但尚未匯出通關 fight 的 report 在一天內會被重新深查，避免後續出現 kill 時被舊快取擋掉。
 20. 單次 `fetch_fflogs.py` 執行內，report code 是深層檢查去重單位；`masterData.actors` 的繁中服玩家判斷會寫入本輪記憶體快取，後續同 report code 來自其他副本、recent、delayed 或 history 來源時直接重用結果或錯誤，不重複打 FFLogs API。
 21. GitHub Actions 會用 `FFLOGS_HISTORY_SCAN_*` 環境變數暫時開啟低量歷史補查，並用 `FFLOGS_FETCH_GCD_COVERAGE_*` 在新 report 落地時即時計算 GCD；`config/fflogs.json` 仍預設關閉延遲掃描、歷史補查與 Casts graph 即時計算，避免本機一般執行時額外掃描舊時間窗或查 Casts graph。歷史補查依各副本 `history_scan_cursor_at` 輪巡，專門補抓後來才公開或延後匯出的更舊 report，不取代最新增量掃描與 24-72 小時延遲掃描。
+22. `scripts/audit_xivanalysis_gcd_sample.py` 是人工稽核工具，預設用固定 seed 從零式、極、幻隨機抽樣 100 場並輸出 `docs/gcd_xivanalysis_audit_latest.json`；預設 `--local-mode recompute` 會即時重算本地結果再比對 xivanalysis，若要檢查已寫入資料可改用 `--local-mode stored`。`backfill_gcd_coverage.py --raw-events` 可讀 FFLogs `All` raw events、`combatantinfo` 技速/詠速、狀態視窗與 targetability 來追查差異；目前只有 `unreal_byakko` 已正式預設 raw events，其它副本正式啟用前仍需抽樣驗證。加上 `--apply` 時只會把抽樣中超過容許差異的玩家改寫為 `source=xivanalysis_page`。使用後必須重建公開排行榜與使用者資料，且不得放入 GitHub Actions 預設流程，以免對 xivanalysis 造成過量請求。
 
 ### F. 版本切點與過版紀錄
 1. `config/encounters.json` 的 `version_cutoff` 用來描述副本版本有效期限；目前 `極 佐拉加` 與 `極 豔翼蛇鳥` 的過版切點是台灣時間 2026-04-21 18:00，對應 `2026-04-21T10:00:00.000Z`。

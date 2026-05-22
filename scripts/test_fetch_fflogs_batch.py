@@ -573,6 +573,7 @@ class FetchFFLogsBatchTest(unittest.TestCase):
                 session: Any,
                 認證池: Any,
                 報告代碼: str,
+                副本設定: dict[str, Any],
                 戰鬥: dict[str, Any],
                 玩家列表: list[dict[str, Any]],
             ) -> None:

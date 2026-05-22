@@ -18,6 +18,8 @@ import gcd_coverage_core as gcd_core  # noqa: E402
 
 DEFAULT_GCD_BACKFILL_LIMIT = 2000
 MIN_REASONABLE_EPOCH_MS = 946684800000
+MAIN_TARGET_DAMAGE_DOWNTIME_ENCOUNTERS = {"unreal_byakko"}
+RAW_EVENT_GCD_ENCOUNTERS = {"unreal_byakko"}
 
 read_json = getattr(fflogs, "\u8b80\u53d6_json")
 ranking_path = getattr(fflogs, "\u6392\u884c\u699c\u6a94\u6848\u8def\u5f91")
@@ -225,9 +227,10 @@ def parse_int_env_default(name: str, fallback: int) -> int:
         return fallback
 
 
-# backfill ? fetch ??????????? GCD ??????????????????????
+# backfill 與 fetch 共用核心 GCD 計算器，避免即時補算與手動補算走出不同規則。
 ActionMetadata = gcd_core.ActionMetadata
 ActionMetadataStore = gcd_core.ActionMetadataStore
+StatusMetadataStore = gcd_core.StatusMetadataStore
 GCD_CALCULATION_VERSION = gcd_core.GCD_CALCULATION_VERSION
 GCD_SOURCE = gcd_core.GCD_SOURCE
 to_number = gcd_core.to_number
@@ -235,6 +238,7 @@ to_int = gcd_core.to_int
 first_number = gcd_core.first_number
 infer_recast_multiplier_by_base = gcd_core.infer_recast_multiplier_by_base
 calculate_gcd_coverage_from_graph = gcd_core.calculate_gcd_coverage_from_graph
+calculate_gcd_coverage_from_raw_events = gcd_core.calculate_gcd_coverage_from_raw_events
 
 def query_fight_casts_graph(session: Any, auth_pool: Any, candidate: GcdCandidate) -> dict[str, Any]:
     return gcd_core.query_fight_casts_graph(
@@ -244,6 +248,60 @@ def query_fight_casts_graph(session: Any, auth_pool: Any, candidate: GcdCandidat
         candidate.report_code,
         candidate.fight,
     )
+
+
+def query_fight_damage_done_events(session: Any, auth_pool: Any, candidate: GcdCandidate) -> list[dict[str, Any]]:
+    return gcd_core.query_fight_damage_done_events(
+        execute_graphql,
+        session,
+        auth_pool,
+        candidate.report_code,
+        candidate.fight,
+    )
+
+
+def query_fight_raw_events(session: Any, auth_pool: Any, candidate: GcdCandidate) -> list[dict[str, Any]]:
+    return gcd_core.query_fight_raw_events(
+        execute_graphql,
+        session,
+        auth_pool,
+        candidate.report_code,
+        candidate.fight,
+    )
+
+
+def add_encounter_specific_downtime(
+    graph: dict[str, Any],
+    *,
+    session: Any,
+    auth_pool: Any,
+    candidate: GcdCandidate,
+    damage_event_cache: dict[tuple[str, int, float, float], list[dict[str, Any]]],
+) -> dict[str, Any]:
+    if candidate.encounter_key not in MAIN_TARGET_DAMAGE_DOWNTIME_ENCOUNTERS:
+        return graph
+
+    fight_id = to_int(candidate.fight.get("fight_id"))
+    start_time = first_number(candidate.fight.get("start_time"), candidate.fight.get("startTime"))
+    end_time = first_number(candidate.fight.get("end_time"), candidate.fight.get("endTime"))
+    if fight_id is None or start_time is None or end_time is None:
+        return graph
+
+    cache_key = (candidate.report_code, fight_id, start_time, end_time)
+    events = damage_event_cache.get(cache_key)
+    if events is None:
+        events = query_fight_damage_done_events(session, auth_pool, candidate)
+        damage_event_cache[cache_key] = events
+
+    windows = gcd_core.infer_main_target_damage_downtime_windows(events)
+    if not windows:
+        return graph
+
+    # 幻白虎的 Casts graph 沒有把主目標離場回報成 downtime；核心計算會依職能
+    # 決定 encounter_downtime 應只扣分母，或同時扣分母與覆蓋時間。
+    graph_with_downtime = dict(graph)
+    graph_with_downtime["encounter_downtime"] = windows
+    return graph_with_downtime
 
 
 def mark_candidate_unavailable(candidate: GcdCandidate, reason: str, checked_at_iso: str) -> None:
@@ -272,6 +330,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--report-code", help="只處理指定 report code，方便驗證單場戰鬥。")
     parser.add_argument("--fight-id", type=int, help="只處理指定 fight id。")
     parser.add_argument("--player-name", help="只處理指定角色名稱。")
+    parser.add_argument("--encounter-key", help="只處理指定副本 key，例如 unreal_byakko。")
+    parser.add_argument("--raw-events", action="store_true", help="診斷用：優先以 FFLogs raw events 計算；預設仍使用較穩定的 Casts graph。")
     return parser.parse_args()
 
 
@@ -284,6 +344,8 @@ def candidate_matches_filters(candidate: GcdCandidate, args: argparse.Namespace)
         name = candidate.player.get("name") or candidate.player.get("character_name")
         if name != args.player_name:
             return False
+    if args.encounter_key and candidate.encounter_key != args.encounter_key:
+        return False
     return True
 
 
@@ -323,9 +385,17 @@ def main() -> int:
         print(f"無法載入 GCD 技能資料，本輪保留缺 key 狀態，下次 workflow 會重試：{error}", file=sys.stderr)
         return 0
 
+    unable_to_act_status_ids: set[int] = set()
+    if args.raw_events or any(candidate.encounter_key in RAW_EVENT_GCD_ENCOUNTERS for candidate in selected):
+        status_store = StatusMetadataStore()
+        status_store.preload()
+        unable_to_act_status_ids = status_store.unable_to_act_status_ids()
+
     changed_encounter_keys: set[str] = set()
     inaccessible_reports: dict[str, str] = {}
     fight_graph_cache: dict[tuple[str, int, float, float], dict[str, Any]] = {}
+    fight_raw_event_cache: dict[tuple[str, int, float, float], list[dict[str, Any]]] = {}
+    damage_event_cache: dict[tuple[str, int, float, float], list[dict[str, Any]]] = {}
     updated = 0
     marked_null = 0
     failed = 0
@@ -355,23 +425,69 @@ def main() -> int:
                 raise RuntimeError("缺少 fight_id 或 fight 時間窗，無法查詢整場 Casts graph。")
 
             graph_cache_key = (candidate.report_code, fight_id, start_time, end_time)
-            graph = fight_graph_cache.get(graph_cache_key)
-            if graph is None:
-                graph = query_fight_casts_graph(session, auth_pool, candidate)
-                fight_graph_cache[graph_cache_key] = graph
-
-            coverage = calculate_gcd_coverage_from_graph(
-                graph,
-                metadata_store,
-                source_id=to_int(candidate.player.get("fflogs_id")),
-                job=candidate.player.get("job"),
-                fight_end_time=first_number(candidate.fight.get("end_time"), candidate.fight.get("endTime")),
-                fallback_denominator_ms=first_number(
-                    candidate.fight.get("clear_time_ms"),
-                    end_time - start_time,
-                    candidate.fight.get("damage_time_ms"),
-                ),
+            base_graph = fight_graph_cache.get(graph_cache_key)
+            if base_graph is None:
+                base_graph = query_fight_casts_graph(session, auth_pool, candidate)
+                fight_graph_cache[graph_cache_key] = base_graph
+            graph = add_encounter_specific_downtime(
+                base_graph,
+                session=session,
+                auth_pool=auth_pool,
+                candidate=candidate,
+                damage_event_cache=damage_event_cache,
             )
+
+            coverage = None
+            use_raw_events = args.raw_events or candidate.encounter_key in RAW_EVENT_GCD_ENCOUNTERS
+            if use_raw_events:
+                raw_events = fight_raw_event_cache.get(graph_cache_key)
+                if raw_events is None:
+                    raw_events = query_fight_raw_events(session, auth_pool, candidate)
+                    fight_raw_event_cache[graph_cache_key] = raw_events
+                friendly_ids = {
+                    player_id
+                    for player_id in (
+                        to_int(player.get("fflogs_id"))
+                        for player in candidate.fight.get("players") or []
+                        if isinstance(player, dict)
+                    )
+                    if player_id is not None
+                }
+                downtime_source = gcd_core.raw_event_downtime_source(
+                    base_graph,
+                    raw_events,
+                    source_id=to_int(candidate.player.get("fflogs_id")),
+                    friendly_ids=friendly_ids,
+                    fight_start_time=start_time,
+                    fight_end_time=end_time,
+                    unable_to_act_status_ids=unable_to_act_status_ids,
+                )
+                coverage = calculate_gcd_coverage_from_raw_events(
+                    raw_events,
+                    metadata_store,
+                    source_id=to_int(candidate.player.get("fflogs_id")),
+                    job=candidate.player.get("job"),
+                    fight_end_time=first_number(candidate.fight.get("end_time"), candidate.fight.get("endTime")),
+                    fallback_denominator_ms=first_number(
+                        candidate.fight.get("clear_time_ms"),
+                        end_time - start_time,
+                        candidate.fight.get("damage_time_ms"),
+                    ),
+                    downtime_source=downtime_source,
+                )
+            if not coverage:
+                coverage = calculate_gcd_coverage_from_graph(
+                    graph,
+                    metadata_store,
+                    source_id=to_int(candidate.player.get("fflogs_id")),
+                    job=candidate.player.get("job"),
+                    fight_end_time=first_number(candidate.fight.get("end_time"), candidate.fight.get("endTime")),
+                    fallback_denominator_ms=first_number(
+                        candidate.fight.get("clear_time_ms"),
+                        end_time - start_time,
+                        candidate.fight.get("damage_time_ms"),
+                    ),
+                )
         except report_access_error_class:
             reason = "private_or_deleted"
             inaccessible_reports[candidate.report_code] = reason
