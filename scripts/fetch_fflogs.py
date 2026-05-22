@@ -51,7 +51,7 @@ FFLogs執行設定預設值: dict[str, Any] = {
     "history_scan_window_hours": 24,
     "history_scan_windows_per_run": 1,
     "history_scan_recent_gap_hours": 6,
-    "history_max_deep_reports_per_run": 25,
+    "history_max_deep_reports_per_run": 200,
     "existing_report_status_check_enabled": False,
     "existing_report_status_check_limit": 0,
     "fetch_gcd_coverage_enabled": False,
@@ -1398,6 +1398,44 @@ def 建立歷史補查區間(
         ],
     }
     return 區間列表, 歷史補查狀態
+
+
+def 套用歷史補查深查上限游標(
+    歷史補查狀態: dict[str, Any] | None,
+    候選列表: list[dict[str, Any]],
+    候選統計: dict[str, int],
+) -> None:
+    if not isinstance(歷史補查狀態, dict) or 候選統計.get("deferred", 0) <= 0:
+        return
+
+    視窗列表 = 歷史補查狀態.get("windows") if isinstance(歷史補查狀態.get("windows"), list) else []
+    第一視窗 = 視窗列表[0] if 視窗列表 and isinstance(視窗列表[0], dict) else {}
+    目前游標 = 轉_int_or_none(歷史補查狀態.get("current_cursor_at"))
+    接續游標 = 轉_int_or_none(第一視窗.get("start_at")) or 目前游標
+    接續來源 = "current_window_start"
+    接續報告代碼: str | None = None
+
+    for 報告 in reversed(候選列表):
+        報告時間戳記 = 轉_int_or_none(報告.get("startTime"))
+        if 報告時間戳記 is None:
+            continue
+        接續游標 = max(報告時間戳記, 目前游標 or 報告時間戳記)
+        接續來源 = "last_selected_report_start_time"
+        接續報告代碼 = str(報告.get("code") or "") or None
+        break
+
+    if 接續游標 is None:
+        return
+
+    # 歷史補查的 deep report 上限打滿時，代表本輪時間窗還有未知 report 沒有深查。
+    # 此時不可把 history_scan_cursor_at 推到下一週，否則 deferred report 要等整個歷史區間繞回才會再被看到。
+    # 游標刻意停在最後一筆 selected report 的 startTime，而不是 +1ms，避免同毫秒的其他 report 被跳過；
+    # 下一輪會先略過已保存/已檢查的同一筆，接著處理同一時間窗後續尚未更新的候選。
+    歷史補查狀態["next_cursor_at"] = 接續游標
+    歷史補查狀態["next_cursor_at_iso"] = 毫秒轉_iso(接續游標)
+    歷史補查狀態["cursor_limited_by_deep_report_limit"] = True
+    歷史補查狀態["cursor_resume_source"] = 接續來源
+    歷史補查狀態["cursor_resume_report_code"] = 接續報告代碼
 
 
 def 分割環境清單(值: str | None) -> list[str]:
@@ -4342,6 +4380,7 @@ def main() -> int:
                 歷史補查狀態["reports_selected"] = 歷史候選統計["selected"]
                 歷史補查狀態["reports_skipped_known"] = 歷史候選統計["skipped_known"]
                 歷史補查狀態["reports_deferred"] = 歷史候選統計["deferred"]
+                套用歷史補查深查上限游標(歷史補查狀態, 歷史報告候選列表, 歷史候選統計)
 
             淺層報告列表 = 合併淺層報告列表(最新報告列表, 延遲報告候選列表 + 歷史報告候選列表)
             目前處理狀態["recent_reports"] = len(最新報告列表)

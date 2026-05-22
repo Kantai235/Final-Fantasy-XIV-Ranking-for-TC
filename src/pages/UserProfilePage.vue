@@ -1,11 +1,13 @@
 <script>
 import { ref } from "vue";
+import JobIcon from "../components/JobIcon.vue";
 import ReportDetailDialog from "../components/ReportDetailDialog.vue";
 import { injectRankingApp } from "../composables/useRankingApp";
 
 export default {
   name: "UserProfilePage",
   components: {
+    JobIcon,
     ReportDetailDialog,
   },
   setup() {
@@ -180,13 +182,9 @@ export default {
             @click="切換使用者職業選單"
           >
             <span class="職業選單目前值">
-              <img
-                v-if="使用者職業選單Icon路徑"
+              <JobIcon
                 class="職業圖示"
                 :src="使用者職業選單Icon路徑"
-                alt=""
-                loading="lazy"
-                @error="隱藏載入失敗圖片"
               />
               <span>{{ 使用者職業選單文字 }}</span>
             </span>
@@ -211,13 +209,10 @@ export default {
                 :class="[職業色彩類別(類型.色彩), { 已選取: 使用者職業類型篩選 === 類型.代碼 }]"
                 @click="選擇使用者職業類型(類型.代碼)"
               >
-                <img
-                  v-if="職業類型Icon路徑(類型.代碼)"
+                <JobIcon
                   class="職業圖示"
-                  :src="職業類型Icon路徑(類型.代碼)"
-                  alt=""
-                  loading="lazy"
-                  @error="隱藏載入失敗圖片"
+                  kind="role"
+                  :code="類型.代碼"
                 />
                 <span>{{ 類型.名稱 }}</span>
               </button>
@@ -233,13 +228,9 @@ export default {
                   :class="[職業色彩類別(職業.色彩), { 已選取: 使用者職業篩選 === 職業.代碼 }]"
                   @click="選擇使用者職業(職業.代碼)"
                 >
-                  <img
-                    v-if="職業Icon路徑(職業.代碼)"
+                  <JobIcon
                     class="職業圖示"
-                    :src="職業Icon路徑(職業.代碼)"
-                    alt=""
-                    loading="lazy"
-                    @error="隱藏載入失敗圖片"
+                    :code="職業.代碼"
                   />
                   <span>{{ 職業.名稱 }}</span>
                 </button>
@@ -314,13 +305,9 @@ export default {
               <strong>{{ 成績.encounter_name }}</strong>
             </span>
             <span class="職業標籤" :class="職業色彩類別(職業代碼色彩(成績.job))">
-              <img
-                v-if="職業Icon路徑(成績.job)"
+              <JobIcon
                 class="職業圖示 職業標籤圖示"
-                :src="職業Icon路徑(成績.job)"
-                alt=""
-                loading="lazy"
-                @error="隱藏載入失敗圖片"
+                :code="成績.job"
               />
               <span>{{ 顯示職業名稱(成績.job) }}</span>
             </span>
@@ -346,13 +333,10 @@ export default {
                 <small>{{ 趨勢.encounter_category || "副本" }}</small>
                 <strong>{{ 趨勢.encounter_name }}</strong>
                 <span class="職業標籤 趨勢職能標籤" :class="職業色彩類別(趨勢.職能?.色彩)">
-                  <img
-                    v-if="職業類型Icon路徑(趨勢.職能?.代碼)"
+                  <JobIcon
                     class="職業圖示 職業標籤圖示"
-                    :src="職業類型Icon路徑(趨勢.職能?.代碼)"
-                    alt=""
-                    loading="lazy"
-                    @error="隱藏載入失敗圖片"
+                    kind="role"
+                    :code="趨勢.職能?.代碼"
                   />
                   <span>{{ 趨勢.職能?.名稱 || "職能" }}</span>
                 </span>
@@ -479,13 +463,11 @@ export default {
             <div v-if="隊友職能分布.length > 0" class="隊友職能分布">
               <div v-for="職能 in 隊友職能分布" :key="職能.代碼" class="隊友職能項">
                 <span class="隊友職能名稱">
-                  <img
-                    v-if="職業類型Icon路徑(職能.代碼)"
+                  <JobIcon
                     class="職業圖示"
-                    :src="職業類型Icon路徑(職能.代碼)"
+                    kind="role"
+                    :code="職能.代碼"
                     :alt="職能.名稱"
-                    loading="lazy"
-                    @error="隱藏載入失敗圖片"
                   />
                   <strong>{{ 職能.名稱 }}</strong>
                 </span>
@@ -535,13 +517,9 @@ export default {
               <strong>{{ 副本.encounter_name }}</strong>
             </span>
             <span v-if="副本.best_entry" class="職業標籤 成績列職業" :class="職業色彩類別(職業代碼色彩(副本.best_entry.job))">
-              <img
-                v-if="職業Icon路徑(副本.best_entry.job)"
+              <JobIcon
                 class="職業圖示 職業標籤圖示"
-                :src="職業Icon路徑(副本.best_entry.job)"
-                alt=""
-                loading="lazy"
-                @error="隱藏載入失敗圖片"
+                :code="副本.best_entry.job"
               />
               <span>{{ 顯示職業名稱(副本.best_entry.job) }}</span>
             </span>
@@ -670,13 +648,9 @@ export default {
                   <td>{{ 格式化紀錄時間(成績.recorded_at_iso) }}</td>
                   <td>
                     <span class="職業標籤" :class="職業色彩類別(職業代碼色彩(成績.job))">
-                      <img
-                        v-if="職業Icon路徑(成績.job)"
+                      <JobIcon
                         class="職業圖示 職業標籤圖示"
-                        :src="職業Icon路徑(成績.job)"
-                        alt=""
-                        loading="lazy"
-                        @error="隱藏載入失敗圖片"
+                        :code="成績.job"
                       />
                       <span>{{ 顯示職業名稱(成績.job) }}</span>
                     </span>

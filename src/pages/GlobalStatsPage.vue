@@ -1,8 +1,12 @@
 <script>
+import JobIcon from "../components/JobIcon.vue";
 import { injectRankingApp } from "../composables/useRankingApp";
 
 export default {
   name: "GlobalStatsPage",
+  components: {
+    JobIcon,
+  },
   setup() {
     return injectRankingApp();
   },
@@ -81,13 +85,9 @@ export default {
           @click="切換統計職業選單"
         >
           <span class="職業選單目前值">
-            <img
-              v-if="統計職業選單Icon路徑"
+            <JobIcon
               class="職業圖示"
               :src="統計職業選單Icon路徑"
-              alt=""
-              loading="lazy"
-              @error="隱藏載入失敗圖片"
             />
             <span>{{ 統計職業選單文字 }}</span>
           </span>
@@ -112,13 +112,10 @@ export default {
               :class="[職業色彩類別(類型.色彩), { 已選取: 統計職業範圍類型代碼 === 類型.代碼 }]"
               @click="選擇統計職業類型(類型.代碼)"
             >
-              <img
-                v-if="職業類型Icon路徑(類型.代碼)"
+              <JobIcon
                 class="職業圖示"
-                :src="職業類型Icon路徑(類型.代碼)"
-                alt=""
-                loading="lazy"
-                @error="隱藏載入失敗圖片"
+                kind="role"
+                :code="類型.代碼"
               />
               <span>{{ 類型.名稱 }}</span>
             </button>
@@ -134,13 +131,9 @@ export default {
                 :class="[職業色彩類別(職業.色彩), { 已選取: 統計職業範圍職業代碼 === 職業.代碼 }]"
                 @click="選擇統計職業(職業.代碼)"
               >
-                <img
-                  v-if="職業Icon路徑(職業.代碼)"
+                <JobIcon
                   class="職業圖示"
-                  :src="職業Icon路徑(職業.代碼)"
-                  alt=""
-                  loading="lazy"
-                  @error="隱藏載入失敗圖片"
+                  :code="職業.代碼"
                 />
                 <span>{{ 職業.名稱 }}</span>
               </button>
@@ -270,13 +263,9 @@ export default {
               @keydown.space.prevent="切換職業傷害提示(列.job)"
             >
               <div class="職業傷害比較職業">
-                <img
-                  v-if="職業Icon路徑(列.job)"
+                <JobIcon
                   class="職業圖示"
-                  :src="職業Icon路徑(列.job)"
-                  alt=""
-                  loading="lazy"
-                  @error="隱藏載入失敗圖片"
+                  :code="列.job"
                 />
                 <span>{{ 顯示職業名稱(列.job) }}</span>
               </div>
@@ -342,13 +331,9 @@ export default {
                   class="分布子項"
                   :class="職業色彩類別(拆分.job ? 職業代碼色彩(拆分.job) : 職業類型色彩(拆分.role))"
                 >
-                  <img
-                    v-if="拆分.job && 職業Icon路徑(拆分.job)"
+                  <JobIcon
                     class="職業圖示"
-                    :src="職業Icon路徑(拆分.job)"
-                    alt=""
-                    loading="lazy"
-                    @error="隱藏載入失敗圖片"
+                    :code="拆分.job"
                   />
                   <span>{{ 拆分.顯示名稱 }}</span>
                   <em>{{ 格式化百分比(拆分.顯示比例) }}</em>
@@ -385,13 +370,9 @@ export default {
               <div class="職業佔比職業列表">
                 <div v-for="職業 in 群組.jobs" :key="職業.job" class="職業佔比職業">
                   <span class="分布職業">
-                    <img
-                      v-if="職業Icon路徑(職業.job)"
+                    <JobIcon
                       class="職業圖示"
-                      :src="職業Icon路徑(職業.job)"
-                      alt=""
-                      loading="lazy"
-                      @error="隱藏載入失敗圖片"
+                      :code="職業.job"
                     />
                     <span>{{ 顯示職業名稱(職業.job) }}</span>
                   </span>
@@ -505,13 +486,9 @@ export default {
                 </td>
                 <td>
                   <span v-if="副本.最高職業" class="職業標籤" :class="職業色彩類別(職業代碼色彩(副本.最高職業.job))">
-                    <img
-                      v-if="職業Icon路徑(副本.最高職業.job)"
+                    <JobIcon
                       class="職業圖示 職業標籤圖示"
-                      :src="職業Icon路徑(副本.最高職業.job)"
-                      alt=""
-                      loading="lazy"
-                      @error="隱藏載入失敗圖片"
+                      :code="副本.最高職業.job"
                     />
                     <span>{{ 顯示職業名稱(副本.最高職業.job) }}</span>
                   </span>

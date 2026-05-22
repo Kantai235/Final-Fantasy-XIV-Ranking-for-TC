@@ -124,6 +124,66 @@ const 職業類型Icon檔名 = {
   "role:magical_ranged": "RoleMagicalRanged.png",
 };
 
+function 建立Icon路徑索引(檔名索引) {
+  return Object.freeze(
+    Object.fromEntries(
+      Object.entries(檔名索引).map(([代碼, 檔名]) => [代碼, 建立公開資料網址(`icons/jobs/${檔名}`)]),
+    ),
+  );
+}
+
+// 職業圖示會出現在排行榜、個人成績單、職業分析等多個頁面。URL 在這裡先固定成單例索引，
+// 讓所有 `<img>` 都拿同一批 cache key；App 啟動後再用 `預熱職業Icon快取()` 於瀏覽器閒置時把它們灌進 HTTP cache。
+export const 職業Icon路徑索引 = 建立Icon路徑索引(職業Icon檔名);
+export const 職業類型Icon路徑索引 = 建立Icon路徑索引(職業類型Icon檔名);
+export const 可快取職業Icon路徑清單 = Object.freeze([
+  ...new Set([...Object.values(職業Icon路徑索引), ...Object.values(職業類型Icon路徑索引)]),
+]);
+
+const 已預熱Icon路徑 = new Set();
+const 預熱圖片快取 = new Map();
+
+function 預熱單一Icon(路徑, Image建構子) {
+  if (!路徑 || 已預熱Icon路徑.has(路徑)) {
+    return;
+  }
+
+  const 圖片 = new Image建構子();
+  圖片.decoding = "async";
+  圖片.src = 路徑;
+  已預熱Icon路徑.add(路徑);
+  預熱圖片快取.set(路徑, 圖片);
+}
+
+export function 預熱職業Icon快取({ 立即 = false } = {}) {
+  if (typeof window === "undefined" || typeof window.Image !== "function") {
+    return () => {};
+  }
+
+  const 執行預熱 = () => {
+    for (const 路徑 of 可快取職業Icon路徑清單) {
+      預熱單一Icon(路徑, window.Image);
+    }
+  };
+
+  if (立即) {
+    執行預熱();
+    return () => {};
+  }
+
+  if (typeof window.requestIdleCallback === "function") {
+    const 閒置工作Id = window.requestIdleCallback(執行預熱, { timeout: 2000 });
+    return () => {
+      if (typeof window.cancelIdleCallback === "function") {
+        window.cancelIdleCallback(閒置工作Id);
+      }
+    };
+  }
+
+  const timeoutId = window.setTimeout(執行預熱, 0);
+  return () => window.clearTimeout(timeoutId);
+}
+
 export const 比較職能設定 = 職業群組設定.map((群組) => ({ ...群組, 圖示代碼: 群組.代碼 }));
 export const 比較職能索引 = new Map(比較職能設定.map((職能) => [職能.代碼, 職能]));
 
@@ -132,13 +192,11 @@ export function 顯示職業名稱(職業代碼) {
 }
 
 export function 職業Icon路徑(職業代碼) {
-  const 檔名 = 職業Icon檔名[職業代碼];
-  return 檔名 ? 建立公開資料網址(`icons/jobs/${檔名}`) : "";
+  return 職業Icon路徑索引[職業代碼] || "";
 }
 
 export function 職業類型Icon路徑(類型代碼) {
-  const 檔名 = 職業類型Icon檔名[類型代碼];
-  return 檔名 ? 建立公開資料網址(`icons/jobs/${檔名}`) : "";
+  return 職業類型Icon路徑索引[類型代碼] || "";
 }
 
 export function 職業色彩類別(色彩) {

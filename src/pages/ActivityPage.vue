@@ -1,8 +1,12 @@
 <script>
+import JobIcon from "../components/JobIcon.vue";
 import { injectRankingApp } from "../composables/useRankingApp";
 
 export default {
   name: "ActivityPage",
+  components: {
+    JobIcon,
+  },
   setup() {
     return injectRankingApp();
   },
@@ -58,13 +62,9 @@ export default {
                 </td>
                 <td>
                   <span v-if="成績.job" class="職業標籤 近期動態職業標籤" :class="職業色彩類別(職業代碼色彩(成績.job))">
-                    <img
-                      v-if="職業Icon路徑(成績.job)"
+                    <JobIcon
                       class="職業圖示 職業標籤圖示"
-                      :src="職業Icon路徑(成績.job)"
-                      alt=""
-                      loading="lazy"
-                      @error="隱藏載入失敗圖片"
+                      :code="成績.job"
                     />
                     <span>{{ 顯示職業名稱(成績.job) }}</span>
                   </span>
@@ -112,13 +112,9 @@ export default {
                 <td>{{ 成績.encounter_name || "-" }}</td>
                 <td>
                   <span v-if="成績.job" class="職業標籤 近期動態職業標籤" :class="職業色彩類別(職業代碼色彩(成績.job))">
-                    <img
-                      v-if="職業Icon路徑(成績.job)"
+                    <JobIcon
                       class="職業圖示 職業標籤圖示"
-                      :src="職業Icon路徑(成績.job)"
-                      alt=""
-                      loading="lazy"
-                      @error="隱藏載入失敗圖片"
+                      :code="成績.job"
                     />
                     <span>{{ 顯示職業名稱(成績.job) }}</span>
                   </span>

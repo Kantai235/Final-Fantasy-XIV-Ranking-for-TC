@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { 可快取職業Icon路徑清單, 職業Icon路徑, 職業類型Icon路徑 } from "../src/domain/jobs.js";
 import { buildReportExternalLinks } from "../src/utils/reportLinks.js";
 import { 建立職業佔比分組, 取得統計範圍計數 } from "../src/utils/statsDisplay.js";
 
@@ -36,6 +37,21 @@ function assert(condition, message) {
   if (!condition) {
     reportIssue(message);
   }
+}
+
+function validateJobIconCacheKeys() {
+  const paladinIcon = 職業Icon路徑("Paladin");
+  const tankIcon = 職業類型Icon路徑("role:tank");
+  const uniqueIconCount = new Set(可快取職業Icon路徑清單).size;
+
+  assert(paladinIcon === "/icons/jobs/Paladin.png", "騎士職業圖示路徑應維持既有公開 URL，避免破壞舊快取。");
+  assert(tankIcon === "/icons/jobs/RoleTank.png", "防護職能圖示路徑應維持既有公開 URL，避免破壞舊快取。");
+  assert(職業Icon路徑("Paladin") === paladinIcon, "職業圖示路徑應從穩定索引重用同一個 cache key。");
+  assert(
+    可快取職業Icon路徑清單.includes(paladinIcon) && 可快取職業Icon路徑清單.includes(tankIcon),
+    "職業圖示預熱清單應包含職業與職能圖示，讓各頁面切換可重用瀏覽器快取。",
+  );
+  assert(uniqueIconCount === 可快取職業Icon路徑清單.length, "職業圖示預熱清單不應包含重複 URL。");
 }
 
 function addImportedBindings(source, bindings) {
@@ -652,6 +668,7 @@ async function main() {
   await validateUseRankingAppReturnBindings();
   await validateFrontendFetchBoundary();
   await validateSiteFeatureFlags();
+  validateJobIconCacheKeys();
   await validateEncounterSwitchFilterPersistence();
   await validatePublicDataForFrontend();
   validateReportExternalLinks();

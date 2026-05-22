@@ -1,8 +1,12 @@
 <script>
+import JobIcon from "../components/JobIcon.vue";
 import { injectRankingApp } from "../composables/useRankingApp";
 
 export default {
   name: "JobAnalysisPage",
+  components: {
+    JobIcon,
+  },
   setup() {
     return injectRankingApp();
   },
@@ -22,13 +26,9 @@ export default {
           @click="切換職業分析選單"
         >
           <span class="職業選單目前值">
-            <img
-              v-if="職業分析選單Icon路徑"
+            <JobIcon
               class="職業圖示"
               :src="職業分析選單Icon路徑"
-              alt=""
-              loading="lazy"
-              @error="隱藏載入失敗圖片"
             />
             <span>{{ 職業分析選單文字 }}</span>
           </span>
@@ -45,13 +45,10 @@ export default {
               :class="[職業色彩類別(分組.色彩), { 已展開: 職業分析展示類型代碼 === 分組.代碼, 已選取: 職業分析目前範圍代碼 === 分組.代碼 }]"
               @click="選擇職業分析類型(分組.代碼)"
             >
-              <img
-                v-if="職業類型Icon路徑(分組.代碼)"
+              <JobIcon
                 class="職業圖示"
-                :src="職業類型Icon路徑(分組.代碼)"
-                alt=""
-                loading="lazy"
-                @error="隱藏載入失敗圖片"
+                kind="role"
+                :code="分組.代碼"
               />
               <span>{{ 分組.名稱 }}</span>
             </button>
@@ -66,13 +63,9 @@ export default {
               :class="[職業色彩類別(職業.色彩), { 已選取: 職業分析目前範圍代碼 === 職業.代碼 }]"
               @click="選擇職業分析職業(職業.代碼)"
             >
-              <img
-                v-if="職業Icon路徑(職業.代碼)"
+              <JobIcon
                 class="職業圖示"
-                :src="職業Icon路徑(職業.代碼)"
-                alt=""
-                loading="lazy"
-                @error="隱藏載入失敗圖片"
+                :code="職業.代碼"
               />
               <span>{{ 職業.名稱 }}</span>
             </button>
@@ -110,13 +103,9 @@ export default {
               @click="選擇職業分析職業(列.job)"
             >
               <span class="職業分位亮點職業">
-                <img
-                  v-if="職業Icon路徑(列.job)"
+                <JobIcon
                   class="職業圖示"
-                  :src="職業Icon路徑(列.job)"
-                  alt=""
-                  loading="lazy"
-                  @error="隱藏載入失敗圖片"
+                  :code="列.job"
                 />
                 <strong>{{ 顯示職業名稱(列.job) }}</strong>
               </span>
@@ -144,14 +133,11 @@ export default {
       <section class="職業焦點卡" aria-label="職業概要">
         <header class="職業焦點標題">
           <span class="職業焦點圖示" :class="職業色彩類別(職業分析目前範圍.色彩)">
-            <img
-              v-if="職業分析目前範圍.Icon路徑"
+            <JobIcon
               :src="職業分析目前範圍.Icon路徑"
               :alt="職業分析目前範圍.名稱"
-              loading="lazy"
-              @error="隱藏載入失敗圖片"
             />
-            <span v-else>全</span>
+            <span v-if="!職業分析目前範圍.Icon路徑">全</span>
           </span>
           <span>
             <small>{{ 職業分析目前範圍.副標 }}</small>
@@ -246,13 +232,9 @@ export default {
                     :style="職業.樣式"
                     :title="`${顯示職業名稱(職業.job)} ${格式化整數(職業.數量)} 紀錄・${格式化百分比(職業.佔比)}`"
                   >
-                    <img
-                      v-if="職業Icon路徑(職業.job)"
+                    <JobIcon
                       class="職業圖示"
-                      :src="職業Icon路徑(職業.job)"
-                      alt=""
-                      loading="lazy"
-                      @error="隱藏載入失敗圖片"
+                      :code="職業.job"
                     />
                     <strong>{{ 顯示職業名稱(職業.job) }}</strong>
                     <em>{{ 格式化百分比(職業.佔比) }}</em>
@@ -299,13 +281,9 @@ export default {
                     :style="職業.樣式"
                     :title="`${顯示職業名稱(職業.job)} ${格式化整數(職業.數量)} 紀錄・${格式化百分比(職業.佔比)}`"
                   >
-                    <img
-                      v-if="職業Icon路徑(職業.job)"
+                    <JobIcon
                       class="職業圖示"
-                      :src="職業Icon路徑(職業.job)"
-                      alt=""
-                      loading="lazy"
-                      @error="隱藏載入失敗圖片"
+                      :code="職業.job"
                     />
                     <strong>{{ 顯示職業名稱(職業.job) }}</strong>
                     <em>{{ 格式化百分比(職業.佔比) }}</em>

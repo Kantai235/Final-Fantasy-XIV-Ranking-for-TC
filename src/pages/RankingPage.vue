@@ -1,11 +1,13 @@
 <script>
 import { ref } from "vue";
+import JobIcon from "../components/JobIcon.vue";
 import ReportDetailDialog from "../components/ReportDetailDialog.vue";
 import { injectRankingApp } from "../composables/useRankingApp";
 
 export default {
   name: "RankingPage",
   components: {
+    JobIcon,
     ReportDetailDialog,
   },
   setup() {
@@ -180,13 +182,9 @@ export default {
         @click="切換職業選單"
       >
         <span class="職業選單目前值">
-          <img
-            v-if="職業選單Icon路徑"
+          <JobIcon
             class="職業圖示"
             :src="職業選單Icon路徑"
-            alt=""
-            loading="lazy"
-            @error="隱藏載入失敗圖片"
           />
           <span>{{ 職業選單文字 }}</span>
         </span>
@@ -211,13 +209,10 @@ export default {
             :class="[職業色彩類別(類型.色彩), { 已選取: 職業類型篩選 === 類型.代碼 }]"
             @click="選擇職業類型(類型.代碼)"
           >
-            <img
-              v-if="職業類型Icon路徑(類型.代碼)"
+            <JobIcon
               class="職業圖示"
-              :src="職業類型Icon路徑(類型.代碼)"
-              alt=""
-              loading="lazy"
-              @error="隱藏載入失敗圖片"
+              kind="role"
+              :code="類型.代碼"
             />
             <span>{{ 類型.名稱 }}</span>
           </button>
@@ -233,13 +228,9 @@ export default {
               :class="[職業色彩類別(職業.色彩), { 已選取: 職業篩選 === 職業.代碼 }]"
               @click="選擇職業(職業.代碼)"
             >
-              <img
-                v-if="職業Icon路徑(職業.代碼)"
+              <JobIcon
                 class="職業圖示"
-                :src="職業Icon路徑(職業.代碼)"
-                alt=""
-                loading="lazy"
-                @error="隱藏載入失敗圖片"
+                :code="職業.代碼"
               />
               <span>{{ 職業.名稱 }}</span>
             </button>
@@ -466,13 +457,9 @@ export default {
             <div class="手機排行卡">
               <div class="手機排行主列">
                 <span class="手機排行職業" :title="列.職業">
-                  <img
-                    v-if="職業Icon路徑(列.職業代碼)"
+                  <JobIcon
                     class="職業圖示"
-                    :src="職業Icon路徑(列.職業代碼)"
-                    alt=""
-                    loading="lazy"
-                    @error="隱藏載入失敗圖片"
+                    :code="列.職業代碼"
                   />
                 </span>
                 <div class="手機排行身份列">
@@ -532,13 +519,9 @@ export default {
           <td>{{ 列.伺服器 }}</td>
           <td>
             <span class="職業標籤" :class="職業色彩類別(職業代碼色彩(列.職業代碼))">
-              <img
-                v-if="職業Icon路徑(列.職業代碼)"
+              <JobIcon
                 class="職業圖示 職業標籤圖示"
-                :src="職業Icon路徑(列.職業代碼)"
-                alt=""
-                loading="lazy"
-                @error="隱藏載入失敗圖片"
+                :code="列.職業代碼"
               />
               <span>{{ 列.職業 }}</span>
             </span>

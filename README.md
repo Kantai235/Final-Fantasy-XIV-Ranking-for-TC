@@ -63,9 +63,10 @@ Final Fantasy XIV 繁中服排行榜是一個以 FFLogs 公開資料為來源的
 │   └── site.json              # 站台網址、Vite base path 與允許 host
 ├── data/
 │   ├── rankings/              # 原始排行榜資料
-│   └── state.json             # 掃描進度與處理狀態
+│   ├── state.json             # 掃描進度與處理狀態
+│   └── update_status.json     # GitHub Actions 最近一次資料更新摘要
 ├── public/
-│   ├── data/                  # 網站讀取的公開資料
+│   ├── data/                  # 網站讀取的公開資料，含 all/ 完整鏡像
 │   ├── favicon.svg            # 網站 icon 的向量來源
 │   ├── site.webmanifest       # 瀏覽器安裝與 app icon 設定
 │   └── icons/jobs/            # 職業圖示
@@ -153,6 +154,15 @@ FFLOGS_CLIENT_SECRET=your_client_secret
 ```env
 FFLOGS_CLIENT_IDS=client_id_1,client_id_2
 FFLOGS_CLIENT_SECRETS=client_secret_1,client_secret_2
+```
+
+也支援編號欄位，適合不想把多組憑證放在同一個 secret 時使用：
+
+```env
+FFLOGS_CLIENT_ID_1=client_id_1
+FFLOGS_CLIENT_SECRET_1=client_secret_1
+FFLOGS_CLIENT_ID_2=client_id_2
+FFLOGS_CLIENT_SECRET_2=client_secret_2
 ```
 
 或使用 JSON 格式：
@@ -341,7 +351,7 @@ python scripts/fetch_fflogs.py
    - 透過 FFLogs API 掃描公開報告；預設掃全部地區。
    - 近期掃描回溯 24 小時，會讓一天內的 no-clear / incomplete report 重新深查，補抓後續才匯出的通關 fight。
    - 若 workflow 以 `FFLOGS_DELAYED_SCAN_ENABLED=true` 開啟延遲掃描，會額外掃描 24-72 小時前的 reports，但只挑 state 與排行榜都沒見過的新 report 進深層處理。
-   - 若 workflow 以 `FFLOGS_HISTORY_SCAN_ENABLED=true` 開啟歷史補查，會沿著各副本的 `history_scan_cursor_at` 輪巡較舊時間窗，檢查是否有後來才公開或延後匯出的 logs 可以補抓。
+   - 若 workflow 以 `FFLOGS_HISTORY_SCAN_ENABLED=true` 開啟歷史補查，會沿著各副本的 `history_scan_cursor_at` 輪巡較舊時間窗，檢查是否有後來才公開或延後匯出的 logs 可以補抓；若深查上限打滿，下一輪會從最後一筆已選候選 report 的時間繼續，而不是直接推到下一個時間窗。
    - 若 workflow 以 `FFLOGS_EXISTING_REPORT_STATUS_CHECK_ENABLED=true` 開啟既有 report 狀態巡檢，每輪會依 report 時間由舊到新檢查固定數量；游標記在 `data/state.json`，跑完會回到最舊紀錄繼續輪巡。
    - 篩選繁中服伺服器玩家；同一輪若已檢查過某個 report code，會重用本輪快取，不重複查 `masterData.actors`。
    - 更新 `data/rankings/*.json`、`public/data/rankings/*.json` 與 `data/state.json`。
@@ -422,7 +432,7 @@ GitHub Actions 會透過既有 report 狀態巡檢，每輪由舊到新抽查既
 - `FFLOGS_HISTORY_SCAN_WINDOW_HOURS`：每個歷史時間窗長度，workflow 預設 `168`（一週）。
 - `FFLOGS_HISTORY_SCAN_WINDOWS_PER_RUN`：每輪每個副本最多巡幾個歷史時間窗，workflow 預設 `1`。
 - `FFLOGS_HISTORY_SCAN_RECENT_GAP_HOURS`：歷史補查避開最新掃描點前幾小時，workflow 預設 `6`。
-- `FFLOGS_HISTORY_MAX_DEEP_REPORTS_PER_RUN`：每輪最多挑幾份未知 report 進深層檢查，workflow 預設 `25`。
+- `FFLOGS_HISTORY_MAX_DEEP_REPORTS_PER_RUN`：每輪最多挑幾份未知 report 進深層檢查，workflow 預設 `200`。若上限打滿且仍有 deferred report，歷史游標會停在最後一筆已選候選的 `startTime`；若該副本本輪未分到深查額度，則停回本輪時間窗起點，讓下次排程接續同一段未更新資料。
 - `FFLOGS_HISTORY_SCAN_FULL_RUN`：是否一次跑完整歷史區間；預設 `false`，只建議人工短期維護時開啟。
 - `FFLOGS_EXISTING_REPORT_STATUS_CHECK_ENABLED`：是否啟用既有 report 狀態巡檢，workflow 預設 `true`。
 - `FFLOGS_EXISTING_REPORT_STATUS_CHECK_LIMIT`：每輪最多檢查幾筆既有副本/report 紀錄，workflow 預設 `200`。
@@ -431,7 +441,7 @@ GitHub Actions 會透過既有 report 狀態巡檢，每輪由舊到新抽查既
 
 近期掃描負責最近 24 小時的完整重查：`skipped_no_clear` 與 `deferred_incomplete_export` 會在重試窗內被視為未完成，重新進入深層檢查。延遲掃描固定檢查 24-72 小時前的 reports，但使用嚴格已知 report 集合，凡是已在 state 或排行榜出現過的 report 都會略過；它只補抓「這個時間段後來才出現在 reports 查詢中的新 report」，不重查既有 no-clear 紀錄。
 
-歷史補查會從副本的 `history_scan_start_date`、`scan_start_date` 或 `initial_scan_start_date` 開始，依 `data/state.json` 內各副本的 `history_scan_cursor_at` 往後輪巡。它只會把尚未在 state 或排行榜中的 report 選入候選，適合抓回「當時未公開、後來改成公開」或「FFLogs 延後完成匯出」的更舊 logs；一般最新資料與 24-72 小時固定區段仍分別由近期掃描與延遲掃描負責。
+歷史補查會從副本的 `history_scan_start_date`、`scan_start_date` 或 `initial_scan_start_date` 開始，依 `data/state.json` 內各副本的 `history_scan_cursor_at` 往後輪巡。它只會把尚未在 state 或排行榜中的 report 選入候選，適合抓回「當時未公開、後來改成公開」或「FFLogs 延後完成匯出」的更舊 logs；一般最新資料與 24-72 小時固定區段仍分別由近期掃描與延遲掃描負責。若 `FFLOGS_HISTORY_MAX_DEEP_REPORTS_PER_RUN` 使本輪候選出現 deferred，`fetch_fflogs.py` 會把 `history_scan_cursor_at` 停在最後一筆已選候選 report 的 `startTime`，下一輪先略過已保存或已檢查的同一筆，再接著處理同時間窗尚未更新的 report。
 
 ## 自動更新
 
@@ -505,7 +515,8 @@ npm run cloudflare:estimate
 - `data/state.json` 是抓取進度狀態，手動修改前請先確認目前掃描狀態。
 - `public/data/users/` 是由 `scripts/build_user_data.mjs` 重新產生的資料。
 - `public/data/rankings/` 是由 `fetch_fflogs.py --rebuild-public` 或 `--split-rankings` 重新產生的公開排行榜資料；若副本列在 `public/data/encounters.json`，就必須有對應公開 ranking 檔案。
-- FFLogs API 有限流，`config/fflogs.json` 可調整請求限制、重試、冷卻時間與單一 report 多 fight 的玩家成績批次大小。
+- `public/data/all/` 是完整資料鏡像，包含一般公開資料會排除的 hidden report。一般前端流程仍讀取 `public/data/`，額外檢視流程只應改寫資料 URL，不應改動 Vue 聚合邏輯。
+- FFLogs API 有限流，`config/fflogs.json` 可調整請求限制、重試、冷卻時間、淺層掃描快取、連線/讀取逾時、即時 GCD 計算，以及單一 report 多 fight 的玩家成績批次大小。
 - 排行榜只統計公開報告中可解析且符合繁中服條件的資料；地區只決定淺層候選池，真正的玩家身分仍以 FFLogs `masterData.actors` / `playerDetails` 的伺服器欄位判斷。
 - 單場 FFLogs `playerDetails` / `damageDone` 查詢會同時帶 `fightIDs` 與 fight 的相對 `startTime` / `endTime`，避免少數舊報告只用 `fightIDs` 時拿到 partial damage table，造成 rDPS/aDPS 異常放大。
 - `active_percent` 對齊 FFLogs Damage Done CSV 的 Active%，使用 `fflogs_total_time_ms` 作為優先分母；DPS/rDPS/aDPS 仍使用 `damage_time_ms`。

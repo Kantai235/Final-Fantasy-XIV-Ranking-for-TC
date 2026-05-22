@@ -1,5 +1,5 @@
 <script setup>
-import { provide, proxyRefs } from "vue";
+import { onMounted, onUnmounted, provide, proxyRefs } from "vue";
 import AppFooter from "./components/AppFooter.vue";
 import AppHeader from "./components/AppHeader.vue";
 import ActivityPage from "./pages/ActivityPage.vue";
@@ -11,13 +11,23 @@ import ServerComparePage from "./pages/ServerComparePage.vue";
 import TeamRankingsPage from "./pages/TeamRankingsPage.vue";
 import UserProfilePage from "./pages/UserProfilePage.vue";
 import { rankingAppKey, useRankingApp } from "./composables/useRankingApp";
+import { 預熱職業Icon快取 } from "./domain/jobs";
 import { useShareMeta } from "./utils/shareMeta";
 
 const rankingApp = useRankingApp();
 const view = proxyRefs(rankingApp);
+let 取消職業Icon預熱 = null;
 
 provide(rankingAppKey, rankingApp);
 useShareMeta(rankingApp.分享資訊);
+
+onMounted(() => {
+  取消職業Icon預熱 = 預熱職業Icon快取();
+});
+
+onUnmounted(() => {
+  取消職業Icon預熱?.();
+});
 </script>
 
 <template>

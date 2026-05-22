@@ -115,7 +115,7 @@
 18. `scripts/check_missing_gcd_report_status.py` 是一次性維護工具，只針對缺少 `gcd_coverage` key 或 `gcd_coverage: null` 的既有 report code 做輕量狀態查詢；不可存取時標記 report hidden，不補算 GCD，也不取代 `backfill_gcd_coverage.py`。
 19. `skipped_no_clear` 只在近期重試窗外才視為永久已檢查；workflow 預設 `FFLOGS_NO_CLEAR_RETRY_HOURS=24`，讓剛上傳但尚未匯出通關 fight 的 report 在一天內會被重新深查，避免後續出現 kill 時被舊快取擋掉。
 20. 單次 `fetch_fflogs.py` 執行內，report code 是深層檢查去重單位；`masterData.actors` 的繁中服玩家判斷會寫入本輪記憶體快取，後續同 report code 來自其他副本、recent、delayed 或 history 來源時直接重用結果或錯誤，不重複打 FFLogs API。
-21. GitHub Actions 會用 `FFLOGS_HISTORY_SCAN_*` 環境變數暫時開啟低量歷史補查，並用 `FFLOGS_FETCH_GCD_COVERAGE_*` 在新 report 落地時即時計算 GCD；`config/fflogs.json` 仍預設關閉延遲掃描、歷史補查與 Casts graph 即時計算，避免本機一般執行時額外掃描舊時間窗或查 Casts graph。歷史補查依各副本 `history_scan_cursor_at` 輪巡，專門補抓後來才公開或延後匯出的更舊 report，不取代最新增量掃描與 24-72 小時延遲掃描。
+21. GitHub Actions 會用 `FFLOGS_HISTORY_SCAN_*` 環境變數暫時開啟低量歷史補查，並用 `FFLOGS_FETCH_GCD_COVERAGE_*` 在新 report 落地時即時計算 GCD；`config/fflogs.json` 仍預設關閉延遲掃描、歷史補查與 Casts graph 即時計算，避免本機一般執行時額外掃描舊時間窗或查 Casts graph。歷史補查依各副本 `history_scan_cursor_at` 輪巡，專門補抓後來才公開或延後匯出的更舊 report，不取代最新增量掃描與 24-72 小時延遲掃描；若本輪深查上限打滿且仍有 deferred report，游標必須停在最後一筆已選候選的 `startTime`，若該副本本輪未分到深查額度則停回本輪時間窗起點，避免尚未更新的 report 被推到下一輪歷史全區間輪巡後才重試。
 22. `scripts/audit_xivanalysis_gcd_sample.py` 是人工稽核工具，預設用固定 seed 從零式、極、幻隨機抽樣 100 場並輸出 `docs/gcd_xivanalysis_audit_latest.json`；預設 `--local-mode recompute` 會即時重算本地結果再比對 xivanalysis，若要檢查已寫入資料可改用 `--local-mode stored`。`backfill_gcd_coverage.py --raw-events` 可讀 FFLogs `All` raw events、`combatantinfo` 技速/詠速、狀態視窗與 targetability 來追查差異；目前只有 `unreal_byakko` 已正式預設 raw events，其它副本正式啟用前仍需抽樣驗證。加上 `--apply` 時只會把抽樣中超過容許差異的玩家改寫為 `source=xivanalysis_page`。使用後必須重建公開排行榜與使用者資料，且不得放入 GitHub Actions 預設流程，以免對 xivanalysis 造成過量請求。
 
 ### F. 版本切點與過版紀錄
