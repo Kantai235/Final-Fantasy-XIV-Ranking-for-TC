@@ -227,11 +227,12 @@ npm test
 ```bash
 npm run backfill:gcd -- --dry-run
 npm run backfill:gcd
+npm run backfill:gcd:reports -- --dry-run
 ```
 
 `fetch_fflogs.py` 抓到新 report 時，workflow 會在每場 fight 的玩家成績整理完成後，順手查同一場 FFLogs `Casts` graph，並用 `scripts/gcd_coverage_core.py` 的本地 xivanalysis-like 演算法計算 GCD 覆蓋率；只保存 `gcd_coverage` 與 `gcd_coverage_status` 衍生結果，不保存 Casts graph 或 raw events。幻白虎 `unreal_byakko` 會自動改查同場 FFLogs `All` raw events，因為 xivanalysis 的 Always Be Casting 需要玩家無法行動狀態與 Boss/add targetability 才能精準扣 downtime。這讓最新增量掃描與歷史巡檢補回來的新公開 logs 都能當場補 GCD。
 
-`backfill_gcd_coverage.py` 則保留為修補既有歷史資料的手動工具。它會依通關時間由新到舊挑選缺少 `gcd_coverage` key，或仍停在舊版 `calculation_version` 的玩家，預設每輪 2000 筆。執行時會先輸出待補筆數、需重算筆數、已為 null 的筆數與本輪選取筆數，更新過程也會逐筆顯示 `[目前/本輪總數]` 進度。同一個 report/fight 會優先只查一次整場 FFLogs `Casts` graph 或 raw events，再於本地依玩家 `sourceID` 切分，避免每位玩家各打一個 FFLogs request。`unreal_byakko` 預設使用 raw events；其他副本若加上 `--raw-events`，可強制改用 FFLogs `All` events 做診斷性重算，但正式啟用前仍要用 xivanalysis 抽樣驗證各職業模組語意。若 FFLogs report 已無法存取，該玩家會寫入 `gcd_coverage: null` 與 `gcd_coverage_status.reason = "private_or_deleted"`，並同步標記來源 report，讓一般公開資料排除整份 report；暫時性錯誤會保留缺 key 或舊版狀態，留待下次重試。
+`backfill_gcd_coverage.py` 則保留為修補既有歷史資料的手動工具。它會依通關時間由新到舊挑選缺少 `gcd_coverage` key，或仍停在舊版 `calculation_version` 的玩家，預設每輪 2000 筆玩家；若帶 `--report-limit 200`，則會改以 FFLogs report code 為單位，將這些 report 內所有待更新玩家一起補齊。GitHub Actions 會再加上 `--stateful-report-backfill`，第一次正式執行時把當下時間寫入 `data/state.json` 的 `gcd_report_backfill.cutoff_sort_time`，每輪完成後再把本輪最舊 report 的排序時間與 report code 寫入 `cursor_sort_time` / `cursor_report_code`，所以下一輪會從上一輪最舊 report 之後繼續往舊推進；新 workflow 上線後落地的新 report 已由 `fetch_fflogs.py` 即時計算 GCD，不會搶歷史回補配額。執行時會先輸出待補筆數、需重算筆數、已為 null 的筆數、本輪選取筆數與 report 數，更新過程也會逐筆顯示 `[目前/本輪總數]` 進度。同一個 report/fight 會優先只查一次整場 FFLogs `Casts` graph 或 raw events，再於本地依玩家 `sourceID` 切分，避免每位玩家各打一個 FFLogs request。`unreal_byakko` 預設使用 raw events；其他副本若加上 `--raw-events`，可強制改用 FFLogs `All` events 做診斷性重算，但正式啟用前仍要用 xivanalysis 抽樣驗證各職業模組語意。若 FFLogs report 已無法存取，該玩家會寫入 `gcd_coverage: null` 與 `gcd_coverage_status.reason = "private_or_deleted"`，並同步標記來源 report，讓一般公開資料排除整份 report；暫時性錯誤會記錄在 `retry_report_codes`，下輪會先重試，不會被游標永久跳過。
 
 本地計算會參照 xivanalysis `Always be casting` 的核心規則：以 GCD cast/recast 取最大覆蓋時間、扣除 downtime，並用 FFLogs 約 45ms 批次的 timestamp 分桶推估實際 recast。對於忍者 mudra/ninjutsu、召喚師三種召喚、舞者步舞與 Finish 類技能、舞者 Finishing Move、賢者 Eukrasia、絕槍戰士部分長冷卻 GCD、占星巨集宇宙、毒蛇劍士獨立 `gcdRecast`，以及毒蛇劍士、武士、白魔法師等加速狀態，腳本會用小型規則表補上 `Action.csv` 無法表達的例外；武士 `Tendo Kaeshi Setsugekka` 會依 xivanalysis 視為 3.2 秒 GCD，毒蛇 `Dreadwinder/Vicepit` 則拆分為不吃副屬性但吃 `Swiftscaled` 狀態加速。若 raw `combatantinfo` 沒提供技速/詠速，會退回同場 GCD timestamp 分桶推估實際 recast；武士居合類技能也不會用 FFLogs 偏短的 cast packet 比例縮短 GCD lock。xivanalysis 頁面本身容易被站端限流，因此 workflow 預設不再讀取該網站頁面。
 
@@ -246,6 +247,8 @@ npm run validate:data
 ```
 
 `backfill:gcd:all` 會帶 `--all --limit 999999`，連已是目前 `calculation_version` 的玩家也會重新計算；已標為 `gcd_coverage: null` 的不可用 report 仍會略過，避免反覆查詢 Private、刪除或無權限的報告。若只想重算單場，可使用 `npm run backfill:gcd -- --report-code A4cf9kg7Xbmt6vDh --fight-id 3`。
+
+GitHub Actions 會在一般更新流程中執行 `python scripts/backfill_gcd_coverage.py --stateful-report-backfill --report-limit 200`。這個流程不是每輪重新挑最新 200 份 report，而是先固定一個 GCD 歷史回補切點，再用 `cursor_sort_time` / `cursor_report_code` 記住上一輪最舊 report，下一輪從該位置繼續往更舊的 report 追平既有 GCD。若同一份 FFLogs report 同時出現在多個副本分片或多場 fight，該 report 內所有待更新玩家會在同一輪一起處理，避免留下半套 GCD 結果。
 
 若要針對單場差異追查 raw events 與 Casts graph 的差別，可在單場指令後加上 `--raw-events`。這會即時讀取 FFLogs `All` events、使用 `combatantinfo` 的技速/詠速、狀態視窗與 raw targetability 重算；若 FFLogs 沒提供副屬性，會改用同場 GCD timestamp 分桶推估 recast。raw events 仍只在記憶體中使用，不會寫入 repo。
 
@@ -438,6 +441,8 @@ GitHub Actions 會透過既有 report 狀態巡檢，每輪由舊到新抽查既
 - `FFLOGS_EXISTING_REPORT_STATUS_CHECK_LIMIT`：每輪最多檢查幾筆既有副本/report 紀錄，workflow 預設 `200`。
 - `FFLOGS_FETCH_GCD_COVERAGE_ENABLED`：新 report 落地時是否即時計算 GCD 覆蓋率，workflow 預設 `true`。
 - `FFLOGS_FETCH_GCD_COVERAGE_MAX_FIGHTS_PER_RUN`：每輪最多查幾場 fight 的 Casts graph，workflow 預設 `500`；`0` 代表不設上限。
+- `FFLOGS_GCD_BACKFILL_REPORT_LIMIT`：每輪最多回補幾份既有 FFLogs report 的 GCD，workflow 預設 `200`。
+- `FFLOGS_GCD_BACKFILL_CUTOFF_ISO`：可選的歷史 GCD 回補固定切點。未設定時，`--stateful-report-backfill` 第一次正式執行會把當下時間寫入 `data/state.json`；後續實際推進位置由 `gcd_report_backfill.cursor_sort_time` / `cursor_report_code` 記住上一輪最舊 report。
 
 近期掃描負責最近 24 小時的完整重查：`skipped_no_clear` 與 `deferred_incomplete_export` 會在重試窗內被視為未完成，重新進入深層檢查。延遲掃描固定檢查 24-72 小時前的 reports，但使用嚴格已知 report 集合，凡是已在 state 或排行榜出現過的 report 都會略過；它只補抓「這個時間段後來才出現在 reports 查詢中的新 report」，不重查既有 no-clear 紀錄。
 
@@ -453,15 +458,16 @@ GitHub Actions 會透過既有 report 狀態巡檢，每輪由舊到新抽查既
 2. 安裝 Python 與 Node.js 依賴。
 3. 同步 Cloudflare CDN 規則；若 Cloudflare Rulesets API 只有 5xx、429 或網路暫時錯誤，會記錄 warning 並繼續抓取 FFLogs，4xx 設定或權限錯誤仍會中止。
 4. 使用 GitHub Secrets 中的 FFLogs 憑證執行抓取腳本，掃描全部地區候選 report，近期 24 小時完整重查、24-72 小時只選未知 report，並以低量歷史補查檢查更舊時間窗是否有新的公開 logs 可抓取，同時對新落地 fight 即時計算 GCD 覆蓋率。
-5. 執行 `python scripts/fetch_fflogs.py --split-rankings`，將完整排行榜資料拆分成適合 Git 追蹤的檔案。
-6. 產生個人成績單、全服統計、近期動態、隊伍榜、伺服器對比資料與 `data/update_status.json`。
-7. 執行 `npm run build`，在提交前完成公開資料驗證與 Vite 建置。
-8. 若 `data` 或 `public/data` 有變更，提交並推送更新。
-9. 上傳 `dist/` 並部署到 GitHub Pages。
+5. 執行 `python scripts/backfill_gcd_coverage.py --stateful-report-backfill --report-limit 200`，從固定切點往更舊 report 逐輪追平既有 GCD。
+6. 執行 `python scripts/fetch_fflogs.py --split-rankings`，將完整排行榜資料拆分成適合 Git 追蹤的檔案。
+7. 產生個人成績單、全服統計、近期動態、隊伍榜、伺服器對比資料與 `data/update_status.json`。
+8. 執行 `npm run build`，在提交前完成公開資料驗證與 Vite 建置。
+9. 若 `data` 或 `public/data` 有變更，提交並推送更新。
+10. 上傳 `dist/` 並部署到 GitHub Pages。
 
 `scripts/backfill_missing_fflogs_data.py --limit 250` 的自動步驟目前已在 workflow 內以註解保留，不會隨每輪排程執行。若需要修補既有 report 缺漏欄位，可手動執行 `npm run backfill:fflogs` 或原 Python 指令，再接續建置與驗證資料。
 
-`scripts/backfill_gcd_coverage.py --limit 2000` 的自動步驟目前也已在 workflow 內以註解保留，不會隨每輪排程重掃既有玩家。新 report 的 GCD 會由 `fetch_fflogs.py` 即時計算；若需要追平舊資料，可手動執行 `npm run backfill:gcd -- --dry-run` 預覽，再正式執行 `npm run backfill:gcd`。Repository Variable `FFLOGS_GCD_BACKFILL_LIMIT` 只在重新啟用 workflow 註解步驟時生效。
+`scripts/backfill_gcd_coverage.py --stateful-report-backfill --report-limit 200` 已在 workflow 內啟用，用來從上線切點往舊 report 回補既有 GCD。新 report 的 GCD 仍由 `fetch_fflogs.py` 即時計算；若需要人工追平或重算舊資料，可手動執行 `npm run backfill:gcd -- --dry-run` 預覽，再正式執行 `npm run backfill:gcd`。Repository Variable `FFLOGS_GCD_BACKFILL_REPORT_LIMIT` 可調整每輪 report 數；若要固定回補切點，可設定 `FFLOGS_GCD_BACKFILL_CUTOFF_ISO`。
 
 需要在 GitHub Repository Secrets 設定至少一組：
 

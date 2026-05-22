@@ -10,6 +10,7 @@
     "compact:state": "python scripts/compact_state.py",
     "backfill:fflogs": "python scripts/backfill_missing_fflogs_data.py --limit 500",
     "backfill:gcd": "python scripts/backfill_gcd_coverage.py --limit 2000",
+    "backfill:gcd:reports": "python scripts/backfill_gcd_coverage.py --stateful-report-backfill --report-limit 200",
     "backfill:gcd:all": "python scripts/backfill_gcd_coverage.py --all --limit 999999",
     "backfill:gcd:xivanalysis": "python scripts/backfill_gcd_coverage_xivanalysis.py --limit 20 --workers 1 --delay-ms 2500",
     "audit:gcd:xivanalysis": "python scripts/audit_xivanalysis_gcd_sample.py --sample-size 100",

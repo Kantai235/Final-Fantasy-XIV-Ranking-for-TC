@@ -120,19 +120,19 @@ jobs:
       #     FFLOGS_CLIENT_CREDENTIALS_JSON: ${{ secrets.FFLOGS_CLIENT_CREDENTIALS_JSON }}
       #   run: python scripts/backfill_missing_fflogs_data.py --limit 250
 
-      # GCD 覆蓋率目前已在前端開啟，新落地 report 會由 fetch_fflogs.py 即時計算衍生結果。
-      # 以下 backfill 步驟只保留給需要追平既有歷史資料時手動恢復，不隨每輪排程重掃，避免過量 FFLogs request 與大型資料 diff。
-      # - name: 以本地 xivanalysis-like 演算法補齊 GCD 覆蓋率
-      #   env:
-      #     FFLOGS_CLIENT_ID: ${{ secrets.FFLOGS_CLIENT_ID }}
-      #     FFLOGS_CLIENT_SECRET: ${{ secrets.FFLOGS_CLIENT_SECRET }}
-      #     FFLOGS_CLIENT_IDS: ${{ secrets.FFLOGS_CLIENT_IDS }}
-      #     FFLOGS_CLIENT_SECRETS: ${{ secrets.FFLOGS_CLIENT_SECRETS }}
-      #     FFLOGS_CLIENT_CREDENTIALS_JSON: ${{ secrets.FFLOGS_CLIENT_CREDENTIALS_JSON }}
-      #     FFLOGS_GCD_BACKFILL_LIMIT: ${{ vars.FFLOGS_GCD_BACKFILL_LIMIT }}
-      #   run: |
-      #     python scripts/backfill_gcd_coverage.py \
-      #       --limit "${FFLOGS_GCD_BACKFILL_LIMIT:-2000}"
+      - name: 由新往舊補齊既有 report 的 GCD 覆蓋率
+        env:
+          FFLOGS_CLIENT_ID: ${{ secrets.FFLOGS_CLIENT_ID }}
+          FFLOGS_CLIENT_SECRET: ${{ secrets.FFLOGS_CLIENT_SECRET }}
+          FFLOGS_CLIENT_IDS: ${{ secrets.FFLOGS_CLIENT_IDS }}
+          FFLOGS_CLIENT_SECRETS: ${{ secrets.FFLOGS_CLIENT_SECRETS }}
+          FFLOGS_CLIENT_CREDENTIALS_JSON: ${{ secrets.FFLOGS_CLIENT_CREDENTIALS_JSON }}
+          FFLOGS_GCD_BACKFILL_REPORT_LIMIT: ${{ vars.FFLOGS_GCD_BACKFILL_REPORT_LIMIT || '200' }}
+          FFLOGS_GCD_BACKFILL_CUTOFF_ISO: ${{ vars.FFLOGS_GCD_BACKFILL_CUTOFF_ISO }}
+        run: |
+          python scripts/backfill_gcd_coverage.py \
+            --stateful-report-backfill \
+            --report-limit "${FFLOGS_GCD_BACKFILL_REPORT_LIMIT:-200}"
 
       - name: 分割完整排行榜資料供 Git 追蹤
         run: python scripts/fetch_fflogs.py --split-rankings

@@ -5,6 +5,7 @@ import os
 import sys
 import time
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -17,11 +18,15 @@ import gcd_coverage_core as gcd_core  # noqa: E402
 
 
 DEFAULT_GCD_BACKFILL_LIMIT = 2000
+DEFAULT_GCD_BACKFILL_REPORT_LIMIT = 0
+GCD_REPORT_BACKFILL_STATE_KEY = "gcd_report_backfill"
 MIN_REASONABLE_EPOCH_MS = 946684800000
 MAIN_TARGET_DAMAGE_DOWNTIME_ENCOUNTERS = {"unreal_byakko"}
 RAW_EVENT_GCD_ENCOUNTERS = {"unreal_byakko"}
 
 read_json = getattr(fflogs, "\u8b80\u53d6_json")
+write_json = getattr(fflogs, "\u5beb\u5165_json")
+state_path = getattr(fflogs, "\u72c0\u614b\u6a94\u6848\u8def\u5f91")
 ranking_path = getattr(fflogs, "\u6392\u884c\u699c\u6a94\u6848\u8def\u5f91")
 load_ranking_file = getattr(fflogs, "\u8b80\u53d6\u6392\u884c\u699c\u6a94\u6848")
 write_ranking_file = getattr(fflogs, "\u5beb\u5165\u6392\u884c\u699c\u6a94\u6848")
@@ -216,6 +221,204 @@ def scan_candidates(
     candidates.sort(key=lambda candidate: (candidate.sort_time, candidate.report_code), reverse=True)
     return candidates, missing_key_count, stale_key_count, null_key_count, rankings_by_key
 
+
+def candidate_report_key(candidate: GcdCandidate) -> str:
+    return candidate.report_code
+
+
+def select_candidates(
+    candidates: list[GcdCandidate],
+    *,
+    player_limit: int,
+    report_limit: int = 0,
+) -> list[GcdCandidate]:
+    if report_limit <= 0:
+        return candidates[: max(player_limit, 0)]
+
+    selected_report_codes: set[str] = set()
+    for candidate in candidates:
+        selected_report_codes.add(candidate_report_key(candidate))
+        if len(selected_report_codes) >= report_limit:
+            break
+
+    if not selected_report_codes:
+        return []
+
+    # Workflow 需要以 report 為單位從新往舊追 GCD。選出最新 N 份 report code 後，
+    # 同一份 report 在不同副本分片或不同 fight 裡的待補玩家必須一起處理，避免
+    # 同一個 FFLogs report 被切成多輪，浪費 Casts/raw events request 與留下半套結果。
+    return [candidate for candidate in candidates if candidate_report_key(candidate) in selected_report_codes]
+
+
+def selected_report_count(candidates: list[GcdCandidate]) -> int:
+    return len({candidate_report_key(candidate) for candidate in candidates})
+
+
+def parse_report_cutoff_ms(raw_value: str | None) -> int | None:
+    if raw_value is None:
+        return None
+
+    text = raw_value.strip()
+    if not text:
+        return None
+
+    try:
+        return int(text)
+    except ValueError:
+        pass
+
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError as error:
+        raise RuntimeError(
+            f"FFLOGS_GCD_BACKFILL_CUTOFF_ISO 無法解析：{raw_value}，請使用 ISO 8601 或 epoch 毫秒。"
+        ) from error
+
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return int(parsed.astimezone(timezone.utc).timestamp() * 1000)
+
+
+def cutoff_iso(cutoff_ms: int | None) -> str | None:
+    if cutoff_ms is None:
+        return None
+    return milliseconds_to_iso(cutoff_ms)
+
+
+def load_state() -> dict[str, Any]:
+    state = read_json(state_path, {})
+    return state if isinstance(state, dict) else {}
+
+
+def resolve_stateful_report_window(
+    state: dict[str, Any],
+    *,
+    explicit_cutoff: str | None,
+    now_ms: int,
+) -> tuple[int, int, str | None, bool]:
+    node = state.get(GCD_REPORT_BACKFILL_STATE_KEY)
+    if not isinstance(node, dict):
+        node = {}
+
+    parsed_explicit = parse_report_cutoff_ms(explicit_cutoff)
+    if parsed_explicit is not None:
+        initialized = to_int(node.get("cutoff_sort_time")) != parsed_explicit
+        cursor_report_code = str(node.get("cursor_report_code")) if node.get("cursor_report_code") else None
+        cursor_ms = to_int(node.get("cursor_sort_time")) if not initialized else None
+        return parsed_explicit, cursor_ms or parsed_explicit, cursor_report_code if not initialized else None, initialized
+
+    existing_cutoff = to_int(node.get("cutoff_sort_time"))
+    if existing_cutoff is not None:
+        cursor_ms = to_int(node.get("cursor_sort_time")) or existing_cutoff
+        cursor_report_code = str(node.get("cursor_report_code")) if node.get("cursor_report_code") else None
+        return existing_cutoff, cursor_ms, cursor_report_code, False
+
+    return now_ms, now_ms, None, True
+
+
+def report_cursor_key(candidate: GcdCandidate) -> tuple[float, str]:
+    return candidate.sort_time, candidate_report_key(candidate)
+
+
+def filter_candidates_before_cursor(
+    candidates: list[GcdCandidate],
+    cursor_ms: int | None,
+    cursor_report_code: str | None = None,
+    *,
+    retry_report_codes: set[str] | None = None,
+) -> list[GcdCandidate]:
+    retry_report_codes = retry_report_codes or set()
+    if cursor_ms is None:
+        return candidates
+
+    cursor_key = (float(cursor_ms), cursor_report_code or "")
+    filtered: list[GcdCandidate] = []
+    for candidate in candidates:
+        report_code = candidate_report_key(candidate)
+        if report_code in retry_report_codes:
+            filtered.append(candidate)
+            continue
+        if cursor_report_code:
+            if report_cursor_key(candidate) < cursor_key:
+                filtered.append(candidate)
+        elif candidate.sort_time < cursor_ms:
+            filtered.append(candidate)
+    return filtered
+
+
+def distinct_report_cursor_order(candidates: list[GcdCandidate]) -> list[tuple[float, str]]:
+    seen_report_codes: set[str] = set()
+    order: list[tuple[float, str]] = []
+    for candidate in candidates:
+        report_code = candidate_report_key(candidate)
+        if report_code in seen_report_codes:
+            continue
+        seen_report_codes.add(report_code)
+        order.append(report_cursor_key(candidate))
+    return order
+
+
+def update_stateful_report_backfill_state(
+    state: dict[str, Any],
+    *,
+    cutoff_ms: int,
+    initialized: bool,
+    candidate_count: int,
+    selected: list[GcdCandidate],
+    updated: int,
+    marked_null: int,
+    failed: int,
+    checked_at_iso: str,
+    failed_report_codes: set[str] | None = None,
+    completed_report_codes: set[str] | None = None,
+) -> None:
+    node = state.setdefault(GCD_REPORT_BACKFILL_STATE_KEY, {})
+    if not isinstance(node, dict):
+        node = {}
+        state[GCD_REPORT_BACKFILL_STATE_KEY] = node
+
+    node["schema_version"] = 1
+    node["mode"] = "new_to_old_report_backfill"
+    if initialized or "cutoff_sort_time" not in node:
+        node["cutoff_sort_time"] = cutoff_ms
+        node["cutoff_sort_time_iso"] = cutoff_iso(cutoff_ms)
+        node["initialized_at_iso"] = checked_at_iso
+        node["cursor_sort_time"] = cutoff_ms
+        node["cursor_sort_time_iso"] = cutoff_iso(cutoff_ms)
+        node.pop("cursor_report_code", None)
+
+    existing_retry_report_codes = {
+        str(report_code)
+        for report_code in (node.get("retry_report_codes") or [])
+        if report_code
+    }
+    retry_report_codes = (existing_retry_report_codes - (completed_report_codes or set())) | (failed_report_codes or set())
+    if retry_report_codes:
+        node["retry_report_codes"] = sorted(retry_report_codes)
+    else:
+        node.pop("retry_report_codes", None)
+
+    selected_reports = selected_report_count(selected)
+    selected_report_order = distinct_report_cursor_order(selected)
+    oldest_selected = selected_report_order[-1] if selected_report_order else None
+    if selected_report_order:
+        node["cursor_sort_time"] = int(oldest_selected[0])
+        node["cursor_sort_time_iso"] = cutoff_iso(int(oldest_selected[0]))
+        node["cursor_report_code"] = oldest_selected[1]
+    node["last_run_at_iso"] = checked_at_iso
+    node["last_candidate_players_before_cutoff"] = candidate_count
+    node["last_candidate_players_before_cursor"] = candidate_count
+    node["last_selected_players"] = len(selected)
+    node["last_selected_reports"] = selected_reports
+    node["last_updated_players"] = updated
+    node["last_marked_null_players"] = marked_null
+    node["last_failed_players"] = failed
+    node["last_oldest_selected_sort_time"] = int(oldest_selected[0]) if oldest_selected else None
+    node["last_oldest_selected_sort_time_iso"] = cutoff_iso(int(oldest_selected[0])) if oldest_selected else None
+    node["last_oldest_selected_report_code"] = oldest_selected[1] if oldest_selected else None
+    node["completed"] = candidate_count == 0
+
+
 def parse_int_env_default(name: str, fallback: int) -> int:
     raw_value = os.environ.get(name)
     if raw_value is None or raw_value.strip() == "":
@@ -321,10 +524,30 @@ def apply_coverage(candidate: GcdCandidate, coverage: dict[str, Any], checked_at
 def parse_args() -> argparse.Namespace:
     # GitHub Actions 未設定 Repository Variable 時，若 workflow 明確把它傳入 env，
     # Python 會看到空字串而不是缺少 key。這裡先把空值視為預設值，避免還沒讀到
-    # 命令列 --limit 覆寫前就因 int("") 中止整輪資料更新。
+    # 命令列 --limit / --report-limit 覆寫前就因 int("") 中止整輪資料更新。
     default_limit = parse_int_env_default("FFLOGS_GCD_BACKFILL_LIMIT", DEFAULT_GCD_BACKFILL_LIMIT)
+    default_report_limit = parse_int_env_default(
+        "FFLOGS_GCD_BACKFILL_REPORT_LIMIT",
+        DEFAULT_GCD_BACKFILL_REPORT_LIMIT,
+    )
     parser = argparse.ArgumentParser(description="Backfill missing FFLogs GCD coverage fields.")
     parser.add_argument("--limit", type=int, default=default_limit, help="本輪最多更新的玩家筆數。")
+    parser.add_argument(
+        "--report-limit",
+        type=int,
+        default=default_report_limit,
+        help="本輪最多處理幾份 FFLogs report code；大於 0 時會取代 --limit 的玩家筆數限制。",
+    )
+    parser.add_argument(
+        "--stateful-report-backfill",
+        action="store_true",
+        help="使用 data/state.json 的 gcd_report_backfill 切點，只處理切點以前的既有 report。",
+    )
+    parser.add_argument(
+        "--report-cutoff-iso",
+        default=os.environ.get("FFLOGS_GCD_BACKFILL_CUTOFF_ISO"),
+        help="歷史 GCD 回補的固定時間切點；未指定時，stateful 模式第一次正式執行會使用當下時間。",
+    )
     parser.add_argument("--all", action="store_true", help="連已是目前 GCD 計算版本的玩家也重新計算；仍會略過已標為 null 的不可用報告。")
     parser.add_argument("--dry-run", action="store_true", help="只列出待補統計與本輪候選，不寫入也不呼叫 FFLogs。")
     parser.add_argument("--report-code", help="只處理指定 report code，方便驗證單場戰鬥。")
@@ -351,18 +574,68 @@ def candidate_matches_filters(candidate: GcdCandidate, args: argparse.Namespace)
 
 def main() -> int:
     args = parse_args()
+    state: dict[str, Any] | None = None
+    stateful_cutoff_ms: int | None = None
+    stateful_cursor_ms: int | None = None
+    stateful_cursor_report_code: str | None = None
+    stateful_cutoff_initialized = False
+    retry_report_codes: set[str] = set()
     encounters = load_all_encounters()
     candidates, missing_key_count, stale_key_count, null_key_count, rankings_by_key = scan_candidates(
         encounters,
         include_current=args.all,
     )
     candidates = [candidate for candidate in candidates if candidate_matches_filters(candidate, args)]
-    selected = candidates[: max(args.limit, 0)]
+    unfiltered_candidate_count = len(candidates)
+    if args.stateful_report_backfill:
+        state = load_state()
+        state_node = state.get(GCD_REPORT_BACKFILL_STATE_KEY)
+        if isinstance(state_node, dict):
+            retry_report_codes = {
+                str(report_code)
+                for report_code in (state_node.get("retry_report_codes") or [])
+                if report_code
+            }
+        (
+            stateful_cutoff_ms,
+            stateful_cursor_ms,
+            stateful_cursor_report_code,
+            stateful_cutoff_initialized,
+        ) = resolve_stateful_report_window(
+            state,
+            explicit_cutoff=args.report_cutoff_iso,
+            now_ms=int(time.time() * 1000),
+        )
+        if stateful_cutoff_initialized:
+            retry_report_codes = set()
+        candidates = filter_candidates_before_cursor(
+            candidates,
+            stateful_cursor_ms,
+            stateful_cursor_report_code,
+            retry_report_codes=retry_report_codes,
+        )
+    selected = select_candidates(
+        candidates,
+        player_limit=args.limit,
+        report_limit=max(args.report_limit, 0),
+    )
 
     print(f"需要更新 GCD 覆蓋率的玩家筆數：{missing_key_count}")
     print(f"需要以 v{GCD_CALCULATION_VERSION} 重算 GCD 覆蓋率的玩家筆數：{stale_key_count}")
     print(f"已建立 gcd_coverage key 但值為 null 的玩家筆數：{null_key_count}")
+    if args.stateful_report_backfill:
+        cursor_text = cutoff_iso(stateful_cursor_ms)
+        if stateful_cursor_report_code:
+            cursor_text = f"{cursor_text} report={stateful_cursor_report_code}"
+        print(
+            "已啟用 stateful report 回補："
+            f"cutoff={cutoff_iso(stateful_cutoff_ms)}，"
+            f"cursor={cursor_text}，"
+            f"切點前待補玩家 {len(candidates)} / 全部篩選後 {unfiltered_candidate_count}"
+        )
     print(f"本輪選取更新筆數：{len(selected)}")
+    if args.report_limit > 0:
+        print(f"本輪選取 report 數：{selected_report_count(selected)} / {args.report_limit}")
     if args.all:
         print("已啟用 --all：本輪候選包含目前版本已完成的 GCD 覆蓋率。")
     if args.report_code or args.fight_id is not None or args.player_name:
@@ -373,7 +646,24 @@ def main() -> int:
     if len(selected) > 20:
         print(f"... 另有 {len(selected) - 20} 筆本輪候選。")
 
-    if args.dry_run or not selected:
+    if args.dry_run:
+        return 0
+
+    if not selected:
+        if args.stateful_report_backfill and state is not None and stateful_cutoff_ms is not None:
+            checked_at_iso = milliseconds_to_iso(time.time() * 1000) or ""
+            update_stateful_report_backfill_state(
+                state,
+                cutoff_ms=stateful_cutoff_ms,
+                initialized=stateful_cutoff_initialized,
+                candidate_count=len(candidates),
+                selected=selected,
+                updated=0,
+                marked_null=0,
+                failed=0,
+                checked_at_iso=checked_at_iso,
+            )
+            write_json(state_path, state)
         return 0
 
     session = fflogs.requests.Session()
@@ -399,6 +689,8 @@ def main() -> int:
     updated = 0
     marked_null = 0
     failed = 0
+    completed_report_codes: set[str] = set()
+    failed_report_codes: set[str] = set()
     checked_at_iso = milliseconds_to_iso(time.time() * 1000)
 
     for index, candidate in enumerate(selected, start=1):
@@ -414,6 +706,7 @@ def main() -> int:
             )
             changed_encounter_keys.add(candidate.encounter_key)
             marked_null += 1
+            completed_report_codes.add(candidate.report_code)
             print(f"[{index}/{len(selected)}] → report 已標記無法存取，寫入 null。")
             continue
 
@@ -501,21 +794,25 @@ def main() -> int:
             )
             changed_encounter_keys.add(candidate.encounter_key)
             marked_null += 1
+            completed_report_codes.add(candidate.report_code)
             print(f"[{index}/{len(selected)}] → report 已轉為 Private、刪除或無權限，寫入 null。")
             continue
         except Exception as error:  # noqa: BLE001
             failed += 1
+            failed_report_codes.add(candidate.report_code)
             print(f"[{index}/{len(selected)}] → 暫時失敗，下次 workflow 會重試：{error}", file=sys.stderr)
             continue
 
         if not coverage:
             failed += 1
+            failed_report_codes.add(candidate.report_code)
             print(f"[{index}/{len(selected)}] → 無法從 Casts graph 計算 GCD 覆蓋率，保留缺 key 狀態。", file=sys.stderr)
             continue
 
         apply_coverage(candidate, coverage, checked_at_iso)
         changed_encounter_keys.add(candidate.encounter_key)
         updated += 1
+        completed_report_codes.add(candidate.report_code)
         print(
             f"[{index}/{len(selected)}] → {coverage['percent']:.2f}% "
             f"({coverage['covered_time_ms']}/{coverage['denominator_ms']} ms, "
@@ -536,6 +833,22 @@ def main() -> int:
         f"寫入 null {marked_null} 筆，"
         f"暫時失敗 {failed} 筆。"
     )
+    if args.stateful_report_backfill and state is not None and stateful_cutoff_ms is not None:
+        update_stateful_report_backfill_state(
+            state,
+            cutoff_ms=stateful_cutoff_ms,
+            initialized=stateful_cutoff_initialized,
+            candidate_count=len(candidates),
+            selected=selected,
+            updated=updated,
+            marked_null=marked_null,
+            failed=failed,
+            checked_at_iso=checked_at_iso or "",
+            failed_report_codes=failed_report_codes,
+            completed_report_codes=completed_report_codes,
+        )
+        write_json(state_path, state)
+        print("已更新 data/state.json 的 gcd_report_backfill 回補狀態。")
     return 0
 
 

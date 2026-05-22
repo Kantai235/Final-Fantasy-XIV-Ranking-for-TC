@@ -47,6 +47,191 @@ class GcdCoverageBackfillTest(unittest.TestCase):
 
         self.assertEqual(args.limit, 37)
 
+    def test_parse_args_supports_report_limit_env_and_cli_override(self) -> None:
+        with (
+            patch.dict(gcd.os.environ, {"FFLOGS_GCD_BACKFILL_REPORT_LIMIT": "200"}),
+            patch.object(gcd.sys, "argv", ["backfill_gcd_coverage.py", "--report-limit", "50"]),
+        ):
+            args = gcd.parse_args()
+
+        self.assertEqual(args.report_limit, 50)
+
+    def test_select_candidates_can_limit_by_report_code(self) -> None:
+        def make_candidate(report_code: str, sort_time: int, player_name: str) -> gcd.GcdCandidate:
+            return gcd.GcdCandidate(
+                encounter_key="fixture",
+                encounter={},
+                ranking={},
+                report_code=report_code,
+                report={},
+                fight={"fight_id": sort_time},
+                player={"name": player_name},
+                sort_time=sort_time,
+            )
+
+        candidates = [
+            make_candidate("NEW", 300, "新報告第一位"),
+            make_candidate("MID", 200, "中間報告"),
+            make_candidate("OLD", 100, "舊報告"),
+            make_candidate("NEW", 90, "新報告第二位"),
+        ]
+
+        selected = gcd.select_candidates(candidates, player_limit=1, report_limit=1)
+
+        self.assertEqual([candidate.player["name"] for candidate in selected], ["新報告第一位", "新報告第二位"])
+        self.assertEqual(gcd.selected_report_count(selected), 1)
+
+    def test_select_candidates_keeps_player_limit_when_report_limit_is_disabled(self) -> None:
+        candidates = [
+            gcd.GcdCandidate("fixture", {}, {}, "A", {}, {}, {"name": "一"}, 30),
+            gcd.GcdCandidate("fixture", {}, {}, "B", {}, {}, {"name": "二"}, 20),
+            gcd.GcdCandidate("fixture", {}, {}, "C", {}, {}, {"name": "三"}, 10),
+        ]
+
+        selected = gcd.select_candidates(candidates, player_limit=2, report_limit=0)
+
+        self.assertEqual([candidate.report_code for candidate in selected], ["A", "B"])
+
+    def test_stateful_report_window_uses_existing_cursor_before_now(self) -> None:
+        state = {
+            gcd.GCD_REPORT_BACKFILL_STATE_KEY: {
+                "cutoff_sort_time": 5000,
+                "cursor_sort_time": 2000,
+                "cursor_report_code": "CURSOR",
+            }
+        }
+
+        cutoff, cursor, report_code, initialized = gcd.resolve_stateful_report_window(
+            state,
+            explicit_cutoff=None,
+            now_ms=8000,
+        )
+
+        self.assertEqual(cutoff, 5000)
+        self.assertEqual(cursor, 2000)
+        self.assertEqual(report_code, "CURSOR")
+        self.assertFalse(initialized)
+
+    def test_stateful_report_window_initializes_from_now(self) -> None:
+        cutoff, cursor, report_code, initialized = gcd.resolve_stateful_report_window(
+            {},
+            explicit_cutoff=None,
+            now_ms=3000,
+        )
+
+        self.assertEqual(cutoff, 3000)
+        self.assertEqual(cursor, 3000)
+        self.assertIsNone(report_code)
+        self.assertTrue(initialized)
+
+    def test_stateful_report_window_allows_explicit_override(self) -> None:
+        state = {
+            gcd.GCD_REPORT_BACKFILL_STATE_KEY: {
+                "cutoff_sort_time": 1000,
+                "cursor_sort_time": 900,
+                "cursor_report_code": "OLD",
+            }
+        }
+
+        cutoff, cursor, report_code, initialized = gcd.resolve_stateful_report_window(
+            state,
+            explicit_cutoff="1970-01-01T00:00:02Z",
+            now_ms=3000,
+        )
+
+        self.assertEqual(cutoff, 2000)
+        self.assertEqual(cursor, 2000)
+        self.assertIsNone(report_code)
+        self.assertTrue(initialized)
+
+    def test_filter_candidates_before_cursor_excludes_newer_reports(self) -> None:
+        candidates = [
+            gcd.GcdCandidate("fixture", {}, {}, "NEW", {}, {}, {"name": "new"}, 3000),
+            gcd.GcdCandidate("fixture", {}, {}, "OLD", {}, {}, {"name": "old"}, 1000),
+        ]
+
+        filtered = gcd.filter_candidates_before_cursor(candidates, 2000)
+
+        self.assertEqual([candidate.report_code for candidate in filtered], ["OLD"])
+
+    def test_filter_candidates_before_cursor_uses_report_code_tie_breaker(self) -> None:
+        candidates = [
+            gcd.GcdCandidate("fixture", {}, {}, "Z", {}, {}, {"name": "cursor"}, 3000),
+            gcd.GcdCandidate("fixture", {}, {}, "A", {}, {}, {"name": "same-time-older"}, 3000),
+            gcd.GcdCandidate("fixture", {}, {}, "OLD", {}, {}, {"name": "old"}, 1000),
+        ]
+
+        filtered = gcd.filter_candidates_before_cursor(candidates, 3000, "Z")
+
+        self.assertEqual([candidate.report_code for candidate in filtered], ["A", "OLD"])
+
+    def test_filter_candidates_before_cursor_keeps_retry_reports(self) -> None:
+        candidates = [
+            gcd.GcdCandidate("fixture", {}, {}, "RETRY", {}, {}, {"name": "retry"}, 4000),
+            gcd.GcdCandidate("fixture", {}, {}, "OLD", {}, {}, {"name": "old"}, 1000),
+        ]
+
+        filtered = gcd.filter_candidates_before_cursor(
+            candidates,
+            2000,
+            retry_report_codes={"RETRY"},
+        )
+
+        self.assertEqual([candidate.report_code for candidate in filtered], ["RETRY", "OLD"])
+
+    def test_update_stateful_report_backfill_state_moves_cursor_to_oldest_selected_report(self) -> None:
+        state = {}
+        selected = [
+            gcd.GcdCandidate("fixture", {}, {}, "NEW", {}, {}, {"name": "new"}, 3000),
+            gcd.GcdCandidate("fixture", {}, {}, "OLD", {}, {}, {"name": "old"}, 1000),
+        ]
+
+        gcd.update_stateful_report_backfill_state(
+            state,
+            cutoff_ms=5000,
+            initialized=True,
+            candidate_count=2,
+            selected=selected,
+            updated=1,
+            marked_null=0,
+            failed=1,
+            checked_at_iso="1970-01-01T00:00:05.000Z",
+            failed_report_codes={"OLD"},
+            completed_report_codes={"NEW"},
+        )
+
+        node = state[gcd.GCD_REPORT_BACKFILL_STATE_KEY]
+        self.assertEqual(node["cutoff_sort_time"], 5000)
+        self.assertEqual(node["cursor_sort_time"], 1000)
+        self.assertEqual(node["cursor_report_code"], "OLD")
+        self.assertEqual(node["retry_report_codes"], ["OLD"])
+
+    def test_update_stateful_report_backfill_state_resets_stale_cursor_when_reinitialized(self) -> None:
+        state = {
+            gcd.GCD_REPORT_BACKFILL_STATE_KEY: {
+                "cutoff_sort_time": 1000,
+                "cursor_sort_time": 500,
+                "cursor_report_code": "STALE",
+            }
+        }
+
+        gcd.update_stateful_report_backfill_state(
+            state,
+            cutoff_ms=3000,
+            initialized=True,
+            candidate_count=0,
+            selected=[],
+            updated=0,
+            marked_null=0,
+            failed=0,
+            checked_at_iso="1970-01-01T00:00:03.000Z",
+        )
+
+        node = state[gcd.GCD_REPORT_BACKFILL_STATE_KEY]
+        self.assertEqual(node["cutoff_sort_time"], 3000)
+        self.assertEqual(node["cursor_sort_time"], 3000)
+        self.assertNotIn("cursor_report_code", node)
+
     def test_calculation_subtracts_downtime_from_denominator_and_covered_time(self) -> None:
         metadata_store = FakeMetadataStore(
             {
