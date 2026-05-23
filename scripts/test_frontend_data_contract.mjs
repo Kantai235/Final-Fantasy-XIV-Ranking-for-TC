@@ -487,6 +487,36 @@ async function validateUserSearchResolution() {
 
   const indexEntry = module.尋找使用者索引條目(users, "shibe柴");
   assert(indexEntry?.file_path === "data/users/Shibe柴.json", "使用者索引查找應支援純玩家名稱大小寫差異");
+
+  const storage = {
+    value: "",
+    getItem() {
+      return this.value;
+    },
+    setItem(_key, value) {
+      this.value = value;
+    },
+  };
+  let history = module.新增玩家搜尋歷史({ character_name: "乾太", server: "奧汀" }, storage, "2026-05-23T01:00:00.000Z");
+  history = module.新增玩家搜尋歷史("Shibe柴 @ 利維坦", storage, "2026-05-23T02:00:00.000Z");
+  history = module.新增玩家搜尋歷史({ character_name: "乾太", server: "奧汀" }, storage, "2026-05-23T03:00:00.000Z");
+
+  assert(history.length === 2, "玩家搜尋歷史應以玩家與伺服器去重。");
+  assert(history[0]?.value === "乾太 @ 奧汀", "重複搜尋的玩家應移到最近搜尋最前面。");
+  assert(history[0]?.searched_at_iso === "2026-05-23T03:00:00.000Z", "重複搜尋的玩家應更新搜尋時間。");
+  assert(module.讀取玩家搜尋歷史(storage)[1]?.value === "Shibe柴 @ 利維坦", "玩家搜尋歷史應可從 localStorage 格式還原。");
+
+  history = module.刪除玩家搜尋歷史({ character_name: "乾太", server: "奧汀" }, storage);
+  assert(history.length === 1 && history[0]?.value === "Shibe柴 @ 利維坦", "玩家搜尋歷史應支援單筆刪除。");
+  history = module.清除玩家搜尋歷史(storage);
+  assert(history.length === 0 && module.讀取玩家搜尋歷史(storage).length === 0, "玩家搜尋歷史應支援全部清除。");
+
+  assert(module.玩家搜尋歷史顯示上限 === 8, "玩家搜尋下拉清單應最多顯示 8 筆。");
+  assert(module.玩家搜尋歷史保存上限 === 100, "玩家搜尋歷程編輯清單應最多保存 100 筆。");
+  const manyUsers = Array.from({ length: 120 }, (_item, index) => ({ character_name: `玩家${index}`, server: "奧汀" }));
+  const limitedHistory = module.正規化玩家搜尋歷史列表(manyUsers);
+  assert(limitedHistory.length === 100, "玩家搜尋歷史最多只應保存 100 筆。");
+  assert(module.正規化玩家搜尋歷史列表(["", { server: "奧汀" }]).length === 0, "玩家搜尋歷史不應保存空白玩家名稱。");
 }
 
 function installUrlStateWindow(href, events) {

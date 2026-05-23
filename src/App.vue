@@ -2,6 +2,7 @@
 import { onMounted, onUnmounted, provide, proxyRefs } from "vue";
 import AppFooter from "./components/AppFooter.vue";
 import AppHeader from "./components/AppHeader.vue";
+import PlayerSearchHistoryDialog from "./components/PlayerSearchHistoryDialog.vue";
 import ActivityPage from "./pages/ActivityPage.vue";
 import ComparePage from "./pages/ComparePage.vue";
 import GlobalStatsPage from "./pages/GlobalStatsPage.vue";
@@ -44,6 +45,7 @@ onUnmounted(() => {
     <ServerComparePage v-else-if="view.頁面模式 === 'servers'" />
 
     <AppFooter />
+    <PlayerSearchHistoryDialog />
   </main>
 </template>
 

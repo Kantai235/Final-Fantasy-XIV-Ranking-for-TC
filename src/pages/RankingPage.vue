@@ -1,6 +1,7 @@
 <script>
 import { ref } from "vue";
 import JobIcon from "../components/JobIcon.vue";
+import PlayerSearchHistoryPanel from "../components/PlayerSearchHistoryPanel.vue";
 import ReportDetailDialog from "../components/ReportDetailDialog.vue";
 import { injectRankingApp } from "../composables/useRankingApp";
 
@@ -8,6 +9,7 @@ export default {
   name: "RankingPage",
   components: {
     JobIcon,
+    PlayerSearchHistoryPanel,
     ReportDetailDialog,
   },
   setup() {
@@ -240,10 +242,25 @@ export default {
     </div>
   </div>
 
-  <label class="欄位 搜尋欄位">
-    <span>玩家名稱</span>
-    <input v-model="搜尋關鍵字" type="search" placeholder="搜尋玩家名稱" />
-  </label>
+  <div class="欄位 搜尋欄位" @focusout="處理玩家搜尋歷史失焦($event, 'ranking')">
+    <label for="排行榜玩家搜尋">玩家名稱</label>
+    <div class="玩家搜尋輸入組">
+      <input
+        id="排行榜玩家搜尋"
+        v-model="搜尋關鍵字"
+        type="search"
+        placeholder="搜尋玩家名稱"
+        autocomplete="off"
+        @focus="開啟玩家搜尋歷史('ranking')"
+        @change="記錄排行榜搜尋歷史"
+      />
+      <PlayerSearchHistoryPanel
+        field="ranking"
+        :entries="排行榜最近搜尋玩家"
+        :visible="顯示排行榜最近搜尋玩家"
+      />
+    </div>
+  </div>
 </section>
 
 <p v-if="排行榜版本說明文字" class="版本紀錄說明">{{ 排行榜版本說明文字 }}</p>

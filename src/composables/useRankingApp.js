@@ -47,8 +47,14 @@ import { 建立目前分享網址, 正規化分享描述, 預設分享標題 } f
 import {
   尋找使用者索引條目 as 尋找使用者索引條目於列表,
   格式化使用者搜尋文字,
+  新增玩家搜尋歷史,
+  正規化玩家搜尋歷史紀錄,
+  玩家搜尋歷史顯示上限,
   解析使用者搜尋輸入,
   解析使用者搜尋目標,
+  刪除玩家搜尋歷史,
+  清除玩家搜尋歷史,
+  讀取玩家搜尋歷史,
   讀取使用者資料檔,
 } from "../utils/userData";
 import { 建立職業佔比分組, 取得統計範圍計數, 職業範圍類型 } from "../utils/statsDisplay";
@@ -98,6 +104,9 @@ const 職業類型篩選 = ref("");
 const 職業篩選 = ref("");
 const 職業選單開啟 = ref(false);
 const 搜尋關鍵字 = ref("");
+const 玩家搜尋歷史 = ref([]);
+const 目前玩家搜尋歷史欄位 = ref("");
+const 玩家搜尋歷史管理彈窗開啟 = ref(false);
 const 排序欄位 = ref(預設排序欄位);
 const 排序方向 = ref(預設排序方向);
 const 排行榜版本範圍 = ref(預設版本紀錄範圍);
@@ -2719,6 +2728,177 @@ const 使用者索引列表 = computed(() => {
   return Array.isArray(使用者索引.value?.users) ? 使用者索引.value.users : [];
 });
 
+function 正規化搜尋比對文字(文字) {
+  return String(文字 || "").trim().toLocaleLowerCase("zh-TW");
+}
+
+function 初始化玩家搜尋歷史() {
+  玩家搜尋歷史.value = 讀取玩家搜尋歷史();
+}
+
+function 記錄玩家搜尋歷史(角色名稱, 伺服器 = "") {
+  const 更新後歷史 = 新增玩家搜尋歷史({
+    character_name: 角色名稱,
+    server: 伺服器,
+  });
+  玩家搜尋歷史.value = 更新後歷史;
+  return 更新後歷史;
+}
+
+function 開啟玩家搜尋歷史(欄位) {
+  目前玩家搜尋歷史欄位.value = 欄位;
+}
+
+function 處理玩家搜尋歷史失焦(event, 欄位) {
+  if (目前玩家搜尋歷史欄位.value !== 欄位) {
+    return;
+  }
+
+  if (!event.currentTarget.contains(event.relatedTarget)) {
+    目前玩家搜尋歷史欄位.value = "";
+  }
+}
+
+function 建立玩家搜尋歷史顯示列表(輸入文字) {
+  if (String(輸入文字 || "").trim()) {
+    return [];
+  }
+
+  return 建立玩家搜尋歷史詳細列表(玩家搜尋歷史.value).slice(0, 玩家搜尋歷史顯示上限);
+}
+
+function 格式化搜尋歷史時間(時間Iso) {
+  return 時間Iso ? 格式化紀錄時間(時間Iso) : "未記錄時間";
+}
+
+function 格式化搜尋歷史日期(時間Iso) {
+  return 時間Iso ? 格式化紀錄日期(時間Iso) : "未記錄日期";
+}
+
+function 格式化搜尋歷史時刻(時間Iso) {
+  return 時間Iso ? 格式化紀錄時刻(時間Iso) : "";
+}
+
+function 建立玩家搜尋歷史詳細列表(列表) {
+  return (Array.isArray(列表) ? 列表 : []).map((紀錄) => {
+    const 索引條目 = 尋找使用者索引條目(紀錄.character_name, 紀錄.server);
+    const 搜尋時間Iso = 紀錄.searched_at_iso || "";
+    return {
+      ...紀錄,
+      value: 格式化使用者搜尋文字(紀錄.character_name, 紀錄.server),
+      key: `${紀錄.character_name}@${紀錄.server}`,
+      label: 索引條目
+        ? `${索引條目.encounter_count || 0} 副本 / ${索引條目.public_entry_count || 0} 筆公開成績`
+        : "最近搜尋",
+      搜尋時間Iso,
+      搜尋時間文字: 格式化搜尋歷史時間(搜尋時間Iso),
+      搜尋日期文字: 格式化搜尋歷史日期(搜尋時間Iso),
+      搜尋時刻文字: 格式化搜尋歷史時刻(搜尋時間Iso),
+    };
+  });
+}
+
+const 排行榜最近搜尋玩家 = computed(() => 建立玩家搜尋歷史顯示列表(搜尋關鍵字.value));
+const 使用者最近搜尋玩家 = computed(() => 建立玩家搜尋歷史顯示列表(使用者搜尋關鍵字.value));
+const 比較角色左最近搜尋玩家 = computed(() => 建立玩家搜尋歷史顯示列表(比較角色左輸入.value));
+const 比較角色右最近搜尋玩家 = computed(() => 建立玩家搜尋歷史顯示列表(比較角色右輸入.value));
+const 顯示排行榜最近搜尋玩家 = computed(() => 目前玩家搜尋歷史欄位.value === "ranking" && 排行榜最近搜尋玩家.value.length > 0);
+const 顯示使用者最近搜尋玩家 = computed(() => 目前玩家搜尋歷史欄位.value === "user" && 使用者最近搜尋玩家.value.length > 0);
+const 顯示比較角色左最近搜尋玩家 = computed(
+  () => 目前玩家搜尋歷史欄位.value === "compare-left" && 比較角色左最近搜尋玩家.value.length > 0,
+);
+const 顯示比較角色右最近搜尋玩家 = computed(
+  () => 目前玩家搜尋歷史欄位.value === "compare-right" && 比較角色右最近搜尋玩家.value.length > 0,
+);
+const 玩家搜尋歷史管理列表 = computed(() => 建立玩家搜尋歷史詳細列表(玩家搜尋歷史.value));
+
+function 開啟玩家搜尋歷史管理彈窗() {
+  目前玩家搜尋歷史欄位.value = "";
+  玩家搜尋歷史管理彈窗開啟.value = true;
+}
+
+function 關閉玩家搜尋歷史管理彈窗() {
+  玩家搜尋歷史管理彈窗開啟.value = false;
+}
+
+function 刪除單筆玩家搜尋歷史(紀錄) {
+  玩家搜尋歷史.value = 刪除玩家搜尋歷史(紀錄);
+}
+
+function 清除所有玩家搜尋歷史() {
+  玩家搜尋歷史.value = 清除玩家搜尋歷史();
+}
+
+function 找出排行榜搜尋歷史紀錄(輸入文字) {
+  const 查詢 = 解析使用者搜尋輸入(輸入文字);
+  const 查詢名稱 = 正規化搜尋比對文字(查詢.角色名稱);
+  const 查詢伺服器 = 正規化搜尋比對文字(查詢.伺服器);
+  if (!查詢名稱) {
+    return null;
+  }
+
+  const 索引條目 = 尋找使用者索引條目(查詢.角色名稱, 查詢.伺服器);
+  if (索引條目) {
+    const 索引伺服器列表 = Array.isArray(索引條目.servers) ? 索引條目.servers : [];
+    const 索引伺服器 = 索引伺服器列表.find((伺服器) => 正規化搜尋比對文字(伺服器) === 查詢伺服器);
+    return {
+      character_name: 索引條目.character_name,
+      server: 索引伺服器 || 索引伺服器列表[0] || 查詢.伺服器 || "",
+    };
+  }
+
+  const 完全符合列 = 所有排行列.value.find((列) => {
+    const 名稱符合 = 正規化搜尋比對文字(列.角色名稱) === 查詢名稱;
+    const 伺服器符合 = !查詢伺服器 || 正規化搜尋比對文字(列.伺服器) === 查詢伺服器;
+    return 名稱符合 && 伺服器符合;
+  });
+
+  return 完全符合列
+    ? {
+        character_name: 完全符合列.角色名稱,
+        server: 完全符合列.伺服器,
+      }
+    : null;
+}
+
+function 記錄排行榜搜尋歷史() {
+  const 歷史紀錄 = 找出排行榜搜尋歷史紀錄(搜尋關鍵字.value);
+  if (歷史紀錄) {
+    記錄玩家搜尋歷史(歷史紀錄.character_name, 歷史紀錄.server);
+  }
+}
+
+function 選擇最近搜尋玩家(欄位, 紀錄) {
+  const 歷史紀錄 = 正規化玩家搜尋歷史紀錄(紀錄);
+  if (!歷史紀錄) {
+    return;
+  }
+
+  記錄玩家搜尋歷史(歷史紀錄.character_name, 歷史紀錄.server);
+  目前玩家搜尋歷史欄位.value = "";
+  const 顯示文字 = 格式化使用者搜尋文字(歷史紀錄.character_name, 歷史紀錄.server);
+
+  if (欄位 === "ranking") {
+    搜尋關鍵字.value = 顯示文字;
+    return;
+  }
+
+  if (欄位 === "user") {
+    使用者搜尋關鍵字.value = 顯示文字;
+    載入使用者成績(歷史紀錄.character_name, 歷史紀錄.server);
+    return;
+  }
+
+  if (欄位 === "compare-left") {
+    比較角色左輸入.value = 顯示文字;
+    return;
+  }
+
+  if (欄位 === "compare-right") {
+    比較角色右輸入.value = 顯示文字;
+  }
+}
+
 function 建立使用者搜尋建議列表(搜尋文字) {
   const 關鍵字 = String(搜尋文字 || "")
     .trim()
@@ -3347,12 +3527,14 @@ const 隊友副本交集 = computed(() => {
 });
 
 const 過濾後排行列 = computed(() => {
-  const 關鍵字 = 搜尋關鍵字.value.trim().toLocaleLowerCase("zh-TW");
+  const 查詢 = 解析使用者搜尋輸入(搜尋關鍵字.value);
+  const 關鍵字 = 正規化搜尋比對文字(查詢.角色名稱);
+  const 搜尋伺服器 = 正規化搜尋比對文字(查詢.伺服器);
 
   return 所有排行列.value.filter((列) => {
-    const 符合伺服器 = !伺服器篩選.value || 列.伺服器 === 伺服器篩選.value;
+    const 符合伺服器 = (!伺服器篩選.value || 列.伺服器 === 伺服器篩選.value) && (!搜尋伺服器 || 正規化搜尋比對文字(列.伺服器) === 搜尋伺服器);
     const 符合職業 = 符合職業篩選(列.職業代碼);
-    const 符合角色名稱 = !關鍵字 || 列.角色名稱.toLocaleLowerCase("zh-TW").includes(關鍵字);
+    const 符合角色名稱 = !關鍵字 || 正規化搜尋比對文字(列.角色名稱).includes(關鍵字);
 
     return 符合伺服器 && 符合職業 && 符合角色名稱;
   });
@@ -3739,6 +3921,7 @@ async function 載入使用者成績(角色名稱, 伺服器 = "", 選項 = {}) 
     const 伺服器列表 = Array.isArray(使用者資料.value?.servers) ? 使用者資料.value.servers : [];
     使用者伺服器篩選.value = 伺服器列表.includes(搜尋目標.伺服器) ? 搜尋目標.伺服器 : 伺服器列表[0] || "";
     使用者搜尋關鍵字.value = 格式化使用者搜尋文字(使用者資料.value.character_name || 查詢名稱, 使用者伺服器篩選.value);
+    記錄玩家搜尋歷史(使用者資料.value.character_name || 查詢名稱, 使用者伺服器篩選.value);
 
     if (選項.更新網址 !== false) {
       更新網址為使用者(使用者資料.value.character_name || 查詢名稱, 使用者伺服器篩選.value);
@@ -3788,6 +3971,8 @@ async function 提交角色比較(選項 = {}) {
     比較角色右伺服器.value = 右結果.伺服器;
     比較角色左輸入.value = 格式化使用者搜尋文字(左結果.資料.character_name || 左輸入, 左結果.伺服器);
     比較角色右輸入.value = 格式化使用者搜尋文字(右結果.資料.character_name || 右輸入, 右結果.伺服器);
+    記錄玩家搜尋歷史(左結果.資料.character_name || 左輸入, 左結果.伺服器);
+    記錄玩家搜尋歷史(右結果.資料.character_name || 右輸入, 右結果.伺服器);
     if (選項.更新網址 !== false) {
       更新網址為角色比較();
     }
@@ -4177,6 +4362,7 @@ watch([伺服器對比左伺服器, 伺服器對比右伺服器], () => {
 
 onMounted(() => {
   初始化主題();
+  初始化玩家搜尋歷史();
   if (typeof window !== "undefined") {
     window.addEventListener("popstate", 處理瀏覽紀錄變更);
   }
@@ -4215,6 +4401,9 @@ onUnmounted(() => {
     職業選單開啟,
     主色模式,
     搜尋關鍵字,
+    玩家搜尋歷史,
+    目前玩家搜尋歷史欄位,
+    玩家搜尋歷史管理彈窗開啟,
     排序欄位,
     排序方向,
     排行榜版本範圍,
@@ -4504,6 +4693,23 @@ onUnmounted(() => {
     頁面標題,
     分享資訊,
     使用者索引列表,
+    排行榜最近搜尋玩家,
+    使用者最近搜尋玩家,
+    比較角色左最近搜尋玩家,
+    比較角色右最近搜尋玩家,
+    顯示排行榜最近搜尋玩家,
+    顯示使用者最近搜尋玩家,
+    顯示比較角色左最近搜尋玩家,
+    顯示比較角色右最近搜尋玩家,
+    玩家搜尋歷史管理列表,
+    開啟玩家搜尋歷史,
+    處理玩家搜尋歷史失焦,
+    開啟玩家搜尋歷史管理彈窗,
+    關閉玩家搜尋歷史管理彈窗,
+    刪除單筆玩家搜尋歷史,
+    清除所有玩家搜尋歷史,
+    記錄排行榜搜尋歷史,
+    選擇最近搜尋玩家,
     建立使用者搜尋建議列表,
     使用者搜尋建議,
     比較角色左搜尋建議,

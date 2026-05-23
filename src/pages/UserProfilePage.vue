@@ -1,6 +1,7 @@
 <script>
 import { ref } from "vue";
 import JobIcon from "../components/JobIcon.vue";
+import PlayerSearchHistoryPanel from "../components/PlayerSearchHistoryPanel.vue";
 import ReportDetailDialog from "../components/ReportDetailDialog.vue";
 import { injectRankingApp } from "../composables/useRankingApp";
 
@@ -8,6 +9,7 @@ export default {
   name: "UserProfilePage",
   components: {
     JobIcon,
+    PlayerSearchHistoryPanel,
     ReportDetailDialog,
   },
   setup() {
@@ -155,20 +157,30 @@ export default {
 <template>
   <section class="使用者搜尋區" aria-label="個人成績單查詢">
     <form class="使用者搜尋表單 個人成績搜尋表單" @submit.prevent="提交使用者搜尋">
-      <label class="欄位 使用者搜尋欄位">
-        <span>玩家 / 伺服器</span>
-        <input
-          v-model="使用者搜尋關鍵字"
-          type="search"
-          list="使用者搜尋建議"
-          placeholder="輸入玩家名稱，或選擇「玩家 @ 伺服器」"
-        />
+      <div class="欄位 使用者搜尋欄位" @focusout="處理玩家搜尋歷史失焦($event, 'user')">
+        <label for="個人成績玩家搜尋">玩家 / 伺服器</label>
+        <div class="玩家搜尋輸入組">
+          <input
+            id="個人成績玩家搜尋"
+            v-model="使用者搜尋關鍵字"
+            type="search"
+            list="使用者搜尋建議"
+            placeholder="輸入玩家名稱，或選擇「玩家 @ 伺服器」"
+            autocomplete="off"
+            @focus="開啟玩家搜尋歷史('user')"
+          />
+          <PlayerSearchHistoryPanel
+            field="user"
+            :entries="使用者最近搜尋玩家"
+            :visible="顯示使用者最近搜尋玩家"
+          />
+        </div>
         <datalist id="使用者搜尋建議">
           <option v-for="建議 in 使用者搜尋建議" :key="`${建議.character_name}@${建議.server}`" :value="建議.value">
             {{ 建議.label }}
           </option>
         </datalist>
-      </label>
+      </div>
 
       <div class="欄位 職業選單欄位" @focusout="處理使用者職業選單失焦">
         <span>職業</span>

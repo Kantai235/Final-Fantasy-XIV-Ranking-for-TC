@@ -1,11 +1,13 @@
 <script>
 import JobIcon from "../components/JobIcon.vue";
+import PlayerSearchHistoryPanel from "../components/PlayerSearchHistoryPanel.vue";
 import { injectRankingApp } from "../composables/useRankingApp";
 
 export default {
   name: "ComparePage",
   components: {
     JobIcon,
+    PlayerSearchHistoryPanel,
   },
   setup() {
     return injectRankingApp();
@@ -91,35 +93,55 @@ export default {
         </select>
       </label>
 
-      <label class="欄位 使用者搜尋欄位 比較玩家欄位">
-        <span>玩家 A</span>
-        <input
-          v-model="比較角色左輸入"
-          type="search"
-          list="比較角色左搜尋建議"
-          placeholder="輸入玩家名稱，或選擇「玩家 @ 伺服器」"
-        />
+      <div class="欄位 使用者搜尋欄位 比較玩家欄位" @focusout="處理玩家搜尋歷史失焦($event, 'compare-left')">
+        <label for="比較玩家左搜尋">玩家 A</label>
+        <div class="玩家搜尋輸入組">
+          <input
+            id="比較玩家左搜尋"
+            v-model="比較角色左輸入"
+            type="search"
+            list="比較角色左搜尋建議"
+            placeholder="輸入玩家名稱，或選擇「玩家 @ 伺服器」"
+            autocomplete="off"
+            @focus="開啟玩家搜尋歷史('compare-left')"
+          />
+          <PlayerSearchHistoryPanel
+            field="compare-left"
+            :entries="比較角色左最近搜尋玩家"
+            :visible="顯示比較角色左最近搜尋玩家"
+          />
+        </div>
         <datalist id="比較角色左搜尋建議">
           <option v-for="建議 in 比較角色左搜尋建議" :key="`${建議.character_name}@${建議.server}`" :value="建議.value">
             {{ 建議.label }}
           </option>
         </datalist>
-      </label>
+      </div>
 
-      <label class="欄位 使用者搜尋欄位 比較玩家欄位">
-        <span>玩家 B</span>
-        <input
-          v-model="比較角色右輸入"
-          type="search"
-          list="比較角色右搜尋建議"
-          placeholder="輸入玩家名稱，或選擇「玩家 @ 伺服器」"
-        />
+      <div class="欄位 使用者搜尋欄位 比較玩家欄位" @focusout="處理玩家搜尋歷史失焦($event, 'compare-right')">
+        <label for="比較玩家右搜尋">玩家 B</label>
+        <div class="玩家搜尋輸入組">
+          <input
+            id="比較玩家右搜尋"
+            v-model="比較角色右輸入"
+            type="search"
+            list="比較角色右搜尋建議"
+            placeholder="輸入玩家名稱，或選擇「玩家 @ 伺服器」"
+            autocomplete="off"
+            @focus="開啟玩家搜尋歷史('compare-right')"
+          />
+          <PlayerSearchHistoryPanel
+            field="compare-right"
+            :entries="比較角色右最近搜尋玩家"
+            :visible="顯示比較角色右最近搜尋玩家"
+          />
+        </div>
         <datalist id="比較角色右搜尋建議">
           <option v-for="建議 in 比較角色右搜尋建議" :key="`${建議.character_name}@${建議.server}`" :value="建議.value">
             {{ 建議.label }}
           </option>
         </datalist>
-      </label>
+      </div>
 
       <button type="submit">比較</button>
     </form>
