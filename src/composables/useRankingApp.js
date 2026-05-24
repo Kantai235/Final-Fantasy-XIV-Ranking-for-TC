@@ -47,6 +47,8 @@ import { 建立目前分享網址, 正規化分享描述, 預設分享標題 } f
 import {
   尋找使用者索引條目 as 尋找使用者索引條目於列表,
   格式化使用者搜尋文字,
+  取得使用者主要伺服器,
+  取得使用者伺服器列表,
   新增玩家搜尋歷史,
   正規化玩家搜尋歷史紀錄,
   玩家搜尋歷史顯示上限,
@@ -2053,7 +2055,7 @@ const 近期動態最新成績列表 = computed(() => {
     .slice(0, 24)
     .map((使用者) => ({
       character_name: 使用者.character_name,
-      server: 使用者.servers?.[0] || "",
+      server: 取得使用者主要伺服器(使用者),
       rdps: 使用者.best_rdps,
       recorded_at_iso: 使用者.last_recorded_at_iso,
       encounter_name: `${格式化整數(使用者.encounter_count)} 副本`,
@@ -2839,11 +2841,9 @@ function 找出排行榜搜尋歷史紀錄(輸入文字) {
 
   const 索引條目 = 尋找使用者索引條目(查詢.角色名稱, 查詢.伺服器);
   if (索引條目) {
-    const 索引伺服器列表 = Array.isArray(索引條目.servers) ? 索引條目.servers : [];
-    const 索引伺服器 = 索引伺服器列表.find((伺服器) => 正規化搜尋比對文字(伺服器) === 查詢伺服器);
     return {
       character_name: 索引條目.character_name,
-      server: 索引伺服器 || 索引伺服器列表[0] || 查詢.伺服器 || "",
+      server: 取得使用者主要伺服器(索引條目) || 查詢.伺服器 || "",
     };
   }
 
@@ -2908,24 +2908,30 @@ function 建立使用者搜尋建議列表(搜尋文字) {
   }
 
   return 使用者索引列表.value
-    .flatMap((使用者) => {
-      const 伺服器列表 = 使用者.servers?.length ? 使用者.servers : [""];
-      return 伺服器列表.map((伺服器) => {
-        const 顯示文字 = 格式化使用者搜尋文字(使用者.character_name, 伺服器);
-        return {
-          value: 顯示文字,
-          label: `${使用者.encounter_count || 0} 副本 / ${使用者.public_entry_count || 0} 筆公開成績`,
-          character_name: 使用者.character_name,
-          server: 伺服器,
-        };
-      });
+    .map((使用者) => {
+      const 伺服器 = 取得使用者主要伺服器(使用者);
+      const 伺服器列表 = 取得使用者伺服器列表(使用者);
+      const 顯示文字 = 格式化使用者搜尋文字(使用者.character_name, 伺服器);
+      return {
+        value: 顯示文字,
+        label: `${使用者.encounter_count || 0} 副本 / ${使用者.public_entry_count || 0} 筆公開成績`,
+        character_name: 使用者.character_name,
+        server: 伺服器,
+        搜尋候選文字: [
+          使用者.character_name,
+          伺服器,
+          顯示文字,
+          ...伺服器列表,
+          ...伺服器列表.map((伺服器名稱) => 格式化使用者搜尋文字(使用者.character_name, 伺服器名稱)),
+        ],
+      };
     })
     .filter((建議) => {
-      const 名稱符合 = 建議.character_name?.toLocaleLowerCase("zh-TW").includes(關鍵字);
-      const 伺服器符合 = 建議.server?.toLocaleLowerCase("zh-TW").includes(關鍵字);
-      const 顯示文字符合 = 建議.value.toLocaleLowerCase("zh-TW").includes(關鍵字);
-      return 名稱符合 || 伺服器符合 || 顯示文字符合;
+      return 建議.搜尋候選文字.some((文字) =>
+        String(文字 || "").toLocaleLowerCase("zh-TW").includes(關鍵字),
+      );
     })
+    .map(({ 搜尋候選文字, ...建議 }) => 建議)
     .slice(0, 8);
 }
 
@@ -3226,7 +3232,7 @@ function 建立比較角色項目(資料, 伺服器 = "") {
   const 副本成績 = 取得使用者副本成績(資料, 伺服器);
   return {
     character_name: 資料.character_name || "未知玩家",
-    server: 伺服器 || 資料.servers?.[0] || "",
+    server: 伺服器 || 取得使用者主要伺服器(資料),
     副本成績,
     統計: 建立使用者統計(副本成績),
   };

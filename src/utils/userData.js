@@ -191,8 +191,40 @@ export function 清除玩家搜尋歷史(storage = null) {
   return [];
 }
 
-function 取得使用者伺服器列表(使用者) {
-  return Array.isArray(使用者?.servers) ? 使用者.servers : [];
+function 合併唯一伺服器列表(...伺服器列表群組) {
+  const 已收錄 = new Set();
+  const 結果 = [];
+
+  for (const 伺服器列表 of 伺服器列表群組) {
+    for (const 原始伺服器 of Array.isArray(伺服器列表) ? 伺服器列表 : []) {
+      const 伺服器 = String(原始伺服器 || "").trim();
+      const 鍵值 = 正規化使用者查詢文字(伺服器);
+      if (!鍵值 || 已收錄.has(鍵值)) {
+        continue;
+      }
+      已收錄.add(鍵值);
+      結果.push(伺服器);
+    }
+  }
+
+  return 結果;
+}
+
+export function 取得使用者主要伺服器(使用者) {
+  const canonicalServer = String(使用者?.canonical_server || "").trim();
+  if (canonicalServer) {
+    return canonicalServer;
+  }
+
+  return 合併唯一伺服器列表(使用者?.servers)[0] || "";
+}
+
+export function 取得使用者伺服器列表(使用者) {
+  return 合併唯一伺服器列表(
+    [取得使用者主要伺服器(使用者)],
+    使用者?.servers,
+    使用者?.server_aliases,
+  );
 }
 
 function 尋找索引內伺服器(伺服器列表, 查詢伺服器) {
@@ -234,13 +266,14 @@ export function 解析使用者搜尋目標(輸入文字, 使用者索引列表,
   const 查詢伺服器 = 預設伺服器 || 查詢.伺服器;
   const 索引條目 = 尋找使用者索引條目(使用者索引列表, 查詢.角色名稱, 查詢伺服器);
   const 伺服器列表 = 取得使用者伺服器列表(索引條目);
+  const 主要伺服器 = 取得使用者主要伺服器(索引條目);
   const 索引伺服器 = 尋找索引內伺服器(伺服器列表, 查詢伺服器);
 
-  // 玩家名稱在目前公開索引中視為唯一值；純名稱查詢先落到 users/index.json，
-  // 再補上 canonical 伺服器，避免表單沒有選 datalist 時走到不穩定的檔名 fallback。
+  // 玩家名稱在目前公開索引中視為唯一值；同名跨服若已判定為轉服玩家，
+  // 查詢即使打舊伺服器 alias，也要回到 canonical server，避免個人成績單與搜尋歷史分裂成兩筆。
   return {
     角色名稱: 索引條目?.character_name || 查詢.角色名稱,
-    伺服器: 索引伺服器 || 伺服器列表[0] || 查詢伺服器 || "",
+    伺服器: 主要伺服器 || 索引伺服器 || 伺服器列表[0] || 查詢伺服器 || "",
     索引條目,
   };
 }

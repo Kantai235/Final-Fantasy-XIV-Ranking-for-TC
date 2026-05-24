@@ -9,7 +9,7 @@ import time
 from collections import deque
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Iterable, Iterator
 
 import requests
 from dotenv import load_dotenv
@@ -240,6 +240,7 @@ def 正規化報告地區範圍(值: Any) -> str:
     "id",
     "character_name",
     "server",
+    "original_server",
     "job",
     "dps",
     "rdps",
@@ -2661,6 +2662,103 @@ def 成績是否優先(候選: dict[str, Any], 目前最佳: dict[str, Any] | No
     return (候選.get("adps") or 候選.get("dps") or 0) > (目前最佳.get("adps") or 目前最佳.get("dps") or 0)
 
 
+def 玩家最新伺服器候選是否優先(候選: dict[str, Any], 目前最佳: dict[str, Any] | None) -> bool:
+    if 目前最佳 is None:
+        return True
+
+    候選時間 = 解析_iso_時間毫秒(候選.get("recorded_at_iso") or 候選.get("report_start_time_iso")) or 0
+    目前時間 = 解析_iso_時間毫秒(目前最佳.get("recorded_at_iso") or 目前最佳.get("report_start_time_iso")) or 0
+    if 候選時間 != 目前時間:
+        return 候選時間 > 目前時間
+
+    if 成績是否優先(候選, 目前最佳):
+        return True
+    if 成績是否優先(目前最佳, 候選):
+        return False
+
+    return str(候選.get("server") or "") < str(目前最佳.get("server") or "")
+
+
+def 迭代排行榜伺服器候選(
+    排行榜: dict[str, Any],
+    *,
+    包含隱藏報告: bool = False,
+) -> Iterator[dict[str, Any]]:
+    報告索引 = 排行榜.get("reports") if isinstance(排行榜.get("reports"), dict) else {}
+    if 報告索引:
+        for 報告 in 報告索引.values():
+            if not isinstance(報告, dict):
+                continue
+            if 報告已標記隱藏(報告) and not 包含隱藏報告:
+                continue
+
+            for 戰鬥 in 報告.get("fights") or []:
+                if not isinstance(戰鬥, dict):
+                    continue
+
+                for 玩家 in 戰鬥.get("players") or []:
+                    if not isinstance(玩家, dict):
+                        continue
+
+                    名稱 = 玩家.get("name") or 玩家.get("character_name")
+                    伺服器 = 玩家.get("server")
+                    職業 = 玩家.get("job")
+                    dps = 玩家.get("dps")
+                    if not 名稱 or 伺服器 not in 繁中服伺服器名稱 or 職業 not in 有效職業名稱 or dps is None:
+                        continue
+
+                    yield {
+                        "character_name": 名稱,
+                        "server": 伺服器,
+                        "job": 職業,
+                        "dps": dps,
+                        "rdps": 玩家.get("rdps"),
+                        "adps": 玩家.get("adps"),
+                        "clear_time_seconds": 戰鬥.get("clear_time_seconds"),
+                        "recorded_at_iso": 戰鬥.get("recorded_at_iso"),
+                        "report_start_time_iso": 報告.get("report_start_time_iso"),
+                    }
+        return
+
+    for 條目 in 排行榜.get("ranking_entries") or []:
+        if not isinstance(條目, dict):
+            continue
+        if 條目.get("report_hidden") and not 包含隱藏報告:
+            continue
+
+        名稱 = 條目.get("character_name")
+        伺服器 = 條目.get("server")
+        職業 = 條目.get("job")
+        dps = 條目.get("dps")
+        if not 名稱 or 伺服器 not in 繁中服伺服器名稱 or 職業 not in 有效職業名稱 or dps is None:
+            continue
+
+        yield 條目
+
+
+def 建立玩家最新伺服器索引(
+    排行榜列表: Iterable[dict[str, Any]],
+    *,
+    包含隱藏報告: bool = False,
+) -> dict[str, str]:
+    最新成績索引: dict[str, dict[str, Any]] = {}
+
+    for 排行榜 in 排行榜列表:
+        if not isinstance(排行榜, dict):
+            continue
+
+        for 候選 in 迭代排行榜伺服器候選(排行榜, 包含隱藏報告=包含隱藏報告):
+            名稱 = 候選.get("character_name")
+            伺服器 = 候選.get("server")
+            if not 名稱 or not 伺服器:
+                continue
+
+            if 玩家最新伺服器候選是否優先(候選, 最新成績索引.get(名稱)):
+                最新成績索引[名稱] = 候選
+
+    return {名稱: 成績.get("server") for 名稱, 成績 in 最新成績索引.items() if 成績.get("server")}
+
+
 def 解析_iso_時間毫秒(時間文字: Any) -> int | None:
     if not isinstance(時間文字, str) or not 時間文字.strip():
         return None
@@ -2721,11 +2819,33 @@ def 成績符合版本範圍(成績: dict[str, Any], 版本範圍: str, 版本�
     return True
 
 
-def 標準化排行榜條目(條目: dict[str, Any]) -> dict[str, Any] | None:
+def 套用玩家最新伺服器欄位(
+    成績: dict[str, Any],
+    玩家最新伺服器索引: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    if not 玩家最新伺服器索引:
+        return 成績
+
+    名稱 = 成績.get("character_name") or 成績.get("name")
+    原始伺服器 = 成績.get("server")
+    if not 名稱 or not 原始伺服器:
+        return 成績
+
+    最新伺服器 = 玩家最新伺服器索引.get(str(名稱)) or 原始伺服器
+    成績["server"] = 最新伺服器
+    if 原始伺服器 != 最新伺服器:
+        成績["original_server"] = 原始伺服器
+    return 成績
+
+
+def 標準化排行榜條目(
+    條目: dict[str, Any],
+    玩家最新伺服器索引: dict[str, str] | None = None,
+) -> dict[str, Any] | None:
     if not isinstance(條目, dict):
         return None
 
-    成績 = dict(條目)
+    成績 = 套用玩家最新伺服器欄位(dict(條目), 玩家最新伺服器索引)
     名稱 = 成績.get("character_name")
     伺服器 = 成績.get("server")
     職業 = 成績.get("job")
@@ -2733,7 +2853,12 @@ def 標準化排行榜條目(條目: dict[str, Any]) -> dict[str, Any] | None:
     if not 名稱 or 伺服器 not in 繁中服伺服器名稱 or 職業 not in 有效職業名稱 or dps is None:
         return None
 
-    角色鍵值 = 成績.get("character_key") or f"{名稱}@{伺服器}:{職業}"
+    if 玩家最新伺服器索引:
+        # 舊扁平 ranking_entries 可能已帶著轉服前的 character_key；
+        # canonical server 改寫後必須同步重算身分鍵，避免 fallback 重建仍拆成兩位玩家。
+        角色鍵值 = f"{名稱}@{伺服器}:{職業}"
+    else:
+        角色鍵值 = 成績.get("character_key") or f"{名稱}@{伺服器}:{職業}"
     成績["character_key"] = 角色鍵值
 
     if not 成績.get("id"):
@@ -2767,8 +2892,9 @@ def 標準化排行榜條目(條目: dict[str, Any]) -> dict[str, Any] | None:
 def 登記排行榜條目(
     成績: dict[str, Any],
     精確成績索引: dict[str, dict[str, Any]],
+    玩家最新伺服器索引: dict[str, str] | None = None,
 ) -> None:
-    標準成績 = 標準化排行榜條目(成績)
+    標準成績 = 標準化排行榜條目(成績, 玩家最新伺服器索引)
     if not 標準成績:
         return
 
@@ -2978,6 +3104,7 @@ def 建立排行榜條目(
     版本範圍: str = "all",
     *,
     包含隱藏報告: bool = False,
+    玩家最新伺服器索引: dict[str, str] | None = None,
 ) -> list[dict[str, Any]]:
     # ranking_entries 是給前端快速讀取的扁平索引；reports/fights/players 才是可追溯歷史。
     # 重建時會同時讀兩種來源，確保舊資料、分片資料與新資料都能用同一套去重規則整理。
@@ -2991,7 +3118,7 @@ def 建立排行榜條目(
             if not 包含隱藏報告 and isinstance(條目, dict) and 條目.get("report_hidden"):
                 continue
             if isinstance(條目, dict):
-                登記排行榜條目(條目, 精確成績索引)
+                登記排行榜條目(條目, 精確成績索引, 玩家最新伺服器索引)
 
     for 報告代碼, 報告 in 報告索引.items():
         if not isinstance(報告, dict):
@@ -3019,7 +3146,8 @@ def 建立排行榜條目(
                 if not 名稱 or 伺服器 not in 繁中服伺服器名稱 or 職業 not in 有效職業名稱 or dps is None:
                     continue
 
-                角色鍵值 = f"{名稱}@{伺服器}:{職業}"
+                最新伺服器 = 玩家最新伺服器索引.get(str(名稱), 伺服器) if 玩家最新伺服器索引 else 伺服器
+                角色鍵值 = f"{名稱}@{最新伺服器}:{職業}"
                 精確成績鍵值 = 建立_sha256(
                     {
                         "fight_hash": 戰鬥簽章,
@@ -3036,7 +3164,7 @@ def 建立排行榜條目(
                     "id": 精確成績鍵值,
                     "character_key": 角色鍵值,
                     "character_name": 名稱,
-                    "server": 伺服器,
+                    "server": 最新伺服器,
                     "job": 職業,
                     "dps": dps,
                     "rdps": 玩家.get("rdps"),
@@ -3070,6 +3198,8 @@ def 建立排行榜條目(
                     "source_reports": [報告代碼],
                     "duplicate_count": 1,
                 }
+                if 最新伺服器 != 伺服器:
+                    成績["original_server"] = 伺服器
                 if 報告隱藏:
                     成績["report_hidden"] = True
                     成績["hidden_reason"] = 報告.get("hidden_reason")
@@ -3081,7 +3211,7 @@ def 建立排行榜條目(
                     成績["gcd_coverage"] = 玩家.get("gcd_coverage")
                 if "gcd_coverage_status" in 玩家:
                     成績["gcd_coverage_status"] = 玩家.get("gcd_coverage_status")
-                登記排行榜條目(成績, 精確成績索引)
+                登記排行榜條目(成績, 精確成績索引, 玩家最新伺服器索引)
 
     for 成績 in 精確成績索引.values():
         標記成績版本狀態(成績, 版本設定)
@@ -3110,6 +3240,7 @@ def 建立版本排行榜條目(
     排行榜: dict[str, Any],
     *,
     包含隱藏報告: bool = False,
+    玩家最新伺服器索引: dict[str, str] | None = None,
 ) -> dict[str, list[dict[str, Any]]]:
     版本設定 = 取得副本版本截止設定(排行榜.get("encounter"))
     if not 版本設定:
@@ -3118,15 +3249,29 @@ def 建立版本排行榜條目(
     return {
         版本範圍: [
             建立公開排行榜條目(條目)
-            for 條目 in 建立排行榜條目(排行榜, 版本範圍, 包含隱藏報告=包含隱藏報告)
+            for 條目 in 建立排行榜條目(
+                排行榜,
+                版本範圍,
+                包含隱藏報告=包含隱藏報告,
+                玩家最新伺服器索引=玩家最新伺服器索引,
+            )
             if isinstance(條目, dict)
         ]
         for 版本範圍 in 版本紀錄範圍清單
     }
 
 
-def 建立公開排行榜(排行榜: dict[str, Any], *, 包含隱藏報告: bool = False) -> dict[str, Any]:
-    排行榜條目 = 建立排行榜條目(排行榜, 包含隱藏報告=包含隱藏報告)
+def 建立公開排行榜(
+    排行榜: dict[str, Any],
+    *,
+    包含隱藏報告: bool = False,
+    玩家最新伺服器索引: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    排行榜條目 = 建立排行榜條目(
+        排行榜,
+        包含隱藏報告=包含隱藏報告,
+        玩家最新伺服器索引=玩家最新伺服器索引,
+    )
     版本設定 = 取得副本版本截止設定(排行榜.get("encounter"))
     公開排行榜 = {
         "schema_version": 排行榜.get("schema_version", 1),
@@ -3146,6 +3291,7 @@ def 建立公開排行榜(排行榜: dict[str, Any], *, 包含隱藏報告: bool
         公開排行榜["version_ranking_entries"] = 建立版本排行榜條目(
             排行榜,
             包含隱藏報告=包含隱藏報告,
+            玩家最新伺服器索引=玩家最新伺服器索引,
         )
 
     return 公開排行榜
@@ -3538,6 +3684,7 @@ def 重建公開排行榜檔案() -> None:
     啟用副本清單 = [副本 for 副本 in 全部副本清單 if 副本.get("enabled")]
     啟用鍵值 = {副本["key"] for 副本 in 啟用副本清單}
     寫入公開副本清單(啟用副本清單)
+    排行榜索引: dict[str, dict[str, Any]] = {}
 
     for 副本設定 in 全部副本清單:
         已有排行榜檔案 = 排行榜檔案路徑(副本設定).exists() or 排行榜檔案路徑(副本設定, public=True).exists()
@@ -3547,10 +3694,28 @@ def 重建公開排行榜檔案() -> None:
         排行榜 = 讀取排行榜檔案(副本設定)
         排行榜.setdefault("schema_version", 1)
         排行榜.setdefault("encounter", 建立副本摘要(副本設定))
-        寫入_json(排行榜檔案路徑(副本設定, public=True), 建立公開排行榜(排行榜), 緊湊格式=True)
+        排行榜索引[副本設定["key"]] = 排行榜
+
+    公開資料最新伺服器索引 = 建立玩家最新伺服器索引(排行榜索引.values())
+    完整鏡像最新伺服器索引 = 建立玩家最新伺服器索引(排行榜索引.values(), 包含隱藏報告=True)
+
+    for 副本設定 in 全部副本清單:
+        排行榜 = 排行榜索引.get(副本設定["key"])
+        if not 排行榜:
+            continue
+
+        寫入_json(
+            排行榜檔案路徑(副本設定, public=True),
+            建立公開排行榜(排行榜, 玩家最新伺服器索引=公開資料最新伺服器索引),
+            緊湊格式=True,
+        )
         寫入_json(
             排行榜檔案路徑(副本設定, public=True, 包含隱藏公開資料=True),
-            建立公開排行榜(排行榜, 包含隱藏報告=True),
+            建立公開排行榜(
+                排行榜,
+                包含隱藏報告=True,
+                玩家最新伺服器索引=完整鏡像最新伺服器索引,
+            ),
             緊湊格式=True,
         )
         print(f"已重建公開排行榜：{副本設定['key']}")
@@ -4629,6 +4794,10 @@ def main() -> int:
             已完成副本清單,
             完整成功=not 暫時失敗副本鍵值,
         )
+
+    # 公開排行榜需要跨副本比較同名玩家的最新伺服器，才能把轉服前後的紀錄收斂成同一位角色。
+    # 因此即使單次只更新部分副本，最後仍要以目前 data/rankings 全量重建 public/data。
+    重建公開排行榜檔案()
 
     if gcd計算器.啟用:
         print(

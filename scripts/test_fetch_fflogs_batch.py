@@ -51,6 +51,123 @@ def 建立測試原始成績(總傷害: int) -> dict[str, Any]:
 
 
 class FetchFFLogsBatchTest(unittest.TestCase):
+    def test_public_ranking_uses_latest_server_as_canonical_identity(self) -> None:
+        排行榜 = {
+            "encounter": {
+                "key": "fixture_encounter",
+                "name": "測試副本",
+                "category": "零式",
+            },
+            "reports": {
+                "OLD": {
+                    "report_code": "OLD",
+                    "report_start_time_iso": "2026-01-01T01:50:00.000Z",
+                    "url": "https://www.fflogs.com/reports/OLD",
+                    "fights": [
+                        {
+                            "fight_id": 1,
+                            "fight_hash": "old-fight",
+                            "clear_time_seconds": 600,
+                            "recorded_at_iso": "2026-01-01T02:00:00.000Z",
+                            "players": [
+                                {
+                                    "name": "轉服角色",
+                                    "server": "巴哈姆特",
+                                    "job": "Paladin",
+                                    "dps": 210,
+                                    "rdps": 200,
+                                    "adps": 205,
+                                    "total_damage": 1000,
+                                    "active_time_ms": 500000,
+                                }
+                            ],
+                        }
+                    ],
+                },
+                "NEW": {
+                    "report_code": "NEW",
+                    "report_start_time_iso": "2026-01-04T03:50:00.000Z",
+                    "url": "https://www.fflogs.com/reports/NEW",
+                    "fights": [
+                        {
+                            "fight_id": 2,
+                            "fight_hash": "new-fight",
+                            "clear_time_seconds": 610,
+                            "recorded_at_iso": "2026-01-04T04:00:00.000Z",
+                            "players": [
+                                {
+                                    "name": "轉服角色",
+                                    "server": "泰坦",
+                                    "job": "Paladin",
+                                    "dps": 190,
+                                    "rdps": 180,
+                                    "adps": 185,
+                                    "total_damage": 900,
+                                    "active_time_ms": 490000,
+                                }
+                            ],
+                        }
+                    ],
+                },
+            },
+        }
+
+        最新伺服器索引 = fflogs.建立玩家最新伺服器索引([排行榜])
+        公開排行榜 = fflogs.建立公開排行榜(排行榜, 玩家最新伺服器索引=最新伺服器索引)
+
+        self.assertEqual(最新伺服器索引, {"轉服角色": "泰坦"})
+        self.assertEqual(len(公開排行榜["ranking_entries"]), 1)
+        self.assertEqual(公開排行榜["ranking_entries"][0]["server"], "泰坦")
+        self.assertEqual(公開排行榜["ranking_entries"][0]["original_server"], "巴哈姆特")
+        self.assertEqual(公開排行榜["ranking_entries"][0]["rdps"], 200)
+
+    def test_public_ranking_rewrites_legacy_character_key_for_flat_entries(self) -> None:
+        排行榜 = {
+            "encounter": {
+                "key": "fixture_encounter",
+                "name": "測試副本",
+                "category": "零式",
+            },
+            "ranking_entries": [
+                {
+                    "id": "old-entry",
+                    "character_key": "轉服角色@巴哈姆特:Paladin",
+                    "character_name": "轉服角色",
+                    "server": "巴哈姆特",
+                    "job": "Paladin",
+                    "dps": 210,
+                    "rdps": 200,
+                    "adps": 205,
+                    "clear_time_seconds": 600,
+                    "recorded_at_iso": "2026-01-01T02:00:00.000Z",
+                },
+                {
+                    "id": "new-entry",
+                    "character_key": "轉服角色@泰坦:Paladin",
+                    "character_name": "轉服角色",
+                    "server": "泰坦",
+                    "job": "Paladin",
+                    "dps": 190,
+                    "rdps": 180,
+                    "adps": 185,
+                    "clear_time_seconds": 610,
+                    "recorded_at_iso": "2026-01-04T04:00:00.000Z",
+                },
+            ],
+        }
+
+        最新伺服器索引 = fflogs.建立玩家最新伺服器索引([排行榜])
+        排行榜條目 = fflogs.建立排行榜條目(排行榜, 玩家最新伺服器索引=最新伺服器索引)
+        公開排行榜 = fflogs.建立公開排行榜(排行榜, 玩家最新伺服器索引=最新伺服器索引)
+
+        self.assertEqual(最新伺服器索引, {"轉服角色": "泰坦"})
+        self.assertEqual(len(排行榜條目), 1)
+        self.assertEqual(排行榜條目[0]["character_key"], "轉服角色@泰坦:Paladin")
+        self.assertEqual(len(公開排行榜["ranking_entries"]), 1)
+        self.assertEqual(公開排行榜["ranking_entries"][0]["server"], "泰坦")
+        self.assertEqual(公開排行榜["ranking_entries"][0]["original_server"], "巴哈姆特")
+        self.assertEqual(公開排行榜["ranking_entries"][0]["rdps"], 200)
+
     def test_history_scan_deep_report_default_limit_matches_workflow_budget(self) -> None:
         self.assertEqual(fflogs.FFLogs執行設定預設值["history_max_deep_reports_per_run"], 200)
 

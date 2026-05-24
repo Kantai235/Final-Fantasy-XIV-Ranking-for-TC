@@ -470,6 +470,153 @@ function characterServerKey(characterName, server) {
   return `${characterName}@${server}`;
 }
 
+function isBetterCanonicalServerCandidate(candidate, currentBest) {
+  if (!currentBest) {
+    return true;
+  }
+
+  const candidateTime = entryRecordedAtMs(candidate);
+  const currentTime = entryRecordedAtMs(currentBest);
+  if (candidateTime !== currentTime) {
+    return candidateTime > currentTime;
+  }
+
+  if (isBetterEntry(candidate, currentBest)) {
+    return true;
+  }
+  if (isBetterEntry(currentBest, candidate)) {
+    return false;
+  }
+
+  return compareByLocale(candidate.server || "", currentBest.server || "") < 0;
+}
+
+function buildCanonicalServerIndex(entries) {
+  // 同名跨服玩家在目前個人成績單層已視為同一位角色。
+  // 這裡進一步把公開衍生資料統一改寫成「最新紀錄所在伺服器」，
+  // 避免排行榜、活動與伺服器統計仍把轉服前後拆成兩個角色。
+  const latestEntryByCharacter = new Map();
+
+  for (const entry of entries || []) {
+    if (!entry?.character_name || !entry?.server) {
+      continue;
+    }
+
+    const currentBest = latestEntryByCharacter.get(entry.character_name);
+    if (isBetterCanonicalServerCandidate(entry, currentBest)) {
+      latestEntryByCharacter.set(entry.character_name, entry);
+    }
+  }
+
+  return new Map(
+    Array.from(latestEntryByCharacter.entries()).map(([characterName, entry]) => [characterName, entry.server]),
+  );
+}
+
+function buildObservedServerInfoIndex(entries, hiddenStubs, canonicalServerByCharacter) {
+  const serverSetByCharacter = new Map();
+
+  function collect(characterName, server) {
+    if (!characterName || !server) {
+      return;
+    }
+
+    if (!serverSetByCharacter.has(characterName)) {
+      serverSetByCharacter.set(characterName, new Set());
+    }
+    serverSetByCharacter.get(characterName).add(server);
+  }
+
+  for (const entry of entries || []) {
+    collect(entry?.character_name, entry?.server);
+  }
+  for (const stub of hiddenStubs || []) {
+    collect(stub?.character_name, stub?.server);
+  }
+
+  return new Map(
+    Array.from(serverSetByCharacter.entries()).map(([characterName, serverSet]) => {
+      const canonicalServer = canonicalServerByCharacter.get(characterName)
+        || Array.from(serverSet).sort(compareByLocale)[0]
+        || "";
+      const serverAliases = Array.from(serverSet)
+        .filter((server) => server && server !== canonicalServer)
+        .sort(compareByLocale);
+      return [
+        characterName,
+        {
+          canonical_server: canonicalServer,
+          server_aliases: serverAliases,
+        },
+      ];
+    }),
+  );
+}
+
+function resolveCanonicalServer(characterName, server, canonicalServerByCharacter) {
+  return canonicalServerByCharacter.get(characterName) || server || "";
+}
+
+function attachCanonicalServerFields(target, characterName, originalServer, canonicalServerByCharacter) {
+  const canonicalServer = resolveCanonicalServer(characterName, originalServer, canonicalServerByCharacter);
+  target.server = canonicalServer;
+  if (originalServer && canonicalServer && originalServer !== canonicalServer) {
+    target.original_server = originalServer;
+  }
+  return target;
+}
+
+function normalizeTeammateServer(teammate, canonicalServerByCharacter) {
+  if (!teammate?.character_name || !teammate?.server) {
+    return teammate;
+  }
+
+  return attachCanonicalServerFields({ ...teammate }, teammate.character_name, teammate.server, canonicalServerByCharacter);
+}
+
+function normalizeEntryServer(entry, canonicalServerByCharacter) {
+  if (!entry?.character_name || !entry?.server) {
+    return entry;
+  }
+
+  return attachCanonicalServerFields(
+    {
+      ...entry,
+      teammates: Array.isArray(entry.teammates)
+        ? entry.teammates.map((teammate) => normalizeTeammateServer(teammate, canonicalServerByCharacter))
+        : entry.teammates,
+    },
+    entry.character_name,
+    entry.server,
+    canonicalServerByCharacter,
+  );
+}
+
+function normalizeHiddenUserStub(stub, canonicalServerByCharacter) {
+  if (!stub?.character_name || !stub?.server) {
+    return stub;
+  }
+
+  return attachCanonicalServerFields({ ...stub }, stub.character_name, stub.server, canonicalServerByCharacter);
+}
+
+function normalizeTeamPlayerServer(player, canonicalServerByCharacter) {
+  if (!player?.character_name || !player?.server) {
+    return player;
+  }
+
+  return attachCanonicalServerFields({ ...player }, player.character_name, player.server, canonicalServerByCharacter);
+}
+
+function normalizeTeamRecordServers(record, canonicalServerByCharacter) {
+  return {
+    ...record,
+    players: Array.isArray(record.players)
+      ? record.players.map((player) => normalizeTeamPlayerServer(player, canonicalServerByCharacter))
+      : record.players,
+  };
+}
+
 function toPercent(count, total) {
   return total > 0 ? Number(((count / total) * 100).toFixed(2)) : 0;
 }
@@ -613,6 +760,7 @@ function buildEntrySummary(entry) {
     ...(entry.fflogs_source_id !== null && entry.fflogs_source_id !== undefined
       ? { fflogs_source_id: entry.fflogs_source_id }
       : {}),
+    ...(entry.original_server ? { original_server: entry.original_server } : {}),
     rank: entry.rank,
     job_rank: entry.job_rank,
     performance: entry.performance || null,
@@ -1768,6 +1916,10 @@ function pickProfileEntry(entries) {
 }
 
 function buildUserPayload(user, generatedAtIso, updatedAtIsoByEncounter) {
+  const canonicalServer = user.canonical_server || Array.from(user.servers).sort(compareByLocale)[0] || "";
+  const serverAliases = Array.from(user.server_aliases || [])
+    .filter((server) => server && server !== canonicalServer)
+    .sort(compareByLocale);
   const frequentTeammates = buildFrequentTeammates(user);
   const allValidEntries = Array.from(user.entriesByEncounter.values())
     .flat()
@@ -1811,7 +1963,9 @@ function buildUserPayload(user, generatedAtIso, updatedAtIsoByEncounter) {
     schema_version: 1,
     generated_at_iso: generatedAtIso,
     character_name: user.character_name,
-    servers: Array.from(user.servers).sort(compareByLocale),
+    canonical_server: canonicalServer || null,
+    servers: canonicalServer ? [canonicalServer] : [],
+    server_aliases: serverAliases,
     summary: {
       encounter_count: encounters.length,
       public_entry_count: user.total_entries,
@@ -2344,6 +2498,8 @@ async function buildDataset({
   const encounterStats = [];
   const allEntries = [];
   const teamRecordsByEncounter = new Map();
+  const pendingEncounterData = [];
+  const hiddenUserStubs = [];
 
   for (const encounter of encounters) {
     const ranking = await loadRankingForEncounter(encounter);
@@ -2358,26 +2514,52 @@ async function buildDataset({
     const entries = ranking.reports
       ? collectEntriesFromReports({ ranking, encounter, includeHiddenReports })
       : collectEntriesFromRankingEntries({ ranking, encounter, includeHiddenReports });
-    assignValidVersionJobRanks(entries);
     const teamRecords = ranking.reports
       ? collectTeamRecordsFromReports({ ranking, encounter, includeHiddenReports })
       : [];
 
-    encounterStats.push(collectEncounterStats(encounter, entries, ranking.updated_at_iso));
-    allEntries.push(...entries);
-    if (teamRecords.length > 0) {
-      teamRecordsByEncounter.set(encounter.key, teamRecords);
+    pendingEncounterData.push({
+      encounter,
+      updated_at_iso: ranking.updated_at_iso,
+      entries,
+      teamRecords,
+    });
+
+    if (!includeHiddenReports) {
+      hiddenUserStubs.push(...collectHiddenUserStubs(ranking));
+    }
+  }
+
+  const rawEntries = pendingEncounterData.flatMap((item) => item.entries || []);
+  const canonicalServerByCharacter = buildCanonicalServerIndex(rawEntries);
+  const observedServerInfoByCharacter = buildObservedServerInfoIndex(
+    rawEntries,
+    hiddenUserStubs,
+    canonicalServerByCharacter,
+  );
+
+  for (const item of pendingEncounterData) {
+    const normalizedEntries = (item.entries || []).map((entry) => normalizeEntryServer(entry, canonicalServerByCharacter));
+    assignValidVersionJobRanks(normalizedEntries);
+    encounterStats.push(collectEncounterStats(item.encounter, normalizedEntries, item.updated_at_iso));
+    allEntries.push(...normalizedEntries);
+
+    if (item.teamRecords.length > 0) {
+      teamRecordsByEncounter.set(
+        item.encounter.key,
+        item.teamRecords.map((record) => normalizeTeamRecordServers(record, canonicalServerByCharacter)),
+      );
     }
 
-    for (const entry of entries) {
+    for (const entry of normalizedEntries) {
       overallCharacterKeys.add(characterServerKey(entry.character_name, entry.server));
       addEntry(usersByName, entry);
     }
+  }
 
-    if (!includeHiddenReports) {
-      for (const stub of collectHiddenUserStubs(ranking)) {
-        addHiddenUserStub(usersByName, stub);
-      }
+  if (!includeHiddenReports) {
+    for (const stub of hiddenUserStubs.map((item) => normalizeHiddenUserStub(item, canonicalServerByCharacter))) {
+      addHiddenUserStub(usersByName, stub);
     }
   }
 
@@ -2396,6 +2578,9 @@ async function buildDataset({
   for (const user of Array.from(usersByName.values()).sort((left, right) =>
     compareByLocale(left.character_name, right.character_name),
   )) {
+    const serverInfo = observedServerInfoByCharacter.get(user.character_name);
+    user.canonical_server = serverInfo?.canonical_server || Array.from(user.servers).sort(compareByLocale)[0] || "";
+    user.server_aliases = new Set(serverInfo?.server_aliases || []);
     const fileBaseName = normalizeFileBaseName(user.character_name, usedFileBaseNames);
     const fileName = `${fileBaseName}.json`;
     const filePath = path.join(outputDir, fileName);
@@ -2404,7 +2589,9 @@ async function buildDataset({
 
     indexUsers.push({
       character_name: user.character_name,
+      canonical_server: payload.canonical_server,
       servers: payload.servers,
+      server_aliases: payload.server_aliases,
       file_path: `data/users/${fileName}`,
       encounter_count: payload.summary.encounter_count,
       public_entry_count: payload.summary.public_entry_count,

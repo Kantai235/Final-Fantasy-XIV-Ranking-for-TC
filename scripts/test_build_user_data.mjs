@@ -240,6 +240,70 @@ async function createFixture(tempRoot) {
         },
       ],
     },
+    RPT3: {
+      report_code: "RPT3",
+      title: "Fixture transfer old server",
+      url: "https://www.fflogs.com/reports/RPT3",
+      report_start_time_iso: "2026-01-01T01:50:00.000Z",
+      fights: [
+        {
+          fight_id: 7,
+          fight_hash: "fixture-transfer-old",
+          clear_time_ms: 590000,
+          clear_time_seconds: 590,
+          damage_time_ms: 540000,
+          damage_time_seconds: 540,
+          recorded_at: 1767232800000,
+          recorded_at_iso: "2026-01-01T02:00:00.000Z",
+          players: [
+            {
+              name: "轉服角色",
+              server: "巴哈姆特",
+              job: "Warrior",
+              dps: 210,
+              rdps: 200,
+              adps: 205,
+              total_damage: 113400,
+              fflogs_id: 404,
+              active_time_ms: 500000,
+              active_percent: 92.59,
+            },
+          ],
+        },
+      ],
+    },
+    RPT4: {
+      report_code: "RPT4",
+      title: "Fixture transfer new server",
+      url: "https://www.fflogs.com/reports/RPT4",
+      report_start_time_iso: "2026-01-03T03:50:00.000Z",
+      fights: [
+        {
+          fight_id: 8,
+          fight_hash: "fixture-transfer-new",
+          clear_time_ms: 595000,
+          clear_time_seconds: 595,
+          damage_time_ms: 545000,
+          damage_time_seconds: 545,
+          recorded_at: 1767499200000,
+          recorded_at_iso: "2026-01-04T04:00:00.000Z",
+          players: [
+            {
+              name: "轉服角色",
+              server: "泰坦",
+              job: "Warrior",
+              dps: 190,
+              rdps: 180,
+              adps: 185,
+              total_damage: 103550,
+              fflogs_id: 405,
+              active_time_ms: 490000,
+              active_percent: 89.91,
+            },
+          ],
+        },
+      ],
+    },
     HIDDEN1: {
       report_code: "HIDDEN1",
       report_hidden: true,
@@ -294,22 +358,23 @@ async function assertFixtureOutput(tempRoot, expectedGlobalStatsText, expectedSe
 
   assert(usersIndex.generated_at_iso === "2026-01-02T03:04:05.000Z", "使用者索引應使用 ranking 更新時間作為 generated_at_iso。");
   assert(globalStats.generated_at_iso === "2026-01-02T03:04:05.000Z", "全服統計應使用 ranking 更新時間作為 generated_at_iso。");
-  assert(usersIndex.total_users === 4, "fixture 應產生三位有公開成績的使用者與一位空白入口。");
-  assert(globalStats.total_character_count === 3, `全服角色數應包含公開 report 中三位玩家，實際 ${globalStats.total_character_count}。`);
-  assert(globalStats.total_entry_count === 4, "全服 entry 數應包含四筆玩家成績。");
+  assert(usersIndex.total_users === 5, "fixture 應產生四位有公開成績的使用者與一位空白入口。");
+  assert(globalStats.total_character_count === 4, `全服角色數應把轉服前後視為同一位玩家，實際 ${globalStats.total_character_count}。`);
+  assert(globalStats.total_entry_count === 6, "全服 entry 數應包含六筆公開玩家成績。");
   const hiddenUser = usersIndex.users.find((user) => user.character_name === "隱藏角色");
   assert(hiddenUser, "預設使用者索引應保留空白成績單入口。");
   assert(hiddenUser.servers.includes("鳳凰"), "空白入口應保留伺服器，讓同名角色查詢仍可辨識。");
   assert(hiddenUser.best_rdps === null, "空白入口不可帶入最佳 rDPS。");
   assert(hiddenUser.last_recorded_at_iso === null, "空白入口不可帶入最後紀錄時間。");
-  assert(allUsersIndex.total_users === 4, "完整鏡像應納入所有 fixture 角色。");
-  assert(allGlobalStats.total_character_count === 4, "完整全服統計應納入所有 fixture 角色。");
-  assert(allGlobalStats.total_entry_count === 5, "完整全服統計應納入所有 fixture 成績。");
+  assert(allUsersIndex.total_users === 5, "完整鏡像應納入所有 fixture 角色。");
+  assert(allGlobalStats.total_character_count === 5, "完整全服統計應納入所有 fixture 角色。");
+  assert(allGlobalStats.total_entry_count === 7, "完整全服統計應納入所有 fixture 成績。");
   const allHiddenUser = allUsersIndex.users.find((user) => user.character_name === "隱藏角色");
   assert(allHiddenUser, "完整鏡像使用者索引應包含對應角色。");
-  assert(Array.isArray(globalStats.job_profiles) && globalStats.job_profiles.length === 3, "全服統計應產生職業專頁資料。");
-  assert(serverCompare.summary.server_count === 2, "伺服器對比應包含兩個伺服器。");
+  assert(Array.isArray(globalStats.job_profiles) && globalStats.job_profiles.length === 4, "全服統計應產生職業專頁資料。");
+  assert(serverCompare.summary.server_count === 3, "伺服器對比應包含轉服後的 canonical 伺服器。");
   assert(serverCompare.servers.some((server) => server.server === "鳳凰"), "伺服器對比應包含鳳凰。");
+  assert(serverCompare.servers.some((server) => server.server === "泰坦"), "伺服器對比應包含轉服後的泰坦。");
 
   const hiddenUserData = await readJson(path.join(tempRoot, "public", hiddenUser.file_path));
   assert(hiddenUserData.summary.public_entry_count === 0, "空白成績單不可包含公開成績筆數。");
@@ -326,6 +391,32 @@ async function assertFixtureOutput(tempRoot, expectedGlobalStatsText, expectedSe
   assert(allHiddenUserData.summary.public_entry_count === 1, "完整鏡像成績單應包含對應成績。");
   assert(allHiddenEntry?.report_hidden === true, "完整鏡像成績單應保留來源狀態欄位。");
   assert(allHiddenEntry?.rdps === 999, "完整鏡像成績單應保留實際 rDPS。");
+
+  const transferredUser = usersIndex.users.find((user) => user.character_name === "轉服角色");
+  assert(transferredUser, "使用者索引應包含轉服角色。");
+  assert(transferredUser.canonical_server === "泰坦", "轉服角色索引應以最新紀錄所在伺服器作為 canonical_server。");
+  assert(transferredUser.servers.length === 1 && transferredUser.servers[0] === "泰坦", "使用者索引應只把 canonical 伺服器放在主要 servers。");
+  assert(
+    transferredUser.server_aliases.length === 1 && transferredUser.server_aliases[0] === "巴哈姆特",
+    "使用者索引應保留轉服前伺服器作為查詢 alias。",
+  );
+  const transferredUserData = await readJson(path.join(tempRoot, "public", transferredUser.file_path));
+  assert(transferredUserData.canonical_server === "泰坦", "個人成績單應輸出 canonical_server。");
+  assert(
+    transferredUserData.server_aliases.length === 1 && transferredUserData.server_aliases[0] === "巴哈姆特",
+    "個人成績單應保留舊伺服器 alias，方便後續查詢與交接。",
+  );
+  const transferredEntries = transferredUserData.encounters[0]?.public_entries || [];
+  assert(transferredEntries.length === 2, "轉服角色成績單應保留轉服前後兩筆公開紀錄。");
+  assert(transferredEntries.every((entry) => entry.server === "泰坦"), "轉服角色所有公開紀錄都應改寫成最新伺服器。");
+  assert(
+    transferredEntries.some((entry) => entry.original_server === "巴哈姆特"),
+    "轉服前的歷史紀錄應保留 original_server 方便追溯。",
+  );
+  assert(
+    transferredUserData.summary.last_recorded_at_iso === "2026-01-04T04:00:00.000Z",
+    "轉服角色摘要應以最新紀錄時間判定 canonical server。",
+  );
 
   const mainUser = usersIndex.users.find((user) => user.character_name === "測試角色");
   assert(mainUser, "使用者索引應包含測試角色。");

@@ -61,6 +61,8 @@ npm run sync:data -- --dry-run
 
 個人成績單未套用職業篩選時，副本代表列與分享用代表職業優先選同職 `job_rank` 最前面的有效紀錄；`summary.best_rdps` 仍保留最高 rDPS，避免把「代表職業」與「最高輸出」混成同一件事。
 
+若同名角色有跨伺服器的公開紀錄，公開排行榜、`public/data/users/*.json`、`public/data/users/index.json`、近期動態、隊伍榜與伺服器對比等公開衍生資料，都會以該角色最新公開紀錄所在伺服器作為 `canonical_server`。這些資料的 `servers` 只保留 canonical 伺服器，舊伺服器改寫到 `server_aliases`；若某筆歷史紀錄原本來自舊伺服器，條目會另外保留 `original_server` 供追溯。這樣可避免轉服前後被誤判成兩位玩家，同時保留舊連結與人工查核所需的線索。
+
 ## FFLogs 欄位解析
 
 淺層 reports 查詢目前不能直接用伺服器過濾；`report_region_scope` 只控制候選 report 的地區範圍。專案與 GitHub Actions 預設使用 `all` 掃全部地區，以涵蓋繁中服玩家上傳到其他地區的紀錄。無論候選來自哪個地區，都必須再查 `masterData.actors(type: "Player")` 確認是否包含繁中服伺服器。
