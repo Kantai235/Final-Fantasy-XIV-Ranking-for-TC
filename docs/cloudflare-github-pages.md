@@ -82,6 +82,8 @@ npm run cloudflare:apply -- --dry-run
 CLOUDFLARE_ZONE_ID=你的 zone id
 CLOUDFLARE_RULES_API_TOKEN=你的規則管理 API token
 CLOUDFLARE_HOSTNAME=ranking.init.engineer
+# 可選：調整單一 IP 每 10 秒的全站請求門檻，預設 240。
+CLOUDFLARE_RATE_LIMIT_REQUESTS_PER_10S=240
 # 可選：調整 Rulesets API 暫時性錯誤的重試次數與基礎等待毫秒數。
 CLOUDFLARE_RULES_API_MAX_ATTEMPTS=3
 CLOUDFLARE_RULES_API_RETRY_BASE_MS=750

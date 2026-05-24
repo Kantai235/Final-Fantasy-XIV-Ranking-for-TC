@@ -108,10 +108,11 @@ flowchart LR
 
 ## 功能旗標
 
-臨時隱藏或恢復作者相關 UI 標示、社群連結或 GCD 覆蓋率時，只調整 `src/utils/siteFeatures.js`：
+臨時隱藏或恢復作者相關 UI 標示、社群 / Telegram 連結或 GCD 覆蓋率時，只調整 `src/utils/siteFeatures.js`：
 
 - `顯示作者相關標示`
 - `顯示社群連結`
+- `顯示Telegram連結`
 - `顯示Gcd覆蓋率`
 
 目前 `顯示Gcd覆蓋率=true`，網站會顯示 GCD 欄位。這些旗標只影響前端呈現，不改動公開資料或排行榜歷史資料結構。
