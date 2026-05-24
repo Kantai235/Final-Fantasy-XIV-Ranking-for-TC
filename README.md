@@ -21,8 +21,11 @@ Final Fantasy XIV 繁中服排行榜是一個以 FFLogs 公開資料為來源的
 
 ```bash
 npm install
-python -m pip install -r requirements.txt
+npm run python:venv
+npm run python:install
 ```
+
+`npm run python:install` 與所有 Python 相關 npm scripts 會優先使用 `.venv/bin/python`，也可用 `FFXIV_TC_PYTHON=/path/to/python3.11` 指定直譯器；專案需求為 `.python-version` 宣告的 Python 3.11+。
 
 設定本機環境變數：
 
@@ -101,6 +104,9 @@ README 只保留入口與最小操作脈絡，完整說明請依主題閱讀：
 | `npm test` | 執行資料管線、GCD、資料建置與前端資料契約測試。 |
 | `npm run build` | 完整建置靜態網站到 `dist/`。 |
 | `npm run sync:data -- --dry-run` | 同步 GitHub Actions 與本機資料前的安全預覽。 |
+| `npm run python -- --version` | 顯示 npm scripts 解析到的 Python 直譯器版本。 |
+| `npm run python:venv` | 使用可用的 Python 3.11+ 建立 `.venv`。 |
+| `npm run python:install` | 用專案 Python 直譯器安裝 `requirements.txt`。 |
 
 更多指令情境請看 [docs/getting-started.md](docs/getting-started.md) 與 [docs/data-pipeline.md](docs/data-pipeline.md)。
 

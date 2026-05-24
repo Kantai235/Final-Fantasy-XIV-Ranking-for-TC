@@ -12,7 +12,14 @@
 
 ```bash
 npm install
-python -m pip install -r requirements.txt
+npm run python:venv
+npm run python:install
+```
+
+Python 版本由 `.python-version` 宣告為 3.11。所有 Python 相關 npm scripts 會透過 `scripts/run_python.mjs` 解析直譯器，順序是 `FFXIV_TC_PYTHON`、`.venv/bin/python`、`python3.11`、`python3`、`python`，且會拒絕低於 3.11 的版本。若要確認目前解析到的版本：
+
+```bash
+npm run python -- --version
 ```
 
 ## 環境變數
@@ -74,6 +81,8 @@ VITE_GA_ENABLE_IN_DEV=false
 | 指令 | 用途 |
 | --- | --- |
 | `npm run dev` | 啟動 Vite 本機開發伺服器。代理協作者需先取得使用者同意。 |
+| `npm run python:venv` | 使用可用的 Python 3.11+ 建立 `.venv`。 |
+| `npm run python:install` | 使用專案 Python 3.11+ 直譯器安裝 `requirements.txt`。 |
 | `npm run build:public-rankings` | 執行 `fetch_fflogs.py --rebuild-public`，只重建公開排行榜與副本清單，不呼叫 FFLogs API。 |
 | `npm run build:user-data` | 產生個人成績單、全服統計、近期動態、隊伍榜與伺服器對比資料。 |
 | `npm run validate:data` | 驗證公開副本、排行榜分片、raw 欄位、全服統計與使用者索引。 |
@@ -95,7 +104,7 @@ npm run build:user-data
 完整抓取 FFLogs 並重建資料：
 
 ```bash
-python scripts/fetch_fflogs.py
+npm run python -- scripts/fetch_fflogs.py
 npm run build:user-data
 npm run validate:data
 ```
