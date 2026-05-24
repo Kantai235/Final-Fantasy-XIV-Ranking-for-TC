@@ -61,6 +61,7 @@ export default {
                   value: app.格式化Gcd覆蓋率(成績.gcd_coverage),
                   tooltip: app.統計說明文字("GCD 覆蓋率"),
                   tooltipLabel: "GCD 覆蓋率說明",
+                  className: "gcd參考文字",
                 },
               ]
             : []),
@@ -282,7 +283,7 @@ export default {
           </span>
           <strong>{{ 格式化傷害數值(使用者統計.最佳成績?.rdps) }}</strong>
         </div>
-        <div v-if="顯示Gcd覆蓋率" class="概要項 概要項重點">
+        <div v-if="顯示Gcd覆蓋率" class="概要項 概要項重點 gcd參考文字">
           <span class="說明標籤">
             <span>最佳 GCD</span>
             <span class="說明提示">
@@ -326,7 +327,7 @@ export default {
             <strong>{{ 格式化前段百分位(成績.performance?.rank, 成績.performance?.sample_count) }}</strong>
             <small>
               rDPS {{ 格式化傷害數值(成績.rdps) }}
-              <template v-if="顯示Gcd覆蓋率">・GCD {{ 格式化Gcd覆蓋率(成績.gcd_coverage) }}</template>
+              <span v-if="顯示Gcd覆蓋率" class="gcd參考文字">・GCD {{ 格式化Gcd覆蓋率(成績.gcd_coverage) }}</span>
               ・高於中位 {{ 格式化帶號整數(成績.performance?.delta_to_median) }}
             </small>
           </article>
@@ -556,7 +557,7 @@ export default {
               </small>
               <strong>{{ 副本.best_entry ? 格式化Active(副本.best_entry.active_percent) : "-" }}</strong>
             </span>
-            <span v-if="顯示Gcd覆蓋率" class="成績列數值 成績列數值狀態">
+            <span v-if="顯示Gcd覆蓋率" class="成績列數值 成績列數值狀態 gcd參考文字">
               <small class="說明標籤">
                 <span>GCD</span>
                 <span class="說明提示">
@@ -616,7 +617,7 @@ export default {
                       </span>
                     </span>
                   </th>
-                  <th v-show="顯示Gcd覆蓋率" scope="col" class="數字">
+                  <th v-show="顯示Gcd覆蓋率" scope="col" class="數字 gcd參考文字">
                     <span class="表頭說明標籤">
                       <span>GCD</span>
                       <span class="說明提示">
@@ -680,7 +681,7 @@ export default {
                   </td>
                   <td class="數字">{{ 成績.is_obsolete_record ? "過時紀錄" : 格式化前段百分位(成績.performance?.rank, 成績.performance?.sample_count) }}</td>
                   <td class="數字">{{ 格式化Active(成績.active_percent) }}</td>
-                  <td v-show="顯示Gcd覆蓋率" class="數字">{{ 格式化Gcd覆蓋率(成績.gcd_coverage) }}</td>
+                  <td v-show="顯示Gcd覆蓋率" class="數字 gcd參考文字">{{ 格式化Gcd覆蓋率(成績.gcd_coverage) }}</td>
                   <td class="數字">{{ 格式化傷害數值(成績.dps) }}</td>
                   <td class="數字">{{ 格式化傷害數值(成績.rdps) }}</td>
                   <td class="數字">{{ 格式化傷害數值(成績.adps) }}</td>

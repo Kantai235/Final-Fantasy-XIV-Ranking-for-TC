@@ -78,7 +78,7 @@ export default {
               v-for="指標 in 伺服器對比概要"
               :key="指標.標籤"
               class="伺服器對比指標"
-              :class="{ 左領先: 指標.勝方 === 'left', 右領先: 指標.勝方 === 'right' }"
+              :class="{ 左領先: 指標.勝方 === 'left', 右領先: 指標.勝方 === 'right', gcd參考文字: 指標.是否Gcd參考值 }"
             >
               <span>{{ 指標.標籤 }}</span>
               <strong :data-server-label="伺服器對比左資料.server">{{ 指標.左文字 }}</strong>

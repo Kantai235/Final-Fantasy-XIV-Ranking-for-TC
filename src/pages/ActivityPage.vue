@@ -42,7 +42,7 @@ export default {
                 <th scope="col">職業</th>
                 <th scope="col" class="數字">rDPS 提升</th>
                 <th scope="col" class="數字">同職分位</th>
-                <th v-show="顯示Gcd覆蓋率" scope="col" class="數字">GCD</th>
+                <th v-show="顯示Gcd覆蓋率" scope="col" class="數字 gcd參考文字">GCD</th>
                 <th scope="col">紀錄時間</th>
               </tr>
             </thead>
@@ -75,7 +75,7 @@ export default {
                   <span v-if="成績.is_obsolete_record" class="版本紀錄標籤">過版紀錄</span>
                   <template v-else>{{ 格式化前段百分位(成績.performance?.rank, 成績.performance?.sample_count) }}</template>
                 </td>
-                <td v-show="顯示Gcd覆蓋率" class="數字">{{ 格式化Gcd覆蓋率(成績.gcd_coverage) }}</td>
+                <td v-show="顯示Gcd覆蓋率" class="數字 gcd參考文字">{{ 格式化Gcd覆蓋率(成績.gcd_coverage) }}</td>
                 <td>{{ 格式化紀錄時間(成績.recorded_at_iso) }}</td>
               </tr>
             </tbody>
@@ -97,7 +97,7 @@ export default {
                 <th scope="col">副本</th>
                 <th scope="col">職業</th>
                 <th scope="col" class="數字">rDPS</th>
-                <th v-show="顯示Gcd覆蓋率" scope="col" class="數字">GCD</th>
+                <th v-show="顯示Gcd覆蓋率" scope="col" class="數字 gcd參考文字">GCD</th>
                 <th scope="col">紀錄時間</th>
               </tr>
             </thead>
@@ -121,7 +121,7 @@ export default {
                   <span v-else>-</span>
                 </td>
                 <td class="數字">{{ 格式化傷害數值(成績.rdps) }}</td>
-                <td v-show="顯示Gcd覆蓋率" class="數字">{{ 格式化Gcd覆蓋率(成績.gcd_coverage) }}</td>
+                <td v-show="顯示Gcd覆蓋率" class="數字 gcd參考文字">{{ 格式化Gcd覆蓋率(成績.gcd_coverage) }}</td>
                 <td>{{ 格式化紀錄時間(成績.recorded_at_iso || 成績.last_recorded_at_iso) }}</td>
               </tr>
             </tbody>
@@ -185,7 +185,7 @@ export default {
             <strong>{{ 角色.character_name }}</strong>
             <span>
               {{ 角色.server }}・{{ 格式化整數(角色.encounter_count) }} 副本・rDPS {{ 格式化傷害數值(角色.best_entry?.rdps) }}
-              <template v-if="顯示Gcd覆蓋率">・GCD {{ 格式化Gcd覆蓋率(角色.best_entry?.gcd_coverage) }}</template>
+              <span v-if="顯示Gcd覆蓋率" class="gcd參考文字">・GCD {{ 格式化Gcd覆蓋率(角色.best_entry?.gcd_coverage) }}</span>
             </span>
           </button>
         </div>

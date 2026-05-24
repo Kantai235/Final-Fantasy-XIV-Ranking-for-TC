@@ -200,7 +200,7 @@ export default {
                       />
                       <span>{{ 成員.character_name }}</span>
                       <small>{{ 成員.server }}</small>
-                      <small v-if="顯示Gcd覆蓋率">GCD {{ 格式化Gcd覆蓋率(成員.gcd_coverage) }}</small>
+                      <small v-if="顯示Gcd覆蓋率" class="gcd參考文字">GCD {{ 格式化Gcd覆蓋率(成員.gcd_coverage) }}</small>
                     </button>
                   </div>
                 </td>
