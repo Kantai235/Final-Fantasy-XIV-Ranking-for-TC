@@ -14,6 +14,7 @@ const sourceRankingsDir = path.join(rootDir, "data", "rankings");
 const basePublicDataDir = path.join(rootDir, "public", "data");
 const publicRankingsDir = path.join(basePublicDataDir, "rankings");
 const publicEncountersPath = path.join(basePublicDataDir, "encounters.json");
+const publicAnnouncementsPath = path.join(basePublicDataDir, "announcements.json");
 const configEncountersPath = path.join(rootDir, "config", "encounters.json");
 // 目前箱型圖只比較現行零式系列；其他副本仍會進入全服統計與個人成績單。
 // minimumDamageActivePercent 用來排除明顯中途死亡或缺乏輸出時間的樣本，避免分位數被極端異常值拉歪。
@@ -267,6 +268,22 @@ async function waitForUserOutputReady(outputDir, expectedUserCount, label) {
   throw new Error(
     `${label} 使用者資料輸出尚未穩定：${path.relative(rootDir, outputDir)} 目前 ${entries.length} 筆，預期至少 ${expectedEntryCount} 筆。`,
   );
+}
+
+async function syncAnnouncementMirror(outputDataDir) {
+  if (path.resolve(outputDataDir) === path.resolve(basePublicDataDir)) {
+    return;
+  }
+
+  const announcements = await readJson(publicAnnouncementsPath, null);
+  if (!announcements) {
+    return;
+  }
+
+  // 公告是 commit 維護的營運靜態資料，不屬於排行榜聚合產物；
+  // 但額外檢視流程可能把 /data/... 改寫到 /data/all/...，
+  // 因此完整鏡像仍要跟一般公開公告保持同步。
+  await writeJson(path.join(outputDataDir, "announcements.json"), announcements);
 }
 
 function resolveGeneratedAtIso(latestRankingUpdatedAt) {
@@ -2642,6 +2659,7 @@ async function buildDataset({
   await writeJson(activityPath, buildActivityPayload(allEntries, generatedAtIso, latestRankingUpdatedAt));
   await writeJson(teamRankingsPath, buildTeamRankingsPayload(teamRecordsByEncounter, generatedAtIso, latestRankingUpdatedAt));
   await writeJson(serverComparePath, buildServerComparePayload(allEntries, normalizedEncounterStats, generatedAtIso, latestRankingUpdatedAt));
+  await syncAnnouncementMirror(outputDataDir);
   await waitForUserOutputReady(outputDir, indexUsers.length, label);
 
   console.log(`Built ${label} ${indexUsers.length} user data files in ${path.relative(rootDir, outputDir)}.`);

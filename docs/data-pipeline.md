@@ -20,6 +20,8 @@
 
    這一步會產生 `public/data/users/`、`public/data/users/index.json`、`public/data/global_stats.json`、`public/data/activity.json`、`public/data/team_rankings.json` 與 `public/data/server_compare.json`。
 
+   全域公告內容直接維護在 `public/data/announcements.json`；這一步會把它同步到 `public/data/all/announcements.json`，供完整鏡像檢視流程使用。
+
 3. 驗證資料完整性：
 
    ```bash

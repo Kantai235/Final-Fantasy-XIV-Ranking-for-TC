@@ -92,6 +92,29 @@ npm run sync:data -- --dry-run
 
 若玩家的公開成績沒有可列出的 entry，一般 `public/data/users/index.json` 仍會保留空白成績單入口與伺服器資訊，讓 `/user/{玩家}` 頁面可以開啟；預設成績單不會輸出副本成績、分數、隊友或紀錄時間。
 
+## 全域公告資料
+
+全域公告由 `public/data/announcements.json` 提供，`npm run build:user-data` 會同步產生 `public/data/all/announcements.json`，避免額外檢視流程把 `/data/...` 改寫到 `/data/all/...` 時公告讀取失敗。公告是 commit 維護的營運靜態內容，不屬於 FFLogs 抓取或使用者統計建置產物。
+
+公告檔格式：
+
+- `schema_version`：目前固定為 `1`。
+- `updated_at_iso`：公告檔最後維護時間。
+- `announcements[]`：公告列表。
+
+每則公告欄位：
+
+- `id`：穩定識別碼。前端會用它保存使用者關閉狀態；若希望已關閉的使用者重新看到同一主題，請新增新 id。
+- `title`：公告標題。
+- `summary`：右上角通知顯示的純文字摘要。
+- `details_markdown`：公告視窗內顯示的 Markdown 詳細內容。
+- `starts_at_iso`：選填；未設定時視為即刻生效。
+- `expires_at_iso`：選填；未設定時不會自動過期。
+- `severity`：選填，可用 `info`、`update` 或 `warning` 控制視覺語氣。
+- `links[]`：選填，格式為 `{ "label": "...", "url": "..." }`，前端會以按鈕樣式顯示。只允許 `http:`、`https:` 與 `mailto:` 連結。
+
+前端主動通知只顯示「目前已開始、尚未過期、使用者尚未關閉」的公告；「所有公告」視窗則會列出公告檔內所有公告，並標示進行中、尚未開始或已過期。
+
 ## 版本切點與過版紀錄
 
 `config/encounters.json` 的 `version_cutoff` 用來描述副本版本有效期限。目前 `極 佐拉加` 與 `極 豔翼蛇鳥` 的過版切點是台灣時間 2026-04-21 18:00，對應 `2026-04-21T10:00:00.000Z`。

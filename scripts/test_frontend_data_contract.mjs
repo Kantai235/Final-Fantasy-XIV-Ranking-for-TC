@@ -3,6 +3,14 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { 可快取職業Icon路徑清單, 職業Icon路徑, 職業類型Icon路徑 } from "../src/domain/jobs.js";
+import {
+  取得主動公告列表,
+  取得公告狀態,
+  正規化公告資料,
+  讀取已關閉公告,
+  寫入已關閉公告,
+  解析公告Markdown,
+} from "../src/utils/announcements.js";
 import { buildReportExternalLinks } from "../src/utils/reportLinks.js";
 import { 建立職業佔比分組, 取得統計範圍計數 } from "../src/utils/statsDisplay.js";
 
@@ -192,6 +200,7 @@ async function validateFrontendFetchBoundary() {
     "main.js",
     "composables/useRankingApp.js",
     "domain/jobs.js",
+    "utils/announcements.js",
     "utils/fetchJson.js",
     "utils/publicData.js",
     "utils/shareMeta.js",
@@ -264,12 +273,20 @@ async function validateEncounterSwitchFilterPersistence() {
 
 async function validatePublicDataForFrontend() {
   const encounters = await readJson(path.join(publicDataDir, "encounters.json"), "public/data/encounters.json");
+  const announcements = await readJson(path.join(publicDataDir, "announcements.json"), "public/data/announcements.json");
   const globalStats = await readJson(path.join(publicDataDir, "global_stats.json"), "public/data/global_stats.json");
   const serverCompare = await readJson(path.join(publicDataDir, "server_compare.json"), "public/data/server_compare.json");
   const userIndex = await readJson(path.join(publicDataDir, "users", "index.json"), "public/data/users/index.json");
   const versionedEncounterKeys = new Set((encounters || []).filter((encounter) => encounter?.version_cutoff).map((encounter) => encounter.key));
 
   assert(Array.isArray(encounters) && encounters.length > 0, "public/data/encounters.json 必須提供前端副本清單");
+  assert(announcements?.schema_version === 1, "public/data/announcements.json schema_version 必須是 1");
+  assert(Array.isArray(announcements?.announcements), "public/data/announcements.json 必須包含 announcements");
+  for (const announcement of announcements?.announcements || []) {
+    assert(Boolean(announcement?.id), "每則公告必須有穩定 id，讓使用者關閉狀態可保存。");
+    assert(Boolean(announcement?.summary), `${announcement?.id || "未知公告"} 必須有右上角摘要。`);
+    assert(Boolean(announcement?.details_markdown), `${announcement?.id || "未知公告"} 必須有 Markdown 詳細內容。`);
+  }
   assert(globalStats?.schema_version === 1, "public/data/global_stats.json schema_version 必須是 1");
   assert(Array.isArray(globalStats?.server_stats), "public/data/global_stats.json 必須包含 server_stats");
   assert(Array.isArray(globalStats?.role_stats), "public/data/global_stats.json 必須包含 role_stats");
@@ -422,6 +439,61 @@ function validateGlobalStatsOverviewDenominator() {
     取得統計範圍計數({ character_count: 3, clear_count: 2 }, "all") === 3,
     "單一副本統計仍應優先使用 character_count 作為通關玩家分母。",
   );
+}
+
+function validateAnnouncementRules() {
+  const payload = {
+    announcements: [
+      {
+        id: "always",
+        title: "永久公告",
+        summary: "沒有期限",
+        details_markdown: "支援 **Markdown** 與 [連結](https://ranking.init.engineer)。",
+        links: [{ label: "站台", url: "https://ranking.init.engineer" }],
+      },
+      {
+        id: "future",
+        title: "未來公告",
+        summary: "尚未開始",
+        details_markdown: "尚未開始前不可主動顯示。",
+        starts_at_iso: "2026-06-01T00:00:00.000Z",
+      },
+      {
+        id: "expired",
+        title: "過期公告",
+        summary: "已過期",
+        details_markdown: "超過有效期限後不可主動顯示。",
+        expires_at_iso: "2026-05-01T00:00:00.000Z",
+      },
+    ],
+  };
+
+  const announcements = 正規化公告資料(payload);
+  const now = new Date("2026-05-24T00:00:00.000Z").getTime();
+  assert(announcements.length === 3, "公告正規化應保留合法公告。");
+  assert(取得公告狀態(announcements.find((item) => item.id === "always"), now) === "active", "未設定期限的公告應立即主動顯示。");
+  assert(取得公告狀態(announcements.find((item) => item.id === "future"), now) === "scheduled", "未到 starts_at_iso 的公告不可主動顯示。");
+  assert(取得公告狀態(announcements.find((item) => item.id === "expired"), now) === "expired", "超過 expires_at_iso 的公告不可主動顯示。");
+
+  const activeIds = 取得主動公告列表(announcements, [], now).map((item) => item.id);
+  assert(activeIds.length === 1 && activeIds[0] === "always", "主動公告列表只應包含生效且未關閉的公告。");
+  assert(取得主動公告列表(announcements, ["always"], now).length === 0, "已關閉公告不應再次主動顯示。");
+
+  const storage = {
+    value: "",
+    getItem() {
+      return this.value;
+    },
+    setItem(_key, value) {
+      this.value = value;
+    },
+  };
+  寫入已關閉公告(new Set(["always"]), storage);
+  assert(讀取已關閉公告(storage).has("always"), "公告關閉狀態應可寫入並從 localStorage 還原。");
+
+  const blocks = 解析公告Markdown(payload.announcements[0].details_markdown);
+  assert(blocks.some((block) => block.parts?.some((part) => part.type === "strong")), "公告詳細內容應解析 Markdown 粗體。");
+  assert(blocks.some((block) => block.parts?.some((part) => part.type === "link")), "公告詳細內容應解析 Markdown 連結。");
 }
 
 async function loadUrlStateTestModule() {
@@ -719,6 +791,7 @@ async function main() {
   validateReportExternalLinks();
   validateScopedJobShareRecalculation();
   validateGlobalStatsOverviewDenominator();
+  validateAnnouncementRules();
   await validateUserSearchResolution();
   await validateShareUrlStateCompatibility();
 

@@ -40,6 +40,8 @@ flowchart LR
 複雜排序、分位數、隊友統計、職業分布與版本切片應在這一層完成。若新增前端畫面需要新的統計欄位，請先擴充這一層，再讓 Vue 讀取結果。
 同名角色若有公開轉服紀錄，公開衍生資料也在這一層統一收斂到最新公開紀錄所在伺服器，並保留 alias 與原始伺服器欄位供搜尋與追溯。
 
+全域公告是例外的營運靜態內容：`public/data/announcements.json` 直接隨 commit 維護，不從 FFLogs 或使用者統計建置而來；`build_user_data.mjs` 只負責把它同步到 `public/data/all/announcements.json`。這讓公告可快速發佈，同時不碰 append-only 排行榜歷史資料。
+
 ### UI Presentation Layer
 
 `src/` 是 Vue 3 / Vite 前端，只能讀取 `public/data/` 靜態 JSON：
@@ -51,6 +53,7 @@ flowchart LR
 - `src/domain/` 放 FFXIV 職業與職能等領域設定。
 
 前端元件不得直接呼叫 FFLogs API，也不要在 Vue 內重做全服統計或資料聚合。
+公告元件只能讀取 `public/data/announcements.json`，並用瀏覽器 `localStorage` 保存使用者已關閉公告 id；這個狀態不會寫回公開資料。
 
 ## 專案結構
 

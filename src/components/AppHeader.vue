@@ -1,5 +1,6 @@
 <script>
 import { nextTick, onBeforeUnmount, ref } from "vue";
+import AnnouncementCenter from "./AnnouncementCenter.vue";
 import PageNavigation from "./PageNavigation.vue";
 import { injectRankingApp } from "../composables/useRankingApp";
 import { 顯示Telegram連結 } from "../utils/siteFeatures";
@@ -10,6 +11,7 @@ const TelegramQrCode網址 = `${import.meta.env.BASE_URL}telegram.png`;
 export default {
   name: "AppHeader",
   components: {
+    AnnouncementCenter,
     PageNavigation,
   },
   setup() {
@@ -156,6 +158,7 @@ export default {
         </svg>
         <span class="標題按鈕文字">{{ 目前主題文字 }}</span>
       </button>
+      <AnnouncementCenter />
     </div>
     <p v-if="分享狀態訊息" class="分享狀態" role="status">
       {{ 分享狀態訊息 }}

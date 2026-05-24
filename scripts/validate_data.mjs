@@ -266,6 +266,91 @@ async function validateActivity() {
   }
 }
 
+function isOptionalIsoTimestamp(value) {
+  if (value === null || value === undefined || value === "") {
+    return true;
+  }
+  return Number.isFinite(new Date(value).getTime());
+}
+
+function validateAnnouncementLinks(links, label) {
+  if (links === undefined) {
+    return;
+  }
+  if (!Array.isArray(links)) {
+    reportIssue(`${label} 的 links 必須是陣列`);
+    return;
+  }
+
+  for (const [index, link] of links.entries()) {
+    if (!link?.label || !link?.url) {
+      reportIssue(`${label} 的 links[${index}] 必須包含 label 與 url`);
+      continue;
+    }
+
+    try {
+      const url = new URL(link.url, "https://ranking.init.engineer");
+      if (!["http:", "https:", "mailto:"].includes(url.protocol)) {
+        reportIssue(`${label} 的 links[${index}] 使用不允許的連結協定：${url.protocol}`);
+      }
+    } catch (error) {
+      reportIssue(`${label} 的 links[${index}] 不是有效 URL：${error.message}`);
+    }
+  }
+}
+
+function validateAnnouncementPayload(payload, label) {
+  if (payload?.schema_version !== 1) {
+    reportIssue(`${label} 的 schema_version 必須是 1`);
+  }
+  if (!Array.isArray(payload?.announcements)) {
+    reportIssue(`${label} 必須包含 announcements 陣列`);
+    return;
+  }
+
+  ensureUniqueKeys(payload.announcements, "id", `${label} announcements`);
+  for (const announcement of payload.announcements) {
+    const announcementLabel = `${label} 公告 ${announcement?.id || "(缺少 id)"}`;
+    if (!announcement?.title || !announcement?.summary || !announcement?.details_markdown) {
+      reportIssue(`${announcementLabel} 必須包含 title、summary 與 details_markdown`);
+    }
+    if (!isOptionalIsoTimestamp(announcement?.starts_at_iso)) {
+      reportIssue(`${announcementLabel} 的 starts_at_iso 必須是有效 ISO 時間或空值`);
+    }
+    if (!isOptionalIsoTimestamp(announcement?.expires_at_iso)) {
+      reportIssue(`${announcementLabel} 的 expires_at_iso 必須是有效 ISO 時間或空值`);
+    }
+
+    const startsAt = announcement?.starts_at_iso ? new Date(announcement.starts_at_iso).getTime() : null;
+    const expiresAt = announcement?.expires_at_iso ? new Date(announcement.expires_at_iso).getTime() : null;
+    if (Number.isFinite(startsAt) && Number.isFinite(expiresAt) && expiresAt < startsAt) {
+      reportIssue(`${announcementLabel} 的 expires_at_iso 不可早於 starts_at_iso`);
+    }
+
+    validateAnnouncementLinks(announcement?.links, announcementLabel);
+  }
+}
+
+async function validateAnnouncements() {
+  const announcementsPath = path.join(publicDataDir, "announcements.json");
+  const announcementsMirrorPath = path.join(publicAllDataDir, "announcements.json");
+  if (!existsSync(announcementsPath)) {
+    reportIssue("缺少 public/data/announcements.json");
+    return;
+  }
+
+  const announcements = await readJson(announcementsPath, "public/data/announcements.json");
+  validateAnnouncementPayload(announcements, "public/data/announcements.json");
+
+  if (existsSync(announcementsMirrorPath)) {
+    const mirror = await readJson(announcementsMirrorPath, "public/data/all/announcements.json");
+    validateAnnouncementPayload(mirror, "public/data/all/announcements.json");
+    if (JSON.stringify(announcements) !== JSON.stringify(mirror)) {
+      reportIssue("public/data/all/announcements.json 必須與 public/data/announcements.json 同步");
+    }
+  }
+}
+
 async function validateTeamRankings() {
   const teamRankingsPath = path.join(publicDataDir, "team_rankings.json");
   if (!existsSync(teamRankingsPath)) {
@@ -390,6 +475,7 @@ async function validateUsers() {
 
 async function validateAllDataMirror() {
   const requiredMirrorFiles = [
+    "announcements.json",
     "encounters.json",
     "global_stats.json",
     "activity.json",
@@ -413,6 +499,7 @@ async function main() {
   await validateRankings(publicEncounters);
   await validateGlobalStats();
   await validateActivity();
+  await validateAnnouncements();
   await validateTeamRankings();
   await validateServerCompare();
   await validateUsers();
