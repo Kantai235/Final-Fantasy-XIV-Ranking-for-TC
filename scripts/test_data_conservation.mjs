@@ -85,6 +85,59 @@ function entryHasReportVariantCoverage(entry) {
   return reportVariants.length >= Math.min(duplicateCount, 2) || sourceReports.length >= Math.min(duplicateCount, 2) || hasLazyDetailPointer;
 }
 
+async function readUserEntryDetails(detailCache, pathText, label) {
+  if (typeof pathText !== "string" || !pathText) {
+    reportIssue(`${label} 缺少 report_detail_path`);
+    return null;
+  }
+
+  const detailPath = path.resolve(publicDataDir, pathText.replace(/^data\//, ""));
+  const allowedDir = pathText.startsWith("data/all/")
+    ? path.join(publicAllDataDir, "user-entry-details")
+    : path.join(publicDataDir, "user-entry-details");
+  if (!assertInside(allowedDir, detailPath, `${label} report_detail_path`)) {
+    return null;
+  }
+  if (!existsSync(detailPath)) {
+    reportIssue(`${label} 指向不存在的個人成績報告細節檔：${pathText}`);
+    return null;
+  }
+
+  if (!detailCache.has(pathText)) {
+    detailCache.set(pathText, await readJson(detailPath, `${label} ${pathText}`));
+  }
+  return detailCache.get(pathText);
+}
+
+async function validateEntryReportVariantCoverage(entry, label, detailCache) {
+  const duplicateCount = Number(entry?.duplicate_count) || 0;
+  if (duplicateCount <= 1) {
+    return true;
+  }
+
+  const reportVariants = Array.isArray(entry?.report_variants) ? entry.report_variants : [];
+  const sourceReports = Array.isArray(entry?.source_reports) ? entry.source_reports : [];
+  if (reportVariants.length >= Math.min(duplicateCount, 2) || sourceReports.length >= Math.min(duplicateCount, 2)) {
+    return true;
+  }
+
+  if (!entryHasReportVariantCoverage(entry)) {
+    return false;
+  }
+
+  const detailId = entry?.report_detail_id || entry?.id;
+  const details = await readUserEntryDetails(detailCache, entry?.report_detail_path, `${label} 的 ${entry?.id || "(未知成績)"}`);
+  const detailEntry = details?.entries?.[detailId];
+  if (!detailEntry) {
+    reportIssue(`${label} 的 ${entry?.id || "(未知成績)"} 指向 ${entry?.report_detail_path || "(缺少路徑)"}，但細節檔缺少 ${detailId || "(缺少 id)"}`);
+    return false;
+  }
+
+  const detailVariants = Array.isArray(detailEntry.report_variants) ? detailEntry.report_variants : [];
+  const detailSources = Array.isArray(detailEntry.source_reports) ? detailEntry.source_reports : [];
+  return detailVariants.length >= Math.min(duplicateCount, 2) || detailSources.length >= Math.min(duplicateCount, 2);
+}
+
 function collectProfileEntries(profile) {
   const entries = [];
   for (const encounter of profile?.encounters || []) {
@@ -315,6 +368,7 @@ async function validateUserDataset(dataDir, label) {
 
   const seenFiles = new Set();
   const seenIdentities = new Set();
+  const detailCache = new Map();
   for (const user of users) {
     const filePathText = user?.file_path;
     if (!filePathText) {
@@ -362,7 +416,7 @@ async function validateUserDataset(dataDir, label) {
       if (duplicateCount > 1) {
         counters.duplicateEntries += 1;
       }
-      if (!entryHasReportVariantCoverage(entry)) {
+      if (!(await validateEntryReportVariantCoverage(entry, `${label}/${filePathText}`, detailCache))) {
         reportIssue(`${label}/${filePathText} 的 ${entry?.id || "(未知成績)"} duplicate_count=${duplicateCount}，但缺少 report_variants/source_reports 或按需載入細節線索`);
       }
     }

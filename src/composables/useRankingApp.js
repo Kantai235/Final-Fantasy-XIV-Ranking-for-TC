@@ -171,6 +171,7 @@ const 伺服器對比右伺服器 = ref("");
 const 分享狀態訊息 = ref("");
 const 正在分享 = ref(false);
 const 排行榜詳細資料快取 = new Map();
+const 個人成績報告詳細資料快取 = new Map();
 let 正在套用網址狀態 = false;
 let 分享狀態計時器 = null;
 
@@ -944,6 +945,13 @@ async function 解析排行榜詳細資料格式(資料) {
       ...(資料.entries || {}),
     },
   };
+}
+
+async function 解析個人成績報告詳細資料格式(資料) {
+  if (資料?.format && 資料.format !== "user_entry_details_v1") {
+    throw new Error("個人成績報告細節格式不支援");
+  }
+  return 資料;
 }
 
 function 成績是否較佳(候選, 目前最佳) {
@@ -3835,6 +3843,31 @@ async function 讀取排行列報告詳細資料(列) {
   return 詳細資料?.entries?.[detailId] || null;
 }
 
+async function 讀取個人成績報告詳細資料檔(相對路徑) {
+  if (!個人成績報告詳細資料快取.has(相對路徑)) {
+    const 讀取Promise = 讀取Json(建立公開資料網址(相對路徑), "讀取個人成績報告細節失敗")
+      .then(解析個人成績報告詳細資料格式)
+      .catch((錯誤) => {
+        個人成績報告詳細資料快取.delete(相對路徑);
+        throw 錯誤;
+      });
+    個人成績報告詳細資料快取.set(相對路徑, 讀取Promise);
+  }
+
+  return 個人成績報告詳細資料快取.get(相對路徑);
+}
+
+async function 讀取個人成績報告詳細資料(成績) {
+  const 相對路徑 = 成績?.report_detail_path;
+  const detailId = 成績?.report_detail_id || 成績?.id;
+  if (!相對路徑 || !detailId) {
+    return null;
+  }
+
+  const 詳細資料 = await 讀取個人成績報告詳細資料檔(相對路徑);
+  return 詳細資料?.entries?.[detailId] || null;
+}
+
 async function 讀取使用者索引() {
   if (使用者索引.value) {
     return 使用者索引.value;
@@ -4789,6 +4822,7 @@ onUnmounted(() => {
     比較排行列,
     建立排行列,
     讀取排行列報告詳細資料,
+    讀取個人成績報告詳細資料,
     成績是否較佳,
     使用者成績是否較佳,
     只保留角色最佳成績,

@@ -28,6 +28,11 @@
  * @property {RankingEntry|null} best_entry
  * @property {Array<RankingEntry>} public_entries
  *
+ * @typedef {Object} UserEntryDetailsPayload
+ * @property {1} schema_version
+ * @property {"user_entry_details_v1"} format
+ * @property {Record<string, { report_variants: Array<object>, source_reports: Array<string> }>} entries
+ *
  * @typedef {Object} TeamRankingsPayload
  * @property {1} schema_version
  * @property {Array<TeamEncounter>} encounters
@@ -256,6 +261,8 @@ const fullEntrySchema = objectOf({
   performance: optional(performanceSchema),
   report_variants: optional(arrayOf(reportVariantSchema)),
   source_reports: optional(arrayOf(stringSchema)),
+  report_detail_path: optional(dataPathSchema),
+  report_detail_id: optional(stringSchema),
   is_obsolete_record: optional(booleanSchema),
   version_status: optional(versionStatusSchema),
   version_cutoff_iso: optional(isoTimestampSchema),
@@ -449,6 +456,23 @@ const userProfileHiddenDeltaSchema = objectOf({
   frequent_teammates: arrayOf(frequentTeammateSchema),
   encounter_order: arrayOf(stringSchema),
   encounters: arrayOf(userHiddenDeltaEncounterSchema),
+});
+
+const userEntryReportDetailSchema = objectOf({
+  duplicate_count: integerSchema,
+  source_reports: arrayOf(stringSchema),
+  report_variants: arrayOf(reportVariantSchema),
+});
+
+const userEntryDetailsPayloadSchema = objectOf({
+  schema_version: field("integer", { const: 1 }),
+  format: field("string", { const: "user_entry_details_v1" }),
+  generated_at_iso: isoTimestampSchema,
+  character_name: stringSchema,
+  canonical_server: nullableStringSchema,
+  hidden_reports_included: booleanSchema,
+  entry_count: integerSchema,
+  entries: recordOf(userEntryReportDetailSchema),
 });
 
 const userIndexPayloadSchema = objectOf({
@@ -734,6 +758,7 @@ export const publicDataContracts = {
   userIndexPayload: userIndexPayloadSchema,
   userProfile: userProfileSchema,
   userProfileHiddenDelta: userProfileHiddenDeltaSchema,
+  userEntryDetailsPayload: userEntryDetailsPayloadSchema,
   teamRankingsPayload: teamRankingsPayloadSchema,
   serverComparePayload: serverComparePayloadSchema,
 };

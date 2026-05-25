@@ -11,9 +11,11 @@ const sourceRankingsDir = path.join(rootDir, "data", "rankings");
 const publicRankingsDir = path.join(publicDataDir, "rankings");
 const publicRankingTablesDir = path.join(publicDataDir, "ranking-tables");
 const publicRankingDetailsDir = path.join(publicDataDir, "ranking-details");
+const publicUserEntryDetailsDir = path.join(publicDataDir, "user-entry-details");
 const publicAllRankingsDir = path.join(publicAllDataDir, "rankings");
 const publicAllRankingTablesDir = path.join(publicAllDataDir, "ranking-tables");
 const publicAllRankingDetailsDir = path.join(publicAllDataDir, "ranking-details");
+const publicAllUserEntryDetailsDir = path.join(publicAllDataDir, "user-entry-details");
 const rawFieldNames = new Set(["fflogs_raw", "master_data", "matched_players"]);
 
 const issues = [];
@@ -22,6 +24,7 @@ let checkedUserFiles = 0;
 let checkedActivityItems = 0;
 let checkedTeamRecords = 0;
 let checkedServerCompareRows = 0;
+let checkedUserEntryDetails = 0;
 
 function reportIssue(message) {
   issues.push(message);
@@ -248,6 +251,87 @@ function isFiniteNumber(value) {
 
 function isObjectRecord(value) {
   return value && typeof value === "object" && !Array.isArray(value);
+}
+
+function collectUserProfileEntries(profile) {
+  const entries = [];
+  for (const encounter of profile?.encounters || []) {
+    if (encounter?.best_entry) {
+      entries.push(encounter.best_entry);
+    }
+    entries.push(...(Array.isArray(encounter?.best_by_job) ? encounter.best_by_job : []));
+    entries.push(...(Array.isArray(encounter?.public_entries) ? encounter.public_entries : []));
+  }
+  return entries;
+}
+
+async function readUserEntryDetails(detailCache, pathText, label) {
+  if (typeof pathText !== "string" || !pathText) {
+    reportIssue(`${label} 缺少 report_detail_path`);
+    return null;
+  }
+
+  const detailPath = path.resolve(publicDataDir, pathText.replace(/^data\//, ""));
+  const allowedDir = pathText.startsWith("data/all/")
+    ? publicAllUserEntryDetailsDir
+    : publicUserEntryDetailsDir;
+  if (!assertInside(allowedDir, detailPath, `${label} report_detail_path`)) {
+    return null;
+  }
+  if (!existsSync(detailPath)) {
+    reportIssue(`${label} 指向不存在的個人成績報告細節檔：${pathText}`);
+    return null;
+  }
+
+  if (!detailCache.has(pathText)) {
+    const details = await readJson(detailPath, `${label} ${pathText}`);
+    validateContract(details, publicDataContracts.userEntryDetailsPayload, `${label} ${pathText}`);
+    if (details?.format !== "user_entry_details_v1") {
+      reportIssue(`${label} ${pathText} format 必須是 user_entry_details_v1`);
+    }
+    const entryCount = Object.keys(details?.entries || {}).length;
+    if (details?.entry_count !== entryCount) {
+      reportIssue(`${label} ${pathText} entry_count=${details?.entry_count} 與 entries 數量 ${entryCount} 不一致`);
+    }
+    detailCache.set(pathText, details);
+  }
+
+  return detailCache.get(pathText);
+}
+
+async function validateUserProfileReportDetails(profile, label, detailCache) {
+  for (const entry of collectUserProfileEntries(profile)) {
+    const duplicateCount = Number(entry?.duplicate_count) || 0;
+    if (duplicateCount <= 1) {
+      continue;
+    }
+
+    const inlineVariants = Array.isArray(entry?.report_variants) ? entry.report_variants : [];
+    const inlineSources = Array.isArray(entry?.source_reports) ? entry.source_reports : [];
+    if (inlineVariants.length >= Math.min(duplicateCount, 2) || inlineSources.length >= Math.min(duplicateCount, 2)) {
+      continue;
+    }
+
+    const detailId = entry?.report_detail_id || entry?.id;
+    if (!entry?.report_detail_path || !detailId) {
+      reportIssue(`${label} 的 ${entry?.id || "(未知成績)"} duplicate_count=${duplicateCount}，但缺少 report_variants/source_reports 或 report_detail_path/report_detail_id`);
+      continue;
+    }
+
+    const details = await readUserEntryDetails(detailCache, entry.report_detail_path, `${label} 的 ${entry.id}`);
+    const detailEntry = details?.entries?.[detailId];
+    if (!detailEntry) {
+      reportIssue(`${label} 的 ${entry.id} 指向 ${entry.report_detail_path}，但細節檔缺少 ${detailId}`);
+      continue;
+    }
+    checkedUserEntryDetails += 1;
+
+    const detailVariants = Array.isArray(detailEntry.report_variants) ? detailEntry.report_variants : [];
+    const detailSources = Array.isArray(detailEntry.source_reports) ? detailEntry.source_reports : [];
+    if (detailVariants.length < Math.min(duplicateCount, 2) && detailSources.length < Math.min(duplicateCount, 2)) {
+      reportIssue(`${label} 的 ${entry.id} 細節檔來源數不足：duplicate_count=${duplicateCount}`);
+    }
+  }
 }
 
 async function loadSourceReports(ranking, rankingLabel) {
@@ -687,6 +771,7 @@ async function validateServerCompare() {
 async function validateUserDataset(dataDir, label, { countFiles = false } = {}) {
   const usersDir = path.join(dataDir, "users");
   const userIndexPath = path.join(usersDir, "index.json");
+  const detailCache = new Map();
   if (!existsSync(userIndexPath)) {
     reportIssue(`缺少 ${label}/users/index.json，請先執行 npm run build:user-data`);
     return;
@@ -724,6 +809,7 @@ async function validateUserDataset(dataDir, label, { countFiles = false } = {}) 
     } else {
       validateContract(profile, publicDataContracts.userProfile, `${label}/${filePathText}`);
     }
+    await validateUserProfileReportDetails(profile, `${label}/${filePathText}`, detailCache);
     if (countFiles) {
       checkedUserFiles += 1;
     }
@@ -789,7 +875,7 @@ async function main() {
   }
 
   console.log(
-    `資料驗證通過：${publicEncounters.length} 個公開副本、${checkedSourceReports} 份來源 report、${checkedUserFiles} 份使用者檔案、${checkedActivityItems} 筆近期動態項目、${checkedTeamRecords} 筆隊伍榜紀錄、${checkedServerCompareRows} 筆伺服器對比資料。`,
+    `資料驗證通過：${publicEncounters.length} 個公開副本、${checkedSourceReports} 份來源 report、${checkedUserFiles} 份使用者檔案、${checkedUserEntryDetails} 筆個人成績報告細節、${checkedActivityItems} 筆近期動態項目、${checkedTeamRecords} 筆隊伍榜紀錄、${checkedServerCompareRows} 筆伺服器對比資料。`,
   );
 }
 

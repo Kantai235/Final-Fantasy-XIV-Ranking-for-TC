@@ -90,7 +90,7 @@ README 只保留入口與最小操作脈絡，完整說明請依主題閱讀：
 本專案最重要的邊界是「抓取、建置、呈現」三層分離：
 
 1. `scripts/fetch_fflogs.py` 是 Data Fetching Layer。它是唯一可直接呼叫 FFLogs GraphQL API 的入口，負責 OAuth、限流、重試、繁中服玩家初篩、report 狀態判定，以及 `data/rankings/` 與 `data/state.json` 的可追溯寫入。
-2. `scripts/build_user_data.mjs` 是 Data Building Layer。它讀取排行榜來源資料，產生個人成績單、全服統計、近期動態、隊伍榜與伺服器對比等 `public/data/` 靜態 JSON。
+2. `scripts/build_user_data.mjs` 是 Data Building Layer。它讀取排行榜來源資料，產生個人成績單、個人成績報告細節、全服統計、近期動態、隊伍榜與伺服器對比等 `public/data/` 靜態 JSON。
 3. `src/` 是 UI Presentation Layer。Vue 只讀取 `public/data/` 靜態 JSON 進行呈現、篩選與狀態管理，不能直接呼叫 FFLogs API。
 
 ## 常用指令
@@ -99,7 +99,7 @@ README 只保留入口與最小操作脈絡，完整說明請依主題閱讀：
 | --- | --- |
 | `npm run build:public-rankings` | 只重建公開排行榜與副本清單，不呼叫 FFLogs API。 |
 | `npm run build:ranking-tables` | 由公開排行榜產生前端薄索引與按需載入報告細節檔。 |
-| `npm run build:user-data` | 建置個人成績單、全服統計、近期動態、隊伍榜、伺服器對比與排行榜薄索引。 |
+| `npm run build:user-data` | 建置個人成績單、個人成績報告細節、全服統計、近期動態、隊伍榜、伺服器對比與排行榜薄索引。 |
 | `npm run validate:data` | 驗證公開資料、schema 契約、分片、全服統計與使用者索引完整性。 |
 | `npm run test:data-conservation` | 檢查排行榜薄索引、細節檔、使用者檔與 hidden delta 的資料守恆。 |
 | `npm run audit:pages-payload` | 稽核 `dist/` 與 GitHub Pages payload 體積，baseline 模式只在超過硬上限時失敗。 |

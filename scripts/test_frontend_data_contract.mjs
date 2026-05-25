@@ -298,6 +298,7 @@ async function validatePublicDataForFrontend() {
   assert(Array.isArray(serverCompare?.servers), "public/data/server_compare.json 必須包含 servers");
   assert(Array.isArray(userIndex?.users) && userIndex.users.length > 0, "public/data/users/index.json 必須包含 users");
   assert(userIndex?.total_users === userIndex?.users?.length, "public/data/users/index.json total_users 必須等於 users 長度");
+  const userDetailCache = new Map();
 
   for (const encounter of encounters || []) {
     const key = encounter?.key;
@@ -369,6 +370,31 @@ async function validatePublicDataForFrontend() {
 
     const userData = await readJson(userPath, `使用者檔案 ${user.file_path}`);
     for (const encounter of userData?.encounters || []) {
+      const allEntries = [
+        encounter?.best_entry,
+        ...(encounter?.best_by_job || []),
+        ...(encounter?.public_entries || []),
+      ].filter(Boolean);
+      for (const entry of allEntries) {
+        const duplicateCount = Number(entry?.duplicate_count) || 0;
+        const inlineVariants = Array.isArray(entry?.report_variants) ? entry.report_variants : [];
+        if (duplicateCount <= 1 || inlineVariants.length > 1) {
+          continue;
+        }
+        assert(Boolean(entry?.report_detail_path && entry?.report_detail_id), `${user.file_path} 的多來源成績必須保留 report_detail_path/report_detail_id`);
+        if (!entry?.report_detail_path) {
+          continue;
+        }
+        const detailPath = path.join(rootDir, "public", entry.report_detail_path);
+        assert(existsSync(detailPath), `${user.file_path} 的個人成績報告細節檔不存在：${entry.report_detail_path}`);
+        if (!userDetailCache.has(entry.report_detail_path) && existsSync(detailPath)) {
+          userDetailCache.set(entry.report_detail_path, await readJson(detailPath, `個人成績報告細節 ${entry.report_detail_path}`));
+        }
+        const details = userDetailCache.get(entry.report_detail_path);
+        assert(details?.format === "user_entry_details_v1", `${entry.report_detail_path} format 必須是 user_entry_details_v1`);
+        assert(Boolean(details?.entries?.[entry.report_detail_id]), `${entry.report_detail_path} 必須包含 ${entry.report_detail_id}`);
+      }
+
       if (!versionedEncounterKeys.has(encounter?.encounter_key)) {
         continue;
       }
@@ -406,6 +432,8 @@ async function validateHiddenDeltaDataForFrontend() {
   const userDataSource = await readText(path.join(srcDir, "utils", "userData.js"));
   assert(useRankingAppSource.includes("ranking_table_hidden_delta_v1"), "前端排行榜讀取端必須支援 hidden delta 薄索引");
   assert(useRankingAppSource.includes("ranking_detail_hidden_delta_v1"), "前端排行榜讀取端必須支援 hidden delta 報告細節");
+  assert(useRankingAppSource.includes("讀取個人成績報告詳細資料"), "前端個人成績單必須支援按需載入報告細節");
+  assert(useRankingAppSource.includes("user_entry_details_v1"), "前端個人成績單必須辨識個人成績報告細節格式");
   assert(userDataSource.includes("user_profile_hidden_delta_v1"), "前端個人成績單讀取端必須支援 hidden delta");
 
   const allUserIndex = await readJson(allUserIndexPath, "public/data/all/users/index.json");

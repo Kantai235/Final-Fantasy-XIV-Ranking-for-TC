@@ -30,6 +30,7 @@ flowchart LR
 `scripts/build_user_data.mjs` 負責把來源資料整理成前端可直接讀取的靜態 JSON：
 
 - `public/data/users/*.json`
+- `public/data/user-entry-details/*.json`
 - `public/data/users/index.json`
 - `public/data/global_stats.json`
 - `public/data/activity.json`

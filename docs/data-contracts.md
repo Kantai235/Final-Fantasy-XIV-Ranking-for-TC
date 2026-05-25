@@ -53,6 +53,7 @@ npm run sync:data -- --dry-run
 - `public/data/rankings/*.json` 的 `ranking_entries`。
 - `public/data/ranking-details/*.json` 的按需載入報告細節。
 - `public/data/users/index.json` 與每一份 `public/data/users/*.json` 個人成績單。
+- `public/data/user-entry-details/*.json` 的個人成績報告分頁細節。
 - `public/data/team_rankings.json` 的副本、隊伍紀錄與 8 人隊員列。
 - `public/data/server_compare.json` 的伺服器列、副本列、職業/職能統計與傷害分位。
 
@@ -65,7 +66,7 @@ npm run sync:data -- --dry-run
 - `users/index.json` 的 `total_users`、`encounter_count` 與 `public_entry_count` 是否和實際使用者檔一致。
 - `ranking-tables` 列數是否等於公開 `ranking_entries`。
 - 標記 `has_report_detail` 的排行榜薄索引列是否都能在 `ranking-details` 找到完整 entry。
-- `duplicate_count > 1` 的個人成績是否仍保留 `report_variants` / `source_reports`，或保留未來按需載入細節的指標欄位。
+- `duplicate_count > 1` 的個人成績是否仍保留 `report_variants` / `source_reports`，或能透過 `report_detail_path` / `report_detail_id` 在個人成績報告細節檔找回來源。
 - `public/data/all` 的 hidden delta 是否能與一般公開資料合併，避免額外檢視流程缺漏公開資料或 hidden 來源。
 
 `scripts/audit_pages_payload.mjs` 則量測 `dist/`、`dist/data/`、`dist/data/all/`、`dist/data/users/` 與 `dist/og/`。預設 baseline 模式只會在超過硬上限時失敗，並列出 GitHub Pages 目標值；後續完成瘦身後，改用 `npm run audit:pages-payload:strict` 讓 `dist` 超過 target 時直接失敗。
@@ -88,6 +89,14 @@ npm run sync:data -- --dry-run
 - `format="ranking_detail_hidden_delta_v1"`：只保存 hidden 報告細節 entry，前端會與公開 `ranking-details` 合併。
 - `public/data/all/rankings/*.json` 也改為 `format="ranking_hidden_delta_v1"`，保留 hidden `ranking_entries` 與排序 ID，供相容 fallback 或額外檢視使用。
 
+## 個人成績單報告細節
+
+`public/data/users/*.json` 是個人成績單主檔，保留頁面列表、最佳紀錄、同職分位與常同場隊友。多份 report 上傳同一場戰鬥時，主檔只保留代表成績、`duplicate_count`、`report_detail_path` 與 `report_detail_id`；完整 `report_variants` 與 `source_reports` 會寫入 `public/data/user-entry-details/{玩家檔名}.json`。
+
+`public/data/user-entry-details/{玩家檔名}.json` 使用 `format="user_entry_details_v1"`，`entries` 以成績 `id` 為 key。使用者點擊個人成績單的「報告」按鈕時，前端才依 `report_detail_path` 載入這份細節檔並補回報告彈窗分頁。這讓 `public/data/users/` 能維持較薄的列表資料，同時保留每個來源 report code、fight、FFLogs 連結與外部工具深連結所需欄位。
+
+`public/data/all/user-entry-details/` 只會為 hidden delta 成績單中實際引用的多來源條目輸出細節；沒有 hidden 成績的使用者仍直接共用一般公開 `user-entry-details`。
+
 ## 去重與排名規則
 
 同一角色、同一伺服器、同一職業的最佳成績排序規則：
@@ -99,7 +108,7 @@ npm run sync:data -- --dry-run
 
 `fight_hash` 用於辨識不同 report 上傳的同一場戰鬥；`source_reports` 與 `duplicate_count` 必須保留，不能因去重而刪掉來源線索。
 
-個人成績單會用 `fight_hash + 角色 + 伺服器 + 職業` 合併同一場戰鬥的多份上傳。合併列保留代表成績，並輸出 `report_variants` 與 `source_reports`，讓前端報告彈窗可分頁切換不同 report 來源。
+個人成績單會用 `fight_hash + 角色 + 伺服器 + 職業` 合併同一場戰鬥的多份上傳。合併列保留代表成績與細節指標，完整 `report_variants` 與 `source_reports` 由 `user-entry-details` 按需載入，讓前端報告彈窗可分頁切換不同 report 來源。
 
 個人成績單未套用職業篩選時，副本代表列與分享用代表職業優先選同職 `job_rank` 最前面的有效紀錄；`summary.best_rdps` 仍保留最高 rDPS，避免把「代表職業」與「最高輸出」混成同一件事。
 
@@ -132,6 +141,7 @@ npm run sync:data -- --dry-run
 
 - `users/index.json` 仍列出所有角色；沒有 hidden 成績的角色 `file_path` 直接指回 `data/users/*.json`，有 hidden 成績的角色才指向 `data/all/users/*.json`。
 - `data/all/users/*.json` 使用 `format="user_profile_hidden_delta_v1"`，保存 hidden 副本列、完整排序 ID、完整 summary 與常同場隊友；前端會依 `base_path` 載入公開個人成績單後合併。
+- `data/all/user-entry-details/*.json` 保存 hidden delta 成績單實際引用的多來源報告分頁細節。
 - 額外檢視流程若把部分 `/data/...` 載入改到 `/data/all/...`，必須允許前端依 `base_path` / `file_path` 讀回公開底稿；不可再假設 `/data/all/` 有所有公開檔案的完整複本。
 
 若玩家的公開成績沒有可列出的 entry，一般 `public/data/users/index.json` 仍會保留空白成績單入口與伺服器資訊，讓 `/user/{玩家}` 頁面可以開啟；預設成績單不會輸出副本成績、分數、隊友或紀錄時間。

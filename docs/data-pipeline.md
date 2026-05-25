@@ -18,7 +18,7 @@
    npm run build:user-data
    ```
 
-   這一步會產生 `public/data/users/`、`public/data/users/index.json`、`public/data/global_stats.json`、`public/data/activity.json`、`public/data/team_rankings.json` 與 `public/data/server_compare.json`。
+   這一步會產生 `public/data/users/`、`public/data/user-entry-details/`、`public/data/users/index.json`、`public/data/global_stats.json`、`public/data/activity.json`、`public/data/team_rankings.json` 與 `public/data/server_compare.json`。
    同時會在 `public/data/all/` 產生 hidden delta：有 hidden 成績的個人成績單才輸出差量檔，沒有 hidden 成績的索引項目會直接指回公開成績單。
    指令結束前也會執行 `npm run build:ranking-tables`，由公開排行榜產生 `public/data/ranking-tables/` 薄索引與 `public/data/ranking-details/` 按需載入細節檔，並把 `public/data/all/rankings|ranking-tables|ranking-details` 轉成 hidden delta。
 
@@ -30,7 +30,7 @@
    npm run validate:data
    ```
 
-   這一步會套用 `schemas/public_data_contracts.mjs` 檢查公開 JSON 契約，包含排行榜條目、個人成績單、隊伍榜與伺服器對比資料。
+   這一步會套用 `schemas/public_data_contracts.mjs` 檢查公開 JSON 契約，包含排行榜條目、個人成績單、個人成績報告細節、隊伍榜與伺服器對比資料。
 
 4. 完整建置網站：
 

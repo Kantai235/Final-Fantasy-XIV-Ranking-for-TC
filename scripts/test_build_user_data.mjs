@@ -428,10 +428,15 @@ async function assertFixtureOutput(tempRoot, expectedGlobalStatsText, expectedSe
   assert(mainUserData.encounters[0]?.best_entry?.job === "Paladin", "個人成績單副本代表列應優先顯示最高排名職業。");
   assert(mainUserData.encounters[0]?.best_entry?.fflogs_source_id === 101, "個人成績單代表列應保留 FFLogs sourceID。");
   assert(mainUserData.encounters[0]?.best_entry?.duplicate_count === 2, "合併後的個人成績應保留來源 report 數。");
-  assert(mainUserData.encounters[0]?.best_entry?.source_reports?.length === 2, "合併後的個人成績應保留來源 report code。");
-  assert(mainUserData.encounters[0]?.best_entry?.report_variants?.length === 2, "合併後的個人成績應輸出報告彈窗分頁資料。");
+  assert(mainUserData.encounters[0]?.best_entry?.report_detail_path?.startsWith("data/user-entry-details/"), "合併後的個人成績應保留按需載入報告細節路徑。");
+  assert(mainUserData.encounters[0]?.best_entry?.report_detail_id === mainUserData.encounters[0]?.best_entry?.id, "合併後的個人成績應保留報告細節 id。");
+  assert(!mainUserData.encounters[0]?.best_entry?.report_variants, "個人成績單主檔不應直接內嵌 report_variants。");
+  const mainUserEntryDetails = await readJson(path.join(tempRoot, "public", mainUserData.encounters[0].best_entry.report_detail_path));
+  const mainUserBestDetail = mainUserEntryDetails.entries?.[mainUserData.encounters[0].best_entry.report_detail_id];
+  assert(mainUserBestDetail?.source_reports?.length === 2, "合併後的個人成績細節應保留來源 report code。");
+  assert(mainUserBestDetail?.report_variants?.length === 2, "合併後的個人成績細節應輸出報告彈窗分頁資料。");
   assert(
-    mainUserData.encounters[0]?.best_entry?.report_variants?.some((variant) => variant.report_code === "RPT1B" && variant.fight_id === 9),
+    mainUserBestDetail?.report_variants?.some((variant) => variant.report_code === "RPT1B" && variant.fight_id === 9),
     "報告分頁資料應包含另一位上傳者的 report 與 fight。",
   );
   const mainUserBlackMageEntry = mainUserData.encounters[0]?.public_entries?.find((entry) => entry.job === "BlackMage");

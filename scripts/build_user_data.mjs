@@ -16,6 +16,7 @@ const publicRankingsDir = path.join(basePublicDataDir, "rankings");
 const publicEncountersPath = path.join(basePublicDataDir, "encounters.json");
 const publicAnnouncementsPath = path.join(basePublicDataDir, "announcements.json");
 const configEncountersPath = path.join(rootDir, "config", "encounters.json");
+const userEntryDetailsDirName = "user-entry-details";
 // 目前箱型圖只比較現行零式系列；其他副本仍會進入全服統計與個人成績單。
 // minimumDamageActivePercent 用來排除明顯中途死亡或缺乏輸出時間的樣本，避免分位數被極端異常值拉歪。
 const savageDamageComparisonEncounterKeys = ["savage_m1s", "savage_m2s", "savage_m3s", "savage_m4s"];
@@ -1768,26 +1769,98 @@ function buildFrequentTeammates(user) {
   return buildTeammateRows(user).slice(0, 20);
 }
 
-function buildEntryPayload(entry) {
+function buildEntryPayload(entry, detailContext = null) {
   const { teammates, _reportVariants, ...payload } = entry;
   const reportVariants = orderReportVariantsForEntry(mergeReportVariants(_reportVariants), entry);
   if (reportVariants.length > 1) {
-    payload.report_variants = reportVariants;
-    payload.source_reports = reportVariants.map((variant) => variant.report_code).filter(Boolean);
+    const sourceReports = reportVariants.map((variant) => variant.report_code).filter(Boolean);
     payload.duplicate_count = reportVariants.length;
+    if (detailContext?.detailPath && detailContext?.entries) {
+      // report_variants 是個人成績單最大的重複 payload；玩家頁只有打開報告彈窗時才需要。
+      // 主檔保留穩定 id 與 detail path，讓前端可按需補回所有來源 report，而不影響列表載入。
+      payload.report_detail_path = detailContext.detailPath;
+      payload.report_detail_id = payload.id;
+      if (!detailContext.entries.has(payload.id)) {
+        detailContext.entries.set(payload.id, {
+          duplicate_count: reportVariants.length,
+          source_reports: sourceReports,
+          report_variants: reportVariants,
+        });
+      }
+    } else {
+      payload.report_variants = reportVariants;
+      payload.source_reports = sourceReports;
+    }
   }
   return payload;
+}
+
+function buildUserEntryDetailsPayload(payload, detailContext, hiddenReportsIncluded = false) {
+  if (!detailContext?.entries?.size) {
+    return null;
+  }
+
+  return {
+    schema_version: 1,
+    format: "user_entry_details_v1",
+    generated_at_iso: payload.generated_at_iso,
+    character_name: payload.character_name,
+    canonical_server: payload.canonical_server,
+    hidden_reports_included: hiddenReportsIncluded,
+    entry_count: detailContext.entries.size,
+    entries: Object.fromEntries(detailContext.entries),
+  };
+}
+
+function collectUserEntryDetailIds(profile) {
+  const ids = new Set();
+  for (const encounter of profile?.encounters || []) {
+    const entries = [
+      encounter?.best_entry,
+      ...(encounter?.best_by_job || []),
+      ...(encounter?.public_entries || []),
+    ];
+    for (const entry of entries) {
+      if (entry?.report_detail_path && entry?.report_detail_id) {
+        ids.add(entry.report_detail_id);
+      }
+    }
+  }
+  return ids;
+}
+
+function filterUserEntryDetailsPayload(detailsPayload, ids) {
+  if (!detailsPayload || !ids?.size) {
+    return null;
+  }
+
+  const entries = Object.fromEntries(
+    Array.from(ids)
+      .map((id) => [id, detailsPayload.entries?.[id]])
+      .filter(([, detail]) => detail),
+  );
+  const entryCount = Object.keys(entries).length;
+  if (entryCount === 0) {
+    return null;
+  }
+
+  return {
+    ...detailsPayload,
+    entry_count: entryCount,
+    entries,
+  };
 }
 
 function pickProfileEntry(entries) {
   return (entries || []).reduce((best, entry) => (isBetterProfileEntry(entry, best) ? entry : best), null);
 }
 
-function buildUserPayload(user, generatedAtIso, updatedAtIsoByEncounter) {
+function buildUserPayload(user, generatedAtIso, updatedAtIsoByEncounter, { reportDetailPath = null, hiddenReportsIncluded = false } = {}) {
   const canonicalServer = user.canonical_server || Array.from(user.servers).sort(compareByLocale)[0] || "";
   const serverAliases = Array.from(user.server_aliases || [])
     .filter((server) => server && server !== canonicalServer)
     .sort(compareByLocale);
+  const detailContext = reportDetailPath ? { detailPath: reportDetailPath, entries: new Map() } : null;
   const frequentTeammates = buildFrequentTeammates(user);
   const allValidEntries = Array.from(user.entriesByEncounter.values())
     .flat()
@@ -1815,11 +1888,11 @@ function buildUserPayload(user, generatedAtIso, updatedAtIsoByEncounter) {
         encounter_name: bestEntry?.encounter_name || entries[0]?.encounter_name || encounterKey,
         encounter_category: bestEntry?.encounter_category || entries[0]?.encounter_category || null,
         updated_at_iso: updatedAtIsoByEncounter.get(encounterKey) || null,
-        best_entry: bestEntry ? buildEntryPayload(bestEntry) : null,
+        best_entry: bestEntry ? buildEntryPayload(bestEntry, detailContext) : null,
         best_by_job: Array.from(bestByJob.values())
           .sort((left, right) => compareByLocale(left.job, right.job))
-          .map(buildEntryPayload),
-        public_entries: entries.map(buildEntryPayload),
+          .map((entry) => buildEntryPayload(entry, detailContext)),
+        public_entries: entries.map((entry) => buildEntryPayload(entry, detailContext)),
       };
     })
     .sort((left, right) => {
@@ -1827,7 +1900,7 @@ function buildUserPayload(user, generatedAtIso, updatedAtIsoByEncounter) {
       return categoryCompare || compareByLocale(left.encounter_name, right.encounter_name);
     });
 
-  return {
+  const payload = {
     schema_version: 1,
     generated_at_iso: generatedAtIso,
     character_name: user.character_name,
@@ -1847,6 +1920,11 @@ function buildUserPayload(user, generatedAtIso, updatedAtIsoByEncounter) {
     },
     frequent_teammates: frequentTeammates,
     encounters,
+  };
+
+  return {
+    payload,
+    reportDetails: buildUserEntryDetailsPayload(payload, detailContext, hiddenReportsIncluded),
   };
 }
 
@@ -2397,6 +2475,7 @@ async function buildDataset({
   userProfileMode = "full",
 }) {
   const outputDir = path.join(outputDataDir, "users");
+  const userEntryDetailsDir = path.join(outputDataDir, userEntryDetailsDirName);
   const globalStatsPath = path.join(outputDataDir, "global_stats.json");
   const activityPath = path.join(outputDataDir, "activity.json");
   const teamRankingsPath = path.join(outputDataDir, "team_rankings.json");
@@ -2404,6 +2483,7 @@ async function buildDataset({
 
   assertInside(basePublicDataDir, outputDataDir);
   assertInside(basePublicDataDir, outputDir);
+  assertInside(basePublicDataDir, userEntryDetailsDir);
   assertInside(basePublicDataDir, globalStatsPath);
   assertInside(basePublicDataDir, activityPath);
   assertInside(basePublicDataDir, teamRankingsPath);
@@ -2475,13 +2555,16 @@ async function buildDataset({
   // public/data/users 是完整衍生產物，可以整包重建；append-only 保護的是 data/state 與 data/rankings。
   // 使用者檔名以角色名稱正規化，index.json 的 file_path 才是前端實際讀取入口。
   await removeGeneratedDirectory(outputDir);
+  await removeGeneratedDirectory(userEntryDetailsDir);
   await mkdir(outputDir, { recursive: true });
+  await mkdir(userEntryDetailsDir, { recursive: true });
 
   const latestRankingUpdatedAt = Array.from(updatedAtIsoByEncounter.values()).sort().at(-1) || null;
   const generatedAtIso = resolveGeneratedAtIso(latestRankingUpdatedAt);
   const usedFileBaseNames = new Set();
   const indexUsers = [];
   let writtenUserFileCount = 0;
+  let writtenUserDetailFileCount = 0;
 
   for (const user of Array.from(usersByIdentity.values()).sort((left, right) => {
     const nameCompare = compareByLocale(left.character_name, right.character_name);
@@ -2497,8 +2580,15 @@ async function buildDataset({
     const fileBaseName = normalizeFileBaseName(user.character_name, usedFileBaseNames);
     const fileName = `${fileBaseName}.json`;
     const filePath = path.join(outputDir, fileName);
-    const payload = buildUserPayload(user, generatedAtIso, updatedAtIsoByEncounter);
+    const publicDetailPathText = `data/${userEntryDetailsDirName}/${fileName}`;
     const publicFilePathText = `data/users/${fileName}`;
+    const detailPathText = userProfileMode === "hidden-delta"
+      ? `data/all/${userEntryDetailsDirName}/${fileName}`
+      : publicDetailPathText;
+    const { payload, reportDetails } = buildUserPayload(user, generatedAtIso, updatedAtIsoByEncounter, {
+      reportDetailPath: detailPathText,
+      hiddenReportsIncluded: includeHiddenReports,
+    });
     let indexFilePathText = publicFilePathText;
 
     if (userProfileMode === "hidden-delta") {
@@ -2509,10 +2599,20 @@ async function buildDataset({
         await writeJson(filePath, deltaPayload);
         writtenUserFileCount += 1;
         indexFilePathText = `data/all/users/${fileName}`;
+        const deltaDetailIds = collectUserEntryDetailIds(deltaPayload);
+        const deltaReportDetails = filterUserEntryDetailsPayload(reportDetails, deltaDetailIds);
+        if (deltaReportDetails) {
+          await writeJson(path.join(userEntryDetailsDir, fileName), deltaReportDetails);
+          writtenUserDetailFileCount += 1;
+        }
       }
     } else {
       await writeJson(filePath, payload);
       writtenUserFileCount += 1;
+      if (reportDetails) {
+        await writeJson(path.join(userEntryDetailsDir, fileName), reportDetails);
+        writtenUserDetailFileCount += 1;
+      }
     }
 
     indexUsers.push({
@@ -2574,6 +2674,7 @@ async function buildDataset({
   await waitForUserOutputReady(outputDir, writtenUserFileCount, label);
 
   console.log(`Built ${label} ${writtenUserFileCount} user data files in ${path.relative(rootDir, outputDir)}.`);
+  console.log(`Built ${label} ${writtenUserDetailFileCount} user entry detail files in ${path.relative(rootDir, userEntryDetailsDir)}.`);
   console.log(`Built ${label} global stats in ${path.relative(rootDir, globalStatsPath)}.`);
   console.log(`Built ${label} activity feed in ${path.relative(rootDir, activityPath)}.`);
   console.log(`Built ${label} team rankings in ${path.relative(rootDir, teamRankingsPath)}.`);

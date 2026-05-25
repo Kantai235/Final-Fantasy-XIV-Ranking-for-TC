@@ -39,7 +39,7 @@ npm run build
 5. 使用 GitHub Secrets 中的 FFLogs 憑證執行 `python scripts/fetch_fflogs.py`，掃描全部地區候選 report，近期 24 小時完整重查、24-72 小時只選未知 report，並以低量歷史補查檢查更舊時間窗是否有新的公開 logs 可抓取，同時對新落地 fight 即時計算 GCD 覆蓋率。
 6. 執行 `python scripts/backfill_gcd_coverage.py --stateful-report-backfill --report-limit 200`，從固定切點往更舊 report 逐輪追平既有 GCD。
 7. 執行 `python scripts/fetch_fflogs.py --split-rankings`，將完整排行榜資料拆分成適合 Git 追蹤的檔案。
-8. 執行 `node scripts/build_user_data.mjs`，產生個人成績單、全服統計、近期動態、隊伍榜與伺服器對比。
+8. 執行 `node scripts/build_user_data.mjs`，產生個人成績單、個人成績報告細節、全服統計、近期動態、隊伍榜與伺服器對比。
 9. 由 workflow 寫入 `data/update_status.json`，記錄本輪 GitHub Actions run、資料更新時間與總量摘要。
 10. 執行 `npm run build`，在提交前完成公開資料驗證與 Vite 建置。
 11. 若 `data` 或 `public/data` 有變更，提交並推送更新。

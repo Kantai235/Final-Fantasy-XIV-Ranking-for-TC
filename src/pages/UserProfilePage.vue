@@ -15,6 +15,7 @@ export default {
   setup() {
     const app = injectRankingApp();
     const 報告彈窗資料 = ref(null);
+    let 報告讀取序號 = 0;
 
     function 取值(可能Ref) {
       return 可能Ref && typeof 可能Ref === "object" && "value" in 可能Ref ? 可能Ref.value : 可能Ref;
@@ -137,11 +138,36 @@ export default {
       };
     }
 
+    function 合併個人成績報告詳細資料(成績, 詳細資料) {
+      if (!詳細資料) {
+        return 成績;
+      }
+
+      return {
+        ...成績,
+        ...詳細資料,
+      };
+    }
+
     function 開啟個人成績報告彈窗(成績, 副本) {
+      const 本次序號 = ++報告讀取序號;
       報告彈窗資料.value = 建立個人成績報告詳細資料(成績, 副本);
+      if ((Array.isArray(成績.report_variants) && 成績.report_variants.length > 1) || !成績.report_detail_path) {
+        return;
+      }
+
+      app.讀取個人成績報告詳細資料(成績)
+        .then((詳細資料) => {
+          if (本次序號 !== 報告讀取序號 || !詳細資料) {
+            return;
+          }
+          報告彈窗資料.value = 建立個人成績報告詳細資料(合併個人成績報告詳細資料(成績, 詳細資料), 副本);
+        })
+        .catch(() => {});
     }
 
     function 關閉個人成績報告彈窗() {
+      報告讀取序號 += 1;
       報告彈窗資料.value = null;
     }
 
