@@ -1,9 +1,11 @@
-import { existsSync, readFileSync } from "node:fs";
+import { appendFileSync, existsSync, readFileSync } from "node:fs";
 
 const CloudflareApiBase = "https://api.cloudflare.com/client/v4";
 const Args = new Set(process.argv.slice(2));
 const DryRun = Args.has("--dry-run");
 const PurgeEverything = Args.has("--everything");
+const Summary = Args.has("--summary") || process.env.CLOUDFLARE_PURGE_SUMMARY === "true";
+const GithubStepSummaryPath = process.env.GITHUB_STEP_SUMMARY || "";
 
 loadLocalEnv();
 
@@ -96,9 +98,43 @@ async function cloudflarePurge(payload) {
   }
 }
 
+function formatPurgeSummary() {
+  const lines = [
+    "## Cloudflare Purge 範圍",
+    "",
+    `- Hostname：${SiteHostname}`,
+    `- 模式：${PurgeEverything ? "purge everything" : "scoped prefix + file purge"}`,
+    "",
+    "類型 | 數量 | 內容",
+    "--- | ---: | ---",
+  ];
+
+  if (PurgeEverything) {
+    lines.push("全站 | 1 | `purge_everything=true`");
+    return `${lines.join("\n")}\n`;
+  }
+
+  lines.push(`Prefix | ${PrefixesToPurge.length} | ${PrefixesToPurge.map((prefix) => `\`${prefix}\``).join("<br>")}`);
+  lines.push(`File | ${FilesToPurge.length} | ${FilesToPurge.map((file) => `\`${file}\``).join("<br>")}`);
+  return `${lines.join("\n")}\n`;
+}
+
+function printPurgeSummary() {
+  if (!Summary) {
+    return;
+  }
+
+  const summary = formatPurgeSummary();
+  console.log(summary.trimEnd());
+  if (GithubStepSummaryPath) {
+    appendFileSync(GithubStepSummaryPath, summary, "utf8");
+  }
+}
+
 async function main() {
   if (PurgeEverything) {
     const payload = { purge_everything: true };
+    printPurgeSummary();
     if (DryRun) {
       console.log(JSON.stringify(payload, null, 2));
       return;
@@ -112,6 +148,8 @@ async function main() {
     { prefixes: PrefixesToPurge },
     { files: FilesToPurge },
   ];
+
+  printPurgeSummary();
 
   if (DryRun) {
     console.log(JSON.stringify({ hostname: SiteHostname, purge_requests: payloads }, null, 2));

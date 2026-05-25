@@ -55,6 +55,7 @@ npm run cloudflare:purge
 - File purge：首頁、`index.html`、`404.html`、`sitemap.xml`、`robots.txt`、`og-image.png`、favicon、Apple touch icon 與 `site.webmanifest`
 
 這比每小時 purge everything 更適合本專案，因為 Vite hashed assets 和職業圖示可以繼續長效命中 Cloudflare，不必每次資料更新都讓所有靜態資源重新冷啟動。
+workflow 也會在部署前執行 `npm run cloudflare:purge -- --dry-run --summary`，把同一份 scoped purge 範圍寫進 GitHub Step Summary；如果未來 prefix 或 file 清單被擴大，Actions 頁面會直接看得到。
 
 ## 建議節流策略
 
@@ -156,6 +157,7 @@ npm run cloudflare:estimate
 ```
 
 `cloudflare:estimate` 會用目前 `dist/` 的 gzip / brotli 大小估算在不同 Cloudflare HIT ratio 下，GitHub Pages 100 GB/月 origin 流量約能承受多少次頁面載入。
+GitHub Actions 會在 payload 稽核後執行這個估算並寫入 Step Summary，和 `data/pages_payload_history.jsonl` 的 artifact 體積趨勢一起作為成本觀測資料。
 
 ## 流量估算公式
 

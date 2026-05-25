@@ -69,7 +69,7 @@ npm run sync:data -- --dry-run
 - `duplicate_count > 1` 的個人成績是否仍保留 `report_variants` / `source_reports`，或能透過 `report_detail_path` / `report_detail_id` 在個人成績報告細節檔找回來源。
 - `public/data/all` 的 hidden delta 是否能與一般公開資料合併，避免額外檢視流程缺漏公開資料或 hidden 來源。
 
-`scripts/audit_pages_payload.mjs` 則量測 `dist/`、`dist/data/`、`dist/data/all/`、`dist/data/users/` 與 `dist/og/`。GitHub Actions 使用 `npm run audit:pages-payload:strict`，任一項超過 target 會直接失敗；本機若只想做 baseline 觀察，可手動執行 `npm run audit:pages-payload`。
+`scripts/audit_pages_payload.mjs` 則量測 `dist/`、`dist/data/`、`dist/data/all/`、`dist/data/users/` 與 `dist/og/`。GitHub Actions 使用 `npm run audit:pages-payload:strict -- --write-history data/pages_payload_history.jsonl`，任一項超過 target 會直接失敗，並把 artifact 體積、檔案數、建置秒數與上一筆差異寫入歷史 JSONL。本機若只想做 baseline 觀察，可手動執行 `npm run audit:pages-payload`；需要比較趨勢時再加 `-- --write-history /tmp/pages_payload_history.jsonl`。
 
 ## 排行榜前端薄索引
 

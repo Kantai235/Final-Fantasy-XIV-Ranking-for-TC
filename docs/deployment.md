@@ -41,10 +41,12 @@ npm run build
 7. 執行 `python scripts/fetch_fflogs.py --split-rankings`，將完整排行榜資料拆分成適合 Git 追蹤的檔案。
 8. 執行 `node scripts/build_user_data.mjs`，產生個人成績單、個人成績報告細節、全服統計、近期動態、隊伍榜與伺服器對比。
 9. 由 workflow 寫入 `data/update_status.json`，記錄本輪 GitHub Actions run、資料更新時間與總量摘要。
-10. 執行 `npm run build`，在提交前完成公開資料驗證與 Vite 建置。
-11. 若 `data` 或 `public/data` 有變更，提交並推送更新。
-12. 上傳 `dist/` 並部署到 GitHub Pages。
-13. 若有 Cloudflare purge token，部署成功後清除會變動的 CDN 快取。
+10. 執行 `npm run build`，在提交前完成公開資料驗證與 Vite 建置，並把建置秒數寫入後續 payload 稽核。
+11. 執行 `npm run audit:pages-payload:strict -- --write-history data/pages_payload_history.jsonl`，讓 artifact 體積超過 target 時失敗，並在 GitHub Step Summary 顯示本輪與上一筆歷史差異。
+12. 執行 `npm run cloudflare:estimate` 與 `npm run cloudflare:purge -- --dry-run --summary`，在 Step Summary 顯示 HIT ratio 承載估算與 scoped purge 範圍。
+13. 若 `data` 或 `public/data` 有變更，提交並推送更新；payload history 屬於 `data/`，會跟同一輪資料更新一起追蹤。
+14. 上傳 `dist/` 並部署到 GitHub Pages。
+15. 若有 Cloudflare purge token，部署成功後清除會變動的 CDN 快取。
 
 ## GitHub Secrets 與 Variables
 

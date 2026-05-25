@@ -180,12 +180,32 @@ jobs:
           sudo apt-get install -y fonts-noto-cjk
 
       - name: 建置並驗證 GitHub Pages 靜態網站
+        id: build-site
         env:
           VITE_GA_MEASUREMENT_ID: ${{ vars.VITE_GA_MEASUREMENT_ID || secrets.VITE_GA_MEASUREMENT_ID }}
-        run: npm run build
+        run: |
+          START_SECONDS=$SECONDS
+          npm run build
+          BUILD_SECONDS=$((SECONDS - START_SECONDS))
+          echo "PAGES_BUILD_SECONDS=${BUILD_SECONDS}" >> "$GITHUB_ENV"
+          echo "build_seconds=${BUILD_SECONDS}" >> "$GITHUB_OUTPUT"
 
       - name: 稽核 GitHub Pages payload 體積
-        run: npm run audit:pages-payload:strict
+        env:
+          PAGES_BUILD_SECONDS: ${{ steps.build-site.outputs.build_seconds }}
+          PAGES_PAYLOAD_HISTORY_LIMIT: ${{ vars.PAGES_PAYLOAD_HISTORY_LIMIT || '200' }}
+        run: |
+          npm run audit:pages-payload:strict -- \
+            --write-history data/pages_payload_history.jsonl \
+            --history-limit "${PAGES_PAYLOAD_HISTORY_LIMIT:-200}"
+
+      - name: 估算 Cloudflare 快取承載量
+        run: npm run cloudflare:estimate | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: 檢查 Cloudflare purge 範圍
+        env:
+          CLOUDFLARE_HOSTNAME: ${{ vars.CLOUDFLARE_HOSTNAME }}
+        run: npm run cloudflare:purge -- --dry-run --summary
 
       - name: 檢查排行榜資料是否有變動
         id: data-changes

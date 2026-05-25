@@ -1,12 +1,17 @@
-import { existsSync, readdirSync, statSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-const args = new Set(process.argv.slice(2));
+const rawArgs = process.argv.slice(2);
+const args = new Set(rawArgs);
 const enforceTargets = args.has("--enforce-targets") || process.env.PAGES_PAYLOAD_ENFORCE_TARGETS === "true";
 const distDir = path.resolve(rootDir, process.env.PAGES_PAYLOAD_DIST || "dist");
+const historyPathArg = readOption("--write-history") || process.env.PAGES_PAYLOAD_HISTORY_PATH || "";
+const historyLimit = Math.max(1, Number(readOption("--history-limit") || process.env.PAGES_PAYLOAD_HISTORY_LIMIT || 200) || 200);
+const githubStepSummaryPath = process.env.GITHUB_STEP_SUMMARY || "";
+const buildSeconds = parseOptionalNumber(process.env.PAGES_BUILD_SECONDS);
 
 const MiB = 1024 * 1024;
 
@@ -52,8 +57,44 @@ function normalizePath(filePath) {
   return filePath.replace(/\\/g, "/");
 }
 
+function readOption(name) {
+  const inlinePrefix = `${name}=`;
+  for (let index = 0; index < rawArgs.length; index += 1) {
+    const arg = rawArgs[index];
+    if (arg === name) {
+      return rawArgs[index + 1] || "";
+    }
+    if (arg.startsWith(inlinePrefix)) {
+      return arg.slice(inlinePrefix.length);
+    }
+  }
+  return "";
+}
+
+function parseOptionalNumber(value) {
+  const number = Number(value);
+  return Number.isFinite(number) && number >= 0 ? number : null;
+}
+
 function formatMiB(bytes) {
   return `${(bytes / MiB).toFixed(1)} MiB`;
+}
+
+function formatSignedMiB(bytes) {
+  const sign = bytes > 0 ? "+" : "";
+  return `${sign}${formatMiB(bytes)}`;
+}
+
+function formatDuration(seconds) {
+  if (!Number.isFinite(seconds)) {
+    return "-";
+  }
+  if (seconds < 60) {
+    return `${seconds.toFixed(0)} 秒`;
+  }
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = Math.round(seconds % 60);
+  return `${minutes} 分 ${remainingSeconds} 秒`;
 }
 
 function listFiles(directory) {
@@ -81,19 +122,149 @@ function measureDirectory(directory) {
   };
 }
 
-function printRows(rows) {
+function resolveHistoryPath(filePath) {
+  if (!filePath) {
+    return "";
+  }
+  return path.isAbsolute(filePath) ? filePath : path.resolve(rootDir, filePath);
+}
+
+function readHistoryRecords(historyPath) {
+  if (!historyPath || !existsSync(historyPath)) {
+    return [];
+  }
+
+  return readFileSync(historyPath, "utf8")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      try {
+        return JSON.parse(line);
+      } catch {
+        return null;
+      }
+    })
+    .filter(Boolean);
+}
+
+function buildHistoryRecord(rows) {
+  const runId = process.env.GITHUB_RUN_ID || null;
+  const repository = process.env.GITHUB_REPOSITORY || null;
+  return {
+    schema_version: 1,
+    recorded_at_iso: new Date().toISOString(),
+    mode: enforceTargets ? "strict" : "baseline",
+    event: process.env.GITHUB_EVENT_NAME || null,
+    branch: process.env.GITHUB_REF_NAME || null,
+    head_sha: process.env.GITHUB_SHA || null,
+    run_id: runId,
+    run_attempt: Number(process.env.GITHUB_RUN_ATTEMPT || 0) || null,
+    run_url: repository && runId ? `https://github.com/${repository}/actions/runs/${runId}` : null,
+    build_seconds: buildSeconds,
+    dist_path: normalizePath(path.relative(rootDir, distDir) || "."),
+    rows: rows.map((row) => ({
+      label: row.label,
+      relative_path: row.relativePath,
+      file_count: row.fileCount,
+      bytes: row.bytes,
+      target_mib: row.targetMiB,
+      hard_mib: row.hardMiB,
+      status: row.status,
+    })),
+  };
+}
+
+function writeHistoryRecord(historyPath, record, previousRecords) {
+  if (!historyPath) {
+    return;
+  }
+
+  mkdirSync(path.dirname(historyPath), { recursive: true });
+  const nextRecords = [...previousRecords, record].slice(-historyLimit);
+  writeFileSync(historyPath, `${nextRecords.map((item) => JSON.stringify(item)).join("\n")}\n`, "utf8");
+}
+
+function buildTrendRows(rows, previousRecord) {
+  if (!previousRecord?.rows) {
+    return [];
+  }
+
+  const previousByLabel = new Map(previousRecord.rows.map((row) => [row.label, row]));
+  return rows
+    .map((row) => {
+      const previous = previousByLabel.get(row.label);
+      if (!previous) {
+        return null;
+      }
+      return {
+        label: row.label,
+        previousBytes: previous.bytes,
+        currentBytes: row.bytes,
+        deltaBytes: row.bytes - previous.bytes,
+      };
+    })
+    .filter(Boolean);
+}
+
+function markdownRows(rows, trendRows = []) {
+  const trendByLabel = new Map(trendRows.map((row) => [row.label, row.deltaBytes]));
+  const lines = [
+    "項目 | 檔案數 | 目前大小 | target | hard limit | 趨勢 | 狀態",
+    "--- | ---: | ---: | ---: | ---: | ---: | ---",
+  ];
+  for (const row of rows) {
+    const delta = trendByLabel.has(row.label) ? formatSignedMiB(trendByLabel.get(row.label)) : "-";
+    lines.push(
+      `${row.label} | ${row.fileCount.toLocaleString("zh-TW")} | ${formatMiB(row.bytes)} | ${row.targetMiB} MiB | ${row.hardMiB} MiB | ${delta} | ${row.status}`,
+    );
+  }
+  return lines;
+}
+
+function printRows(rows, trendRows, previousRecord, historyPath) {
   console.log("GitHub Pages payload 稽核");
   console.log("");
   console.log(`目錄：${normalizePath(path.relative(rootDir, distDir) || ".")}`);
   console.log(`模式：${enforceTargets ? "strict，超過 target 會失敗" : "baseline，超過 hard limit 才失敗"}`);
-  console.log("");
-  console.log("項目 | 檔案數 | 目前大小 | target | hard limit | 狀態");
-  console.log("--- | ---: | ---: | ---: | ---: | ---");
-  for (const row of rows) {
-    console.log(
-      `${row.label} | ${row.fileCount.toLocaleString("zh-TW")} | ${formatMiB(row.bytes)} | ${row.targetMiB} MiB | ${row.hardMiB} MiB | ${row.status}`,
-    );
+  if (buildSeconds !== null) {
+    console.log(`建置時間：${formatDuration(buildSeconds)}`);
   }
+  if (historyPath) {
+    console.log(`歷史紀錄：${normalizePath(path.relative(rootDir, historyPath) || ".")}，保留最近 ${historyLimit} 筆`);
+  }
+  console.log("");
+  for (const line of markdownRows(rows, trendRows)) {
+    console.log(line);
+  }
+  if (previousRecord) {
+    console.log("");
+    console.log(`上一筆歷史紀錄：${previousRecord.recorded_at_iso || "未知時間"}`);
+  }
+}
+
+function appendStepSummary(rows, trendRows, previousRecord, historyPath) {
+  if (!githubStepSummaryPath) {
+    return;
+  }
+
+  const lines = [
+    "## GitHub Pages Payload",
+    "",
+    `- 模式：${enforceTargets ? "strict" : "baseline"}`,
+    `- 目錄：${normalizePath(path.relative(rootDir, distDir) || ".")}`,
+  ];
+  if (buildSeconds !== null) {
+    lines.push(`- 建置時間：${formatDuration(buildSeconds)}`);
+  }
+  if (historyPath) {
+    lines.push(`- 歷史紀錄：${normalizePath(path.relative(rootDir, historyPath) || ".")}，保留最近 ${historyLimit} 筆`);
+  }
+  if (previousRecord?.recorded_at_iso) {
+    lines.push(`- 趨勢比較：上一筆 ${previousRecord.recorded_at_iso}`);
+  }
+  lines.push("", ...markdownRows(rows, trendRows), "");
+  appendFileSync(githubStepSummaryPath, `${lines.join("\n")}\n`, "utf8");
 }
 
 if (!existsSync(distDir)) {
@@ -102,6 +273,9 @@ if (!existsSync(distDir)) {
 }
 
 const issues = [];
+const historyPath = resolveHistoryPath(historyPathArg);
+const previousRecords = readHistoryRecords(historyPath);
+const previousRecord = previousRecords.at(-1) || null;
 const rows = payloadBudgets.map((budget) => {
   const directory = path.join(distDir, budget.relativePath);
   const measurement = measureDirectory(directory);
@@ -125,8 +299,12 @@ const rows = payloadBudgets.map((budget) => {
     status,
   };
 });
+const trendRows = buildTrendRows(rows, previousRecord);
+const historyRecord = buildHistoryRecord(rows);
 
-printRows(rows);
+printRows(rows, trendRows, previousRecord, historyPath);
+appendStepSummary(rows, trendRows, previousRecord, historyPath);
+writeHistoryRecord(historyPath, historyRecord, previousRecords);
 
 const warnings = rows.filter((row) => row.bytes > row.targetMiB * MiB && row.bytes <= row.hardMiB * MiB);
 if (warnings.length > 0) {
