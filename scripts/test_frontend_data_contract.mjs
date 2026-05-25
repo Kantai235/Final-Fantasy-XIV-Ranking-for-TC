@@ -632,6 +632,18 @@ const 建立使用者預設資料網址 = (角色名稱) => \`/mock/data/users/\
   return import(moduleUrl);
 }
 
+async function loadPublicDataTestModule(href, basePath = "./") {
+  globalThis.window = {
+    location: new URL(href),
+  };
+
+  const filePath = path.join(srcDir, "utils", "publicData.js");
+  const source = (await readText(filePath)).replace(/import\.meta\.env\?\.BASE_URL/g, JSON.stringify(basePath));
+  const cacheKey = Buffer.from(`${href}|${basePath}`, "utf8").toString("base64url");
+  const moduleUrl = `data:text/javascript;base64,${Buffer.from(source, "utf8").toString("base64")}#${cacheKey}`;
+  return import(moduleUrl);
+}
+
 async function validateUserSearchResolution() {
   const module = await loadUserDataTestModule();
   const users = [
@@ -679,6 +691,11 @@ async function validateUserSearchResolution() {
   assert(indexEntry?.file_path === "data/users/Shibe柴.json", "使用者索引查找應支援純玩家名稱大小寫差異");
   const sameNameEntry = module.尋找使用者索引條目(users, "Shibe柴", "巴哈姆特");
   assert(sameNameEntry?.file_path === "data/users/Shibe柴-2.json", "使用者索引查找應支援同名角色用伺服器拆分。");
+  const missingServerTarget = module.解析使用者搜尋目標("Shibe柴 @ 奧汀", users);
+  assert(
+    missingServerTarget.伺服器 === "奧汀" && !missingServerTarget.索引條目,
+    "指定伺服器沒有索引命中時，搜尋目標仍應保留使用者輸入的伺服器。",
+  );
 
   const originalFetch = globalThis.fetch;
   let fetchedUrl = "";
@@ -697,6 +714,30 @@ async function validateUserSearchResolution() {
     globalThis.fetch = originalFetch;
   }
   assert(fetchedUrl === "/mock/data/users/Shibe柴-2.json", "讀取使用者資料檔應保留伺服器條件，避免同名角色讀到第一筆索引。");
+
+  let missingServerError = "";
+  let missingServerFetchCalled = false;
+  globalThis.fetch = async () => {
+    missingServerFetchCalled = true;
+    return {
+      ok: true,
+      async json() {
+        return {};
+      },
+    };
+  };
+  try {
+    await module.讀取使用者資料檔("Shibe柴", users, "奧汀");
+  } catch (error) {
+    missingServerError = error instanceof Error ? error.message : String(error);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+  assert(!missingServerFetchCalled, "指定伺服器沒有索引命中時，不應退回純玩家名稱檔案。");
+  assert(
+    missingServerError === "找不到「Shibe柴 @ 奧汀」的個人成績單",
+    "指定伺服器搜尋失敗時，錯誤訊息應保留完整「玩家 @ 伺服器」查詢。",
+  );
 
   const storage = {
     value: "",
@@ -727,6 +768,33 @@ async function validateUserSearchResolution() {
   const limitedHistory = module.正規化玩家搜尋歷史列表(manyUsers);
   assert(limitedHistory.length === 100, "玩家搜尋歷史最多只應保存 100 筆。");
   assert(module.正規化玩家搜尋歷史列表(["", { server: "奧汀" }]).length === 0, "玩家搜尋歷史不應保存空白玩家名稱。");
+}
+
+async function validatePublicDataRouteBase() {
+  const directUserRoute = await loadPublicDataTestModule("https://ranking.init.engineer/user/");
+  assert(
+    directUserRoute.使用者索引網址 === "/data/users/index.json",
+    "直接開啟 /user/ 時，公開資料索引應讀取部署根目錄的 /data/users/index.json。",
+  );
+  assert(
+    directUserRoute.建立公開資料網址("data/users/篝之霧枝-2.json") ===
+      "/data/users/%E7%AF%9D%E4%B9%8B%E9%9C%A7%E6%9E%9D-2.json",
+    "直接開啟 /user/ 時，個人成績單檔案 URL 不應落到 /user/data 底下。",
+  );
+
+  const subpathRoute = await loadPublicDataTestModule("https://example.test/repo/user/Aa?server=%E5%A5%A7%E6%B1%80");
+  assert(
+    subpathRoute.使用者索引網址 === "/repo/data/users/index.json",
+    "子路徑部署直接開啟 /repo/user/{玩家} 時，公開資料 URL 應保留 /repo/ 部署基底。",
+  );
+
+  const configuredBase = await loadPublicDataTestModule("https://example.test/user/", "/custom/");
+  assert(
+    configuredBase.使用者索引網址 === "/custom/data/users/index.json",
+    "Vite base_path 已指定絕對路徑時，公開資料 URL 應優先使用設定值。",
+  );
+
+  delete globalThis.window;
 }
 
 function installUrlStateWindow(href, events) {
@@ -918,6 +986,7 @@ async function main() {
   validateGlobalStatsOverviewDenominator();
   validateAnnouncementRules();
   await validateUserSearchResolution();
+  await validatePublicDataRouteBase();
   await validateShareUrlStateCompatibility();
 
   if (issues.length > 0) {

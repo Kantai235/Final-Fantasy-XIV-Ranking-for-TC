@@ -1,6 +1,70 @@
 // 前端只讀取 Vite 打包後位於 public/data 的靜態 JSON。
 // 這裡集中處理公開資料 URL，避免頁面或 composable 各自拼接路徑時漏掉 base path。
-const 公開資料基底路徑 = import.meta.env?.BASE_URL ?? "/";
+const Vite公開基底路徑 = import.meta.env?.BASE_URL ?? "/";
+const 乾淨路由片段 = new Set(["stats", "user", "compare", "jobs", "activity", "teams", "servers"]);
+
+function 補結尾斜線(路徑) {
+  const 文字 = String(路徑 || "/").trim();
+  return 文字.endsWith("/") ? 文字 : `${文字}/`;
+}
+
+function 安全解碼路徑片段(片段) {
+  try {
+    return decodeURIComponent(片段);
+  } catch {
+    return 片段;
+  }
+}
+
+function 編碼路徑片段(片段) {
+  return encodeURIComponent(String(片段 || "").trim());
+}
+
+function 解析路徑片段(pathname) {
+  return String(pathname || "")
+    .split("/")
+    .map((片段) => 安全解碼路徑片段(片段))
+    .filter(Boolean);
+}
+
+function 推導目前路由基底(pathname) {
+  const 片段列表 = 解析路徑片段(pathname);
+  const 路由索引 = 片段列表.findIndex((片段) => 乾淨路由片段.has(片段));
+
+  if (路由索引 >= 0) {
+    // Vite base_path 使用 "./" 時，直接開啟 /user/ 這類乾淨路由會讓相對 URL 指到 /user/data。
+    // 因此公開資料要以 route 片段以前的部署根目錄為準；子路徑部署則保留 /repo/ 這段。
+    const 基底片段 = 片段列表.slice(0, 路由索引).map((片段) => 編碼路徑片段(片段));
+    return 基底片段.length > 0 ? `/${基底片段.join("/")}/` : "/";
+  }
+
+  const 路徑 = String(pathname || "/");
+  if (路徑.endsWith("/")) {
+    return 路徑;
+  }
+
+  const 最後斜線 = 路徑.lastIndexOf("/");
+  return 最後斜線 >= 0 ? 路徑.slice(0, 最後斜線 + 1) : "/";
+}
+
+function 取得公開資料基底路徑() {
+  const 設定值 = String(Vite公開基底路徑 || "/").trim();
+  if (!設定值 || 設定值 === "." || 設定值 === "./") {
+    return typeof window === "undefined" ? "/" : 推導目前路由基底(window.location?.pathname || "/");
+  }
+
+  if (/^[a-z][a-z\d+.-]*:\/\//i.test(設定值)) {
+    return 補結尾斜線(new URL(設定值).pathname || "/");
+  }
+
+  if (設定值.startsWith("/")) {
+    return 補結尾斜線(設定值);
+  }
+
+  return 補結尾斜線(設定值);
+}
+
+const 公開資料基底路徑 = 取得公開資料基底路徑();
 
 export const 副本清單網址 = `${公開資料基底路徑}data/encounters.json`;
 export const 使用者索引網址 = `${公開資料基底路徑}data/users/index.json`;
