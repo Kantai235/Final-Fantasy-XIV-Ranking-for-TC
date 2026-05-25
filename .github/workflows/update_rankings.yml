@@ -185,7 +185,7 @@ jobs:
         run: npm run build
 
       - name: 稽核 GitHub Pages payload 體積
-        run: npm run audit:pages-payload
+        run: npm run audit:pages-payload:strict
 
       - name: 檢查排行榜資料是否有變動
         id: data-changes

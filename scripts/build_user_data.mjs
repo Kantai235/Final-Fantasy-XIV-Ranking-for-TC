@@ -1784,7 +1784,7 @@ function buildEntryPayload(entry, detailContext = null) {
         detailContext.entries.set(payload.id, {
           duplicate_count: reportVariants.length,
           source_reports: sourceReports,
-          report_variants: reportVariants,
+          report_variants: reportVariants.map((variant) => compactReportVariantForEntry(variant, payload)),
         });
       }
     } else {
@@ -1793,6 +1793,56 @@ function buildEntryPayload(entry, detailContext = null) {
     }
   }
   return payload;
+}
+
+const inheritedReportVariantFields = new Set([
+  // 個人成績報告細節會在前端與主檔代表成績合併後才開彈窗；
+  // 因此來源分頁只需要保存不同值，避免同一場多份 report 把成績欄位重複寫進 payload。
+  "report_url",
+  "report_title",
+  "fight_id",
+  "recorded_at",
+  "recorded_at_iso",
+  "dps",
+  "rdps",
+  "adps",
+  "ndps",
+  "total_damage",
+  "active_time_ms",
+  "active_percent",
+  "clear_time_ms",
+  "clear_time_seconds",
+  "damage_downtime_ms",
+  "damage_downtime_seconds",
+  "damage_time_ms",
+  "damage_time_seconds",
+  "fflogs_source_id",
+  "gcd_coverage",
+  "gcd_coverage_status",
+  "report_hidden",
+  "hidden_reason",
+  "hidden_detected_at_iso",
+  "hidden_source",
+]);
+
+function equivalentJsonValue(left, right) {
+  return JSON.stringify(left ?? null) === JSON.stringify(right ?? null);
+}
+
+function compactReportVariantForEntry(variant, baseEntry) {
+  const compactVariant = {};
+
+  for (const [key, value] of Object.entries(variant)) {
+    if (key === "report_url" && variant.report_code) {
+      continue;
+    }
+    if (inheritedReportVariantFields.has(key) && equivalentJsonValue(baseEntry?.[key], value)) {
+      continue;
+    }
+    compactVariant[key] = value;
+  }
+
+  return compactVariant;
 }
 
 function buildUserEntryDetailsPayload(payload, detailContext, hiddenReportsIncluded = false) {

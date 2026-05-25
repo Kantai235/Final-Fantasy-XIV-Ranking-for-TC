@@ -39,7 +39,7 @@
    ```
 
    `npm run build` 會先自動執行 `build:public-rankings`、`build:user-data` 與 `validate:data`，再由 Vite 建置靜態網站到 `dist/`。
-   GitHub Actions 會在建置後執行 `npm run audit:pages-payload`，用 baseline 模式確認 Pages artifact 沒有超過目前硬上限；完成資料瘦身後可切換到 `audit:pages-payload:strict`。
+   GitHub Actions 會在建置後執行 `npm run audit:pages-payload:strict`，讓 `dist/`、`dist/data/`、`dist/data/all/`、`dist/data/users/` 與 `dist/og/` 超過 target 時直接失敗。
 
 ## FFLogs 掃描策略
 

@@ -191,6 +191,33 @@ const reportVariantSchema = objectOf({
   ...hiddenReportFields,
 });
 
+const compactReportVariantSchema = objectOf({
+  key: stringSchema,
+  report_code: optional(nullableStringSchema),
+  report_url: optional(nullableUrlSchema),
+  report_title: optional(nullableStringSchema),
+  fight_id: optional(nullableNumberSchema),
+  recorded_at: optional(nullableNumberSchema),
+  recorded_at_iso: optional(nullableIsoTimestampSchema),
+  dps: optional(nullableNumberSchema),
+  rdps: optional(nullableNumberSchema),
+  adps: optional(nullableNumberSchema),
+  ndps: optional(nullableNumberSchema),
+  total_damage: optional(nullableNumberSchema),
+  active_time_ms: optional(nullableNumberSchema),
+  active_percent: optional(nullableNumberSchema),
+  clear_time_ms: optional(nullableNumberSchema),
+  clear_time_seconds: optional(nullableNumberSchema),
+  damage_downtime_ms: optional(nullableNumberSchema),
+  damage_downtime_seconds: optional(nullableNumberSchema),
+  damage_time_ms: optional(nullableNumberSchema),
+  damage_time_seconds: optional(nullableNumberSchema),
+  fflogs_source_id: optional(numberSchema),
+  gcd_coverage: optional(gcdCoverageSchema),
+  gcd_coverage_status: optional(gcdCoverageStatusSchema),
+  ...Object.fromEntries(Object.entries(hiddenReportFields).map(([key, schema]) => [key, optional(schema)])),
+});
+
 const rankingEntrySchema = objectOf({
   id: stringSchema,
   character_name: stringSchema,
@@ -461,7 +488,7 @@ const userProfileHiddenDeltaSchema = objectOf({
 const userEntryReportDetailSchema = objectOf({
   duplicate_count: integerSchema,
   source_reports: arrayOf(stringSchema),
-  report_variants: arrayOf(reportVariantSchema),
+  report_variants: arrayOf(compactReportVariantSchema),
 });
 
 const userEntryDetailsPayloadSchema = objectOf({

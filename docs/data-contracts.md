@@ -69,7 +69,7 @@ npm run sync:data -- --dry-run
 - `duplicate_count > 1` 的個人成績是否仍保留 `report_variants` / `source_reports`，或能透過 `report_detail_path` / `report_detail_id` 在個人成績報告細節檔找回來源。
 - `public/data/all` 的 hidden delta 是否能與一般公開資料合併，避免額外檢視流程缺漏公開資料或 hidden 來源。
 
-`scripts/audit_pages_payload.mjs` 則量測 `dist/`、`dist/data/`、`dist/data/all/`、`dist/data/users/` 與 `dist/og/`。預設 baseline 模式只會在超過硬上限時失敗，並列出 GitHub Pages 目標值；後續完成瘦身後，改用 `npm run audit:pages-payload:strict` 讓 `dist` 超過 target 時直接失敗。
+`scripts/audit_pages_payload.mjs` 則量測 `dist/`、`dist/data/`、`dist/data/all/`、`dist/data/users/` 與 `dist/og/`。GitHub Actions 使用 `npm run audit:pages-payload:strict`，任一項超過 target 會直接失敗；本機若只想做 baseline 觀察，可手動執行 `npm run audit:pages-payload`。
 
 ## 排行榜前端薄索引
 
@@ -93,7 +93,7 @@ npm run sync:data -- --dry-run
 
 `public/data/users/*.json` 是個人成績單主檔，保留頁面列表、最佳紀錄、同職分位與常同場隊友。多份 report 上傳同一場戰鬥時，主檔只保留代表成績、`duplicate_count`、`report_detail_path` 與 `report_detail_id`；完整 `report_variants` 與 `source_reports` 會寫入 `public/data/user-entry-details/{玩家檔名}.json`。
 
-`public/data/user-entry-details/{玩家檔名}.json` 使用 `format="user_entry_details_v1"`，`entries` 以成績 `id` 為 key。使用者點擊個人成績單的「報告」按鈕時，前端才依 `report_detail_path` 載入這份細節檔並補回報告彈窗分頁。這讓 `public/data/users/` 能維持較薄的列表資料，同時保留每個來源 report code、fight、FFLogs 連結與外部工具深連結所需欄位。
+`public/data/user-entry-details/{玩家檔名}.json` 使用 `format="user_entry_details_v1"`，`entries` 以成績 `id` 為 key。使用者點擊個人成績單的「報告」按鈕時，前端才依 `report_detail_path` 載入這份細節檔並補回報告彈窗分頁。這讓 `public/data/users/` 能維持較薄的列表資料，同時保留每個來源 report code、fight、FFLogs 連結與外部工具深連結所需欄位。細節檔內的 `report_variants` 只保存每個來源必要或與主檔代表成績不同的欄位；前端會先套用主檔成績，再覆蓋來源分頁欄位。
 
 `public/data/all/user-entry-details/` 只會為 hidden delta 成績單中實際引用的多來源條目輸出細節；沒有 hidden 成績的使用者仍直接共用一般公開 `user-entry-details`。
 

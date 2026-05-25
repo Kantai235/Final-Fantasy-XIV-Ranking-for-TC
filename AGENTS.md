@@ -77,7 +77,7 @@
 6. 當 `reports` 分片存在時，`ranking_entries` 只視為衍生索引；重建排行榜必須以 `reports -> fights -> players` 為權威來源，避免重抓單一 report 後舊扁平索引把錯誤高分帶回來。
 7. `report_hidden: true` 的 report 預設不進入一般公開資料；`public/data/all/` 只保存 hidden delta 與額外檢視必要索引，供前端與公開底稿合併後使用。
 8. 個人成績單未套用職業篩選時，副本代表列與分享用代表職業優先選同職 `job_rank` 最前面的有效紀錄；`summary.best_rdps` 仍保留最高 rDPS，避免跨職業 raw rDPS 讓坦補主職被偶爾遊玩的輸出職業蓋掉。
-9. 個人成績單以 `fight_hash + 角色 + 伺服器 + 職業` 合併同一場戰鬥的多份上傳；主檔保留代表成績、`duplicate_count`、`report_detail_path` 與 `report_detail_id`，`report_variants` / `source_reports` 需寫入 `public/data/user-entry-details/` 或 `public/data/all/user-entry-details/`，供報告彈窗按需載入並分頁切換不同 report 來源。
+9. 個人成績單以 `fight_hash + 角色 + 伺服器 + 職業` 合併同一場戰鬥的多份上傳；主檔保留代表成績、`duplicate_count`、`report_detail_path` 與 `report_detail_id`，`report_variants` / `source_reports` 需寫入 `public/data/user-entry-details/` 或 `public/data/all/user-entry-details/`，供報告彈窗按需載入並分頁切換不同 report 來源。`report_variants` 可只保存必要或與主檔代表成績不同的欄位，前端需以主檔成績作為分頁 fallback。
 10. 公開排行榜與所有公開衍生資料遇到同名角色跨伺服器的公開紀錄時，必須以「角色名稱 + 伺服器」拆成不同玩家；不得再用最新公開紀錄所在伺服器自動合併。`canonical_server` 僅保留為既有前端相容欄位，值應等於該份個人成績單自己的伺服器；`server_aliases` 預設為空陣列，不得把另一個同名角色所在伺服器列為 alias。
 
 ### D. FFLogs 欄位解析脈絡
@@ -119,7 +119,7 @@
 21. GitHub Actions 會用 `FFLOGS_HISTORY_SCAN_*` 環境變數暫時開啟低量歷史補查，並用 `FFLOGS_FETCH_GCD_COVERAGE_*` 在新 report 落地時即時計算 GCD；`config/fflogs.json` 仍預設關閉延遲掃描、歷史補查與 Casts graph 即時計算，避免本機一般執行時額外掃描舊時間窗或查 Casts graph。歷史補查依各副本 `history_scan_cursor_at` 輪巡，專門補抓後來才公開或延後匯出的更舊 report，不取代最新增量掃描與 24-72 小時延遲掃描；若本輪深查上限打滿且仍有 deferred report，游標必須停在最後一筆已選候選的 `startTime`，若該副本本輪未分到深查額度則停回本輪時間窗起點，避免尚未更新的 report 被推到下一輪歷史全區間輪巡後才重試。
 22. `scripts/audit_xivanalysis_gcd_sample.py` 是人工稽核工具，預設用固定 seed 從零式、極、幻隨機抽樣 100 場並輸出 `docs/gcd_xivanalysis_audit_latest.json`；預設 `--local-mode recompute` 會即時重算本地結果再比對 xivanalysis，若要檢查已寫入資料可改用 `--local-mode stored`。`backfill_gcd_coverage.py --raw-events` 可讀 FFLogs `All` raw events、`combatantinfo` 技速/詠速、狀態視窗與 targetability 來追查差異；目前只有 `unreal_byakko` 已正式預設 raw events，其它副本正式啟用前仍需抽樣驗證。加上 `--apply` 時只會把抽樣中超過容許差異的玩家改寫為 `source=xivanalysis_page`。使用後必須重建公開排行榜與使用者資料，且不得放入 GitHub Actions 預設流程，以免對 xivanalysis 造成過量請求。
 23. `npm run test:data-conservation` 是公開資料瘦身前的資料守恆測試，會解析 hidden delta 並檢查排行榜薄索引、報告細節檔、使用者檔、個人成績報告細節檔與多來源 report 線索，避免後續拆檔或延遲載入時讓既有成績或來源追溯消失。
-24. `npm run audit:pages-payload` 會在 GitHub Actions 建置後以 baseline 模式量測 `dist/`、`dist/data/`、`dist/data/all/`、`dist/data/users/` 與 `dist/og/`。目前只在超過硬上限時失敗，完成資料瘦身後再改用 `npm run audit:pages-payload:strict` 讓 target 成為強制門檻。
+24. GitHub Actions 會在建置後執行 `npm run audit:pages-payload:strict`，以 target 作為 `dist/`、`dist/data/`、`dist/data/all/`、`dist/data/users/` 與 `dist/og/` 的強制門檻；`npm run audit:pages-payload` 只保留作為本機 baseline 觀察用途。
 
 ### F. 版本切點與過版紀錄
 1. `config/encounters.json` 的 `version_cutoff` 用來描述副本版本有效期限；目前 `極 佐拉加` 與 `極 豔翼蛇鳥` 的過版切點是台灣時間 2026-04-21 18:00，對應 `2026-04-21T10:00:00.000Z`。
