@@ -199,6 +199,9 @@ async function validateFrontendFetchBoundary() {
     "analytics.js",
     "main.js",
     "composables/useRankingApp.js",
+    "composables/rankingApp/context.js",
+    "composables/rankingApp/defaults.js",
+    "composables/rankingApp/useRankingData.js",
     "domain/jobs.js",
     "utils/announcements.js",
     "utils/fetchJson.js",
@@ -436,9 +439,10 @@ async function validateHiddenDeltaDataForFrontend() {
   }
 
   const useRankingAppSource = await readText(path.join(srcDir, "composables", "useRankingApp.js"));
+  const rankingDataSource = await readText(path.join(srcDir, "composables", "rankingApp", "useRankingData.js"));
   const userDataSource = await readText(path.join(srcDir, "utils", "userData.js"));
-  assert(useRankingAppSource.includes("ranking_table_hidden_delta_v1"), "前端排行榜讀取端必須支援 hidden delta 薄索引");
-  assert(useRankingAppSource.includes("ranking_detail_hidden_delta_v1"), "前端排行榜讀取端必須支援 hidden delta 報告細節");
+  assert(rankingDataSource.includes("ranking_table_hidden_delta_v1"), "前端排行榜讀取端必須支援 hidden delta 薄索引");
+  assert(rankingDataSource.includes("ranking_detail_hidden_delta_v1"), "前端排行榜讀取端必須支援 hidden delta 報告細節");
   assert(useRankingAppSource.includes("讀取個人成績報告詳細資料"), "前端個人成績單必須支援按需載入報告細節");
   assert(useRankingAppSource.includes("user_entry_details_v1"), "前端個人成績單必須辨識個人成績報告細節格式");
   assert(userDataSource.includes("user_profile_hidden_delta_v1"), "前端個人成績單讀取端必須支援 hidden delta");

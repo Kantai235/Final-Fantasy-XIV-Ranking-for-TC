@@ -62,6 +62,9 @@
 1. `scripts/fetch_fflogs.py` 是唯一可直接呼叫 FFLogs GraphQL API 的資料管線入口，負責 OAuth、限流、重試、報告存取例外、繁中服玩家初篩，以及 `data/rankings/` 與 `data/state.json` 的可追溯資料寫入。
 2. `scripts/build_user_data.mjs` 是唯一負責全服統計、個人成績單、隊友統計、職業分布與傷害分位數的資料建置腳本。Vue 元件不得重做這些聚合。
 3. `src/` 前端只能讀取 `public/data/` 靜態 JSON。任何新增畫面若需要新統計欄位，應先擴充 Node.js 建置層，再讓前端讀取結果。
+4. `scripts/fflogs_pipeline/graphql_queries.py` 只集中存放 FFLogs GraphQL 查詢字串；OAuth、限流、重試、掃描游標、繁中服玩家判定、GCD 衍生計算與資料寫入仍必須留在 `scripts/fetch_fflogs.py`。
+5. `src/composables/useRankingApp.js` 是前端排行榜 app 的狀態協調入口；`src/composables/rankingApp/context.js`、`defaults.js` 與 `useRankingData.js` 分別管理注入 context、預設值/選項與排行榜列正規化/排序/細節載入，不得在頁面元件中重複這些資料讀取規則。
+6. `src/styles/app.css` 只作為樣式入口清單；設計 token、版面骨架、控制項、頁面樣式、表格彈窗與響應式規則應放在 `src/styles/` 對應拆分檔，避免再次累積成單一巨型 CSS 檔。
 
 ### B. 副本清單的雙層語意
 1. `config/encounters.json` 的 `enabled` 只控制下一輪 Python 爬蟲是否掃描該副本。

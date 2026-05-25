@@ -44,6 +44,7 @@
 ## FFLogs 掃描策略
 
 `config/fflogs.json` 預設保守，適合本機一般執行；GitHub Actions 會用同名大寫 `FFLOGS_` 環境變數暫時開啟較完整的排程策略。
+`scripts/fflogs_pipeline/graphql_queries.py` 只集中管理 FFLogs GraphQL 查詢字串，實際 OAuth、限流、重試、掃描游標、繁中服玩家判定與寫入流程仍全部由 `scripts/fetch_fflogs.py` 控制。調整查詢欄位時必須確認 `fetch_fflogs.py` 的解析邏輯與 `schemas/public_data_contracts.mjs` 的公開輸出契約仍相容。
 
 | 策略 | 預設脈絡 |
 | --- | --- |

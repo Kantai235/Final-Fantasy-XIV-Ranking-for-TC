@@ -23,6 +23,8 @@ flowchart LR
 - 以 `masterData.actors(type: "Player")` 與 `playerDetails` 確認繁中服玩家。
 - 寫入 `data/rankings/`、`public/data/rankings/` 與 `data/state.json`。
 
+GraphQL 查詢字串集中在 `scripts/fflogs_pipeline/graphql_queries.py`；這個子模組只描述 FFLogs 欄位需求，不處理限流、掃描游標、資料寫入或 UI 產物格式。`fetch_fflogs.py` 仍是資料權威入口，拆出查詢文本只是降低單檔責任，避免未來調整查詢欄位時誤動掃描策略。
+
 這一層只保存可重建排行榜所需的 report/fight/player 脈絡，不應輸出 UI 專用格式。
 
 ### Data Building Layer
@@ -52,8 +54,10 @@ flowchart LR
 - `src/pages/` 放主要頁面。
 - `src/components/` 放跨頁共用元件。
 - `src/composables/` 放前端狀態、篩選、排序與資料讀取邏輯。
+- `src/composables/rankingApp/` 放 `useRankingApp()` 的拆分子模組：`context.js` 管理 app 注入、`defaults.js` 管理預設值與選項、`useRankingData.js` 管理排行榜列正規化、排序與按需載入細節。
 - `src/utils/` 放格式化、分享網址狀態、靜態資料 URL 與 fetch 工具。
 - `src/domain/` 放 FFXIV 職業與職能等領域設定。
+- `src/styles/app.css` 是樣式入口清單；設計 token、版面骨架、控制項、頁面樣式、表格彈窗與響應式規則分散在同目錄的主題檔，避免所有視覺責任集中在單一 CSS 檔。
 
 前端元件不得直接呼叫 FFLogs API，也不要在 Vue 內重做全服統計或資料聚合。
 公告元件只能讀取 `public/data/announcements.json`，並用瀏覽器 `localStorage` 保存使用者已關閉公告 id；這個狀態不會寫回公開資料。
@@ -66,6 +70,7 @@ flowchart LR
 │   ├── App.vue
 │   ├── components/
 │   ├── composables/
+│   │   └── rankingApp/
 │   ├── domain/
 │   ├── pages/
 │   ├── styles/
@@ -73,6 +78,7 @@ flowchart LR
 │   └── main.js
 ├── scripts/
 │   ├── fetch_fflogs.py
+│   ├── fflogs_pipeline/
 │   ├── gcd_coverage_core.py
 │   ├── backfill_gcd_coverage.py
 │   ├── backfill_gcd_coverage_xivanalysis.py

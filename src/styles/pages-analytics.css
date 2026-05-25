@@ -1,0 +1,1565 @@
+/* 統計、職業分析、近期動態、隊伍榜與比較表格樣式。 */
+
+.職業分析區 {
+  display: grid;
+  gap: 16px;
+}
+
+.職業分位亮點區 {
+  display: grid;
+  gap: 12px;
+}
+
+.職業分位亮點標題 {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.職業分位亮點標題 span {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.職業分位亮點標題 small {
+  color: var(--次要文字);
+  font-size: 0.8rem;
+  font-weight: 720;
+}
+
+.職業分位亮點標題 strong {
+  color: var(--主要文字);
+  font-size: 1.12rem;
+  font-weight: 850;
+}
+
+.職業分位亮點卡 {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--邊框色);
+  border-radius: 8px;
+  background: var(--表面背景);
+}
+
+.職業分位亮點列表 {
+  display: grid;
+  gap: 1px;
+  background: var(--邊框柔和色);
+}
+
+.職業分位亮點列 {
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(126px, 1.05fr) repeat(3, minmax(74px, 0.42fr)) auto;
+  gap: 6px 12px;
+  align-items: center;
+  border: 0;
+  border-radius: 0;
+  padding: 9px 12px;
+  color: var(--主要文字);
+  background: var(--表面背景);
+  font-weight: 720;
+  line-height: 1.25;
+  text-align: left;
+}
+
+.職業分位亮點列:hover:not(:disabled),
+.職業分位亮點列.已選取 {
+  background: color-mix(in srgb, var(--職業分位色) 12%, var(--表面背景));
+}
+
+.職業分位亮點列:focus {
+  outline: 3px solid var(--焦點陰影);
+  outline-offset: -3px;
+}
+
+.職業分位亮點職業 {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.職業分位亮點職業 strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--主要文字);
+  font-size: 0.82rem;
+  font-weight: 850;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.職業分位亮點數值 {
+  min-width: 0;
+  display: grid;
+  justify-items: end;
+  gap: 2px;
+  text-align: right;
+}
+
+.職業分位亮點數值 small,
+.職業分位亮點樣本 {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--次要文字);
+  font-size: 0.68rem;
+  font-weight: 720;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.職業分位亮點數值 strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--主要文字);
+  font-size: 0.78rem;
+  font-weight: 850;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.職業分位亮點主值 strong {
+  color: var(--職業分位色);
+}
+
+.職業分位亮點樣本 {
+  justify-self: end;
+}
+
+.職業分位亮點強度條 {
+  grid-column: 1 / -1;
+  display: block;
+  overflow: hidden;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--表面背景柔和);
+}
+
+.職業分位亮點強度條 span {
+  display: block;
+  width: var(--職業分位強度);
+  height: 100%;
+  border-radius: inherit;
+  background: var(--職業分位色);
+}
+
+.職業焦點卡 {
+  overflow: hidden;
+  border: 1px solid var(--邊框色);
+  border-radius: 8px;
+  background: var(--表面背景);
+}
+
+.職業焦點標題 {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  border-bottom: 1px solid var(--邊框柔和色);
+  padding: 14px;
+}
+
+.職業焦點圖示 {
+  width: 54px;
+  height: 54px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: var(--表面背景柔和);
+}
+
+.職業焦點圖示.防護色 {
+  background: var(--防護色柔和);
+}
+
+.職業焦點圖示.治療色 {
+  background: var(--治療色柔和);
+}
+
+.職業焦點圖示.輸出色 {
+  background: var(--輸出色柔和);
+}
+
+.職業焦點圖示 img {
+  width: 38px;
+  height: 38px;
+  object-fit: contain;
+}
+
+.職業焦點標題 span:last-child {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.職業焦點標題 small,
+.職業分析補充 {
+  color: var(--次要文字);
+  font-size: 0.8rem;
+  font-weight: 720;
+}
+
+.職業焦點標題 strong {
+  color: var(--主要文字);
+  font-size: 1.22rem;
+  font-weight: 850;
+}
+
+.職業分析概要 {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 1px;
+  background: var(--邊框柔和色);
+}
+
+.職業分析補充 {
+  display: block;
+}
+
+.職能職業分布列表 {
+  display: grid;
+  gap: 7px;
+  padding-top: 2px;
+}
+
+.職能職業分布堆疊條 {
+  display: flex;
+  overflow: hidden;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--表面背景柔和);
+}
+
+.職能職業分布堆疊段 {
+  flex: 0 0 var(--職能職業分布寬度);
+  min-width: 2px;
+  height: 100%;
+  background: var(--職能職業分布色);
+}
+
+.職能職業分布堆疊段:first-child {
+  border-radius: 999px 0 0 999px;
+}
+
+.職能職業分布堆疊段:last-child {
+  border-radius: 0 999px 999px 0;
+}
+
+.職能職業分布堆疊段:only-child {
+  border-radius: 999px;
+}
+
+.職能職業分布標籤列 {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 7px;
+}
+
+.職能職業分布標籤 {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 6px;
+  border: 1px solid color-mix(in srgb, var(--職能職業分布色) 32%, var(--邊框色));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--職能職業分布色) 9%, var(--表面背景));
+}
+
+.職能職業分布標籤 .職業圖示 {
+  width: 16px;
+  height: 16px;
+}
+
+.職能職業分布標籤 strong,
+.職能職業分布標籤 em {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.職能職業分布標籤 strong {
+  color: var(--主要文字);
+  font-size: 0.72rem;
+  font-weight: 820;
+}
+
+.職能職業分布標籤 em {
+  color: var(--職能職業分布色);
+  font-size: 0.68rem;
+  font-style: normal;
+  font-weight: 720;
+  font-variant-numeric: tabular-nums;
+}
+
+.職業深化版面 {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+}
+
+.職業副本輸出列表 {
+  display: grid;
+  gap: 1px;
+  background: var(--邊框柔和色);
+}
+
+.職業副本輸出項 {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(140px, 1.1fr) repeat(3, minmax(72px, 0.42fr)) auto;
+  gap: 6px 12px;
+  align-items: center;
+  padding: 10px 12px;
+  background: var(--表面背景);
+}
+
+.職業副本輸出名稱,
+.職業副本輸出數值 {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.職業副本輸出名稱 small,
+.職業副本輸出數值 small,
+.職業副本輸出樣本 {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--次要文字);
+  font-size: 0.72rem;
+  font-weight: 720;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.職業副本輸出名稱 strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--主要文字);
+  font-size: 0.84rem;
+  font-weight: 820;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.職業副本輸出數值 {
+  justify-items: end;
+  text-align: right;
+}
+
+.職業副本輸出數值 strong {
+  color: var(--主要文字);
+  font-size: 0.86rem;
+  font-weight: 850;
+  font-variant-numeric: tabular-nums;
+}
+
+.職業副本輸出樣本 {
+  justify-self: end;
+}
+
+.職業副本輸出條 {
+  grid-column: 1 / -1;
+  display: block;
+  overflow: hidden;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--表面背景柔和);
+}
+
+.職業副本輸出條 span {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--重點色);
+}
+
+.職業代表紀錄列 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.職業代表紀錄卡 {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  border: 1px solid var(--邊框色);
+  border-radius: 8px;
+  padding: 14px;
+  background: var(--表面背景);
+}
+
+.職業代表紀錄卡 span,
+.職業代表紀錄卡 em,
+.職業代表紀錄卡 small {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--次要文字);
+  font-size: 0.8rem;
+  font-style: normal;
+  font-weight: 720;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.職業代表紀錄卡 strong {
+  color: var(--主要文字);
+  font-size: 1.24rem;
+  font-weight: 880;
+  font-variant-numeric: tabular-nums;
+}
+
+.近期動態區 {
+  display: grid;
+  gap: 16px;
+}
+
+.近期動態表格 {
+  min-width: 900px;
+}
+
+.近期動態職業標籤 {
+  max-width: 150px;
+}
+
+.近期動態職業標籤 span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.表格補充文字 {
+  display: block;
+  margin-top: 3px;
+  color: var(--靜音文字);
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+.近期洞察版面 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.近期新角色列表 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  background: var(--邊框柔和色);
+}
+
+.近期新角色項 {
+  min-width: 0;
+  min-height: auto;
+  display: grid;
+  justify-items: start;
+  gap: 5px;
+  border: 0;
+  border-radius: 0;
+  padding: 12px 14px;
+  color: var(--主要文字);
+  background: var(--表面背景);
+  text-align: left;
+}
+
+.近期新角色項:hover:not(:disabled) {
+  background: var(--列hover背景);
+}
+
+.近期新角色項 strong,
+.近期新角色項 span {
+  min-width: 0;
+  overflow: hidden;
+  max-width: 100%;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.近期新角色項 span {
+  color: var(--次要文字);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.隊伍榜工具列 {
+  width: min(540px, 100%);
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(170px, 0.8fr);
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.隊伍榜區 {
+  display: grid;
+  gap: 16px;
+}
+
+.隊伍榜表格 {
+  min-width: 1120px;
+}
+
+.隊伍榜表格 td.隊伍榜排名 {
+  text-align: center;
+  text-overflow: clip;
+}
+
+.隊伍成員欄位 {
+  min-width: 360px;
+}
+
+.隊伍成員列表 {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.隊伍成員 {
+  min-height: 30px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-color: var(--邊框色);
+  padding: 4px 8px;
+  color: var(--主要文字);
+  background: var(--表面背景柔和);
+  font-size: 0.78rem;
+  font-weight: 760;
+}
+
+.隊伍成員:hover:not(:disabled) {
+  border-color: var(--重點色);
+  color: var(--重點文字);
+  background: var(--重點色);
+}
+
+.隊伍成員 small {
+  color: inherit;
+  opacity: 0.72;
+}
+
+.隊伍成員 span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.全服統計區 {
+  display: grid;
+  gap: 16px;
+}
+
+.統計概要 {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  overflow: visible;
+  border: 1px solid var(--邊框色);
+  border-radius: 8px;
+  background: var(--邊框柔和色);
+}
+
+.統計版面 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.統計面板 {
+  overflow: visible;
+  border: 1px solid var(--邊框色);
+  border-radius: 8px;
+  background: var(--表面背景);
+}
+
+.統計面板寬 {
+  width: 100%;
+}
+
+.統計面板標題 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px solid var(--邊框柔和色);
+  padding: 12px 14px;
+}
+
+.統計面板標題 h2 {
+  margin: 0;
+  color: var(--主要文字);
+  font-size: 1rem;
+  font-weight: 820;
+}
+
+.統計面板標題 span {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--次要文字);
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.零式漏斗列表 {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  background: var(--邊框柔和色);
+}
+
+.零式漏斗項 {
+  min-width: 0;
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  padding: 14px;
+  background: var(--表面背景);
+}
+
+.漏斗副本列,
+.漏斗數值列,
+.漏斗補充列 {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.漏斗副本列 {
+  align-items: flex-start;
+}
+
+.漏斗層級 {
+  flex: 0 0 auto;
+  border: 1px solid var(--邊框柔和色);
+  border-radius: 999px;
+  padding: 3px 8px;
+  color: var(--重點色);
+  background: var(--表面背景柔和);
+  font-size: 0.76rem;
+  font-weight: 850;
+  line-height: 1.2;
+}
+
+.漏斗副本列 strong {
+  min-width: 0;
+  color: var(--主要文字);
+  font-size: 0.9rem;
+  font-weight: 800;
+  line-height: 1.35;
+  text-align: right;
+}
+
+.漏斗數值列 strong {
+  min-width: 0;
+  color: var(--主要文字);
+  font-size: 1.16rem;
+  font-weight: 840;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.漏斗數值列 span,
+.漏斗補充列 span {
+  flex: 0 0 auto;
+  color: var(--次要文字);
+  font-size: 0.78rem;
+  font-weight: 720;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.漏斗條 {
+  height: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--表面背景柔和);
+}
+
+.漏斗條 span {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--重點色), var(--防護色));
+}
+
+.職業傷害比較標題 {
+  align-items: center;
+}
+
+.傷害指標切換 {
+  flex: 0 0 auto;
+  display: inline-grid;
+  grid-template-columns: repeat(3, minmax(64px, 1fr));
+  overflow: hidden;
+  border: 1px solid var(--邊框柔和色);
+  border-radius: 8px;
+  background: var(--輸入背景);
+}
+
+.傷害指標切換 button {
+  min-height: 34px;
+  border: 0;
+  border-right: 1px solid var(--邊框柔和色);
+  border-radius: 0;
+  padding: 0 12px;
+  color: var(--次要文字);
+  background: transparent;
+  font-size: 0.82rem;
+  font-weight: 820;
+}
+
+.傷害指標切換 button:last-child {
+  border-right: 0;
+}
+
+.傷害指標切換 button:hover:not(:disabled),
+.傷害指標切換 button.作用中 {
+  color: var(--重點文字);
+  background: var(--重點色);
+}
+
+.職業傷害比較說明列 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  border-bottom: 1px solid var(--邊框柔和色);
+  padding: 10px 14px;
+  color: var(--次要文字);
+  background: var(--表面背景柔和);
+  font-size: 0.82rem;
+  font-weight: 720;
+}
+
+.職業傷害比較說明列 span,
+.職業傷害比較說明列 strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.職業傷害比較說明列 strong {
+  flex: 0 0 auto;
+  color: var(--主要文字);
+  font-weight: 850;
+}
+
+.職業傷害比較圖 {
+  overflow-x: auto;
+  padding: 12px 14px 14px;
+  background: var(--表面背景);
+}
+
+.職業傷害比較刻度列,
+.職業傷害比較列 {
+  min-width: 900px;
+  display: grid;
+  grid-template-columns: minmax(150px, 0.32fr) minmax(540px, 1fr) minmax(170px, 0.34fr);
+  align-items: center;
+  gap: 12px;
+}
+
+.職業傷害比較刻度列 {
+  min-height: 28px;
+  margin-bottom: 4px;
+  color: var(--靜音文字);
+  font-size: 0.72rem;
+  font-weight: 720;
+  font-variant-numeric: tabular-nums;
+}
+
+.職業傷害比較刻度軌 {
+  position: relative;
+  height: 100%;
+  border-bottom: 1px solid var(--邊框柔和色);
+}
+
+.職業傷害比較刻度 {
+  position: absolute;
+  bottom: 6px;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+.職業傷害比較列表 {
+  display: grid;
+  gap: 2px;
+}
+
+.職業傷害比較列 {
+  min-height: 30px;
+  position: relative;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color 0.16s ease;
+}
+
+.職業傷害比較列:hover,
+.職業傷害比較列.顯示提示 {
+  background: var(--表面背景柔和);
+}
+
+.職業傷害比較列:focus {
+  outline: 3px solid var(--焦點陰影);
+  outline-offset: 2px;
+}
+
+.職業傷害比較職業 {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--主要文字);
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.職業傷害比較職業 span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.職業傷害比較軌道 {
+  position: relative;
+  height: 22px;
+  border-radius: 6px;
+  overflow: visible;
+  background:
+    linear-gradient(90deg, transparent calc(100% - 1px), var(--邊框柔和色) 100%) 0 0 / 20% 100%,
+    var(--表面背景柔和);
+}
+
+.職業傷害比較鬚線,
+.職業傷害比較盒,
+.職業傷害比較中位線,
+.職業傷害比較平均點,
+.職業傷害比較最高點 {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.職業傷害比較鬚線 {
+  left: var(--最小值);
+  width: max(1px, calc(var(--最大值) - var(--最小值)));
+  height: 2px;
+  background: color-mix(in srgb, var(--職業比較色) 72%, transparent);
+}
+
+.職業傷害比較鬚線::before,
+.職業傷害比較鬚線::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  width: 2px;
+  height: 10px;
+  transform: translateY(-50%);
+  border-radius: 999px;
+  background: var(--職業比較色);
+}
+
+.職業傷害比較鬚線::before {
+  left: 0;
+}
+
+.職業傷害比較鬚線::after {
+  right: 0;
+}
+
+.職業傷害比較盒 {
+  left: var(--第一四分位);
+  width: max(3px, calc(var(--第三四分位) - var(--第一四分位)));
+  height: 14px;
+  border-radius: 5px;
+  background: var(--職業比較色);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--職業比較色) 74%, var(--表面背景));
+}
+
+.職業傷害比較中位線 {
+  left: var(--中位數);
+  width: 2px;
+  height: 18px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--主要文字) 55%, var(--職業比較色));
+}
+
+.職業傷害比較平均點,
+.職業傷害比較最高點 {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+}
+
+.職業傷害比較平均點 {
+  left: var(--平均值);
+  border: 2px solid var(--職業比較色);
+  background: var(--表面背景);
+}
+
+.職業傷害比較最高點 {
+  left: var(--最大值);
+  background: var(--職業比較色);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--職業比較色) 18%, transparent);
+}
+
+.職業傷害比較提示 {
+  position: absolute;
+  z-index: 30;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  width: min(420px, calc(100% - 18px));
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  transform: translate(-50%, 4px);
+  border: 1px solid var(--邊框色);
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: var(--主要文字);
+  background: var(--表面背景);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.28);
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity 0.16s ease,
+    transform 0.16s ease,
+    visibility 0.16s ease;
+}
+
+.職業傷害比較提示::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -5px;
+  width: 10px;
+  height: 10px;
+  transform: translateX(-50%) rotate(45deg);
+  border-right: 1px solid var(--邊框色);
+  border-bottom: 1px solid var(--邊框色);
+  background: var(--表面背景);
+}
+
+.職業傷害比較提示 span {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.職業傷害比較提示 em {
+  color: var(--次要文字);
+  font-size: 0.68rem;
+  font-style: normal;
+  font-weight: 760;
+  line-height: 1.1;
+}
+
+.職業傷害比較提示 strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--主要文字);
+  font-size: 0.78rem;
+  font-weight: 850;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.職業傷害比較列:hover .職業傷害比較提示,
+.職業傷害比較列:focus .職業傷害比較提示,
+.職業傷害比較列.顯示提示 .職業傷害比較提示 {
+  transform: translate(-50%, 0);
+  opacity: 1;
+  visibility: visible;
+}
+
+.職業傷害比較數值 {
+  min-width: 0;
+  display: grid;
+  justify-items: end;
+  gap: 1px;
+  font-variant-numeric: tabular-nums;
+}
+
+.職業傷害比較數值 strong,
+.職業傷害比較數值 span {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.職業傷害比較數值 strong {
+  color: var(--主要文字);
+  font-size: 0.84rem;
+  font-weight: 850;
+}
+
+.職業傷害比較數值 span {
+  color: var(--次要文字);
+  font-size: 0.68rem;
+  font-weight: 720;
+}
+
+.分布列表 {
+  display: grid;
+  gap: 1px;
+  background: var(--邊框柔和色);
+}
+
+.分布項 {
+  display: grid;
+  gap: 8px;
+  padding: 11px 14px;
+  background: var(--表面背景);
+}
+
+.分布列 {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.分布列 strong,
+.分布列 span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.分布列 strong {
+  color: var(--主要文字);
+  font-size: 0.92rem;
+  font-weight: 800;
+}
+
+.分布列 span {
+  color: var(--次要文字);
+  font-size: 0.82rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.分布職業 {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.分布條 {
+  height: 7px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--表面背景柔和);
+}
+
+.分布條填滿 {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--重點色);
+}
+
+.分布條填滿.防護色 {
+  background: var(--防護色);
+}
+
+.分布條填滿.治療色 {
+  background: var(--治療色);
+}
+
+.分布條填滿.輸出色 {
+  background: var(--輸出色);
+}
+
+.分布子列表 {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.分布子項 {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--邊框柔和色);
+  border-radius: 999px;
+  padding: 4px 8px;
+  color: var(--次要文字);
+  background: var(--表面背景柔和);
+  font-size: 0.76rem;
+  font-weight: 740;
+}
+
+.分布子項.防護色 {
+  border-color: var(--防護色);
+  color: var(--防護色);
+  background: var(--防護色柔和);
+}
+
+.分布子項.治療色 {
+  border-color: var(--治療色);
+  color: var(--治療色);
+  background: var(--治療色柔和);
+}
+
+.分布子項.輸出色 {
+  border-color: var(--輸出色);
+  color: var(--輸出色);
+  background: var(--輸出色柔和);
+}
+
+.分布子項 span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.分布子項 em {
+  color: inherit;
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.分布子項 .職業圖示 {
+  width: 16px;
+  height: 16px;
+}
+
+.職業佔比分組 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  align-items: start;
+  gap: 10px;
+  padding: 12px;
+  background: var(--表面背景);
+}
+
+.職業佔比群組 {
+  min-width: 0;
+  align-self: start;
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--邊框柔和色);
+  border-radius: 8px;
+  padding: 11px 12px;
+  background: var(--表面背景);
+}
+
+.職業佔比群組.防護色 {
+  border-color: rgba(104, 168, 255, 0.42);
+  background: linear-gradient(180deg, var(--防護色柔和), var(--表面背景) 54px);
+}
+
+.職業佔比群組.治療色 {
+  border-color: rgba(85, 217, 140, 0.42);
+  background: linear-gradient(180deg, var(--治療色柔和), var(--表面背景) 54px);
+}
+
+.職業佔比群組.輸出色 {
+  border-color: rgba(255, 118, 111, 0.38);
+  background: linear-gradient(180deg, var(--輸出色柔和), var(--表面背景) 54px);
+}
+
+.職業佔比群組標題 {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.職業佔比群組標題 strong,
+.職業佔比群組標題 span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.職業佔比群組標題 strong {
+  color: var(--主要文字);
+  font-size: 0.92rem;
+  font-weight: 820;
+}
+
+.職業佔比群組標題 span {
+  color: var(--次要文字);
+  font-size: 0.78rem;
+  font-weight: 720;
+  font-variant-numeric: tabular-nums;
+}
+
+.職業佔比職業列表 {
+  display: grid;
+  gap: 7px;
+}
+
+.職業佔比職業 {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+  color: var(--次要文字);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.職業佔比職業 .分布職業 {
+  min-width: 0;
+}
+
+.職業佔比職業 .分布職業 span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.職業佔比職業 strong {
+  color: var(--主要文字);
+  font-size: 0.84rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.職業佔比職業 small {
+  color: var(--靜音文字);
+  font-size: 0.76rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.生態矩陣外框 {
+  overflow-x: auto;
+  padding-top: 2px;
+}
+
+.生態矩陣 {
+  width: 100%;
+  min-width: 880px;
+}
+
+.生態矩陣 th,
+.生態矩陣 td {
+  padding: 10px 12px;
+}
+
+.生態矩陣 thead th {
+  text-align: center;
+}
+
+.生態矩陣 td {
+  text-align: center;
+}
+
+.熱力格 {
+  --熱力色: var(--重點色);
+  min-height: 54px;
+  display: grid;
+  align-content: center;
+  gap: 2px;
+  border: 1px solid color-mix(in srgb, var(--熱力色) 34%, var(--邊框柔和色));
+  border-radius: 8px;
+  padding: 8px;
+  background: color-mix(in srgb, var(--熱力色) var(--熱度), var(--表面背景));
+}
+
+.熱力格.防護色 {
+  --熱力色: var(--防護色);
+}
+
+.熱力格.治療色 {
+  --熱力色: var(--治療色);
+}
+
+.熱力格.輸出色 {
+  --熱力色: var(--輸出色);
+}
+
+.熱力格 strong {
+  color: var(--主要文字);
+  font-size: 0.88rem;
+  font-weight: 840;
+  font-variant-numeric: tabular-nums;
+}
+
+.熱力格 small {
+  color: var(--次要文字);
+  font-size: 0.72rem;
+  font-weight: 720;
+  font-variant-numeric: tabular-nums;
+}
+
+.資料狀態分組列表 {
+  display: grid;
+  gap: 10px;
+  padding: 10px 12px 12px;
+  background: transparent;
+}
+
+.資料狀態分組 {
+  min-width: 0;
+}
+
+.資料狀態分組 + .資料狀態分組 {
+  border-top: 1px solid var(--邊框柔和色);
+  padding-top: 10px;
+}
+
+.資料狀態分組標題 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 0 8px;
+}
+
+.資料狀態分組標題 span {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.資料狀態分組標題 strong {
+  color: var(--主要文字);
+  font-size: 0.98rem;
+  font-weight: 840;
+}
+
+.資料狀態分組標題 small {
+  color: var(--次要文字);
+  font-size: 0.74rem;
+  font-weight: 720;
+}
+
+.資料狀態分組進度 {
+  min-width: min(180px, 42%);
+  display: grid;
+  grid-template-columns: minmax(72px, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.資料狀態分組進度 em {
+  flex: 0 0 auto;
+  color: var(--重點色);
+  font-size: 0.78rem;
+  font-style: normal;
+  font-weight: 850;
+  font-variant-numeric: tabular-nums;
+}
+
+.資料狀態列表 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 6px;
+}
+
+.資料狀態項 {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 7px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  border: 1px solid var(--邊框柔和色);
+  border-radius: 7px;
+  padding: 6px 8px;
+  background: var(--表面背景柔和);
+}
+
+.資料狀態點 {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--停用文字);
+}
+
+.資料狀態項 strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--主要文字);
+  font-size: 0.82rem;
+  font-weight: 810;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.資料狀態項 em {
+  color: var(--次要文字);
+  font-size: 0.72rem;
+  font-style: normal;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.資料狀態項.已收錄 {
+  border-color: var(--治療色柔和);
+  background: var(--治療色柔和);
+}
+
+.資料狀態項.已收錄 .資料狀態點 {
+  background: var(--治療色);
+}
+
+.資料狀態項.已收錄 em {
+  color: var(--治療色);
+}
+
+.統計表格外框 {
+  overflow-x: auto;
+  padding-top: 2px;
+}
+
+.統計表格 {
+  min-width: 860px;
+}
+
+.比較表格 {
+  min-width: 980px;
+  table-layout: fixed;
+}
+
+.比較表格副本欄 {
+  width: 30%;
+}
+
+.比較表格玩家欄 {
+  width: 26%;
+}
+
+.比較表格差異欄 {
+  width: 18%;
+}
+
+.統計表格 th,
+.統計表格 td {
+  padding: 12px 14px;
+}
+
+.比較副本,
+.比較成績格 {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.比較副本 small,
+.比較成績格 small {
+  color: var(--次要文字);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.比較副本 strong,
+.比較成績格 strong {
+  color: var(--主要文字);
+  font-weight: 820;
+}
+
+.比較成績格 {
+  justify-items: start;
+}
+
+.比較成績主列 {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.比較成績格 strong {
+  font-size: 1.02rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.比較成績輔助列 {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+}
+
+.比較成績輔助列 small {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--邊框柔和色);
+  border-radius: 999px;
+  padding: 2px 7px;
+  background: var(--表面背景柔和);
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.比較差異組 {
+  min-width: 0;
+  display: grid;
+  justify-items: end;
+  gap: 7px;
+}
+
+.比較差異項 {
+  min-width: 0;
+  display: grid;
+  justify-items: end;
+  gap: 2px;
+}
+
+.比較差異項 small {
+  color: var(--靜音文字);
+  font-size: 0.72rem;
+  font-weight: 780;
+}
+
+.比較差異 {
+  color: var(--次要文字);
+  font-weight: 840;
+  font-variant-numeric: tabular-nums;
+}
+
+.比較差異.左領先 {
+  color: var(--治療色);
+}
+
+.比較差異.右領先 {
+  color: var(--輸出色);
+}
+
+.統計空列 {
+  color: var(--次要文字);
+  text-align: center;
+}

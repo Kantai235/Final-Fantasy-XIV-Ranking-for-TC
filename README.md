@@ -89,9 +89,9 @@ README 只保留入口與最小操作脈絡，完整說明請依主題閱讀：
 
 本專案最重要的邊界是「抓取、建置、呈現」三層分離：
 
-1. `scripts/fetch_fflogs.py` 是 Data Fetching Layer。它是唯一可直接呼叫 FFLogs GraphQL API 的入口，負責 OAuth、限流、重試、繁中服玩家初篩、report 狀態判定，以及 `data/rankings/` 與 `data/state.json` 的可追溯寫入。
+1. `scripts/fetch_fflogs.py` 是 Data Fetching Layer。它是唯一可直接呼叫 FFLogs GraphQL API 的入口，負責 OAuth、限流、重試、繁中服玩家初篩、report 狀態判定，以及 `data/rankings/` 與 `data/state.json` 的可追溯寫入；GraphQL 查詢字串集中在 `scripts/fflogs_pipeline/graphql_queries.py`，避免掃描策略與查詢文本互相纏在同一個巨型檔。
 2. `scripts/build_user_data.mjs` 是 Data Building Layer。它讀取排行榜來源資料，產生個人成績單、個人成績報告細節、全服統計、近期動態、隊伍榜與伺服器對比等 `public/data/` 靜態 JSON。
-3. `src/` 是 UI Presentation Layer。Vue 只讀取 `public/data/` 靜態 JSON 進行呈現、篩選與狀態管理，不能直接呼叫 FFLogs API。
+3. `src/` 是 UI Presentation Layer。Vue 只讀取 `public/data/` 靜態 JSON 進行呈現、篩選與狀態管理，不能直接呼叫 FFLogs API；`src/composables/rankingApp/` 承接排行榜預設值、注入 context 與排行列正規化，`src/styles/app.css` 則只作為樣式拆檔入口。
 
 ## 常用指令
 

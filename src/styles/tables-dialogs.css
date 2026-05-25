@@ -1,0 +1,524 @@
+/* 分頁控制、排行榜表格、文字連結、報告按鈕與報告彈窗樣式。 */
+
+.分頁控制 {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.頁碼群組 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.分頁控制 label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--次要文字);
+  font-size: 0.9rem;
+  font-weight: 650;
+}
+
+.分頁控制 input {
+  width: 74px;
+  min-height: 38px;
+  text-align: center;
+}
+
+.頁數文字 {
+  color: var(--次要文字);
+  font-size: 0.92rem;
+  font-weight: 680;
+  white-space: nowrap;
+}
+
+table {
+  width: 100%;
+  min-width: 1120px;
+  border-collapse: collapse;
+}
+
+.排行榜表格 {
+  min-width: 980px;
+  table-layout: fixed;
+}
+
+.排行榜表格 .排名欄 {
+  width: 5.5%;
+}
+
+.排行榜表格 .角色欄 {
+  width: 17%;
+}
+
+.排行榜表格 .伺服器欄 {
+  width: 9%;
+}
+
+.排行榜表格 .職業欄 {
+  width: 10.5%;
+}
+
+.排行榜表格 .active欄 {
+  width: 7.8%;
+}
+
+.排行榜表格 .gcd欄 {
+  width: 7.8%;
+}
+
+.排行榜表格 .傷害欄 {
+  width: 7.8%;
+}
+
+.排行榜表格 .通關時間欄 {
+  width: 8.7%;
+}
+
+.排行榜表格 .紀錄時間欄 {
+  width: 10.5%;
+}
+
+th,
+td {
+  border-bottom: 1px solid var(--邊框柔和色);
+  padding: 14px 16px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.排行榜表格 th,
+.排行榜表格 td {
+  padding: 12px 8px;
+}
+
+.排行榜表格 td {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.排行榜表格 td.排名 {
+  overflow: visible;
+  text-overflow: clip;
+}
+
+.排行榜表格 .排行榜角色欄位 {
+  overflow: visible;
+}
+
+.手機排行角色名稱列 {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  vertical-align: bottom;
+}
+
+.手機排行角色名稱列 .文字連結 {
+  min-width: 0;
+}
+
+.手機排行角色名稱列 {
+  flex: 0 1 auto;
+  max-width: 100%;
+}
+
+.手機排行角色名稱列 .作者提示 {
+  flex: 0 0 auto;
+}
+
+.排行榜表格 td:nth-child(2) .文字連結 {
+  max-width: calc(100% - 48px);
+  display: inline-block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+}
+
+/* 手機版名稱按鈕仍需保留省略號；移除一般按鈕圓角，避免 overflow 裁到中文字形邊緣。 */
+.排行榜表格 td:nth-child(2) .手機排行角色名稱 {
+  max-width: 100%;
+  border-radius: 0;
+  padding-block: 1px 2px;
+  line-height: 1.3;
+}
+
+.排行榜表格 .職業標籤 {
+  max-width: 100%;
+}
+
+.排行榜表格 .職業標籤 span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.緊湊紀錄時間 {
+  display: inline-grid;
+  gap: 2px;
+  color: var(--主要文字);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+
+.緊湊紀錄時間 span:first-child {
+  font-size: 0.78rem;
+  font-weight: 720;
+}
+
+.緊湊紀錄時間 span:last-child {
+  color: var(--次要文字);
+  font-size: 0.72rem;
+  font-weight: 680;
+}
+
+th {
+  color: var(--重點色);
+  background: var(--表頭背景);
+  font-size: 0.84rem;
+  font-weight: 760;
+}
+
+tbody tr:hover {
+  background: var(--列hover背景);
+}
+
+tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+td a {
+  color: var(--重點色);
+  font-weight: 680;
+  text-decoration: none;
+}
+
+td a:hover {
+  text-decoration: underline;
+}
+
+.文字連結 {
+  min-height: 0;
+  border: 0;
+  padding: 0;
+  color: var(--重點色);
+  background: transparent;
+  font-weight: 760;
+  text-align: left;
+}
+
+.文字連結:hover:not(:disabled) {
+  color: var(--重點色深);
+  background: transparent;
+  text-decoration: underline;
+}
+
+.次要連結 {
+  display: inline-block;
+  margin-left: 10px;
+  color: var(--次要文字);
+  font-size: 0.82rem;
+  font-weight: 680;
+}
+
+.報告按鈕 {
+  min-height: 0;
+  border: 0;
+  padding: 0;
+  color: var(--次要文字);
+  background: transparent;
+  font-size: 0.82rem;
+  font-weight: 760;
+  line-height: 1.35;
+  text-align: left;
+}
+
+.報告按鈕:hover:not(:disabled) {
+  color: var(--重點色深);
+  background: transparent;
+  text-decoration: underline;
+}
+
+.報告工具連結列 {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  vertical-align: baseline;
+}
+
+.報告工具連結列.次要連結 {
+  display: inline-flex;
+}
+
+.報告工具連結 {
+  white-space: nowrap;
+}
+
+.歷史報告欄位 .報告工具連結列 {
+  justify-content: flex-end;
+}
+
+.報告彈窗遮罩 {
+  position: fixed;
+  z-index: 260;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.54);
+  opacity: 0;
+  transition: opacity 0.18s ease;
+}
+
+.報告彈窗遮罩.顯示 {
+  opacity: 1;
+}
+
+.報告彈窗 {
+  width: min(560px, 100%);
+  max-height: min(720px, calc(100vh - 48px));
+  overflow: auto;
+  border: 1px solid var(--邊框色);
+  border-radius: 8px;
+  padding: 20px;
+  color: var(--主要文字);
+  background: var(--表面背景);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.36);
+  opacity: 0;
+  transform: translateY(14px) scale(0.97);
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.報告彈窗遮罩.顯示 .報告彈窗 {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.報告彈窗標題列 {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.報告彈窗副標,
+.報告彈窗身份 {
+  margin: 0;
+  color: var(--次要文字);
+  font-size: 0.86rem;
+  font-weight: 680;
+}
+
+.報告彈窗 h2 {
+  margin: 4px 0;
+  color: var(--主要文字);
+  font-size: 1.35rem;
+  line-height: 1.2;
+}
+
+.報告彈窗關閉 {
+  width: 38px;
+  min-width: 38px;
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-color: var(--輸入邊框);
+  padding: 0;
+  color: var(--次要文字);
+  background: var(--輸入背景);
+  font-size: 1.3rem;
+  line-height: 1;
+}
+
+.報告彈窗關閉:hover:not(:disabled) {
+  border-color: var(--重點色);
+  color: var(--重點文字);
+  background: var(--重點色);
+}
+
+.報告彈窗分頁列 {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.報告彈窗分頁 {
+  min-width: 96px;
+  min-height: 42px;
+  display: grid;
+  gap: 2px;
+  border: 1px solid var(--邊框柔和色);
+  border-radius: 8px;
+  padding: 7px 10px;
+  color: var(--次要文字);
+  background: var(--表面背景柔和);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.報告彈窗分頁:hover,
+.報告彈窗分頁:focus-visible,
+.報告彈窗分頁.目前 {
+  border-color: var(--重點色);
+  color: var(--重點色深);
+  background: color-mix(in srgb, var(--重點色) 12%, var(--表面背景));
+}
+
+.報告彈窗分頁 span,
+.報告彈窗分頁 small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.報告彈窗分頁 span {
+  font-size: 0.82rem;
+  font-weight: 840;
+}
+
+.報告彈窗分頁 small {
+  color: var(--靜音文字);
+  font-size: 0.68rem;
+  font-weight: 760;
+}
+
+.報告彈窗數值格 {
+  display: grid;
+  gap: 10px;
+  margin: 18px 0;
+}
+
+.報告彈窗數值列 {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.報告彈窗狀態列 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.報告彈窗傷害列 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.報告彈窗追溯列 {
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+}
+
+.報告彈窗數值項 {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  border: 1px solid var(--邊框柔和色);
+  border-radius: 8px;
+  padding: 12px;
+  background: var(--表面背景柔和);
+}
+
+.報告彈窗狀態列 .報告彈窗數值項 {
+  background: color-mix(in srgb, var(--重點色) 9%, var(--表面背景));
+}
+
+.報告彈窗主要數值 {
+  border-color: color-mix(in srgb, var(--重點色) 38%, var(--邊框柔和色));
+}
+
+.報告彈窗全寬項 {
+  grid-column: 1 / -1;
+}
+
+.報告彈窗標籤列 {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.報告彈窗提示 .說明提示按鈕 {
+  width: 16px;
+  min-width: 16px;
+  height: 16px;
+  min-height: 16px;
+  font-size: 0.66rem;
+}
+
+.報告彈窗提示 .說明提示內容 {
+  top: calc(100% + 8px);
+  bottom: auto;
+  width: min(240px, calc(100vw - 56px));
+}
+
+.報告彈窗數值格 dt {
+  color: var(--靜音文字);
+  font-size: 0.72rem;
+  font-weight: 820;
+}
+
+.報告彈窗數值格 dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--主要文字);
+  font-size: 0.95rem;
+  font-weight: 820;
+  font-variant-numeric: tabular-nums;
+}
+
+.報告彈窗排名項 dd,
+.報告彈窗主要數值 dd,
+.報告彈窗時間項 dd {
+  font-size: 1.08rem;
+}
+
+.報告彈窗主要數值 dd {
+  color: var(--重點色深);
+}
+
+.報告彈窗連結區 {
+  display: grid;
+  gap: 8px;
+}
+
+.報告彈窗連結區 > span {
+  color: var(--次要文字);
+  font-size: 0.82rem;
+  font-weight: 760;
+}
+
+.報告彈窗工具連結 {
+  display: flex;
+  gap: 8px;
+}
+
+.報告彈窗工具連結 .報告工具連結 {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--邊框柔和色);
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: var(--重點色);
+  background: var(--表面背景柔和);
+  font-weight: 820;
+  text-decoration: none;
+}
+
+.報告彈窗工具連結 .報告工具連結:hover {
+  border-color: var(--重點色);
+  color: var(--重點文字);
+  background: var(--重點色);
+  text-decoration: none;
+}

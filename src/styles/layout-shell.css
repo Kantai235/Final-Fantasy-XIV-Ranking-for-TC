@@ -1,0 +1,1025 @@
+/* 頁面框架、標題、公告、導覽與頁尾樣式。 */
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  color: var(--主要文字);
+  background: var(--頁面背景);
+  font-family:
+    Inter, "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", sans-serif;
+  transition:
+    background-color 0.18s ease,
+    color 0.18s ease;
+}
+
+a {
+  color: inherit;
+}
+
+.頁面 {
+  width: min(1120px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: 32px 0 48px;
+}
+
+.頁面[data-accent="tank"] {
+  --重點色: var(--防護色);
+  --重點色深: var(--防護色深);
+  --重點文字: var(--職業重點文字);
+  --焦點陰影: var(--防護焦點陰影);
+}
+
+.頁面[data-accent="healer"] {
+  --重點色: var(--治療色);
+  --重點色深: var(--治療色深);
+  --重點文字: var(--職業重點文字);
+  --焦點陰影: var(--治療焦點陰影);
+}
+
+.頁面[data-accent="dps"] {
+  --重點色: var(--輸出色);
+  --重點色深: var(--輸出色深);
+  --重點文字: var(--職業重點文字);
+  --焦點陰影: var(--輸出焦點陰影);
+}
+
+.標題區 {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "title actions"
+    "nav nav";
+  align-items: end;
+  gap: 16px 24px;
+  margin-bottom: 24px;
+  border-bottom: 1px solid var(--邊框色);
+  padding-bottom: 20px;
+}
+
+.標題文字 {
+  grid-area: title;
+  min-width: 0;
+}
+
+.副標,
+.更新時間 {
+  margin: 0;
+  color: var(--次要文字);
+  font-size: 0.92rem;
+}
+
+.標題右側 {
+  grid-area: actions;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.標題操作 {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.分享狀態 {
+  min-height: 1.2em;
+  margin: 0;
+  color: var(--次要文字);
+  font-size: 0.84rem;
+}
+
+h1 {
+  margin: 6px 0 0;
+  color: var(--主要文字);
+  font-size: 2rem;
+  font-weight: 760;
+  line-height: 1.15;
+  letter-spacing: 0;
+}
+
+.分享按鈕,
+.主題切換,
+.公告中心按鈕 {
+  min-width: 94px;
+}
+
+.標題按鈕圖示 {
+  display: none;
+}
+
+svg.標題按鈕圖示 {
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+}
+
+.標題按鈕文字 {
+  display: inline;
+}
+
+.Telegram交流按鈕 {
+  min-width: 138px;
+  border-color: var(--Telegram色);
+  color: var(--Telegram文字);
+  background: var(--Telegram色);
+}
+
+.Telegram交流按鈕:hover:not(:disabled) {
+  border-color: var(--Telegram色深);
+  background: var(--Telegram色深);
+}
+
+.Telegram交流按鈕:focus {
+  outline: 3px solid var(--Telegram焦點陰影);
+}
+
+.Telegram視窗遮罩 {
+  position: fixed;
+  z-index: 120;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.62);
+  opacity: 0;
+  transition: opacity 0.18s ease;
+}
+
+.Telegram視窗遮罩.顯示 {
+  opacity: 1;
+}
+
+.Telegram視窗 {
+  position: relative;
+  width: min(440px, 100%);
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+  display: grid;
+  gap: 18px;
+  border: 1px solid var(--邊框色);
+  border-radius: 8px;
+  padding: 24px;
+  color: var(--主要文字);
+  background: var(--表面背景);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.36);
+  opacity: 0;
+  transform: translateY(14px) scale(0.97);
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.Telegram視窗遮罩.顯示 .Telegram視窗 {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.Telegram視窗關閉 {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 34px;
+  min-width: 0;
+  height: 34px;
+  min-height: 0;
+  border-color: var(--邊框色);
+  border-radius: 999px;
+  padding: 0;
+  color: var(--次要文字);
+  background: var(--表面背景柔和);
+  font-size: 1.35rem;
+  line-height: 1;
+}
+
+.Telegram視窗關閉:hover:not(:disabled) {
+  border-color: var(--Telegram色);
+  color: var(--Telegram文字);
+  background: var(--Telegram色);
+}
+
+.Telegram視窗關閉:focus {
+  border-color: var(--Telegram色);
+  outline: 3px solid var(--Telegram焦點陰影);
+}
+
+.Telegram視窗標頭 {
+  display: grid;
+  gap: 8px;
+  padding-right: 38px;
+}
+
+.Telegram視窗副標,
+.Telegram視窗標頭 p {
+  margin: 0;
+  color: var(--次要文字);
+  font-size: 0.92rem;
+  line-height: 1.55;
+}
+
+.Telegram視窗副標 {
+  color: var(--Telegram色);
+  font-weight: 780;
+}
+
+.Telegram視窗 h2 {
+  margin: 0;
+  color: var(--主要文字);
+  font-size: 1.5rem;
+  line-height: 1.2;
+}
+
+.TelegramQRCode {
+  position: relative;
+  min-height: 250px;
+  display: grid;
+  justify-items: center;
+  align-items: center;
+  margin: 0;
+}
+
+.TelegramQRCode載入動畫 {
+  width: 36px;
+  height: 36px;
+  border: 3px solid color-mix(in srgb, var(--Telegram色) 22%, var(--邊框色));
+  border-top-color: var(--Telegram色);
+  border-radius: 50%;
+  animation: TelegramQRCode旋轉 0.82s linear infinite;
+}
+
+.TelegramQRCode圖片 {
+  width: min(250px, 100%);
+  height: auto;
+  opacity: 0;
+  transition: opacity 0.16s ease;
+}
+
+.TelegramQRCode圖片.載入完成 {
+  opacity: 1;
+}
+
+.TelegramQRCode.載入中 .TelegramQRCode圖片 {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  pointer-events: none;
+}
+
+.Telegram視窗行動列 {
+  display: grid;
+  gap: 10px;
+}
+
+.Telegram主要連結 {
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--Telegram色);
+  border-radius: 8px;
+  padding: 0 16px;
+  color: var(--Telegram文字);
+  background: var(--Telegram色);
+  font-weight: 780;
+  line-height: 1.35;
+  text-align: center;
+  text-decoration: none;
+}
+
+.Telegram主要連結:hover {
+  border-color: var(--Telegram色深);
+  background: var(--Telegram色深);
+}
+
+.Telegram主要連結:focus {
+  outline: 3px solid var(--Telegram焦點陰影);
+  outline-offset: 2px;
+}
+
+.公告中心 {
+  display: inline-flex;
+}
+
+.公告中心按鈕 {
+  position: relative;
+  border-color: var(--公告色);
+  color: var(--主要文字);
+  background: color-mix(in srgb, var(--公告色) 18%, var(--輸入背景));
+}
+
+.公告中心按鈕:hover:not(:disabled) {
+  border-color: var(--公告色深);
+  color: var(--主要文字);
+  background: color-mix(in srgb, var(--公告色) 28%, var(--輸入背景));
+}
+
+.公告中心按鈕:focus {
+  outline: 3px solid var(--公告色柔和);
+}
+
+.公告中心徽章 {
+  min-width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 8px;
+  border-radius: 999px;
+  padding: 0 6px;
+  color: var(--重點文字);
+  background: var(--公告色);
+  font-size: 0.72rem;
+  font-weight: 840;
+  line-height: 1;
+}
+
+.公告通知區 {
+  position: fixed;
+  z-index: 240;
+  top: 24px;
+  right: max(24px, calc((100vw - 1120px) / 2));
+  width: min(360px, calc(100vw - 32px));
+  display: grid;
+  gap: 10px;
+  pointer-events: none;
+}
+
+.公告通知 {
+  display: grid;
+  gap: 12px;
+  border: 1px solid color-mix(in srgb, var(--公告色) 38%, var(--邊框色));
+  border-radius: 8px;
+  padding: 14px;
+  color: var(--主要文字);
+  background: color-mix(in srgb, var(--表面背景) 94%, var(--公告色));
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.28);
+  pointer-events: auto;
+}
+
+.公告通知[data-severity="update"] {
+  border-color: color-mix(in srgb, var(--公告更新色) 46%, var(--邊框色));
+}
+
+.公告通知[data-severity="warning"] {
+  border-color: color-mix(in srgb, var(--公告警示色) 54%, var(--邊框色));
+}
+
+.公告通知標題,
+.公告通知摘要 {
+  margin: 0;
+}
+
+.公告通知標題 {
+  color: var(--公告色);
+  font-size: 0.88rem;
+  font-weight: 840;
+}
+
+.公告通知摘要 {
+  margin-top: 4px;
+  color: var(--主要文字);
+  font-size: 0.92rem;
+  line-height: 1.55;
+}
+
+.公告通知行動列 {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.公告通知詳情,
+.公告通知關閉 {
+  min-height: 34px;
+}
+
+.公告通知詳情 {
+  border-color: var(--邊框柔和色);
+  color: var(--公告色);
+  background: var(--表面背景柔和);
+}
+
+.公告通知詳情:hover:not(:disabled) {
+  border-color: var(--公告色);
+  color: var(--重點文字);
+  background: var(--公告色);
+}
+
+.公告通知關閉 {
+  width: 34px;
+  min-width: 34px;
+  padding: 0;
+  border-color: var(--邊框柔和色);
+  color: var(--次要文字);
+  background: var(--表面背景柔和);
+  font-size: 1.2rem;
+  line-height: 1;
+}
+
+.公告通知關閉:hover:not(:disabled) {
+  border-color: var(--公告色);
+  color: var(--重點文字);
+  background: var(--公告色);
+}
+
+.公告視窗遮罩 {
+  position: fixed;
+  z-index: 270;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.58);
+  opacity: 0;
+  transition: opacity 0.18s ease;
+}
+
+.公告視窗遮罩.顯示 {
+  opacity: 1;
+}
+
+.公告視窗 {
+  width: min(680px, 100%);
+  max-height: min(760px, calc(100vh - 48px));
+  overflow: auto;
+  display: grid;
+  gap: 18px;
+  border: 1px solid var(--邊框色);
+  border-radius: 8px;
+  padding: 22px;
+  color: var(--主要文字);
+  background: var(--表面背景);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.36);
+  opacity: 0;
+  transform: translateY(14px) scale(0.97);
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.公告視窗遮罩.顯示 .公告視窗 {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.公告視窗標題列,
+.公告項目標題列 {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.公告視窗副標,
+.公告視窗標題列 p,
+.公告項目期間 {
+  margin: 0;
+  color: var(--次要文字);
+  font-size: 0.86rem;
+  line-height: 1.55;
+}
+
+.公告視窗副標 {
+  color: var(--公告色);
+  font-weight: 820;
+}
+
+.公告視窗 h2,
+.公告項目 h3 {
+  margin: 4px 0 0;
+  color: var(--主要文字);
+  line-height: 1.2;
+}
+
+.公告視窗 h2 {
+  font-size: 1.45rem;
+}
+
+.公告視窗關閉 {
+  width: 38px;
+  min-width: 38px;
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-color: var(--輸入邊框);
+  padding: 0;
+  color: var(--次要文字);
+  background: var(--輸入背景);
+  font-size: 1.3rem;
+  line-height: 1;
+}
+
+.公告視窗關閉:hover:not(:disabled) {
+  border-color: var(--公告色);
+  color: var(--重點文字);
+  background: var(--公告色);
+}
+
+.公告視窗狀態 {
+  margin: 0;
+  color: var(--次要文字);
+  line-height: 1.6;
+}
+
+.公告列表 {
+  display: grid;
+  gap: 12px;
+}
+
+.公告項目 {
+  display: grid;
+  gap: 12px;
+  border: 1px solid var(--邊框柔和色);
+  border-radius: 8px;
+  padding: 16px;
+  background: var(--表面背景柔和);
+}
+
+.公告項目.目前 {
+  border-color: var(--公告色);
+  box-shadow: 0 0 0 3px var(--公告色柔和);
+}
+
+.公告項目[data-status="expired"] {
+  opacity: 0.72;
+}
+
+.公告項目[data-status="scheduled"] {
+  border-style: dashed;
+}
+
+.公告狀態標籤 {
+  flex: 0 0 auto;
+  border: 1px solid color-mix(in srgb, var(--公告色) 46%, var(--邊框柔和色));
+  border-radius: 999px;
+  padding: 4px 10px;
+  color: var(--公告色);
+  background: var(--表面背景);
+  font-size: 0.76rem;
+  font-weight: 840;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
+.公告項目摘要 {
+  margin: 0;
+  color: var(--主要文字);
+  font-size: 0.94rem;
+  font-weight: 720;
+  line-height: 1.6;
+}
+
+.公告Markdown {
+  display: grid;
+  gap: 8px;
+  color: var(--次要文字);
+  font-size: 0.92rem;
+  line-height: 1.7;
+}
+
+.公告Markdown p,
+.公告Markdown ul,
+.公告Markdown ol,
+.公告Markdown .公告Markdown標題 {
+  margin: 0;
+}
+
+.公告Markdown ul,
+.公告Markdown ol {
+  padding-left: 1.25rem;
+}
+
+.公告Markdown .公告Markdown標題 {
+  color: var(--主要文字);
+  font-size: 1rem;
+}
+
+.公告Markdown a {
+  color: var(--公告色);
+  font-weight: 760;
+}
+
+.公告Markdown code {
+  border: 1px solid var(--邊框柔和色);
+  border-radius: 5px;
+  padding: 1px 5px;
+  color: var(--主要文字);
+  background: var(--輸入背景);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: 0.86em;
+}
+
+.公告連結列 {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.公告連結 {
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--邊框柔和色);
+  border-radius: 8px;
+  padding: 7px 12px;
+  color: var(--公告色);
+  background: var(--表面背景);
+  font-size: 0.86rem;
+  font-weight: 820;
+  line-height: 1.35;
+  text-decoration: none;
+}
+
+.公告連結:hover {
+  border-color: var(--公告色);
+  color: var(--重點文字);
+  background: var(--公告色);
+}
+
+@keyframes TelegramQRCode旋轉 {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.頁面切換容器 {
+  grid-area: nav;
+  margin-bottom: 0;
+}
+
+.頁面選單開關,
+.頁面切換遮罩,
+.頁面切換抽屜標題列 {
+  display: none;
+}
+
+.頁面切換 {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 0;
+}
+
+.手機頁面抽屜 {
+  display: none;
+}
+
+.頁面切換Telegram連結 {
+  display: none;
+}
+
+.頁面切換 button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-color: var(--輸入邊框);
+  color: var(--次要文字);
+  background: var(--輸入背景);
+}
+
+.頁面切換 button:hover:not(:disabled),
+.頁面切換 button.作用中 {
+  border-color: var(--重點色);
+  color: var(--重點文字);
+  background: var(--重點色);
+}
+
+.頁尾宣告 {
+  display: grid;
+  gap: 6px;
+  margin-top: 42px;
+  border-top: 1px solid var(--邊框色);
+  padding-top: 18px;
+  color: var(--靜音文字);
+  font-size: 0.78rem;
+  line-height: 1.55;
+}
+
+.頁尾宣告 p {
+  margin: 0;
+}
+
+.頁尾宣告 p:first-child {
+  color: var(--次要文字);
+  font-weight: 680;
+}
+
+.頁尾作者列 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+}
+
+.頁尾作者互動 {
+  display: inline-flex;
+}
+
+.頁尾作者按鈕 {
+  min-width: 0;
+  min-height: 0;
+  border: 0;
+  border-radius: 4px;
+  padding: 0 2px;
+  color: var(--作者色);
+  background: transparent;
+  font: inherit;
+  font-weight: 780;
+  line-height: inherit;
+}
+
+.頁尾作者按鈕:hover:not(:disabled) {
+  color: var(--作者色深);
+  background: transparent;
+}
+
+.頁尾作者按鈕:focus {
+  outline: 2px solid var(--作者色);
+  outline-offset: 3px;
+}
+
+.作者浮出面板 {
+  position: fixed;
+  z-index: 80;
+  right: max(20px, calc((100vw - 1120px) / 2));
+  bottom: 72px;
+  width: min(500px, calc(100vw - 40px));
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(126px, 164px);
+  align-items: end;
+  gap: 14px;
+  opacity: 0;
+  pointer-events: none;
+  overflow: visible;
+  transition: opacity 0.12s ease;
+}
+
+.作者浮出面板.顯示,
+.作者浮出面板.收回 {
+  opacity: 1;
+}
+
+.作者浮出面板.顯示 {
+  pointer-events: auto;
+}
+
+.作者形象區 {
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: end;
+  width: 100%;
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  margin: 0;
+  opacity: 0;
+  transform: translateX(150%) translateY(28px) rotate(28deg) scale(0.72);
+  transform-origin: 100% 90%;
+}
+
+.作者浮出面板.顯示 .作者形象區 {
+  animation: 作者形象跳出 0.72s cubic-bezier(0.21, 1.28, 0.34, 1) both;
+}
+
+.作者浮出面板.收回 .作者形象區 {
+  animation: 作者形象收回 0.42s cubic-bezier(0.64, 0, 0.78, 0) both;
+}
+
+.作者形象圖 {
+  width: 100%;
+  max-height: 230px;
+  object-fit: contain;
+  filter: drop-shadow(0 16px 24px rgba(0, 0, 0, 0.34));
+}
+
+.作者圖片署名 {
+  max-width: 100%;
+  overflow: hidden;
+  border: 1px solid var(--邊框柔和色);
+  border-radius: 999px;
+  padding: 3px 9px;
+  color: var(--次要文字);
+  background: var(--表面背景);
+  font-size: 0.72rem;
+  font-weight: 760;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.24);
+}
+
+.作者圖片署名 a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.作者圖片署名 a:hover {
+  color: var(--作者色);
+}
+
+.作者圖片署名 a:focus {
+  outline: 2px solid var(--作者色);
+  outline-offset: 3px;
+}
+
+.作者對話框 {
+  position: relative;
+  grid-column: 1;
+  grid-row: 1;
+  border: 1px solid var(--邊框色);
+  border-radius: 8px;
+  padding: 14px 16px;
+  color: var(--主要文字);
+  background: var(--表面背景);
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.32);
+  opacity: 0;
+  transform: translateX(14px) translateY(6px) scale(0.98);
+}
+
+.作者浮出面板.顯示 .作者對話框 {
+  animation: 作者對話浮現 0.28s ease 0.22s both;
+}
+
+.作者浮出面板.收回 .作者對話框 {
+  animation: 作者對話收起 0.18s ease both;
+}
+
+.作者對話框::before {
+  content: "";
+  position: absolute;
+  right: -7px;
+  bottom: 30px;
+  width: 12px;
+  height: 12px;
+  border-top: 1px solid var(--邊框色);
+  border-right: 1px solid var(--邊框色);
+  background: var(--表面背景);
+  transform: rotate(45deg);
+}
+
+.作者對話框 p {
+  margin: 0;
+  font-size: 0.92rem;
+  font-weight: 680;
+  line-height: 1.65;
+}
+
+.作者行動列 {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.作者行動按鈕 {
+  min-width: 0;
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--邊框色);
+  border-radius: 8px;
+  padding: 7px 10px;
+  color: var(--主要文字);
+  background: var(--表面背景柔和);
+  font-size: 0.82rem;
+  font-weight: 780;
+  line-height: 1.35;
+  text-align: center;
+  text-decoration: none;
+  white-space: normal;
+}
+
+.作者行動按鈕:hover {
+  border-color: var(--作者色);
+  color: var(--作者色);
+  background: var(--作者色柔和);
+}
+
+.作者行動按鈕:focus {
+  border-color: var(--作者色);
+  outline: 3px solid var(--作者色柔和);
+  outline-offset: 2px;
+}
+
+@keyframes 作者形象跳出 {
+  0% {
+    opacity: 0;
+    transform: translateX(150%) translateY(28px) rotate(28deg) scale(0.72);
+  }
+
+  48% {
+    opacity: 1;
+    transform: translateX(-16px) translateY(-18px) rotate(-13deg) scale(1.08);
+  }
+
+  66% {
+    opacity: 1;
+    transform: translateX(8px) translateY(8px) rotate(6deg) scale(0.97);
+  }
+
+  82% {
+    opacity: 1;
+    transform: translateX(-4px) translateY(-5px) rotate(-3deg) scale(1.02);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateX(0) translateY(0) rotate(0deg) scale(1);
+  }
+}
+
+@keyframes 作者對話浮現 {
+  from {
+    opacity: 0;
+    transform: translateX(14px) translateY(6px) scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0) translateY(0) scale(1);
+  }
+}
+
+@keyframes 作者形象收回 {
+  0% {
+    opacity: 1;
+    transform: translateX(0) translateY(0) rotate(0deg) scale(1);
+  }
+
+  28% {
+    opacity: 1;
+    transform: translateX(-10px) translateY(-8px) rotate(-6deg) scale(1.03);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateX(155%) translateY(26px) rotate(26deg) scale(0.72);
+  }
+}
+
+@keyframes 作者對話收起 {
+  from {
+    opacity: 1;
+    transform: translateX(0) translateY(0) scale(1);
+  }
+
+  to {
+    opacity: 0;
+    transform: translateX(14px) translateY(6px) scale(0.98);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .頁面切換 {
+    transition: none;
+  }
+
+  .Telegram視窗遮罩,
+  .Telegram視窗,
+  .TelegramQRCode圖片,
+  .公告視窗遮罩,
+  .公告視窗 {
+    transition: none;
+  }
+
+  .TelegramQRCode載入動畫 {
+    animation: none;
+  }
+
+  .Telegram視窗遮罩.顯示 .Telegram視窗 {
+    transform: none;
+  }
+
+  .公告視窗遮罩.顯示 .公告視窗 {
+    transform: none;
+  }
+
+  .作者浮出面板 {
+    transition: none;
+  }
+
+  .作者浮出面板.顯示 .作者形象區,
+  .作者浮出面板.顯示 .作者對話框,
+  .作者浮出面板.收回 .作者形象區,
+  .作者浮出面板.收回 .作者對話框 {
+    animation: none;
+  }
+
+  .作者浮出面板.顯示 .作者形象區,
+  .作者浮出面板.顯示 .作者對話框 {
+    opacity: 1;
+    transform: none;
+  }
+
+  .作者浮出面板.收回 .作者形象區,
+  .作者浮出面板.收回 .作者對話框 {
+    opacity: 0;
+  }
+}
