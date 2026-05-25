@@ -366,6 +366,12 @@ function writeTextFile(path, content) {
 }
 
 const queuedOgPngImages = [];
+const ogPngOptions = {
+  compressionLevel: 9,
+  effort: 8,
+  palette: true,
+  colors: 128,
+};
 
 function queueOgPng(path, svgContent) {
   queuedOgPngImages.push({ path, svgContent });
@@ -375,7 +381,9 @@ async function writeOgPng(path, svgContent) {
   mkdirSync(dirname(path), { recursive: true });
   await sharp(Buffer.from(svgContent))
     .resize(1200, 630, { fit: "fill" })
-    .png({ compressionLevel: 9, effort: 8, palette: true })
+    // OG 圖是高重複量的可重建 PNG；限制 palette 色數可大幅降低 Pages artifact，
+    // 同時維持 crawler-safe 的 1200x630 PNG 與文字可讀性。
+    .png(ogPngOptions)
     .toFile(path);
 }
 

@@ -105,7 +105,7 @@
 7. `build_user_data.mjs` 預設以最新 `rankings_updated_at_iso` 作為 `generated_at_iso`，讓同一批排行榜重建時輸出穩定；可用 `FFXIV_TC_GENERATED_AT_ISO` 覆寫，`npm test` 會用 fixture 驗證這個規則。
 8. `npm run test:frontend-data` 會檢查前端資料讀取邊界、`useRankingApp()` 匯出的 shorthand 是否都有定義，以及公開 JSON 是否具備頁面會讀取的必要欄位。
 9. SEO/OG 分享網址的乾淨路徑需同時維持舊版 query 相容性；`npm run test:frontend-data` 會覆蓋 `/user/{玩家}`、`/stats/{副本 key}`、`/jobs/{職業}`、`/servers/{左}/vs/{右}`、舊版 query 與子路徑部署情境。
-10. `scripts/build_spa_fallback.mjs` 會為 route、個人成績單、副本統計、職業分析與伺服器對比產生各自的 1200x630 PNG OG 圖；內部可用 SVG 模板繪製，但公開 `og:image` / `twitter:image` 必須指向 crawler-safe PNG。
+10. `scripts/build_spa_fallback.mjs` 會為 route、個人成績單、副本統計、職業分析與伺服器對比產生各自的 1200x630 PNG OG 圖；內部可用 SVG 模板繪製，但公開 `og:image` / `twitter:image` 必須指向 crawler-safe PNG。OG PNG 應使用有限 palette 壓縮，避免玩家分享圖隨角色數成長時撐大 GitHub Pages artifact。
 11. `dist/robots.txt` 必須明確允許 `facebookexternalhit` 與 `Facebot`，避免 Facebook 分享偵錯工具把 robots 設定判定為可能阻擋 OG 抓取。
 12. `scripts/apply_cloudflare_rules.mjs` 必須維護 Meta/Facebook 分享爬蟲例外規則；`AS32934`、`AS63293` 與 Cloudflare verified Facebook bot 的 GET/HEAD 請求需跳過會造成 OG 抓取 403 的 Security Level、BIC、UA Blocking、Rate Limiting 與後續自訂規則。
 13. GCD 覆蓋率目前已在前端開啟：`src/utils/siteFeatures.js` 的 `顯示Gcd覆蓋率=true`。GitHub Actions 會在新 report 落地時由 `fetch_fflogs.py` 即時計算 GCD 衍生結果；既有玩家則由 `backfill_gcd_coverage.py --stateful-report-backfill --report-limit 200` 從固定切點往舊 report 逐輪回補。`gcd_report_backfill.cutoff_sort_time` 會保存在 `data/state.json`；若未設定 `FFLOGS_GCD_BACKFILL_CUTOFF_ISO`，第一次正式執行會用當下時間當切點。每輪完成後，`cursor_sort_time` / `cursor_report_code` 會更新成本輪最舊 report，下一輪從該位置繼續往更舊 report 推進；暫時失敗的 report 會保存在 `retry_report_codes`，避免被游標永久略過。`npm run backfill:gcd -- --dry-run` 可手動列出待以本地演算法更新的 GCD 覆蓋率筆數與本輪候選；若要本機全量重算所有非 null 玩家 GCD，使用 `npm run backfill:gcd:all`。

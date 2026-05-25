@@ -235,6 +235,13 @@ async function validateSiteFeatureFlags() {
   );
 }
 
+async function validateStaticSeoBuildOptions() {
+  const source = await readText(path.join(rootDir, "scripts", "build_spa_fallback.mjs"));
+  assert(source.includes("resize(1200, 630"), "SEO/OG 靜態圖必須維持 1200x630 輸出。");
+  assert(source.includes("image/png"), "SEO/OG meta 必須維持 crawler-safe PNG。");
+  assert(source.includes("colors: 128"), "OG PNG 應限制 palette 色數，避免玩家分享圖讓 Pages payload 膨脹。");
+}
+
 function extractSourceSection(source, startText, endText, label) {
   const startIndex = source.indexOf(startText);
   const endIndex = source.indexOf(endText, startIndex + startText.length);
@@ -896,6 +903,7 @@ async function validateShareUrlStateCompatibility() {
 async function main() {
   await validateUseRankingAppReturnBindings();
   await validateFrontendFetchBoundary();
+  await validateStaticSeoBuildOptions();
   await validateSiteFeatureFlags();
   validateJobIconCacheKeys();
   await validateEncounterSwitchFilterPersistence();

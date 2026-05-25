@@ -64,7 +64,7 @@
 - `dist/sitemap.xml`
 - `dist/robots.txt`
 
-因 LINE、Facebook 與多數 OG 檢查器對 SVG 支援不一致，postbuild 會用 `sharp` 將內部 SVG 模板轉成 1200x630 PNG，讓各頁 `og:image` 與 `twitter:image` 都指向自己的實體預覽圖。
+因 LINE、Facebook 與多數 OG 檢查器對 SVG 支援不一致，postbuild 會用 `sharp` 將內部 SVG 模板轉成 1200x630 PNG，讓各頁 `og:image` 與 `twitter:image` 都指向自己的實體預覽圖。玩家頁數會跟收錄角色數同步成長，因此 OG PNG 會使用有限 palette 壓縮，保留 crawler-safe PNG 格式與文字可讀性，同時避免 GitHub Pages artifact 被分享圖撐大。
 
 `dist/robots.txt` 會明確允許 `facebookexternalhit` 與 `Facebot` 抓取分享預覽，首頁仍使用 `public/og-image.png` 作為站台層級預覽圖。
 
