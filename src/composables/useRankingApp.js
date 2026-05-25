@@ -2662,6 +2662,61 @@ function 使用者成績是否較佳(候選, 目前最佳) {
   return new Date(候選.recorded_at_iso || 0).getTime() > new Date(目前最佳.recorded_at_iso || 0).getTime();
 }
 
+function 取得有效排名數值(排名) {
+  const 數值 = 轉為數字(排名);
+  return 數值 !== null && 數值 > 0 ? 數值 : null;
+}
+
+function 取得成績職業排名值(成績) {
+  return 取得有效排名數值(成績?.job_rank ?? 成績?.rank);
+}
+
+function 取得成績前段百分位(成績) {
+  const 百分位 = 轉為數字(成績?.performance?.top_percent);
+  return 百分位 !== null && 百分位 >= 0 ? 百分位 : null;
+}
+
+function 使用者代表成績是否較佳(候選, 目前最佳) {
+  // 個人成績單未套用職業篩選時，代表列要優先呈現「同職排名最亮眼」的有效紀錄。
+  // 這避免坦補主職因 raw rDPS 天生低於輸出職業，而被偶爾遊玩的 DPS 紀錄蓋掉履歷預設職業。
+  if (!候選) {
+    return false;
+  }
+  if (!目前最佳) {
+    return true;
+  }
+
+  const 候選排名 = 取得成績職業排名值(候選);
+  const 目前排名 = 取得成績職業排名值(目前最佳);
+  if (候選排名 !== null || 目前排名 !== null) {
+    if (候選排名 === null) {
+      return false;
+    }
+    if (目前排名 === null) {
+      return true;
+    }
+    if (候選排名 !== 目前排名) {
+      return 候選排名 < 目前排名;
+    }
+  }
+
+  const 候選百分位 = 取得成績前段百分位(候選);
+  const 目前百分位 = 取得成績前段百分位(目前最佳);
+  if (候選百分位 !== null || 目前百分位 !== null) {
+    if (候選百分位 === null) {
+      return false;
+    }
+    if (目前百分位 === null) {
+      return true;
+    }
+    if (候選百分位 !== 目前百分位) {
+      return 候選百分位 < 目前百分位;
+    }
+  }
+
+  return 使用者成績是否較佳(候選, 目前最佳);
+}
+
 function 取得使用者副本成績(資料, 伺服器 = "", 成績篩選 = () => true, 最佳成績比較 = 使用者成績是否較佳) {
   const 副本列表 = Array.isArray(資料?.encounters) ? 資料.encounters : [];
 
