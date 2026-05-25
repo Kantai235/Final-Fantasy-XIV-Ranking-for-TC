@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { publicDataContracts, validateSchemaContract } from "../schemas/public_data_contracts.mjs";
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const publicDataDir = path.join(rootDir, "public", "data");
@@ -45,6 +46,12 @@ async function readJson(filePath, label) {
   } catch (error) {
     reportIssue(`${label} 不是可讀取的 JSON：${error.message}`);
     return null;
+  }
+}
+
+function validateContract(value, schema, label) {
+  for (const issue of validateSchemaContract(value, schema, label)) {
+    reportIssue(issue);
   }
 }
 
@@ -176,6 +183,7 @@ async function validateRankings(publicEncounters) {
     }
 
     const publicRanking = await readJson(publicRankingPath, `${key} 公開排行榜`);
+    validateContract(publicRanking, publicDataContracts.rankingPayload, `${key} 公開排行榜`);
     if (!hasRankingData(publicRanking)) {
       reportIssue(`${key} 公開排行榜缺少 ranking_entries 或 reports`);
     }
@@ -206,6 +214,7 @@ async function validateRankings(publicEncounters) {
       reportIssue(`${key} 缺少排行榜報告細節檔：public/data/ranking-details/${key}.json`);
     } else {
       const details = await readJson(detailPath, `${key} 排行榜報告細節`);
+      validateContract(details, publicDataContracts.rankingDetailsPayload, `${key} 排行榜報告細節`);
       if (details?.format !== "ranking_detail_entries_v1") {
         reportIssue(`${key} 排行榜報告細節 format 必須是 ranking_detail_entries_v1`);
       }
@@ -219,6 +228,7 @@ async function validateRankings(publicEncounters) {
       reportIssue(`${key} 缺少完整排行榜鏡像：public/data/all/rankings/${key}.json`);
     } else {
       const allRanking = await readJson(allRankingPath, `${key} 完整排行榜鏡像`);
+      validateContract(allRanking, publicDataContracts.rankingPayload, `${key} 完整排行榜鏡像`);
       if (!hasRankingData(allRanking)) {
         reportIssue(`${key} 完整排行榜鏡像缺少 ranking_entries`);
       }
@@ -247,6 +257,7 @@ async function validateRankings(publicEncounters) {
       reportIssue(`${key} 缺少完整鏡像排行榜報告細節檔：public/data/all/ranking-details/${key}.json`);
     } else {
       const allDetails = await readJson(allDetailPath, `${key} 完整鏡像排行榜報告細節`);
+      validateContract(allDetails, publicDataContracts.rankingDetailsPayload, `${key} 完整鏡像排行榜報告細節`);
       if (allDetails?.format !== "ranking_detail_entries_v1") {
         reportIssue(`${key} 完整鏡像排行榜報告細節 format 必須是 ranking_detail_entries_v1`);
       }
@@ -419,6 +430,7 @@ async function validateTeamRankings() {
   }
 
   const teamRankings = await readJson(teamRankingsPath, "public/data/team_rankings.json");
+  validateContract(teamRankings, publicDataContracts.teamRankingsPayload, "public/data/team_rankings.json");
   if (teamRankings?.schema_version !== 1) {
     reportIssue("public/data/team_rankings.json 的 schema_version 必須是 1");
   }
@@ -473,6 +485,7 @@ async function validateServerCompare() {
   }
 
   const serverCompare = await readJson(serverComparePath, "public/data/server_compare.json");
+  validateContract(serverCompare, publicDataContracts.serverComparePayload, "public/data/server_compare.json");
   if (serverCompare?.schema_version !== 1) {
     reportIssue("public/data/server_compare.json 的 schema_version 必須是 1");
   }
@@ -500,18 +513,19 @@ async function validateServerCompare() {
   }
 }
 
-async function validateUsers() {
-  const usersDir = path.join(publicDataDir, "users");
+async function validateUserDataset(dataDir, label, { countFiles = false } = {}) {
+  const usersDir = path.join(dataDir, "users");
   const userIndexPath = path.join(usersDir, "index.json");
   if (!existsSync(userIndexPath)) {
-    reportIssue("缺少 public/data/users/index.json，請先執行 npm run build:user-data");
+    reportIssue(`缺少 ${label}/users/index.json，請先執行 npm run build:user-data`);
     return;
   }
 
-  const index = await readJson(userIndexPath, "public/data/users/index.json");
+  const index = await readJson(userIndexPath, `${label}/users/index.json`);
+  validateContract(index, publicDataContracts.userIndexPayload, `${label}/users/index.json`);
   const users = Array.isArray(index?.users) ? index.users : [];
   if (index?.total_users !== users.length) {
-    reportIssue(`public/data/users/index.json 的 total_users=${index?.total_users} 與 users 長度 ${users.length} 不一致`);
+    reportIssue(`${label}/users/index.json 的 total_users=${index?.total_users} 與 users 長度 ${users.length} 不一致`);
   }
 
   for (const user of users) {
@@ -521,7 +535,7 @@ async function validateUsers() {
       continue;
     }
 
-    const userPath = path.resolve(publicDataDir, filePathText.replace(/^data\//, ""));
+    const userPath = path.resolve(dataDir, filePathText.replace(/^data\//, ""));
     if (!assertInside(usersDir, userPath, `使用者索引 ${user?.character_name || filePathText}`)) {
       continue;
     }
@@ -529,7 +543,18 @@ async function validateUsers() {
       reportIssue(`使用者索引指向不存在檔案：${filePathText}`);
       continue;
     }
-    checkedUserFiles += 1;
+    const profile = await readJson(userPath, `${label}/${filePathText}`);
+    validateContract(profile, publicDataContracts.userProfile, `${label}/${filePathText}`);
+    if (countFiles) {
+      checkedUserFiles += 1;
+    }
+  }
+}
+
+async function validateUsers() {
+  await validateUserDataset(publicDataDir, "public/data", { countFiles: true });
+  if (existsSync(path.join(publicAllDataDir, "users", "index.json"))) {
+    await validateUserDataset(publicAllDataDir, "public/data/all");
   }
 }
 
@@ -543,6 +568,10 @@ async function validateAllDataMirror() {
     "server_compare.json",
     "users/index.json",
   ];
+  const mirrorContracts = {
+    "team_rankings.json": publicDataContracts.teamRankingsPayload,
+    "server_compare.json": publicDataContracts.serverComparePayload,
+  };
 
   for (const relativePath of requiredMirrorFiles) {
     const mirrorPath = path.join(publicAllDataDir, relativePath);
@@ -550,7 +579,11 @@ async function validateAllDataMirror() {
       reportIssue(`缺少完整資料鏡像：public/data/all/${normalizePath(relativePath)}`);
       continue;
     }
-    await readJson(mirrorPath, `public/data/all/${normalizePath(relativePath)}`);
+    const mirror = await readJson(mirrorPath, `public/data/all/${normalizePath(relativePath)}`);
+    const contract = mirrorContracts[relativePath];
+    if (contract) {
+      validateContract(mirror, contract, `public/data/all/${normalizePath(relativePath)}`);
+    }
   }
 }
 

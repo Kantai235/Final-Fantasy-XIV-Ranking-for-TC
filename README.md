@@ -100,7 +100,7 @@ README 只保留入口與最小操作脈絡，完整說明請依主題閱讀：
 | `npm run build:public-rankings` | 只重建公開排行榜與副本清單，不呼叫 FFLogs API。 |
 | `npm run build:ranking-tables` | 由公開排行榜產生前端薄索引與按需載入報告細節檔。 |
 | `npm run build:user-data` | 建置個人成績單、全服統計、近期動態、隊伍榜、伺服器對比與排行榜薄索引。 |
-| `npm run validate:data` | 驗證公開資料、分片、全服統計與使用者索引完整性。 |
+| `npm run validate:data` | 驗證公開資料、schema 契約、分片、全服統計與使用者索引完整性。 |
 | `npm run check` | 執行 Python 與 Node.js 語法檢查。 |
 | `npm test` | 執行資料管線、GCD、資料建置與前端資料契約測試。 |
 | `npm run build` | 完整建置靜態網站到 `dist/`。 |

@@ -46,6 +46,18 @@ npm run sync:data -- --dry-run
 
 新寫入的 report 不保存 `fflogs_raw`、`master_data` 與 `matched_players`。這些大型 raw 欄位可依 report code 重查，停止落地是為避免 Git repo 容量快速膨脹。
 
+## 可執行資料契約
+
+`schemas/public_data_contracts.mjs` 是公開資料的可執行契約來源，裡面同時保留 JSDoc typedef 與驗證用 schema。`npm run validate:data` 會套用這份契約檢查：
+
+- `public/data/rankings/*.json` 的 `ranking_entries`。
+- `public/data/ranking-details/*.json` 的按需載入報告細節。
+- `public/data/users/index.json` 與每一份 `public/data/users/*.json` 個人成績單。
+- `public/data/team_rankings.json` 的副本、隊伍紀錄與 8 人隊員列。
+- `public/data/server_compare.json` 的伺服器列、副本列、職業/職能統計與傷害分位。
+
+`public/data/all/` 完整鏡像也會套用同一份契約；hidden report 相關欄位只作為選填欄位保留。新增或移除公開 JSON 欄位時，必須同步更新 `schemas/public_data_contracts.mjs`、資料建置腳本與前端讀取端，讓欄位漂移在 `npm test` 或 `npm run validate:data` 階段被抓到。
+
 ## 排行榜前端薄索引
 
 `public/data/rankings/*.json` 仍保留完整公開 `ranking_entries`，作為相容資料契約與外部檢視入口。前端排行榜預設改讀 `public/data/ranking-tables/{key}.json`：

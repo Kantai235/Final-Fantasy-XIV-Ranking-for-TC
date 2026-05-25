@@ -29,6 +29,8 @@
    npm run validate:data
    ```
 
+   這一步會套用 `schemas/public_data_contracts.mjs` 檢查公開 JSON 契約，包含排行榜條目、個人成績單、隊伍榜與伺服器對比資料。
+
 4. 完整建置網站：
 
    ```bash
