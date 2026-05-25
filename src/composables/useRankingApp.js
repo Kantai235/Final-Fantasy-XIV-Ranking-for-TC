@@ -801,6 +801,151 @@ function 取得排行榜薄索引條目(原始資料, 版本範圍) {
     .filter(Boolean);
 }
 
+function 取得列Id(列, 欄位列表) {
+  if (Array.isArray(列)) {
+    const id索引 = 欄位列表.indexOf("id");
+    return id索引 >= 0 ? 列[id索引] : null;
+  }
+  return 列?.id || null;
+}
+
+function 依順序合併列(公開列 = [], 差量列 = [], 順序 = [], 欄位列表 = []) {
+  const 列索引 = new Map();
+  for (const 列 of [...公開列, ...差量列]) {
+    const id = 取得列Id(列, 欄位列表);
+    if (id) {
+      列索引.set(id, 列);
+    }
+  }
+
+  const 合併後 = [];
+  const 已使用 = new Set();
+  for (const id of Array.isArray(順序) ? 順序 : []) {
+    const 列 = 列索引.get(id);
+    if (列) {
+      合併後.push(列);
+      已使用.add(id);
+    }
+  }
+  if (Array.isArray(順序) && 順序.length > 0) {
+    return 合併後;
+  }
+  for (const 列 of [...公開列, ...差量列]) {
+    const id = 取得列Id(列, 欄位列表);
+    if (id && !已使用.has(id)) {
+      合併後.push(列);
+      已使用.add(id);
+    }
+  }
+  return 合併後;
+}
+
+function 依順序合併條目(公開條目 = [], 差量條目 = [], 順序 = []) {
+  const 條目索引 = new Map();
+  for (const 條目 of [...公開條目, ...差量條目]) {
+    if (條目?.id) {
+      條目索引.set(條目.id, 條目);
+    }
+  }
+
+  const 合併後 = [];
+  const 已使用 = new Set();
+  for (const id of Array.isArray(順序) ? 順序 : []) {
+    const 條目 = 條目索引.get(id);
+    if (條目) {
+      合併後.push(條目);
+      已使用.add(id);
+    }
+  }
+  if (Array.isArray(順序) && 順序.length > 0) {
+    return 合併後;
+  }
+  for (const 條目 of [...公開條目, ...差量條目]) {
+    if (條目?.id && !已使用.has(條目.id)) {
+      合併後.push(條目);
+      已使用.add(條目.id);
+    }
+  }
+  return 合併後;
+}
+
+async function 解析排行榜資料格式(資料) {
+  if (資料?.format === "ranking_table_hidden_delta_v1") {
+    const 公開資料 = await 讀取Json(建立公開資料網址(資料.base_path), "讀取排行榜公開底稿失敗");
+    const 欄位列表 = Array.isArray(資料.table_columns) ? 資料.table_columns : 公開資料.table_columns || [];
+    const 合併後 = {
+      ...公開資料,
+      ...資料,
+      format: "ranking_table_index_v1",
+      hidden_reports_included: true,
+      table_columns: 欄位列表,
+      table_rows: 依順序合併列(公開資料.table_rows, 資料.table_rows, 資料.table_row_order, 欄位列表),
+    };
+    const 版本模式列表 = new Set([
+      ...Object.keys(公開資料.version_table_rows || {}),
+      ...Object.keys(資料.version_table_rows || {}),
+    ]);
+    if (版本模式列表.size > 0) {
+      合併後.version_table_rows = {};
+      for (const 版本模式 of 版本模式列表) {
+        合併後.version_table_rows[版本模式] = 依順序合併列(
+          公開資料.version_table_rows?.[版本模式],
+          資料.version_table_rows?.[版本模式],
+          資料.version_table_row_order?.[版本模式],
+          欄位列表,
+        );
+      }
+    }
+    return 合併後;
+  }
+
+  if (資料?.format === "ranking_hidden_delta_v1") {
+    const 公開資料 = await 讀取Json(建立公開資料網址(資料.base_path), "讀取排行榜公開底稿失敗");
+    const 合併後 = {
+      ...公開資料,
+      ...資料,
+      hidden_reports_included: true,
+      ranking_entries: 依順序合併條目(公開資料.ranking_entries, 資料.ranking_entries, 資料.ranking_entry_order),
+    };
+    const 版本模式列表 = new Set([
+      ...Object.keys(公開資料.version_ranking_entries || {}),
+      ...Object.keys(資料.version_ranking_entries || {}),
+    ]);
+    if (版本模式列表.size > 0) {
+      合併後.version_ranking_entries = {};
+      for (const 版本模式 of 版本模式列表) {
+        合併後.version_ranking_entries[版本模式] = 依順序合併條目(
+          公開資料.version_ranking_entries?.[版本模式],
+          資料.version_ranking_entries?.[版本模式],
+          資料.version_ranking_entry_order?.[版本模式],
+        );
+      }
+    }
+    delete 合併後.format;
+    return 合併後;
+  }
+
+  return 資料;
+}
+
+async function 解析排行榜詳細資料格式(資料) {
+  if (資料?.format !== "ranking_detail_hidden_delta_v1") {
+    return 資料;
+  }
+
+  const 公開資料 = await 讀取Json(建立公開資料網址(資料.base_path), "讀取排行榜報告公開底稿失敗");
+  return {
+    ...公開資料,
+    ...資料,
+    format: "ranking_detail_entries_v1",
+    hidden_reports_included: true,
+    entries: {
+      ...(公開資料.entries || {}),
+      ...(資料.entries || {}),
+    },
+  };
+}
+
 function 成績是否較佳(候選, 目前最佳) {
   if (!目前最佳) {
     return true;
@@ -3654,9 +3799,9 @@ async function 讀取排行榜資料() {
 
   try {
     try {
-      排行榜資料.value = await 讀取Json(排行榜表格資料網址.value, "讀取排行榜薄索引失敗");
+      排行榜資料.value = await 解析排行榜資料格式(await 讀取Json(排行榜表格資料網址.value, "讀取排行榜薄索引失敗"));
     } catch {
-      排行榜資料.value = await 讀取Json(資料網址.value, "讀取失敗");
+      排行榜資料.value = await 解析排行榜資料格式(await 讀取Json(資料網址.value, "讀取失敗"));
     }
   } catch (錯誤) {
     錯誤訊息.value = 錯誤 instanceof Error ? 錯誤.message : "無法讀取排行榜資料";
@@ -3667,10 +3812,12 @@ async function 讀取排行榜資料() {
 
 async function 讀取排行榜詳細資料檔(相對路徑) {
   if (!排行榜詳細資料快取.has(相對路徑)) {
-    const 讀取Promise = 讀取Json(建立公開資料網址(相對路徑), "讀取排行榜報告細節失敗").catch((錯誤) => {
-      排行榜詳細資料快取.delete(相對路徑);
-      throw 錯誤;
-    });
+    const 讀取Promise = 讀取Json(建立公開資料網址(相對路徑), "讀取排行榜報告細節失敗")
+      .then(解析排行榜詳細資料格式)
+      .catch((錯誤) => {
+        排行榜詳細資料快取.delete(相對路徑);
+        throw 錯誤;
+      });
     排行榜詳細資料快取.set(相對路徑, 讀取Promise);
   }
 

@@ -75,7 +75,7 @@
 4. `fight_hash` 用於辨識不同 report 上傳的同一場戰鬥；`source_reports` 與 `duplicate_count` 必須保留，不能因去重而刪掉來源線索。
 5. 新寫入的 report 不保存 `fflogs_raw`、`master_data` 與 `matched_players`；這些大型 raw 欄位可依 report code 重查，停止落地是為避免 Git repo 容量快速膨脹。
 6. 當 `reports` 分片存在時，`ranking_entries` 只視為衍生索引；重建排行榜必須以 `reports -> fights -> players` 為權威來源，避免重抓單一 report 後舊扁平索引把錯誤高分帶回來。
-7. `report_hidden: true` 的 report 預設不進入一般公開資料；`public/data/all/` 則提供完整資料鏡像，供額外檢視流程使用。
+7. `report_hidden: true` 的 report 預設不進入一般公開資料；`public/data/all/` 只保存 hidden delta 與額外檢視必要索引，供前端與公開底稿合併後使用。
 8. 個人成績單未套用職業篩選時，副本代表列與分享用代表職業優先選同職 `job_rank` 最前面的有效紀錄；`summary.best_rdps` 仍保留最高 rDPS，避免跨職業 raw rDPS 讓坦補主職被偶爾遊玩的輸出職業蓋掉。
 9. 個人成績單以 `fight_hash + 角色 + 伺服器 + 職業` 合併同一場戰鬥的多份上傳；合併列保留代表成績，並輸出 `report_variants` 與 `source_reports` 供報告彈窗分頁切換不同 report 來源。
 10. 公開排行榜與所有公開衍生資料遇到同名角色跨伺服器的公開紀錄時，必須以「角色名稱 + 伺服器」拆成不同玩家；不得再用最新公開紀錄所在伺服器自動合併。`canonical_server` 僅保留為既有前端相容欄位，值應等於該份個人成績單自己的伺服器；`server_aliases` 預設為空陣列，不得把另一個同名角色所在伺服器列為 alias。
@@ -111,13 +111,15 @@
 13. GCD 覆蓋率目前已在前端開啟：`src/utils/siteFeatures.js` 的 `顯示Gcd覆蓋率=true`。GitHub Actions 會在新 report 落地時由 `fetch_fflogs.py` 即時計算 GCD 衍生結果；既有玩家則由 `backfill_gcd_coverage.py --stateful-report-backfill --report-limit 200` 從固定切點往舊 report 逐輪回補。`gcd_report_backfill.cutoff_sort_time` 會保存在 `data/state.json`；若未設定 `FFLOGS_GCD_BACKFILL_CUTOFF_ISO`，第一次正式執行會用當下時間當切點。每輪完成後，`cursor_sort_time` / `cursor_report_code` 會更新成本輪最舊 report，下一輪從該位置繼續往更舊 report 推進；暫時失敗的 report 會保存在 `retry_report_codes`，避免被游標永久略過。`npm run backfill:gcd -- --dry-run` 可手動列出待以本地演算法更新的 GCD 覆蓋率筆數與本輪候選；若要本機全量重算所有非 null 玩家 GCD，使用 `npm run backfill:gcd:all`。
 14. `scripts/fetch_fflogs.py` 遇到 FFLogs 暫時性 500/502/503/504 或連線逾時時，只延後受影響副本並保留該副本原掃描點；`active_scan.last_error_*` 會記錄錯誤摘要，已完成副本仍可推進掃描點，避免單一 API 波動中斷整輪資料更新。
 15. GitHub Actions 會用 `FFLOGS_INCREMENTAL_LOOKBACK_HOURS=24` 與 `FFLOGS_NO_CLEAR_RETRY_HOURS=24` 讓最近 24 小時內的 no-clear / incomplete report 重新深查；另用 `FFLOGS_DELAYED_SCAN_*` 開啟 24-72 小時固定延遲掃描，只選入 state 與排行榜都沒見過的新 report，不重查既有紀錄。
-16. 額外檢視流程若需要完整資料，應只把 `/data/...` 改寫到 `/data/all/...`，不應改動前端邏輯；因此 `build:public-rankings` 與 `build:user-data` 必須維持一般公開資料與完整鏡像同步。
+16. 額外檢視流程若需要 hidden report，應載入 `public/data/all/` 的 delta 產物，再由前端依 `base_path` / `file_path` 合併一般公開資料；不可再假設 `/data/all/` 內有所有公開 JSON 的完整複本。
 17. GitHub Actions 會用 `FFLOGS_EXISTING_REPORT_STATUS_CHECK_*` 開啟既有 report 狀態巡檢；每輪依 report 時間由舊到新檢查固定數量，游標保存在 `data/state.json` 的 `existing_report_status_check`，跑完後會回到最舊紀錄繼續輪巡。
 18. `scripts/check_missing_gcd_report_status.py` 是一次性維護工具，只針對缺少 `gcd_coverage` key 或 `gcd_coverage: null` 的既有 report code 做輕量狀態查詢；不可存取時標記 report hidden，不補算 GCD，也不取代 `backfill_gcd_coverage.py`。
 19. `skipped_no_clear` 只在近期重試窗外才視為永久已檢查；workflow 預設 `FFLOGS_NO_CLEAR_RETRY_HOURS=24`，讓剛上傳但尚未匯出通關 fight 的 report 在一天內會被重新深查，避免後續出現 kill 時被舊快取擋掉。
 20. 單次 `fetch_fflogs.py` 執行內，report code 是深層檢查去重單位；`masterData.actors` 的繁中服玩家判斷會寫入本輪記憶體快取，後續同 report code 來自其他副本、recent、delayed 或 history 來源時直接重用結果或錯誤，不重複打 FFLogs API。
 21. GitHub Actions 會用 `FFLOGS_HISTORY_SCAN_*` 環境變數暫時開啟低量歷史補查，並用 `FFLOGS_FETCH_GCD_COVERAGE_*` 在新 report 落地時即時計算 GCD；`config/fflogs.json` 仍預設關閉延遲掃描、歷史補查與 Casts graph 即時計算，避免本機一般執行時額外掃描舊時間窗或查 Casts graph。歷史補查依各副本 `history_scan_cursor_at` 輪巡，專門補抓後來才公開或延後匯出的更舊 report，不取代最新增量掃描與 24-72 小時延遲掃描；若本輪深查上限打滿且仍有 deferred report，游標必須停在最後一筆已選候選的 `startTime`，若該副本本輪未分到深查額度則停回本輪時間窗起點，避免尚未更新的 report 被推到下一輪歷史全區間輪巡後才重試。
 22. `scripts/audit_xivanalysis_gcd_sample.py` 是人工稽核工具，預設用固定 seed 從零式、極、幻隨機抽樣 100 場並輸出 `docs/gcd_xivanalysis_audit_latest.json`；預設 `--local-mode recompute` 會即時重算本地結果再比對 xivanalysis，若要檢查已寫入資料可改用 `--local-mode stored`。`backfill_gcd_coverage.py --raw-events` 可讀 FFLogs `All` raw events、`combatantinfo` 技速/詠速、狀態視窗與 targetability 來追查差異；目前只有 `unreal_byakko` 已正式預設 raw events，其它副本正式啟用前仍需抽樣驗證。加上 `--apply` 時只會把抽樣中超過容許差異的玩家改寫為 `source=xivanalysis_page`。使用後必須重建公開排行榜與使用者資料，且不得放入 GitHub Actions 預設流程，以免對 xivanalysis 造成過量請求。
+23. `npm run test:data-conservation` 是公開資料瘦身前的資料守恆測試，會解析 hidden delta 並檢查排行榜薄索引、報告細節檔、使用者檔與多來源 report 線索，避免後續拆檔或延遲載入時讓既有成績或來源追溯消失。
+24. `npm run audit:pages-payload` 會在 GitHub Actions 建置後以 baseline 模式量測 `dist/`、`dist/data/`、`dist/data/all/`、`dist/data/users/` 與 `dist/og/`。目前只在超過硬上限時失敗，完成資料瘦身後再改用 `npm run audit:pages-payload:strict` 讓 target 成為強制門檻。
 
 ### F. 版本切點與過版紀錄
 1. `config/encounters.json` 的 `version_cutoff` 用來描述副本版本有效期限；目前 `極 佐拉加` 與 `極 豔翼蛇鳥` 的過版切點是台灣時間 2026-04-21 18:00，對應 `2026-04-21T10:00:00.000Z`。

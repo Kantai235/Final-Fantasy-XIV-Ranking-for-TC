@@ -304,6 +304,29 @@ const rankingPayloadSchema = objectOf({
   })),
 });
 
+const rankingHiddenDeltaPayloadSchema = objectOf({
+  schema_version: field("integer", { const: 1 }),
+  format: field("string", { const: "ranking_hidden_delta_v1" }),
+  base_path: dataPathSchema,
+  encounter: objectOf({}, { additionalProperties: true }),
+  updated_at: optional(nullableNumberSchema),
+  updated_at_iso: nullableIsoTimestampSchema,
+  hidden_reports_included: field("boolean", { const: true }),
+  ranking_entry_order: arrayOf(stringSchema),
+  ranking_entries: arrayOf(rankingEntrySchema),
+  version_cutoff: optional(versionCutoffSchema),
+  version_ranking_entry_order: optional(objectOf({
+    all: arrayOf(stringSchema),
+    valid: arrayOf(stringSchema),
+    obsolete: arrayOf(stringSchema),
+  })),
+  version_ranking_entries: optional(objectOf({
+    all: arrayOf(rankingEntrySchema),
+    valid: arrayOf(rankingEntrySchema),
+    obsolete: arrayOf(rankingEntrySchema),
+  })),
+});
+
 const rankingDetailsPayloadSchema = objectOf({
   schema_version: field("integer", { const: 1 }),
   format: field("string", { const: "ranking_detail_entries_v1" }),
@@ -311,6 +334,17 @@ const rankingDetailsPayloadSchema = objectOf({
   updated_at: optional(nullableNumberSchema),
   updated_at_iso: nullableIsoTimestampSchema,
   hidden_reports_included: booleanSchema,
+  entries: recordOf(rankingEntrySchema),
+});
+
+const rankingDetailsHiddenDeltaPayloadSchema = objectOf({
+  schema_version: field("integer", { const: 1 }),
+  format: field("string", { const: "ranking_detail_hidden_delta_v1" }),
+  base_path: dataPathSchema,
+  encounter: objectOf({}, { additionalProperties: true }),
+  updated_at: optional(nullableNumberSchema),
+  updated_at_iso: nullableIsoTimestampSchema,
+  hidden_reports_included: field("boolean", { const: true }),
   entries: recordOf(rankingEntrySchema),
 });
 
@@ -379,6 +413,42 @@ const userProfileSchema = objectOf({
   }),
   frequent_teammates: arrayOf(frequentTeammateSchema),
   encounters: arrayOf(userEncounterSchema),
+});
+
+const userHiddenDeltaEncounterSchema = objectOf({
+  encounter_key: stringSchema,
+  encounter_name: stringSchema,
+  encounter_category: nullableStringSchema,
+  updated_at_iso: nullableIsoTimestampSchema,
+  best_entry: nullable(fullEntrySchema),
+  best_by_job: arrayOf(fullEntrySchema),
+  public_entry_order: arrayOf(stringSchema),
+  public_entries: arrayOf(fullEntrySchema),
+});
+
+const userProfileHiddenDeltaSchema = objectOf({
+  schema_version: field("integer", { const: 1 }),
+  format: field("string", { const: "user_profile_hidden_delta_v1" }),
+  base_path: dataPathSchema,
+  generated_at_iso: isoTimestampSchema,
+  character_name: stringSchema,
+  canonical_server: nullableStringSchema,
+  servers: arrayOf(stringSchema),
+  server_aliases: arrayOf(stringSchema),
+  summary: objectOf({
+    encounter_count: integerSchema,
+    public_entry_count: integerSchema,
+    teammate_count: integerSchema,
+    best_rdps: nullableNumberSchema,
+    best_encounter_key: nullableStringSchema,
+    profile_job: nullableStringSchema,
+    profile_encounter_key: nullableStringSchema,
+    profile_job_rank: nullableNumberSchema,
+    last_recorded_at_iso: nullableIsoTimestampSchema,
+  }),
+  frequent_teammates: arrayOf(frequentTeammateSchema),
+  encounter_order: arrayOf(stringSchema),
+  encounters: arrayOf(userHiddenDeltaEncounterSchema),
 });
 
 const userIndexPayloadSchema = objectOf({
@@ -658,9 +728,12 @@ export function validateSchemaContract(value, schema, label) {
 export const publicDataContracts = {
   rankingEntry: rankingEntrySchema,
   rankingPayload: rankingPayloadSchema,
+  rankingHiddenDeltaPayload: rankingHiddenDeltaPayloadSchema,
   rankingDetailsPayload: rankingDetailsPayloadSchema,
+  rankingDetailsHiddenDeltaPayload: rankingDetailsHiddenDeltaPayloadSchema,
   userIndexPayload: userIndexPayloadSchema,
   userProfile: userProfileSchema,
+  userProfileHiddenDelta: userProfileHiddenDeltaSchema,
   teamRankingsPayload: teamRankingsPayloadSchema,
   serverComparePayload: serverComparePayloadSchema,
 };

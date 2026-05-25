@@ -395,6 +395,51 @@ async function validatePublicDataForFrontend() {
   }
 }
 
+async function validateHiddenDeltaDataForFrontend() {
+  const allDataDir = path.join(publicDataDir, "all");
+  const allUserIndexPath = path.join(allDataDir, "users", "index.json");
+  if (!existsSync(allUserIndexPath)) {
+    return;
+  }
+
+  const useRankingAppSource = await readText(path.join(srcDir, "composables", "useRankingApp.js"));
+  const userDataSource = await readText(path.join(srcDir, "utils", "userData.js"));
+  assert(useRankingAppSource.includes("ranking_table_hidden_delta_v1"), "前端排行榜讀取端必須支援 hidden delta 薄索引");
+  assert(useRankingAppSource.includes("ranking_detail_hidden_delta_v1"), "前端排行榜讀取端必須支援 hidden delta 報告細節");
+  assert(userDataSource.includes("user_profile_hidden_delta_v1"), "前端個人成績單讀取端必須支援 hidden delta");
+
+  const allUserIndex = await readJson(allUserIndexPath, "public/data/all/users/index.json");
+  const deltaUser = (allUserIndex?.users || []).find((user) => String(user?.file_path || "").startsWith("data/all/users/"));
+  assert(deltaUser, "public/data/all/users/index.json 應至少包含一筆 hidden delta 使用者檔");
+  if (deltaUser?.file_path) {
+    const deltaPath = path.join(rootDir, "public", deltaUser.file_path);
+    assert(existsSync(deltaPath), `hidden delta 使用者檔不存在：${deltaUser.file_path}`);
+    const delta = await readJson(deltaPath, `hidden delta 使用者檔 ${deltaUser.file_path}`);
+    assert(delta?.format === "user_profile_hidden_delta_v1", `${deltaUser.file_path} format 必須是 user_profile_hidden_delta_v1`);
+    assert(delta?.base_path?.startsWith("data/users/"), `${deltaUser.file_path} 必須指回公開使用者底稿`);
+    assert(existsSync(path.join(rootDir, "public", delta.base_path || "")), `${deltaUser.file_path} 指向的公開底稿不存在`);
+  }
+
+  const encounters = await readJson(path.join(publicDataDir, "encounters.json"), "public/data/encounters.json");
+  for (const encounter of encounters || []) {
+    const key = encounter?.key;
+    if (!key) {
+      continue;
+    }
+    const allRanking = await readJson(path.join(allDataDir, "rankings", `${key}.json`), `${key} hidden ranking delta`);
+    const allTable = await readJson(path.join(allDataDir, "ranking-tables", `${key}.json`), `${key} hidden table delta`);
+    const allDetails = await readJson(path.join(allDataDir, "ranking-details", `${key}.json`), `${key} hidden details delta`);
+    assert(allRanking?.format === "ranking_hidden_delta_v1", `${key} hidden ranking delta format 必須正確`);
+    assert(allRanking?.base_path === `data/rankings/${key}.json`, `${key} hidden ranking delta 必須指回公開排行榜`);
+    assert(allTable?.format === "ranking_table_hidden_delta_v1", `${key} hidden table delta format 必須正確`);
+    assert(allTable?.base_path === `data/ranking-tables/${key}.json`, `${key} hidden table delta 必須指回公開薄索引`);
+    assert(allTable?.detail_path === `data/all/ranking-details/${key}.json`, `${key} hidden table delta 必須指向 hidden 報告細節`);
+    assert(Array.isArray(allTable?.table_row_order), `${key} hidden table delta 必須保留完整排序 ID`);
+    assert(allDetails?.format === "ranking_detail_hidden_delta_v1", `${key} hidden details delta format 必須正確`);
+    assert(allDetails?.base_path === `data/ranking-details/${key}.json`, `${key} hidden details delta 必須指回公開報告細節`);
+  }
+}
+
 function validateScopedJobShareRecalculation() {
   const source = {
     role_stats: [
@@ -827,6 +872,7 @@ async function main() {
   validateJobIconCacheKeys();
   await validateEncounterSwitchFilterPersistence();
   await validatePublicDataForFrontend();
+  await validateHiddenDeltaDataForFrontend();
   validateReportExternalLinks();
   validateScopedJobShareRecalculation();
   validateGlobalStatsOverviewDenominator();

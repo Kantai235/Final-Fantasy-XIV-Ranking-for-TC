@@ -74,6 +74,174 @@ function hasRankingData(ranking) {
   return Array.isArray(ranking?.ranking_entries) || Array.isArray(ranking?.report_shards) || ranking?.reports;
 }
 
+function mergeEntriesByOrder(baseEntries = [], deltaEntries = [], order = []) {
+  const entriesById = new Map();
+  for (const entry of [...baseEntries, ...deltaEntries]) {
+    if (entry?.id) {
+      entriesById.set(entry.id, entry);
+    }
+  }
+
+  const merged = [];
+  const usedIds = new Set();
+  for (const id of Array.isArray(order) ? order : []) {
+    const entry = entriesById.get(id);
+    if (entry) {
+      merged.push(entry);
+      usedIds.add(id);
+    }
+  }
+  if (Array.isArray(order) && order.length > 0) {
+    return merged;
+  }
+  for (const entry of [...baseEntries, ...deltaEntries]) {
+    if (entry?.id && !usedIds.has(entry.id)) {
+      merged.push(entry);
+      usedIds.add(entry.id);
+    }
+  }
+  return merged;
+}
+
+function tableRowId(row, columns) {
+  if (Array.isArray(row)) {
+    const idIndex = columns.indexOf("id");
+    return idIndex >= 0 ? row[idIndex] : null;
+  }
+  return row?.id || null;
+}
+
+function mergeRowsByOrder(baseRows = [], deltaRows = [], order = [], columns = []) {
+  const rowsById = new Map();
+  for (const row of [...baseRows, ...deltaRows]) {
+    const id = tableRowId(row, columns);
+    if (id) {
+      rowsById.set(id, row);
+    }
+  }
+
+  const merged = [];
+  const usedIds = new Set();
+  for (const id of Array.isArray(order) ? order : []) {
+    const row = rowsById.get(id);
+    if (row) {
+      merged.push(row);
+      usedIds.add(id);
+    }
+  }
+  if (Array.isArray(order) && order.length > 0) {
+    return merged;
+  }
+  for (const row of [...baseRows, ...deltaRows]) {
+    const id = tableRowId(row, columns);
+    if (id && !usedIds.has(id)) {
+      merged.push(row);
+      usedIds.add(id);
+    }
+  }
+  return merged;
+}
+
+async function resolveRankingPayload(ranking, label) {
+  if (ranking?.format !== "ranking_hidden_delta_v1") {
+    return ranking;
+  }
+
+  validateContract(ranking, publicDataContracts.rankingHiddenDeltaPayload, label);
+  const basePath = path.resolve(publicDataDir, ranking.base_path.replace(/^data\//, ""));
+  if (!assertInside(publicDataDir, basePath, `${label} base_path`)) {
+    return ranking;
+  }
+  const baseRanking = await readJson(basePath, `${label} 公開底稿`);
+  const merged = {
+    ...baseRanking,
+    ...ranking,
+    hidden_reports_included: true,
+    ranking_entries: mergeEntriesByOrder(baseRanking?.ranking_entries, ranking.ranking_entries, ranking.ranking_entry_order),
+  };
+  const versionModes = new Set([
+    ...Object.keys(baseRanking?.version_ranking_entries || {}),
+    ...Object.keys(ranking.version_ranking_entries || {}),
+  ]);
+  if (versionModes.size > 0) {
+    merged.version_ranking_entries = {};
+    for (const versionMode of versionModes) {
+      merged.version_ranking_entries[versionMode] = mergeEntriesByOrder(
+        baseRanking?.version_ranking_entries?.[versionMode],
+        ranking.version_ranking_entries?.[versionMode],
+        ranking.version_ranking_entry_order?.[versionMode],
+      );
+    }
+  }
+  delete merged.format;
+  delete merged.base_path;
+  delete merged.ranking_entry_order;
+  delete merged.version_ranking_entry_order;
+  return merged;
+}
+
+async function resolveRankingTablePayload(table, label) {
+  if (table?.format !== "ranking_table_hidden_delta_v1") {
+    return table;
+  }
+
+  const basePath = path.resolve(publicDataDir, table.base_path.replace(/^data\//, ""));
+  if (!assertInside(publicDataDir, basePath, `${label} base_path`)) {
+    return table;
+  }
+  const baseTable = await readJson(basePath, `${label} 公開底稿`);
+  const columns = Array.isArray(table.table_columns) ? table.table_columns : baseTable?.table_columns || [];
+  const merged = {
+    ...baseTable,
+    ...table,
+    format: "ranking_table_index_v1",
+    hidden_reports_included: true,
+    table_columns: columns,
+    table_rows: mergeRowsByOrder(baseTable?.table_rows, table.table_rows, table.table_row_order, columns),
+  };
+  const versionModes = new Set([
+    ...Object.keys(baseTable?.version_table_rows || {}),
+    ...Object.keys(table.version_table_rows || {}),
+  ]);
+  if (versionModes.size > 0) {
+    merged.version_table_rows = {};
+    for (const versionMode of versionModes) {
+      merged.version_table_rows[versionMode] = mergeRowsByOrder(
+        baseTable?.version_table_rows?.[versionMode],
+        table.version_table_rows?.[versionMode],
+        table.version_table_row_order?.[versionMode],
+        columns,
+      );
+    }
+  }
+  return merged;
+}
+
+async function resolveRankingDetailsPayload(details, label) {
+  if (details?.format !== "ranking_detail_hidden_delta_v1") {
+    return details;
+  }
+
+  validateContract(details, publicDataContracts.rankingDetailsHiddenDeltaPayload, label);
+  const basePath = path.resolve(publicDataDir, details.base_path.replace(/^data\//, ""));
+  if (!assertInside(publicDataDir, basePath, `${label} base_path`)) {
+    return details;
+  }
+  const baseDetails = await readJson(basePath, `${label} 公開底稿`);
+  const merged = {
+    ...baseDetails,
+    ...details,
+    format: "ranking_detail_entries_v1",
+    hidden_reports_included: true,
+    entries: {
+      ...(baseDetails?.entries || {}),
+      ...(details.entries || {}),
+    },
+  };
+  delete merged.base_path;
+  return merged;
+}
+
 function isFiniteNumber(value) {
   return Number.isFinite(Number(value));
 }
@@ -227,7 +395,8 @@ async function validateRankings(publicEncounters) {
     if (!existsSync(allRankingPath)) {
       reportIssue(`${key} 缺少完整排行榜鏡像：public/data/all/rankings/${key}.json`);
     } else {
-      const allRanking = await readJson(allRankingPath, `${key} 完整排行榜鏡像`);
+      const rawAllRanking = await readJson(allRankingPath, `${key} 完整排行榜鏡像`);
+      const allRanking = await resolveRankingPayload(rawAllRanking, `${key} 完整排行榜鏡像`);
       validateContract(allRanking, publicDataContracts.rankingPayload, `${key} 完整排行榜鏡像`);
       if (!hasRankingData(allRanking)) {
         reportIssue(`${key} 完整排行榜鏡像缺少 ranking_entries`);
@@ -245,7 +414,8 @@ async function validateRankings(publicEncounters) {
     if (!existsSync(allTablePath)) {
       reportIssue(`${key} 缺少完整鏡像排行榜薄索引：public/data/all/ranking-tables/${key}.json`);
     } else {
-      const allTable = await readJson(allTablePath, `${key} 完整鏡像排行榜薄索引`);
+      const rawAllTable = await readJson(allTablePath, `${key} 完整鏡像排行榜薄索引`);
+      const allTable = await resolveRankingTablePayload(rawAllTable, `${key} 完整鏡像排行榜薄索引`);
       if (allTable?.hidden_reports_included !== true) {
         reportIssue(`${key} 完整鏡像排行榜薄索引必須標記 hidden_reports_included=true`);
       }
@@ -256,7 +426,8 @@ async function validateRankings(publicEncounters) {
     if (!existsSync(allDetailPath)) {
       reportIssue(`${key} 缺少完整鏡像排行榜報告細節檔：public/data/all/ranking-details/${key}.json`);
     } else {
-      const allDetails = await readJson(allDetailPath, `${key} 完整鏡像排行榜報告細節`);
+      const rawAllDetails = await readJson(allDetailPath, `${key} 完整鏡像排行榜報告細節`);
+      const allDetails = await resolveRankingDetailsPayload(rawAllDetails, `${key} 完整鏡像排行榜報告細節`);
       validateContract(allDetails, publicDataContracts.rankingDetailsPayload, `${key} 完整鏡像排行榜報告細節`);
       if (allDetails?.format !== "ranking_detail_entries_v1") {
         reportIssue(`${key} 完整鏡像排行榜報告細節 format 必須是 ranking_detail_entries_v1`);
@@ -535,8 +706,8 @@ async function validateUserDataset(dataDir, label, { countFiles = false } = {}) 
       continue;
     }
 
-    const userPath = path.resolve(dataDir, filePathText.replace(/^data\//, ""));
-    if (!assertInside(usersDir, userPath, `使用者索引 ${user?.character_name || filePathText}`)) {
+    const userPath = path.resolve(publicDataDir, filePathText.replace(/^data\//, ""));
+    if (!assertInside(publicDataDir, userPath, `使用者索引 ${user?.character_name || filePathText}`)) {
       continue;
     }
     if (!existsSync(userPath)) {
@@ -544,7 +715,15 @@ async function validateUserDataset(dataDir, label, { countFiles = false } = {}) 
       continue;
     }
     const profile = await readJson(userPath, `${label}/${filePathText}`);
-    validateContract(profile, publicDataContracts.userProfile, `${label}/${filePathText}`);
+    if (profile?.format === "user_profile_hidden_delta_v1") {
+      validateContract(profile, publicDataContracts.userProfileHiddenDelta, `${label}/${filePathText}`);
+      const basePath = path.resolve(publicDataDir, profile.base_path.replace(/^data\//, ""));
+      if (assertInside(publicDataDir, basePath, `${label}/${filePathText} base_path`) && !existsSync(basePath)) {
+        reportIssue(`${label}/${filePathText} 指向不存在的公開成績單底稿：${profile.base_path}`);
+      }
+    } else {
+      validateContract(profile, publicDataContracts.userProfile, `${label}/${filePathText}`);
+    }
     if (countFiles) {
       checkedUserFiles += 1;
     }

@@ -1850,6 +1850,55 @@ function buildUserPayload(user, generatedAtIso, updatedAtIsoByEncounter) {
   };
 }
 
+function hasHiddenReportMarker(value) {
+  return Boolean(value?.report_hidden || value?.hidden_report);
+}
+
+function buildUserHiddenDeltaPayload(payload, basePath) {
+  const deltaEncounters = (payload.encounters || [])
+    .map((encounter) => {
+      const hiddenEntries = (encounter.public_entries || []).filter(hasHiddenReportMarker);
+      const hasHiddenBestEntry = hasHiddenReportMarker(encounter.best_entry);
+      const hasHiddenBestByJob = (encounter.best_by_job || []).some(hasHiddenReportMarker);
+      if (hiddenEntries.length === 0 && !hasHiddenBestEntry && !hasHiddenBestByJob) {
+        return null;
+      }
+
+      return {
+        encounter_key: encounter.encounter_key,
+        encounter_name: encounter.encounter_name,
+        encounter_category: encounter.encounter_category,
+        updated_at_iso: encounter.updated_at_iso,
+        // best_entry / best_by_job 使用完整鏡像的結果，避免 hidden report 其實是該副本代表成績時，
+        // 前端只附加 hidden 歷史列卻仍顯示公開資料的代表列。
+        best_entry: encounter.best_entry,
+        best_by_job: encounter.best_by_job || [],
+        public_entry_order: (encounter.public_entries || []).map((entry) => entry?.id).filter(Boolean),
+        public_entries: hiddenEntries,
+      };
+    })
+    .filter(Boolean);
+
+  if (deltaEncounters.length === 0) {
+    return null;
+  }
+
+  return {
+    schema_version: 1,
+    format: "user_profile_hidden_delta_v1",
+    base_path: basePath,
+    generated_at_iso: payload.generated_at_iso,
+    character_name: payload.character_name,
+    canonical_server: payload.canonical_server,
+    servers: payload.servers,
+    server_aliases: payload.server_aliases,
+    summary: payload.summary,
+    frequent_teammates: payload.frequent_teammates,
+    encounter_order: (payload.encounters || []).map((encounter) => encounter.encounter_key).filter(Boolean),
+    encounters: deltaEncounters,
+  };
+}
+
 function buildRecentEntries(entries, sinceMs) {
   return entries
     .filter((entry) => entryRecordedAtMs(entry) >= sinceMs)
@@ -2345,6 +2394,7 @@ async function buildDataset({
   outputDataDir,
   includeHiddenReports = false,
   label = "公開",
+  userProfileMode = "full",
 }) {
   const outputDir = path.join(outputDataDir, "users");
   const globalStatsPath = path.join(outputDataDir, "global_stats.json");
@@ -2431,6 +2481,7 @@ async function buildDataset({
   const generatedAtIso = resolveGeneratedAtIso(latestRankingUpdatedAt);
   const usedFileBaseNames = new Set();
   const indexUsers = [];
+  let writtenUserFileCount = 0;
 
   for (const user of Array.from(usersByIdentity.values()).sort((left, right) => {
     const nameCompare = compareByLocale(left.character_name, right.character_name);
@@ -2447,14 +2498,29 @@ async function buildDataset({
     const fileName = `${fileBaseName}.json`;
     const filePath = path.join(outputDir, fileName);
     const payload = buildUserPayload(user, generatedAtIso, updatedAtIsoByEncounter);
-    await writeJson(filePath, payload);
+    const publicFilePathText = `data/users/${fileName}`;
+    let indexFilePathText = publicFilePathText;
+
+    if (userProfileMode === "hidden-delta") {
+      const deltaPayload = buildUserHiddenDeltaPayload(payload, publicFilePathText);
+      if (deltaPayload) {
+        // public/data/all/users 只保存 hidden report 差量；沒有 hidden 成績的使用者直接指回公開成績單。
+        // 這能避免完整鏡像把數千份公開個人成績單再複製一份，同時保留額外檢視需要的 hidden 來源。
+        await writeJson(filePath, deltaPayload);
+        writtenUserFileCount += 1;
+        indexFilePathText = `data/all/users/${fileName}`;
+      }
+    } else {
+      await writeJson(filePath, payload);
+      writtenUserFileCount += 1;
+    }
 
     indexUsers.push({
       character_name: user.character_name,
       canonical_server: payload.canonical_server,
       servers: payload.servers,
       server_aliases: payload.server_aliases,
-      file_path: `data/users/${fileName}`,
+      file_path: indexFilePathText,
       encounter_count: payload.summary.encounter_count,
       public_entry_count: payload.summary.public_entry_count,
       best_rdps: payload.summary.best_rdps,
@@ -2505,9 +2571,9 @@ async function buildDataset({
   await writeJson(teamRankingsPath, buildTeamRankingsPayload(teamRecordsByEncounter, generatedAtIso, latestRankingUpdatedAt));
   await writeJson(serverComparePath, buildServerComparePayload(allEntries, normalizedEncounterStats, generatedAtIso, latestRankingUpdatedAt));
   await syncAnnouncementMirror(outputDataDir);
-  await waitForUserOutputReady(outputDir, indexUsers.length, label);
+  await waitForUserOutputReady(outputDir, writtenUserFileCount, label);
 
-  console.log(`Built ${label} ${indexUsers.length} user data files in ${path.relative(rootDir, outputDir)}.`);
+  console.log(`Built ${label} ${writtenUserFileCount} user data files in ${path.relative(rootDir, outputDir)}.`);
   console.log(`Built ${label} global stats in ${path.relative(rootDir, globalStatsPath)}.`);
   console.log(`Built ${label} activity feed in ${path.relative(rootDir, activityPath)}.`);
   console.log(`Built ${label} team rankings in ${path.relative(rootDir, teamRankingsPath)}.`);
@@ -2521,11 +2587,12 @@ async function main() {
     label: "預設公開",
   });
 
-  // public/data/all 是完整資料鏡像，讓額外檢視流程能和一般公開資料使用相同 JSON 結構。
+  // public/data/all 是 hidden delta 產物：公開資料維持在 public/data，all 只補 hidden report 差異。
   await buildDataset({
     outputDataDir: path.join(basePublicDataDir, "all"),
     includeHiddenReports: true,
-    label: "完整鏡像",
+    label: "Hidden delta",
+    userProfileMode: "hidden-delta",
   });
 }
 

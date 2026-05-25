@@ -56,7 +56,19 @@ npm run sync:data -- --dry-run
 - `public/data/team_rankings.json` 的副本、隊伍紀錄與 8 人隊員列。
 - `public/data/server_compare.json` 的伺服器列、副本列、職業/職能統計與傷害分位。
 
-`public/data/all/` 完整鏡像也會套用同一份契約；hidden report 相關欄位只作為選填欄位保留。新增或移除公開 JSON 欄位時，必須同步更新 `schemas/public_data_contracts.mjs`、資料建置腳本與前端讀取端，讓欄位漂移在 `npm test` 或 `npm run validate:data` 階段被抓到。
+`public/data/all/` 目前是 hidden delta 產物，不再複製所有公開 JSON；delta 檔也有自己的資料契約，驗證時會先與公開底稿合併再檢查完整資料形狀。新增或移除公開 JSON 欄位時，必須同步更新 `schemas/public_data_contracts.mjs`、資料建置腳本與前端讀取端，讓欄位漂移在 `npm test` 或 `npm run validate:data` 階段被抓到。
+
+## 資料守恆與 payload 預算
+
+`scripts/test_data_conservation.mjs` 是資料瘦身前的守門測試，會檢查：
+
+- `users/index.json` 的 `total_users`、`encounter_count` 與 `public_entry_count` 是否和實際使用者檔一致。
+- `ranking-tables` 列數是否等於公開 `ranking_entries`。
+- 標記 `has_report_detail` 的排行榜薄索引列是否都能在 `ranking-details` 找到完整 entry。
+- `duplicate_count > 1` 的個人成績是否仍保留 `report_variants` / `source_reports`，或保留未來按需載入細節的指標欄位。
+- `public/data/all` 的 hidden delta 是否能與一般公開資料合併，避免額外檢視流程缺漏公開資料或 hidden 來源。
+
+`scripts/audit_pages_payload.mjs` 則量測 `dist/`、`dist/data/`、`dist/data/all/`、`dist/data/users/` 與 `dist/og/`。預設 baseline 模式只會在超過硬上限時失敗，並列出 GitHub Pages 目標值；後續完成瘦身後，改用 `npm run audit:pages-payload:strict` 讓 `dist` 超過 target 時直接失敗。
 
 ## 排行榜前端薄索引
 
@@ -70,7 +82,11 @@ npm run sync:data -- --dry-run
 
 `public/data/ranking-details/{key}.json` 保存以 entry `id` 為 key 的完整公開排行榜條目，用來組成 FFLogs、xivanalysis 與 ffreplay 外部連結，以及報告彈窗內的追溯欄位。這組檔案是公開 `ranking_entries` 的衍生快取，不是權威來源；重建時仍以 `data/rankings/*.json` 與分片為準。
 
-`public/data/all/ranking-tables/` 與 `public/data/all/ranking-details/` 會同步輸出完整鏡像版本，讓額外檢視流程只改寫 `/data/...` 到 `/data/all/...` 時仍能維持按需載入。
+`public/data/all/ranking-tables/` 與 `public/data/all/ranking-details/` 輸出 hidden delta：
+
+- `format="ranking_table_hidden_delta_v1"`：只保存 hidden 排行列、完整排序 ID 與 `base_path`，前端讀到後會載入公開 `ranking-tables` 底稿合併。
+- `format="ranking_detail_hidden_delta_v1"`：只保存 hidden 報告細節 entry，前端會與公開 `ranking-details` 合併。
+- `public/data/all/rankings/*.json` 也改為 `format="ranking_hidden_delta_v1"`，保留 hidden `ranking_entries` 與排序 ID，供相容 fallback 或額外檢視使用。
 
 ## 去重與排名規則
 
@@ -103,7 +119,7 @@ npm run sync:data -- --dry-run
 
 `active_percent` 對齊 FFLogs Damage Done CSV 的 Active%，優先使用 `fflogs_total_time_ms` 作為分母；DPS/rDPS/aDPS 仍使用 `damage_time_ms` 作為分母。
 
-## Hidden Report 與完整鏡像
+## Hidden Report 與 Hidden Delta
 
 資料管線可在 report 上標記：
 
@@ -112,15 +128,17 @@ npm run sync:data -- --dry-run
 - `hidden_detected_at_iso`
 - `hidden_source`
 
-一般公開資料會排除 hidden report，讓前端不需要在 Vue 元件內重做資料狀態判斷。`public/data/all/` 會同步輸出完整資料鏡像，供額外檢視流程使用。
+一般公開資料會排除 hidden report，讓前端不需要在 Vue 元件內重做資料狀態判斷。`public/data/all/` 只輸出 hidden delta，供額外檢視流程與公開資料合併：
 
-額外檢視流程若需要完整資料，應只把 `/data/...` 改寫到 `/data/all/...`；若部署端尚未產生鏡像，應退回一般公開資料，避免網站載入失敗。
+- `users/index.json` 仍列出所有角色；沒有 hidden 成績的角色 `file_path` 直接指回 `data/users/*.json`，有 hidden 成績的角色才指向 `data/all/users/*.json`。
+- `data/all/users/*.json` 使用 `format="user_profile_hidden_delta_v1"`，保存 hidden 副本列、完整排序 ID、完整 summary 與常同場隊友；前端會依 `base_path` 載入公開個人成績單後合併。
+- 額外檢視流程若把部分 `/data/...` 載入改到 `/data/all/...`，必須允許前端依 `base_path` / `file_path` 讀回公開底稿；不可再假設 `/data/all/` 有所有公開檔案的完整複本。
 
 若玩家的公開成績沒有可列出的 entry，一般 `public/data/users/index.json` 仍會保留空白成績單入口與伺服器資訊，讓 `/user/{玩家}` 頁面可以開啟；預設成績單不會輸出副本成績、分數、隊友或紀錄時間。
 
 ## 全域公告資料
 
-全域公告由 `public/data/announcements.json` 提供，`npm run build:user-data` 會同步產生 `public/data/all/announcements.json`，避免額外檢視流程把 `/data/...` 改寫到 `/data/all/...` 時公告讀取失敗。公告是 commit 維護的營運靜態內容，不屬於 FFLogs 抓取或使用者統計建置產物。
+全域公告由 `public/data/announcements.json` 提供，`npm run build:user-data` 會同步產生 `public/data/all/announcements.json`，避免額外檢視流程讀取 hidden delta 根目錄資料時公告缺檔。公告是 commit 維護的營運靜態內容，不屬於 FFLogs 抓取或使用者統計建置產物。
 
 公告檔格式：
 

@@ -19,9 +19,10 @@
    ```
 
    這一步會產生 `public/data/users/`、`public/data/users/index.json`、`public/data/global_stats.json`、`public/data/activity.json`、`public/data/team_rankings.json` 與 `public/data/server_compare.json`。
-   指令結束前也會執行 `npm run build:ranking-tables`，由公開排行榜產生 `public/data/ranking-tables/` 薄索引與 `public/data/ranking-details/` 按需載入細節檔。
+   同時會在 `public/data/all/` 產生 hidden delta：有 hidden 成績的個人成績單才輸出差量檔，沒有 hidden 成績的索引項目會直接指回公開成績單。
+   指令結束前也會執行 `npm run build:ranking-tables`，由公開排行榜產生 `public/data/ranking-tables/` 薄索引與 `public/data/ranking-details/` 按需載入細節檔，並把 `public/data/all/rankings|ranking-tables|ranking-details` 轉成 hidden delta。
 
-   全域公告內容直接維護在 `public/data/announcements.json`；這一步會把它同步到 `public/data/all/announcements.json`，供完整鏡像檢視流程使用。
+   全域公告內容直接維護在 `public/data/announcements.json`；這一步會把它同步到 `public/data/all/announcements.json`，供 hidden delta 檢視流程使用。
 
 3. 驗證資料完整性：
 
@@ -38,6 +39,7 @@
    ```
 
    `npm run build` 會先自動執行 `build:public-rankings`、`build:user-data` 與 `validate:data`，再由 Vite 建置靜態網站到 `dist/`。
+   GitHub Actions 會在建置後執行 `npm run audit:pages-payload`，用 baseline 模式確認 Pages artifact 沒有超過目前硬上限；完成資料瘦身後可切換到 `audit:pages-payload:strict`。
 
 ## FFLogs 掃描策略
 

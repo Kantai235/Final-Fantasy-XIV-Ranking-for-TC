@@ -278,11 +278,7 @@ export function 解析使用者搜尋目標(輸入文字, 使用者索引列表,
   };
 }
 
-export async function 讀取使用者資料檔(角色名稱, 使用者索引列表, 伺服器 = "") {
-  const 搜尋目標 = 解析使用者搜尋目標(角色名稱, 使用者索引列表, 伺服器);
-  const 查詢名稱 = String(搜尋目標.角色名稱 || "").trim();
-  const 索引條目 = 搜尋目標.索引條目;
-  const 資料網址 = 索引條目?.file_path ? 建立公開資料網址(索引條目.file_path) : 建立使用者預設資料網址(查詢名稱);
+async function 讀取使用者Json(資料網址, 錯誤訊息) {
   const 回應 = await fetch(資料網址, {
     headers: {
       Accept: "application/json",
@@ -290,8 +286,123 @@ export async function 讀取使用者資料檔(角色名稱, 使用者索引列�
   });
 
   if (!回應.ok) {
-    throw new Error(`找不到「${查詢名稱}」的個人成績單`);
+    throw new Error(錯誤訊息);
   }
 
   return 回應.json();
+}
+
+function 複製資料(資料) {
+  return JSON.parse(JSON.stringify(資料 || {}));
+}
+
+function 合併使用者副本差量(公開副本, 差量副本) {
+  const 合併後 = {
+    ...公開副本,
+    encounter_key: 差量副本.encounter_key || 公開副本.encounter_key,
+    encounter_name: 差量副本.encounter_name || 公開副本.encounter_name,
+    encounter_category: 差量副本.encounter_category ?? 公開副本.encounter_category ?? null,
+    updated_at_iso: 差量副本.updated_at_iso ?? 公開副本.updated_at_iso ?? null,
+    best_entry: 差量副本.best_entry ?? 公開副本.best_entry ?? null,
+    best_by_job: Array.isArray(差量副本.best_by_job) ? 差量副本.best_by_job : 公開副本.best_by_job || [],
+  };
+  const 成績索引 = new Map();
+  for (const 成績 of 公開副本.public_entries || []) {
+    if (成績?.id) {
+      成績索引.set(成績.id, 成績);
+    }
+  }
+  for (const 成績 of 差量副本.public_entries || []) {
+    if (成績?.id) {
+      成績索引.set(成績.id, 成績);
+    }
+  }
+
+  const 排序後 = [];
+  const 已使用 = new Set();
+  for (const id of 差量副本.public_entry_order || []) {
+    const 成績 = 成績索引.get(id);
+    if (成績) {
+      排序後.push(成績);
+      已使用.add(id);
+    }
+  }
+  if (Array.isArray(差量副本.public_entry_order) && 差量副本.public_entry_order.length > 0) {
+    合併後.public_entries = 排序後;
+    return 合併後;
+  }
+  for (const 成績 of [...(公開副本.public_entries || []), ...(差量副本.public_entries || [])]) {
+    if (成績?.id && !已使用.has(成績.id)) {
+      排序後.push(成績);
+      已使用.add(成績.id);
+    }
+  }
+  合併後.public_entries = 排序後;
+  return 合併後;
+}
+
+async function 解析使用者隱藏差量(差量資料) {
+  if (差量資料?.format !== "user_profile_hidden_delta_v1") {
+    return 差量資料;
+  }
+
+  const 公開底稿 = 差量資料.base_path
+    ? await 讀取使用者Json(建立公開資料網址(差量資料.base_path), "找不到公開個人成績單底稿").catch(() => null)
+    : null;
+  const 合併後 = {
+    ...複製資料(公開底稿),
+    schema_version: 1,
+    generated_at_iso: 差量資料.generated_at_iso,
+    character_name: 差量資料.character_name || 公開底稿?.character_name || "",
+    canonical_server: 差量資料.canonical_server ?? 公開底稿?.canonical_server ?? null,
+    servers: Array.isArray(差量資料.servers) ? 差量資料.servers : 公開底稿?.servers || [],
+    server_aliases: Array.isArray(差量資料.server_aliases) ? 差量資料.server_aliases : 公開底稿?.server_aliases || [],
+    summary: 差量資料.summary || 公開底稿?.summary || {},
+    frequent_teammates: Array.isArray(差量資料.frequent_teammates)
+      ? 差量資料.frequent_teammates
+      : 公開底稿?.frequent_teammates || [],
+  };
+
+  const 副本索引 = new Map((公開底稿?.encounters || []).map((副本) => [副本.encounter_key, 複製資料(副本)]));
+  for (const 差量副本 of 差量資料.encounters || []) {
+    if (!差量副本?.encounter_key) {
+      continue;
+    }
+    const 公開副本 = 副本索引.get(差量副本.encounter_key) || {
+      encounter_key: 差量副本.encounter_key,
+      encounter_name: 差量副本.encounter_name || 差量副本.encounter_key,
+      encounter_category: 差量副本.encounter_category ?? null,
+      updated_at_iso: 差量副本.updated_at_iso ?? null,
+      best_entry: null,
+      best_by_job: [],
+      public_entries: [],
+    };
+    副本索引.set(差量副本.encounter_key, 合併使用者副本差量(公開副本, 差量副本));
+  }
+
+  const 排序後副本 = [];
+  const 已加入副本 = new Set();
+  for (const 副本鍵值 of 差量資料.encounter_order || []) {
+    const 副本 = 副本索引.get(副本鍵值);
+    if (副本) {
+      排序後副本.push(副本);
+      已加入副本.add(副本鍵值);
+    }
+  }
+  for (const 副本 of 副本索引.values()) {
+    if (!已加入副本.has(副本.encounter_key)) {
+      排序後副本.push(副本);
+    }
+  }
+  合併後.encounters = 排序後副本;
+  return 合併後;
+}
+
+export async function 讀取使用者資料檔(角色名稱, 使用者索引列表, 伺服器 = "") {
+  const 搜尋目標 = 解析使用者搜尋目標(角色名稱, 使用者索引列表, 伺服器);
+  const 查詢名稱 = String(搜尋目標.角色名稱 || "").trim();
+  const 索引條目 = 搜尋目標.索引條目;
+  const 資料網址 = 索引條目?.file_path ? 建立公開資料網址(索引條目.file_path) : 建立使用者預設資料網址(查詢名稱);
+  const 資料 = await 讀取使用者Json(資料網址, `找不到「${查詢名稱}」的個人成績單`);
+  return 解析使用者隱藏差量(資料);
 }

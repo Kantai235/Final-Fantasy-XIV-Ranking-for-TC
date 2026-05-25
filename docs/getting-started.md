@@ -87,6 +87,8 @@ VITE_GA_ENABLE_IN_DEV=false
 | `npm run build:ranking-tables` | 由公開排行榜產生 `ranking-tables` 薄索引與 `ranking-details` 報告細節檔。 |
 | `npm run build:user-data` | 產生個人成績單、全服統計、近期動態、隊伍榜、伺服器對比與排行榜薄索引資料。 |
 | `npm run validate:data` | 驗證公開副本、公開資料 schema、排行榜分片、raw 欄位、全服統計與使用者索引。 |
+| `npm run test:data-conservation` | 檢查公開資料與 hidden delta 的資料守恆，避免瘦身時漏掉成績或報告來源。 |
+| `npm run audit:pages-payload` | 稽核 `dist/`、`dist/data/`、`dist/data/all/`、`dist/data/users/` 與 `dist/og/` 體積。 |
 | `npm run check` | 執行 Python 與 Node.js 語法檢查。 |
 | `npm test` | 執行資料管線、GCD、資料建置與前端資料契約測試。 |
 | `npm run build` | 先重建公開資料並驗證，再由 Vite 建置靜態網站到 `dist/`。 |

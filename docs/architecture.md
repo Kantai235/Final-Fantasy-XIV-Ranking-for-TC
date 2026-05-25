@@ -37,7 +37,7 @@ flowchart LR
 - `public/data/server_compare.json`
 - `public/data/ranking-tables/*.json`
 - `public/data/ranking-details/*.json`
-- `public/data/all/` 完整資料鏡像
+- `public/data/all/` hidden delta 與額外檢視索引
 
 複雜排序、分位數、隊友統計、職業分布與版本切片應在這一層完成。若新增前端畫面需要新的統計欄位，請先擴充這一層，再讓 Vue 讀取結果。
 同名角色若出現在不同伺服器，公開衍生資料會以「角色名稱 + 伺服器」拆成不同玩家；目前不再自動處理轉服合併，也不再把另一個伺服器列為搜尋 alias。
