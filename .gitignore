@@ -43,7 +43,9 @@ Desktop.ini
 
 # Generated data
 public/data/all/
+public/data/ranking-details/
 public/data/rankings/
+public/data/ranking-tables/
 public/data/users/
 
 # Local crawler state variants

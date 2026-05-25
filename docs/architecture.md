@@ -35,6 +35,8 @@ flowchart LR
 - `public/data/activity.json`
 - `public/data/team_rankings.json`
 - `public/data/server_compare.json`
+- `public/data/ranking-tables/*.json`
+- `public/data/ranking-details/*.json`
 - `public/data/all/` 完整資料鏡像
 
 複雜排序、分位數、隊友統計、職業分布與版本切片應在這一層完成。若新增前端畫面需要新的統計欄位，請先擴充這一層，再讓 Vue 讀取結果。

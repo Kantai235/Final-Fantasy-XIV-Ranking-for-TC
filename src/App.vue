@@ -1,19 +1,20 @@
 <script setup>
-import { onMounted, onUnmounted, provide, proxyRefs } from "vue";
+import { defineAsyncComponent, onMounted, onUnmounted, provide, proxyRefs } from "vue";
 import AppFooter from "./components/AppFooter.vue";
 import AppHeader from "./components/AppHeader.vue";
 import PlayerSearchHistoryDialog from "./components/PlayerSearchHistoryDialog.vue";
-import ActivityPage from "./pages/ActivityPage.vue";
-import ComparePage from "./pages/ComparePage.vue";
-import GlobalStatsPage from "./pages/GlobalStatsPage.vue";
-import JobAnalysisPage from "./pages/JobAnalysisPage.vue";
-import RankingPage from "./pages/RankingPage.vue";
-import ServerComparePage from "./pages/ServerComparePage.vue";
-import TeamRankingsPage from "./pages/TeamRankingsPage.vue";
-import UserProfilePage from "./pages/UserProfilePage.vue";
 import { rankingAppKey, useRankingApp } from "./composables/useRankingApp";
 import { 預熱職業Icon快取 } from "./domain/jobs";
 import { useShareMeta } from "./utils/shareMeta";
+
+const RankingPage = defineAsyncComponent(() => import("./pages/RankingPage.vue"));
+const GlobalStatsPage = defineAsyncComponent(() => import("./pages/GlobalStatsPage.vue"));
+const JobAnalysisPage = defineAsyncComponent(() => import("./pages/JobAnalysisPage.vue"));
+const ActivityPage = defineAsyncComponent(() => import("./pages/ActivityPage.vue"));
+const UserProfilePage = defineAsyncComponent(() => import("./pages/UserProfilePage.vue"));
+const ComparePage = defineAsyncComponent(() => import("./pages/ComparePage.vue"));
+const TeamRankingsPage = defineAsyncComponent(() => import("./pages/TeamRankingsPage.vue"));
+const ServerComparePage = defineAsyncComponent(() => import("./pages/ServerComparePage.vue"));
 
 const rankingApp = useRankingApp();
 const view = proxyRefs(rankingApp);

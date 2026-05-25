@@ -42,6 +42,7 @@ import {
   隊伍榜網址,
   伺服器對比網址,
   建立公開資料網址,
+  建立排行榜表格資料網址,
 } from "../utils/publicData";
 import { 建立目前分享網址, 正規化分享描述, 預設分享標題 } from "../utils/shareMeta";
 import {
@@ -169,6 +170,7 @@ const 伺服器對比左伺服器 = ref("");
 const 伺服器對比右伺服器 = ref("");
 const 分享狀態訊息 = ref("");
 const 正在分享 = ref(false);
+const 排行榜詳細資料快取 = new Map();
 let 正在套用網址狀態 = false;
 let 分享狀態計時器 = null;
 
@@ -178,6 +180,10 @@ const 目前副本 = computed(() => {
 
 const 資料網址 = computed(() => {
   return 建立公開資料網址(目前副本.value?.data_path || "data/rankings/savage_m1s.json");
+});
+
+const 排行榜表格資料網址 = computed(() => {
+  return 建立排行榜表格資料網址(目前副本.value?.key || 副本鍵值.value || 預設副本鍵值);
 });
 
 const 傷害比較指標選項 = [
@@ -742,6 +748,8 @@ function 建立排行列(條目, 副本 = 目前副本.value) {
 
   return {
     id: 條目.id || `${條目.report_code}-${條目.fight_id}-${條目.character_name}-${條目.server}`,
+    detailId: 條目.detail_id || 條目.id || "",
+    hasReportDetail: Boolean(條目.has_report_detail || 條目.report_code || 條目.report_url || 條目.fight_id),
     reportCode: 條目.report_code,
     reportUrl: 條目.report_url,
     fightId: 條目.fight_id ?? null,
@@ -766,6 +774,31 @@ function 建立排行列(條目, 副本 = 目前副本.value) {
     versionStatus: 版本狀態.version_status,
     versionCutoffIso: 版本狀態.version_cutoff_iso,
   };
+}
+
+function 還原排行榜薄索引列(列, 欄位列表) {
+  if (!Array.isArray(列)) {
+    return 列 && typeof 列 === "object" ? 列 : null;
+  }
+
+  return Object.fromEntries((欄位列表 || []).map((欄位, index) => [欄位, 列[index]]));
+}
+
+function 取得排行榜薄索引條目(原始資料, 版本範圍) {
+  if (!原始資料 || 原始資料.format !== "ranking_table_index_v1") {
+    return null;
+  }
+
+  const 欄位列表 = Array.isArray(原始資料.table_columns) ? 原始資料.table_columns : [];
+  const 版本列 = 原始資料.version_table_rows?.[版本範圍];
+  const 來源列 = Array.isArray(版本列) ? 版本列 : 原始資料.table_rows;
+  if (!Array.isArray(來源列)) {
+    return [];
+  }
+
+  return 來源列
+    .map((列) => 還原排行榜薄索引列(列, 欄位列表))
+    .filter(Boolean);
 }
 
 function 成績是否較佳(候選, 目前最佳) {
@@ -895,6 +928,11 @@ function 只保留角色最佳成績(排行列) {
 // 這段邏輯只做呈現用正規化，不改寫 append-only 歷史資料。
 function 展開排行榜列(原始資料, 副本 = 目前副本.value, 版本範圍 = 預設版本紀錄範圍) {
   const 有效版本範圍 = 取得有效版本紀錄範圍(副本, 版本範圍);
+  const 薄索引條目 = 取得排行榜薄索引條目(原始資料, 有效版本範圍);
+  if (Array.isArray(薄索引條目)) {
+    return 薄索引條目.map((條目) => 建立排行列(條目, 副本));
+  }
+
   const 版本排行榜條目 = 原始資料?.version_ranking_entries?.[有效版本範圍];
   if (Array.isArray(版本排行榜條目)) {
     return 版本排行榜條目.map((條目) => 建立排行列(條目, 副本));
@@ -3615,12 +3653,39 @@ async function 讀取排行榜資料() {
   錯誤訊息.value = "";
 
   try {
-    排行榜資料.value = await 讀取Json(資料網址.value, "讀取失敗");
+    try {
+      排行榜資料.value = await 讀取Json(排行榜表格資料網址.value, "讀取排行榜薄索引失敗");
+    } catch {
+      排行榜資料.value = await 讀取Json(資料網址.value, "讀取失敗");
+    }
   } catch (錯誤) {
     錯誤訊息.value = 錯誤 instanceof Error ? 錯誤.message : "無法讀取排行榜資料";
   } finally {
     讀取中.value = false;
   }
+}
+
+async function 讀取排行榜詳細資料檔(相對路徑) {
+  if (!排行榜詳細資料快取.has(相對路徑)) {
+    const 讀取Promise = 讀取Json(建立公開資料網址(相對路徑), "讀取排行榜報告細節失敗").catch((錯誤) => {
+      排行榜詳細資料快取.delete(相對路徑);
+      throw 錯誤;
+    });
+    排行榜詳細資料快取.set(相對路徑, 讀取Promise);
+  }
+
+  return 排行榜詳細資料快取.get(相對路徑);
+}
+
+async function 讀取排行列報告詳細資料(列) {
+  const 相對路徑 = 排行榜資料.value?.detail_path;
+  const detailId = 列?.detailId || 列?.id;
+  if (!相對路徑 || !detailId) {
+    return null;
+  }
+
+  const 詳細資料 = await 讀取排行榜詳細資料檔(相對路徑);
+  return 詳細資料?.entries?.[detailId] || null;
 }
 
 async function 讀取使用者索引() {
@@ -4483,6 +4548,7 @@ onUnmounted(() => {
     伺服器對比網址,
     目前副本,
     資料網址,
+    排行榜表格資料網址,
     傷害比較指標選項,
     版本紀錄範圍選項,
     副本分類順序,
@@ -4575,6 +4641,7 @@ onUnmounted(() => {
     排序數值,
     比較排行列,
     建立排行列,
+    讀取排行列報告詳細資料,
     成績是否較佳,
     使用者成績是否較佳,
     只保留角色最佳成績,

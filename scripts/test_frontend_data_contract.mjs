@@ -303,6 +303,8 @@ async function validatePublicDataForFrontend() {
     const key = encounter?.key;
     const dataPath = encounter?.data_path || `data/rankings/${key}.json`;
     const publicRankingPath = path.join(publicDataDir, dataPath.replace(/^data\//, ""));
+    const rankingTablePath = path.join(publicDataDir, "ranking-tables", `${key}.json`);
+    const rankingDetailPath = path.join(publicDataDir, "ranking-details", `${key}.json`);
     assert(Boolean(key), "public/data/encounters.json 的每筆副本都必須有 key");
     assert(existsSync(publicRankingPath), `${key} 的公開排行榜檔案不存在：${dataPath}`);
     const ranking = await readJson(publicRankingPath, `${key} 公開排行榜`);
@@ -322,6 +324,18 @@ async function validatePublicDataForFrontend() {
         `${key} 公開排行榜條目必須標記 is_obsolete_record`,
       );
     }
+
+    assert(existsSync(rankingTablePath), `${key} 必須提供排行榜薄索引`);
+    const table = await readJson(rankingTablePath, `${key} 排行榜薄索引`);
+    assert(table?.format === "ranking_table_index_v1", `${key} 排行榜薄索引 format 必須正確`);
+    assert(Array.isArray(table?.table_columns), `${key} 排行榜薄索引必須包含 table_columns`);
+    assert(Array.isArray(table?.table_rows), `${key} 排行榜薄索引必須包含 table_rows`);
+    assert(table.table_columns.includes("has_report_detail"), `${key} 排行榜薄索引必須標記可按需載入報告細節`);
+    assert(table.detail_path === `data/ranking-details/${key}.json`, `${key} 排行榜薄索引 detail_path 必須指向報告細節檔`);
+    assert(existsSync(rankingDetailPath), `${key} 必須提供排行榜報告細節檔`);
+    const details = await readJson(rankingDetailPath, `${key} 排行榜報告細節`);
+    assert(details?.format === "ranking_detail_entries_v1", `${key} 排行榜報告細節 format 必須正確`);
+    assert(details?.entries && typeof details.entries === "object", `${key} 排行榜報告細節必須包含 entries 索引`);
   }
 
   for (const encounter of globalStats?.encounters || []) {

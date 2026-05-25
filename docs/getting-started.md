@@ -84,7 +84,8 @@ VITE_GA_ENABLE_IN_DEV=false
 | `npm run python:venv` | 使用可用的 Python 3.11+ 建立 `.venv`。 |
 | `npm run python:install` | 使用專案 Python 3.11+ 直譯器安裝 `requirements.txt`。 |
 | `npm run build:public-rankings` | 執行 `fetch_fflogs.py --rebuild-public`，只重建公開排行榜與副本清單，不呼叫 FFLogs API。 |
-| `npm run build:user-data` | 產生個人成績單、全服統計、近期動態、隊伍榜與伺服器對比資料。 |
+| `npm run build:ranking-tables` | 由公開排行榜產生 `ranking-tables` 薄索引與 `ranking-details` 報告細節檔。 |
+| `npm run build:user-data` | 產生個人成績單、全服統計、近期動態、隊伍榜、伺服器對比與排行榜薄索引資料。 |
 | `npm run validate:data` | 驗證公開副本、排行榜分片、raw 欄位、全服統計與使用者索引。 |
 | `npm run check` | 執行 Python 與 Node.js 語法檢查。 |
 | `npm test` | 執行資料管線、GCD、資料建置與前端資料契約測試。 |

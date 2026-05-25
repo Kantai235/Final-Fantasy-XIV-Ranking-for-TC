@@ -20,3 +20,7 @@ export function 建立公開資料網址(相對路徑) {
 export function 建立使用者預設資料網址(角色名稱) {
   return 建立公開資料網址(`data/users/${角色名稱}.json`);
 }
+
+export function 建立排行榜表格資料網址(副本鍵值) {
+  return 建立公開資料網址(`data/ranking-tables/${副本鍵值}.json`);
+}

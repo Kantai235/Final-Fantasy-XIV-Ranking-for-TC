@@ -15,6 +15,7 @@ export default {
   setup() {
     const app = injectRankingApp();
     const 報告彈窗資料 = ref(null);
+    let 報告讀取序號 = 0;
 
     function 取值(可能Ref) {
       return 可能Ref && typeof 可能Ref === "object" && "value" in 可能Ref ? 可能Ref.value : 可能Ref;
@@ -103,11 +104,44 @@ export default {
       };
     }
 
+    function 合併排行列詳細資料(列, 詳細條目) {
+      if (!詳細條目) {
+        return 列;
+      }
+
+      const 詳細列 = app.建立排行列(詳細條目, 取值(app.目前副本));
+      return {
+        ...列,
+        ...詳細列,
+        原始排名: 列.原始排名 ?? 詳細列.原始排名,
+        職業排名: 列.職業排名 ?? 詳細列.職業排名,
+        過版紀錄: 列.過版紀錄,
+        versionStatus: 列.versionStatus,
+        versionCutoffIso: 列.versionCutoffIso,
+        detailId: 列.detailId || 詳細列.detailId,
+        hasReportDetail: 列.hasReportDetail || 詳細列.hasReportDetail,
+      };
+    }
+
     function 開啟排行報告彈窗(列, 排名 = null) {
+      const 本次序號 = ++報告讀取序號;
       報告彈窗資料.value = 建立排行報告詳細資料(列, 排名);
+      if (!列.hasReportDetail || 列.reportCode || 列.reportUrl) {
+        return;
+      }
+
+      app.讀取排行列報告詳細資料(列)
+        .then((詳細條目) => {
+          if (本次序號 !== 報告讀取序號 || !詳細條目) {
+            return;
+          }
+          報告彈窗資料.value = 建立排行報告詳細資料(合併排行列詳細資料(列, 詳細條目), 排名);
+        })
+        .catch(() => {});
     }
 
     function 關閉排行報告彈窗() {
+      報告讀取序號 += 1;
       報告彈窗資料.value = null;
     }
 
@@ -465,7 +499,7 @@ export default {
               <span class="說明提示內容" role="tooltip">{{ 作者說明文字 }}</span>
             </span>
             <button
-              v-if="列.reportCode || 列.reportUrl"
+              v-if="列.hasReportDetail || 列.reportCode || 列.reportUrl"
               class="次要連結 報告按鈕"
               type="button"
               @click="開啟排行報告彈窗(列, 排行列顯示排名(index))"
@@ -524,7 +558,7 @@ export default {
                   </time>
                 </span>
                 <button
-                  v-if="列.reportCode || 列.reportUrl"
+                  v-if="列.hasReportDetail || 列.reportCode || 列.reportUrl"
                   class="報告按鈕"
                   type="button"
                   @click="開啟排行報告彈窗(列, 排行列顯示排名(index))"

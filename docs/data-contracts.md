@@ -46,6 +46,20 @@ npm run sync:data -- --dry-run
 
 新寫入的 report 不保存 `fflogs_raw`、`master_data` 與 `matched_players`。這些大型 raw 欄位可依 report code 重查，停止落地是為避免 Git repo 容量快速膨脹。
 
+## 排行榜前端薄索引
+
+`public/data/rankings/*.json` 仍保留完整公開 `ranking_entries`，作為相容資料契約與外部檢視入口。前端排行榜預設改讀 `public/data/ranking-tables/{key}.json`：
+
+- `format="ranking_table_index_v1"`：代表檔案是欄位陣列加列陣列的薄索引。
+- `table_columns`：列陣列的欄位順序。
+- `table_rows`：前端表格、篩選與排序所需的最小欄位。
+- `version_table_rows`：若副本有版本切點，保留 `all|valid|obsolete` 各自排序後的薄索引列，避免前端重新計算版本排名。
+- `detail_path`：指向 `public/data/ranking-details/{key}.json`，使用者點擊「報告」按鈕時才載入。
+
+`public/data/ranking-details/{key}.json` 保存以 entry `id` 為 key 的完整公開排行榜條目，用來組成 FFLogs、xivanalysis 與 ffreplay 外部連結，以及報告彈窗內的追溯欄位。這組檔案是公開 `ranking_entries` 的衍生快取，不是權威來源；重建時仍以 `data/rankings/*.json` 與分片為準。
+
+`public/data/all/ranking-tables/` 與 `public/data/all/ranking-details/` 會同步輸出完整鏡像版本，讓額外檢視流程只改寫 `/data/...` 到 `/data/all/...` 時仍能維持按需載入。
+
 ## 去重與排名規則
 
 同一角色、同一伺服器、同一職業的最佳成績排序規則：

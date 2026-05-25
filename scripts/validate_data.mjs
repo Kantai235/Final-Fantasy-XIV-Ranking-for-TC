@@ -8,7 +8,11 @@ const publicDataDir = path.join(rootDir, "public", "data");
 const publicAllDataDir = path.join(publicDataDir, "all");
 const sourceRankingsDir = path.join(rootDir, "data", "rankings");
 const publicRankingsDir = path.join(publicDataDir, "rankings");
+const publicRankingTablesDir = path.join(publicDataDir, "ranking-tables");
+const publicRankingDetailsDir = path.join(publicDataDir, "ranking-details");
 const publicAllRankingsDir = path.join(publicAllDataDir, "rankings");
+const publicAllRankingTablesDir = path.join(publicAllDataDir, "ranking-tables");
+const publicAllRankingDetailsDir = path.join(publicAllDataDir, "ranking-details");
 const rawFieldNames = new Set(["fflogs_raw", "master_data", "matched_players"]);
 
 const issues = [];
@@ -179,6 +183,37 @@ async function validateRankings(publicEncounters) {
       reportIssue(`${key} 公開排行榜不應包含完整 reports 或 report_shards`);
     }
 
+    const tablePath = path.join(publicRankingTablesDir, `${key}.json`);
+    const detailPath = path.join(publicRankingDetailsDir, `${key}.json`);
+    if (!existsSync(tablePath)) {
+      reportIssue(`${key} 缺少排行榜薄索引：public/data/ranking-tables/${key}.json`);
+    } else {
+      const table = await readJson(tablePath, `${key} 排行榜薄索引`);
+      if (table?.format !== "ranking_table_index_v1") {
+        reportIssue(`${key} 排行榜薄索引 format 必須是 ranking_table_index_v1`);
+      }
+      if (!Array.isArray(table?.table_columns) || !Array.isArray(table?.table_rows)) {
+        reportIssue(`${key} 排行榜薄索引必須包含 table_columns 與 table_rows`);
+      }
+      if (table?.detail_path !== `data/ranking-details/${key}.json`) {
+        reportIssue(`${key} 排行榜薄索引 detail_path 不正確`);
+      }
+      if (table?.table_rows?.length !== publicRanking?.ranking_entries?.length) {
+        reportIssue(`${key} 排行榜薄索引列數需等於公開 ranking_entries`);
+      }
+    }
+    if (!existsSync(detailPath)) {
+      reportIssue(`${key} 缺少排行榜報告細節檔：public/data/ranking-details/${key}.json`);
+    } else {
+      const details = await readJson(detailPath, `${key} 排行榜報告細節`);
+      if (details?.format !== "ranking_detail_entries_v1") {
+        reportIssue(`${key} 排行榜報告細節 format 必須是 ranking_detail_entries_v1`);
+      }
+      if (!details?.entries || typeof details.entries !== "object" || Array.isArray(details.entries)) {
+        reportIssue(`${key} 排行榜報告細節必須包含 entries 索引物件`);
+      }
+    }
+
     const allRankingPath = path.join(publicAllRankingsDir, `${key}.json`);
     if (!existsSync(allRankingPath)) {
       reportIssue(`${key} 缺少完整排行榜鏡像：public/data/all/rankings/${key}.json`);
@@ -192,6 +227,31 @@ async function validateRankings(publicEncounters) {
       }
       if (allRanking?.reports || allRanking?.report_shards) {
         reportIssue(`${key} 完整排行榜鏡像不應包含完整 reports 或 report_shards`);
+      }
+    }
+
+    const allTablePath = path.join(publicAllRankingTablesDir, `${key}.json`);
+    const allDetailPath = path.join(publicAllRankingDetailsDir, `${key}.json`);
+    if (!existsSync(allTablePath)) {
+      reportIssue(`${key} 缺少完整鏡像排行榜薄索引：public/data/all/ranking-tables/${key}.json`);
+    } else {
+      const allTable = await readJson(allTablePath, `${key} 完整鏡像排行榜薄索引`);
+      if (allTable?.hidden_reports_included !== true) {
+        reportIssue(`${key} 完整鏡像排行榜薄索引必須標記 hidden_reports_included=true`);
+      }
+      if (allTable?.detail_path !== `data/all/ranking-details/${key}.json`) {
+        reportIssue(`${key} 完整鏡像排行榜薄索引 detail_path 不正確`);
+      }
+    }
+    if (!existsSync(allDetailPath)) {
+      reportIssue(`${key} 缺少完整鏡像排行榜報告細節檔：public/data/all/ranking-details/${key}.json`);
+    } else {
+      const allDetails = await readJson(allDetailPath, `${key} 完整鏡像排行榜報告細節`);
+      if (allDetails?.format !== "ranking_detail_entries_v1") {
+        reportIssue(`${key} 完整鏡像排行榜報告細節 format 必須是 ranking_detail_entries_v1`);
+      }
+      if (!allDetails?.entries || typeof allDetails.entries !== "object" || Array.isArray(allDetails.entries)) {
+        reportIssue(`${key} 完整鏡像排行榜報告細節必須包含 entries 索引物件`);
       }
     }
 

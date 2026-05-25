@@ -19,6 +19,7 @@
    ```
 
    這一步會產生 `public/data/users/`、`public/data/users/index.json`、`public/data/global_stats.json`、`public/data/activity.json`、`public/data/team_rankings.json` 與 `public/data/server_compare.json`。
+   指令結束前也會執行 `npm run build:ranking-tables`，由公開排行榜產生 `public/data/ranking-tables/` 薄索引與 `public/data/ranking-details/` 按需載入細節檔。
 
    全域公告內容直接維護在 `public/data/announcements.json`；這一步會把它同步到 `public/data/all/announcements.json`，供完整鏡像檢視流程使用。
 
