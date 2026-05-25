@@ -48,6 +48,21 @@ npm run build
 14. 上傳 `dist/` 並部署到 GitHub Pages。
 15. 若有 Cloudflare purge token，部署成功後清除會變動的 CDN 快取。
 
+## 緊急部署
+
+`.github/workflows/emergency_deploy.yml` 是手動觸發的緊急部署通道，用於前端 hotfix、空白頁修復、SEO/OG 產物修正或 Cloudflare 快取異常。這條流程只使用目前分支已提交的 `data/` 與 `public/data/`，執行 `npm run build` 後上傳 `dist/` 並部署 GitHub Pages；它不會執行 `python scripts/fetch_fflogs.py` 的正式抓取流程、不會呼叫 FFLogs API、不會推進 `data/state.json` 掃描點，也不會 commit 新資料。
+
+手動執行方式：
+
+1. 到 GitHub Actions 選擇「緊急部署靜態網站」。
+2. 選擇要部署的 branch，通常是 `main`。
+3. 選擇 `cloudflare_purge_mode`：
+   - `everything`：預設值。適合首頁、`404.html` 或 hashed bundle 仍被 Cloudflare 邊緣節點回舊版本時使用。
+   - `scoped`：只清除本專案既有 prefix 與核心檔案，適合一般靜態頁或資料路徑更新。
+4. 執行後確認 workflow 的 `部署 GitHub Pages` 與 `清除 Cloudflare CDN 快取` 步驟完成。
+
+緊急部署仍會跑 `npm run build`，因此會重建公開排行榜、個人成績單、排行榜薄索引、SEO/OG 靜態頁、`sitemap.xml`、`robots.txt` 與 `404.html`，並執行 `validate:data`。這是為了確保部署出去的靜態產物與 repo 內資料契約一致；差別在於它只重建已提交資料，不向 FFLogs 取得新資料。
+
 ## GitHub Secrets 與 Variables
 
 必要 Secrets：

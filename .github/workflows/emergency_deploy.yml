@@ -1,0 +1,100 @@
+name: 緊急部署靜態網站
+
+on:
+  workflow_dispatch:
+    inputs:
+      cloudflare_purge_mode:
+        description: "部署後的 Cloudflare purge 模式；首頁或 404 快取異常時建議使用 everything。"
+        required: true
+        default: "everything"
+        type: choice
+        options:
+          - everything
+          - scoped
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: emergency-deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  emergency-deploy:
+    name: 不抓 FFLogs，直接建置並部署
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Checkout 儲存庫程式碼
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+
+      - name: 同步最新分支狀態
+        run: |
+          git fetch origin "${{ github.ref_name }}"
+          git reset --hard "origin/${{ github.ref_name }}"
+
+      - name: 設定 Python 環境
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: 設定 Node.js 環境
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: 安裝 Python 依賴套件
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: 安裝 Node.js 依賴套件
+        run: npm ci
+
+      - name: 設定 GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: 安裝 OG 圖中文字型
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fonts-noto-cjk
+
+      - name: 建置並驗證 GitHub Pages 靜態網站
+        env:
+          VITE_GA_MEASUREMENT_ID: ${{ vars.VITE_GA_MEASUREMENT_ID || secrets.VITE_GA_MEASUREMENT_ID }}
+        run: |
+          # 緊急部署只使用 repo 內已提交的 data/ 與 public/data/ 產物。
+          # npm run build 會執行 --rebuild-public、build:user-data 與 validate:data，
+          # 但不會呼叫 FFLogs API、推進 state 掃描點或提交任何資料更新。
+          npm run build
+
+      - name: 上傳 GitHub Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+      - name: 部署 GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+      - name: 清除 Cloudflare CDN 快取
+        env:
+          CLOUDFLARE_ZONE_ID: ${{ secrets.CLOUDFLARE_ZONE_ID }}
+          CLOUDFLARE_PURGE_API_TOKEN: ${{ secrets.CLOUDFLARE_PURGE_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_HOSTNAME: ${{ vars.CLOUDFLARE_HOSTNAME }}
+        run: |
+          if [ "${{ inputs.cloudflare_purge_mode }}" = "everything" ]; then
+            npm run cloudflare:purge -- --everything
+          else
+            npm run cloudflare:purge
+          fi
