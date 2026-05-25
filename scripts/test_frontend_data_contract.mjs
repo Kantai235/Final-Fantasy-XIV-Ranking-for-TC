@@ -541,8 +541,15 @@ async function validateUserSearchResolution() {
       character_name: "Shibe柴",
       canonical_server: "利維坦",
       servers: ["利維坦"],
-      server_aliases: ["巴哈姆特"],
+      server_aliases: [],
       file_path: "data/users/Shibe柴.json",
+    },
+    {
+      character_name: "Shibe柴",
+      canonical_server: "巴哈姆特",
+      servers: ["巴哈姆特"],
+      server_aliases: [],
+      file_path: "data/users/Shibe柴-2.json",
     },
   ];
 
@@ -558,22 +565,40 @@ async function validateUserSearchResolution() {
   assert(formattedTarget.角色名稱 === "Shibe柴" && formattedTarget.伺服器 === "利維坦", "已含伺服器的搜尋文字仍應解析成功");
   const compactTarget = module.解析使用者搜尋目標("Shibe柴@利維坦", users);
   assert(compactTarget.角色名稱 === "Shibe柴" && compactTarget.伺服器 === "利維坦", "沒有空白的玩家伺服器格式仍應解析成功");
-  const aliasTarget = module.解析使用者搜尋目標("Shibe柴 @ 巴哈姆特", users);
+  const sameNameTarget = module.解析使用者搜尋目標("Shibe柴 @ 巴哈姆特", users);
   assert(
-    aliasTarget.角色名稱 === "Shibe柴" && aliasTarget.伺服器 === "利維坦",
-    "舊伺服器 alias 查詢應回到 canonical server，避免同一玩家分裂成兩筆搜尋結果。",
+    sameNameTarget.角色名稱 === "Shibe柴" && sameNameTarget.伺服器 === "巴哈姆特",
+    "同名跨服查詢應保留使用者指定的伺服器身分。",
   );
   assert(module.取得使用者主要伺服器(users[0]) === "利維坦", "使用者工具應優先回傳 canonical_server。");
   const serverList = module.取得使用者伺服器列表(users[0]);
   assert(
-    serverList.includes("利維坦") && serverList.includes("巴哈姆特"),
-    "使用者工具應同時提供 canonical 伺服器與舊伺服器 alias 作為查詢候選。",
+    serverList.length === 1 && serverList[0] === "利維坦",
+    "使用者工具不應把另一個同名角色所在伺服器列為查詢 alias。",
   );
 
   const indexEntry = module.尋找使用者索引條目(users, "shibe柴");
   assert(indexEntry?.file_path === "data/users/Shibe柴.json", "使用者索引查找應支援純玩家名稱大小寫差異");
-  const aliasEntry = module.尋找使用者索引條目(users, "Shibe柴", "巴哈姆特");
-  assert(aliasEntry?.file_path === "data/users/Shibe柴.json", "使用者索引查找應支援舊伺服器 alias。");
+  const sameNameEntry = module.尋找使用者索引條目(users, "Shibe柴", "巴哈姆特");
+  assert(sameNameEntry?.file_path === "data/users/Shibe柴-2.json", "使用者索引查找應支援同名角色用伺服器拆分。");
+
+  const originalFetch = globalThis.fetch;
+  let fetchedUrl = "";
+  globalThis.fetch = async (url) => {
+    fetchedUrl = String(url);
+    return {
+      ok: true,
+      async json() {
+        return {};
+      },
+    };
+  };
+  try {
+    await module.讀取使用者資料檔("Shibe柴", users, "巴哈姆特");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+  assert(fetchedUrl === "/mock/data/users/Shibe柴-2.json", "讀取使用者資料檔應保留伺服器條件，避免同名角色讀到第一筆索引。");
 
   const storage = {
     value: "",

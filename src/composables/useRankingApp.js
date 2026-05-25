@@ -3925,7 +3925,7 @@ async function 載入使用者成績(角色名稱, 伺服器 = "", 選項 = {}) 
   try {
     await 讀取使用者索引();
     const 搜尋目標 = 解析使用者搜尋目標(原始搜尋文字, 使用者索引列表.value);
-    使用者資料.value = await 讀取使用者資料檔(搜尋目標.角色名稱, 使用者索引列表.value);
+    使用者資料.value = await 讀取使用者資料檔(搜尋目標.角色名稱, 使用者索引列表.value, 搜尋目標.伺服器);
     const 伺服器列表 = Array.isArray(使用者資料.value?.servers) ? 使用者資料.value.servers : [];
     使用者伺服器篩選.value = 伺服器列表.includes(搜尋目標.伺服器) ? 搜尋目標.伺服器 : 伺服器列表[0] || "";
     使用者搜尋關鍵字.value = 格式化使用者搜尋文字(使用者資料.value.character_name || 查詢名稱, 使用者伺服器篩選.value);
@@ -3951,7 +3951,7 @@ async function 載入比較角色資料(輸入文字) {
 
   await 讀取使用者索引();
   const 搜尋目標 = 解析使用者搜尋目標(輸入文字, 使用者索引列表.value);
-  const 資料 = await 讀取使用者資料檔(搜尋目標.角色名稱, 使用者索引列表.value);
+  const 資料 = await 讀取使用者資料檔(搜尋目標.角色名稱, 使用者索引列表.value, 搜尋目標.伺服器);
   const 伺服器列表 = Array.isArray(資料?.servers) ? 資料.servers : [];
   const 伺服器 = 伺服器列表.includes(搜尋目標.伺服器) ? 搜尋目標.伺服器 : 伺服器列表[0] || "";
   return {

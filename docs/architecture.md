@@ -38,7 +38,7 @@ flowchart LR
 - `public/data/all/` 完整資料鏡像
 
 複雜排序、分位數、隊友統計、職業分布與版本切片應在這一層完成。若新增前端畫面需要新的統計欄位，請先擴充這一層，再讓 Vue 讀取結果。
-同名角色若有公開轉服紀錄，公開衍生資料也在這一層統一收斂到最新公開紀錄所在伺服器，並保留 alias 與原始伺服器欄位供搜尋與追溯。
+同名角色若出現在不同伺服器，公開衍生資料會以「角色名稱 + 伺服器」拆成不同玩家；目前不再自動處理轉服合併，也不再把另一個伺服器列為搜尋 alias。
 
 全域公告是例外的營運靜態內容：`public/data/announcements.json` 直接隨 commit 維護，不從 FFLogs 或使用者統計建置而來；`build_user_data.mjs` 只負責把它同步到 `public/data/all/announcements.json`。這讓公告可快速發佈，同時不碰 append-only 排行榜歷史資料。
 

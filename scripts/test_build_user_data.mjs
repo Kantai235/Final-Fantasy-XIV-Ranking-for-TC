@@ -257,7 +257,7 @@ async function createFixture(tempRoot) {
           recorded_at_iso: "2026-01-01T02:00:00.000Z",
           players: [
             {
-              name: "轉服角色",
+              name: "同名角色",
               server: "巴哈姆特",
               job: "Warrior",
               dps: 210,
@@ -289,7 +289,7 @@ async function createFixture(tempRoot) {
           recorded_at_iso: "2026-01-04T04:00:00.000Z",
           players: [
             {
-              name: "轉服角色",
+              name: "同名角色",
               server: "泰坦",
               job: "Warrior",
               dps: 190,
@@ -358,23 +358,24 @@ async function assertFixtureOutput(tempRoot, expectedGlobalStatsText, expectedSe
 
   assert(usersIndex.generated_at_iso === "2026-01-02T03:04:05.000Z", "使用者索引應使用 ranking 更新時間作為 generated_at_iso。");
   assert(globalStats.generated_at_iso === "2026-01-02T03:04:05.000Z", "全服統計應使用 ranking 更新時間作為 generated_at_iso。");
-  assert(usersIndex.total_users === 5, "fixture 應產生四位有公開成績的使用者與一位空白入口。");
-  assert(globalStats.total_character_count === 4, `全服角色數應把轉服前後視為同一位玩家，實際 ${globalStats.total_character_count}。`);
+  assert(usersIndex.total_users === 6, "fixture 應產生五位有公開成績的使用者與一位空白入口。");
+  assert(globalStats.total_character_count === 5, `全服角色數應把同名跨服角色視為不同玩家，實際 ${globalStats.total_character_count}。`);
   assert(globalStats.total_entry_count === 6, "全服 entry 數應包含六筆公開玩家成績。");
   const hiddenUser = usersIndex.users.find((user) => user.character_name === "隱藏角色");
   assert(hiddenUser, "預設使用者索引應保留空白成績單入口。");
   assert(hiddenUser.servers.includes("鳳凰"), "空白入口應保留伺服器，讓同名角色查詢仍可辨識。");
   assert(hiddenUser.best_rdps === null, "空白入口不可帶入最佳 rDPS。");
   assert(hiddenUser.last_recorded_at_iso === null, "空白入口不可帶入最後紀錄時間。");
-  assert(allUsersIndex.total_users === 5, "完整鏡像應納入所有 fixture 角色。");
-  assert(allGlobalStats.total_character_count === 5, "完整全服統計應納入所有 fixture 角色。");
+  assert(allUsersIndex.total_users === 6, "完整鏡像應納入所有 fixture 角色。");
+  assert(allGlobalStats.total_character_count === 6, "完整全服統計應納入所有 fixture 角色。");
   assert(allGlobalStats.total_entry_count === 7, "完整全服統計應納入所有 fixture 成績。");
   const allHiddenUser = allUsersIndex.users.find((user) => user.character_name === "隱藏角色");
   assert(allHiddenUser, "完整鏡像使用者索引應包含對應角色。");
   assert(Array.isArray(globalStats.job_profiles) && globalStats.job_profiles.length === 4, "全服統計應產生職業專頁資料。");
-  assert(serverCompare.summary.server_count === 3, "伺服器對比應包含轉服後的 canonical 伺服器。");
+  assert(serverCompare.summary.server_count === 4, "伺服器對比應分別納入同名角色所在的伺服器。");
   assert(serverCompare.servers.some((server) => server.server === "鳳凰"), "伺服器對比應包含鳳凰。");
-  assert(serverCompare.servers.some((server) => server.server === "泰坦"), "伺服器對比應包含轉服後的泰坦。");
+  assert(serverCompare.servers.some((server) => server.server === "巴哈姆特"), "伺服器對比應包含同名角色所在的巴哈姆特。");
+  assert(serverCompare.servers.some((server) => server.server === "泰坦"), "伺服器對比應包含同名角色所在的泰坦。");
 
   const hiddenUserData = await readJson(path.join(tempRoot, "public", hiddenUser.file_path));
   assert(hiddenUserData.summary.public_entry_count === 0, "空白成績單不可包含公開成績筆數。");
@@ -392,30 +393,26 @@ async function assertFixtureOutput(tempRoot, expectedGlobalStatsText, expectedSe
   assert(allHiddenEntry?.report_hidden === true, "完整鏡像成績單應保留來源狀態欄位。");
   assert(allHiddenEntry?.rdps === 999, "完整鏡像成績單應保留實際 rDPS。");
 
-  const transferredUser = usersIndex.users.find((user) => user.character_name === "轉服角色");
-  assert(transferredUser, "使用者索引應包含轉服角色。");
-  assert(transferredUser.canonical_server === "泰坦", "轉服角色索引應以最新紀錄所在伺服器作為 canonical_server。");
-  assert(transferredUser.servers.length === 1 && transferredUser.servers[0] === "泰坦", "使用者索引應只把 canonical 伺服器放在主要 servers。");
+  const sameNameUsers = usersIndex.users
+    .filter((user) => user.character_name === "同名角色")
+    .sort((left, right) => String(left.canonical_server).localeCompare(String(right.canonical_server), "zh-Hant-TW"));
+  assert(sameNameUsers.length === 2, "使用者索引應把同名跨服角色拆成兩份個人成績單。");
+  const bahamutUser = sameNameUsers.find((user) => user.canonical_server === "巴哈姆特");
+  const titanUser = sameNameUsers.find((user) => user.canonical_server === "泰坦");
+  assert(bahamutUser && titanUser, "同名角色應分別保留巴哈姆特與泰坦身分。");
+  assert(bahamutUser.servers.length === 1 && bahamutUser.servers[0] === "巴哈姆特", "巴哈姆特同名角色只能列出自己的伺服器。");
+  assert(titanUser.servers.length === 1 && titanUser.servers[0] === "泰坦", "泰坦同名角色只能列出自己的伺服器。");
+  assert(bahamutUser.server_aliases.length === 0 && titanUser.server_aliases.length === 0, "同名跨服角色不應互相成為搜尋 alias。");
+
+  const bahamutUserData = await readJson(path.join(tempRoot, "public", bahamutUser.file_path));
+  const titanUserData = await readJson(path.join(tempRoot, "public", titanUser.file_path));
+  const bahamutEntries = bahamutUserData.encounters[0]?.public_entries || [];
+  const titanEntries = titanUserData.encounters[0]?.public_entries || [];
+  assert(bahamutEntries.length === 1 && bahamutEntries[0].server === "巴哈姆特", "巴哈姆特同名角色只應保留巴哈姆特成績。");
+  assert(titanEntries.length === 1 && titanEntries[0].server === "泰坦", "泰坦同名角色只應保留泰坦成績。");
   assert(
-    transferredUser.server_aliases.length === 1 && transferredUser.server_aliases[0] === "巴哈姆特",
-    "使用者索引應保留轉服前伺服器作為查詢 alias。",
-  );
-  const transferredUserData = await readJson(path.join(tempRoot, "public", transferredUser.file_path));
-  assert(transferredUserData.canonical_server === "泰坦", "個人成績單應輸出 canonical_server。");
-  assert(
-    transferredUserData.server_aliases.length === 1 && transferredUserData.server_aliases[0] === "巴哈姆特",
-    "個人成績單應保留舊伺服器 alias，方便後續查詢與交接。",
-  );
-  const transferredEntries = transferredUserData.encounters[0]?.public_entries || [];
-  assert(transferredEntries.length === 2, "轉服角色成績單應保留轉服前後兩筆公開紀錄。");
-  assert(transferredEntries.every((entry) => entry.server === "泰坦"), "轉服角色所有公開紀錄都應改寫成最新伺服器。");
-  assert(
-    transferredEntries.some((entry) => entry.original_server === "巴哈姆特"),
-    "轉服前的歷史紀錄應保留 original_server 方便追溯。",
-  );
-  assert(
-    transferredUserData.summary.last_recorded_at_iso === "2026-01-04T04:00:00.000Z",
-    "轉服角色摘要應以最新紀錄時間判定 canonical server。",
+    !bahamutEntries.some((entry) => entry.original_server) && !titanEntries.some((entry) => entry.original_server),
+    "同名跨服拆分後不應輸出 original_server。",
   );
 
   const mainUser = usersIndex.users.find((user) => user.character_name === "測試角色");

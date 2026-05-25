@@ -51,7 +51,7 @@ def 建立測試原始成績(總傷害: int) -> dict[str, Any]:
 
 
 class FetchFFLogsBatchTest(unittest.TestCase):
-    def test_public_ranking_uses_latest_server_as_canonical_identity(self) -> None:
+    def test_public_ranking_keeps_same_name_cross_server_players_separate(self) -> None:
         排行榜 = {
             "encounter": {
                 "key": "fixture_encounter",
@@ -71,7 +71,7 @@ class FetchFFLogsBatchTest(unittest.TestCase):
                             "recorded_at_iso": "2026-01-01T02:00:00.000Z",
                             "players": [
                                 {
-                                    "name": "轉服角色",
+                                    "name": "同名角色",
                                     "server": "巴哈姆特",
                                     "job": "Paladin",
                                     "dps": 210,
@@ -96,7 +96,7 @@ class FetchFFLogsBatchTest(unittest.TestCase):
                             "recorded_at_iso": "2026-01-04T04:00:00.000Z",
                             "players": [
                                 {
-                                    "name": "轉服角色",
+                                    "name": "同名角色",
                                     "server": "泰坦",
                                     "job": "Paladin",
                                     "dps": 190,
@@ -112,16 +112,20 @@ class FetchFFLogsBatchTest(unittest.TestCase):
             },
         }
 
-        最新伺服器索引 = fflogs.建立玩家最新伺服器索引([排行榜])
-        公開排行榜 = fflogs.建立公開排行榜(排行榜, 玩家最新伺服器索引=最新伺服器索引)
+        公開排行榜 = fflogs.建立公開排行榜(排行榜)
 
-        self.assertEqual(最新伺服器索引, {"轉服角色": "泰坦"})
-        self.assertEqual(len(公開排行榜["ranking_entries"]), 1)
-        self.assertEqual(公開排行榜["ranking_entries"][0]["server"], "泰坦")
-        self.assertEqual(公開排行榜["ranking_entries"][0]["original_server"], "巴哈姆特")
-        self.assertEqual(公開排行榜["ranking_entries"][0]["rdps"], 200)
+        self.assertEqual(len(公開排行榜["ranking_entries"]), 2)
+        self.assertEqual(
+            {f"{條目['character_name']}@{條目['server']}:{條目['job']}" for 條目 in 公開排行榜["ranking_entries"]},
+            {"同名角色@巴哈姆特:Paladin", "同名角色@泰坦:Paladin"},
+        )
+        self.assertEqual(
+            {條目["server"] for 條目 in 公開排行榜["ranking_entries"]},
+            {"巴哈姆特", "泰坦"},
+        )
+        self.assertTrue(all("original_server" not in 條目 for 條目 in 公開排行榜["ranking_entries"]))
 
-    def test_public_ranking_rewrites_legacy_character_key_for_flat_entries(self) -> None:
+    def test_public_ranking_keeps_legacy_flat_character_key_server(self) -> None:
         排行榜 = {
             "encounter": {
                 "key": "fixture_encounter",
@@ -131,8 +135,8 @@ class FetchFFLogsBatchTest(unittest.TestCase):
             "ranking_entries": [
                 {
                     "id": "old-entry",
-                    "character_key": "轉服角色@巴哈姆特:Paladin",
-                    "character_name": "轉服角色",
+                    "character_key": "同名角色@巴哈姆特:Paladin",
+                    "character_name": "同名角色",
                     "server": "巴哈姆特",
                     "job": "Paladin",
                     "dps": 210,
@@ -143,8 +147,8 @@ class FetchFFLogsBatchTest(unittest.TestCase):
                 },
                 {
                     "id": "new-entry",
-                    "character_key": "轉服角色@泰坦:Paladin",
-                    "character_name": "轉服角色",
+                    "character_key": "同名角色@泰坦:Paladin",
+                    "character_name": "同名角色",
                     "server": "泰坦",
                     "job": "Paladin",
                     "dps": 190,
@@ -156,17 +160,20 @@ class FetchFFLogsBatchTest(unittest.TestCase):
             ],
         }
 
-        最新伺服器索引 = fflogs.建立玩家最新伺服器索引([排行榜])
-        排行榜條目 = fflogs.建立排行榜條目(排行榜, 玩家最新伺服器索引=最新伺服器索引)
-        公開排行榜 = fflogs.建立公開排行榜(排行榜, 玩家最新伺服器索引=最新伺服器索引)
+        排行榜條目 = fflogs.建立排行榜條目(排行榜)
+        公開排行榜 = fflogs.建立公開排行榜(排行榜)
 
-        self.assertEqual(最新伺服器索引, {"轉服角色": "泰坦"})
-        self.assertEqual(len(排行榜條目), 1)
-        self.assertEqual(排行榜條目[0]["character_key"], "轉服角色@泰坦:Paladin")
-        self.assertEqual(len(公開排行榜["ranking_entries"]), 1)
-        self.assertEqual(公開排行榜["ranking_entries"][0]["server"], "泰坦")
-        self.assertEqual(公開排行榜["ranking_entries"][0]["original_server"], "巴哈姆特")
-        self.assertEqual(公開排行榜["ranking_entries"][0]["rdps"], 200)
+        self.assertEqual(len(排行榜條目), 2)
+        self.assertEqual(
+            {條目["character_key"] for 條目 in 排行榜條目},
+            {"同名角色@巴哈姆特:Paladin", "同名角色@泰坦:Paladin"},
+        )
+        self.assertEqual(len(公開排行榜["ranking_entries"]), 2)
+        self.assertEqual(
+            {條目["server"] for 條目 in 公開排行榜["ranking_entries"]},
+            {"巴哈姆特", "泰坦"},
+        )
+        self.assertTrue(all("original_server" not in 條目 for 條目 in 公開排行榜["ranking_entries"]))
 
     def test_history_scan_deep_report_default_limit_matches_workflow_budget(self) -> None:
         self.assertEqual(fflogs.FFLogs執行設定預設值["history_max_deep_reports_per_run"], 200)

@@ -61,7 +61,7 @@ npm run sync:data -- --dry-run
 
 個人成績單未套用職業篩選時，副本代表列與分享用代表職業優先選同職 `job_rank` 最前面的有效紀錄；`summary.best_rdps` 仍保留最高 rDPS，避免把「代表職業」與「最高輸出」混成同一件事。
 
-若同名角色有跨伺服器的公開紀錄，公開排行榜、`public/data/users/*.json`、`public/data/users/index.json`、近期動態、隊伍榜與伺服器對比等公開衍生資料，都會以該角色最新公開紀錄所在伺服器作為 `canonical_server`。這些資料的 `servers` 只保留 canonical 伺服器，舊伺服器改寫到 `server_aliases`；若某筆歷史紀錄原本來自舊伺服器，條目會另外保留 `original_server` 供追溯。這樣可避免轉服前後被誤判成兩位玩家，同時保留舊連結與人工查核所需的線索。
+若同名角色有跨伺服器的公開紀錄，公開排行榜、`public/data/users/*.json`、`public/data/users/index.json`、近期動態、隊伍榜與伺服器對比等公開衍生資料，都必須以「角色名稱 + 伺服器」拆成不同玩家。遊戲允許不同伺服器使用相同角色名稱，因此目前不再自動處理轉服合併；`canonical_server` 僅保留為前端相容欄位，值等於該份個人成績單自己的伺服器，`server_aliases` 預設為空陣列，公開條目也不再輸出 `original_server`。
 
 ## FFLogs 欄位解析
 
