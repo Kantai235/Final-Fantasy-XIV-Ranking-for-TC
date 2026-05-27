@@ -190,23 +190,6 @@ jobs:
           echo "PAGES_BUILD_SECONDS=${BUILD_SECONDS}" >> "$GITHUB_ENV"
           echo "build_seconds=${BUILD_SECONDS}" >> "$GITHUB_OUTPUT"
 
-      - name: 稽核 GitHub Pages payload 體積
-        env:
-          PAGES_BUILD_SECONDS: ${{ steps.build-site.outputs.build_seconds }}
-          PAGES_PAYLOAD_HISTORY_LIMIT: ${{ vars.PAGES_PAYLOAD_HISTORY_LIMIT || '200' }}
-        run: |
-          npm run audit:pages-payload:strict -- \
-            --write-history data/pages_payload_history.jsonl \
-            --history-limit "${PAGES_PAYLOAD_HISTORY_LIMIT:-200}"
-
-      - name: 估算 Cloudflare 快取承載量
-        run: npm run cloudflare:estimate | tee -a "$GITHUB_STEP_SUMMARY"
-
-      - name: 檢查 Cloudflare purge 範圍
-        env:
-          CLOUDFLARE_HOSTNAME: ${{ vars.CLOUDFLARE_HOSTNAME }}
-        run: npm run cloudflare:purge -- --dry-run --summary
-
       - name: 檢查排行榜資料是否有變動
         id: data-changes
         run: |
@@ -249,6 +232,50 @@ jobs:
           done
           echo "Unable to push ranking data after syncing remote branch."
           exit 1
+
+      - name: 稽核 GitHub Pages payload 體積
+        env:
+          PAGES_BUILD_SECONDS: ${{ steps.build-site.outputs.build_seconds }}
+          PAGES_PAYLOAD_HISTORY_LIMIT: ${{ vars.PAGES_PAYLOAD_HISTORY_LIMIT || '200' }}
+        run: |
+          npm run audit:pages-payload:strict -- \
+            --write-history data/pages_payload_history.jsonl \
+            --history-limit "${PAGES_PAYLOAD_HISTORY_LIMIT:-200}"
+
+      - name: Commit 並 Push payload 稽核歷史
+        run: |
+          if [ -z "$(git status --porcelain -- data/pages_payload_history.jsonl)" ]; then
+            echo "payload 稽核歷史沒有變更，略過提交。"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/pages_payload_history.jsonl
+          git commit \
+            -m "chore(data): 更新 Pages payload 稽核歷史" \
+            -m "原因：GitHub Actions 在資料提交後、Pages artifact 上傳前記錄 payload 體積趨勢。" \
+            -m "主要變更：更新 data/pages_payload_history.jsonl，保存 Pages payload 檔案數、大小與趨勢紀錄。" \
+            -m "測試/驗證：本 workflow 已完成 npm run audit:pages-payload:strict。"
+          for attempt in 1 2 3; do
+            git fetch origin "${{ github.ref_name }}"
+            git rebase "origin/${{ github.ref_name }}"
+            if git push origin "HEAD:${{ github.ref_name }}"; then
+              exit 0
+            fi
+            echo "Push was rejected, retrying after syncing remote branch..."
+            sleep $((attempt * 5))
+          done
+          echo "Unable to push payload audit history after syncing remote branch."
+          exit 1
+
+      - name: 估算 Cloudflare 快取承載量
+        run: npm run cloudflare:estimate | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: 檢查 Cloudflare purge 範圍
+        env:
+          CLOUDFLARE_HOSTNAME: ${{ vars.CLOUDFLARE_HOSTNAME }}
+        run: npm run cloudflare:purge -- --dry-run --summary
 
       - name: 上傳 GitHub Pages artifact
         uses: actions/upload-pages-artifact@v3

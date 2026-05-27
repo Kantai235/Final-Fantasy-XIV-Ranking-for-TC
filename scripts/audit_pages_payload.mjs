@@ -33,14 +33,14 @@ const payloadBudgets = [
   {
     label: "Hidden delta 資料",
     relativePath: "data/all",
-    targetMiB: 120,
+    targetMiB: 90,
     hardMiB: Number(process.env.PAGES_PAYLOAD_ALL_HARD_MIB || 950),
     reason: "public/data/all 應維持 hidden delta，不可重新膨脹成完整公開資料複本。",
   },
   {
     label: "個人成績單資料",
     relativePath: "data/users",
-    targetMiB: 500,
+    targetMiB: 530,
     hardMiB: Number(process.env.PAGES_PAYLOAD_USERS_HARD_MIB || 800),
     reason: "個人成績單是使用者資料最大來源，report_variants 延遲載入後應明顯下降。",
   },

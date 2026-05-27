@@ -157,7 +157,7 @@ npm run cloudflare:estimate
 ```
 
 `cloudflare:estimate` 會用目前 `dist/` 的 gzip / brotli 大小估算在不同 Cloudflare HIT ratio 下，GitHub Pages 100 GB/月 origin 流量約能承受多少次頁面載入。
-GitHub Actions 會在 payload 稽核後執行這個估算並寫入 Step Summary，和 `data/pages_payload_history.jsonl` 的 artifact 體積趨勢一起作為成本觀測資料。
+GitHub Actions 會在 payload 稽核與 history commit 後執行這個估算並寫入 Step Summary，和 `data/pages_payload_history.jsonl` 的 artifact 體積趨勢一起作為成本觀測資料。
 
 ## 流量估算公式
 

@@ -1771,6 +1771,9 @@ function buildFrequentTeammates(user) {
 
 function buildEntryPayload(entry, detailContext = null) {
   const { teammates, _reportVariants, ...payload } = entry;
+  // 個人成績單主檔會被每位玩家首屏載入；UI 只需要 gcd_coverage 的顯示值，
+  // gcd_coverage_status 屬於管線診斷欄位，保留在來源排行榜資料即可，避免每筆歷史成績重複膨脹。
+  delete payload.gcd_coverage_status;
   const reportVariants = orderReportVariantsForEntry(mergeReportVariants(_reportVariants), entry);
   if (reportVariants.length > 1) {
     const sourceReports = reportVariants.map((variant) => variant.report_code).filter(Boolean);
@@ -1833,6 +1836,9 @@ function compactReportVariantForEntry(variant, baseEntry) {
   const compactVariant = {};
 
   for (const [key, value] of Object.entries(variant)) {
+    if (key === "gcd_coverage_status") {
+      continue;
+    }
     if (key === "report_url" && variant.report_code) {
       continue;
     }

@@ -39,7 +39,7 @@
    ```
 
    `npm run build` 會先自動執行 `build:public-rankings`、`build:user-data` 與 `validate:data`，再由 Vite 建置靜態網站到 `dist/`。
-   GitHub Actions 會在建置後執行 `npm run audit:pages-payload:strict -- --write-history data/pages_payload_history.jsonl`，讓 `dist/`、`dist/data/`、`dist/data/all/`、`dist/data/users/` 與 `dist/og/` 超過 target 時直接失敗，並留下 payload 趨勢紀錄。
+   GitHub Actions 會在資料 commit/push 後、上傳 Pages artifact 前執行 `npm run audit:pages-payload:strict -- --write-history data/pages_payload_history.jsonl`，讓 `dist/`、`dist/data/`、`dist/data/all/`、`dist/data/users/` 與 `dist/og/` 超過 target 時停止部署；稽核通過時會另行提交 payload 趨勢紀錄。
 
 ## FFLogs 掃描策略
 
