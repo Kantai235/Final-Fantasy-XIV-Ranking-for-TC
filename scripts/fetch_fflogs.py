@@ -76,6 +76,7 @@ FFLogs執行設定預設值: dict[str, Any] = {
     "json_write_retries": 10,
     "json_write_retry_seconds": 0.5,
     "ranking_flush_reports": 25,
+    "state_checkpoint_flush_reports": 2000,
     "player_stats_batch_size": 10,
     "retry_report_codes": [],
     "only_report_codes": [],
@@ -284,6 +285,7 @@ def 正規化報告地區範圍(值: Any) -> str:
 報告尚未完整匯出狀態 = "deferred_incomplete_export"
 無通關報告狀態 = "skipped_no_clear"
 報告無法存取隱藏原因 = "private_or_deleted"
+深層掃描階段名稱 = "深層過濾與成績整理"
 可重試報告處理狀態 = {報告尚未完整匯出狀態}
 暫時性HTTP狀態碼 = {500, 502, 503, 504}
 
@@ -331,6 +333,8 @@ def 正規化報告地區範圍(值: Any) -> str:
 json寫入重試次數 = max(1, 整數設定("json_write_retries"))
 json寫入重試等待秒數 = max(0.1, 浮點設定("json_write_retry_seconds"))
 排行榜批次寫入報告數 = max(1, 整數設定("ranking_flush_reports"))
+狀態檢查點批次寫入報告數 = max(1, 整數設定("state_checkpoint_flush_reports"))
+深層掃描進度落地報告數 = 狀態檢查點批次寫入報告數
 玩家成績批次查詢戰鬥數 = max(1, 整數設定("player_stats_batch_size"))
 台灣時區 = timezone(timedelta(hours=8))
 
@@ -1229,6 +1233,119 @@ def 合併淺層報告列表(
         已加入代碼.add(代碼)
         合併後列表.append(報告)
     return 合併後列表
+
+
+def 同區報告已完成檢查(
+    報告代碼: str,
+    同區副本清單: list[dict[str, Any]],
+    已知報告代碼索引: dict[str, set[str]],
+    強制處理報告代碼: set[str],
+) -> bool:
+    if 報告代碼 in 強制處理報告代碼:
+        return False
+
+    for 同區副本 in 同區副本清單:
+        副本鍵值 = str(同區副本.get("key") or "")
+        if 報告代碼 not in 已知報告代碼索引.get(副本鍵值, set()):
+            return False
+    return True
+
+
+def 取得深層掃描恢復起始索引(
+    狀態: dict[str, Any],
+    副本設定: dict[str, Any],
+    報告列表: list[dict[str, Any]],
+    同區副本清單: list[dict[str, Any]],
+    已知報告代碼索引: dict[str, set[str]],
+    起始時間戳記: int,
+    *,
+    強制處理報告代碼: set[str] | None = None,
+    前次即時進度: dict[str, Any] | None = None,
+) -> tuple[int, str | None]:
+    if 前次即時進度 is None:
+        副本狀態 = (狀態.get("encounters") or {}).get(副本設定["key"]) or {}
+        即時進度 = 副本狀態.get("active_scan") if isinstance(副本狀態, dict) else None
+    else:
+        即時進度 = 前次即時進度
+    if not isinstance(即時進度, dict) or not 報告列表:
+        return 0, None
+    if 即時進度.get("stage") != 深層掃描階段名稱:
+        return 0, None
+
+    # active_scan 是可覆寫的即時進度，不是 append-only 權威資料；恢復前必須確認
+    # 本輪掃描起點相同，且每一筆被快轉的 report 都已由 checked_reports/rankings 記錄。
+    進度起點 = 轉_int_or_none(即時進度.get("scan_start_at"))
+    if 進度起點 != int(起始時間戳記):
+        return 0, None
+
+    報告代碼索引 = {
+        str(報告.get("code")): 索引
+        for 索引, 報告 in enumerate(報告列表)
+        if 報告.get("code")
+    }
+    目前報告代碼 = str(即時進度.get("current_report_code") or "")
+    目標索引 = 報告代碼索引.get(目前報告代碼)
+    定位說明 = f"報告 {目前報告代碼}" if 目標索引 is not None else None
+
+    if 目標索引 is None:
+        目前序號 = 轉_int_or_none(即時進度.get("current_report_index"))
+        前次總數 = 轉_int_or_none(即時進度.get("total_reports"))
+        if (
+            目前序號 is None
+            or 前次總數 != len(報告列表)
+            or 目前序號 < 1
+            or 目前序號 > len(報告列表)
+        ):
+            return 0, None
+        目標索引 = 目前序號 - 1
+        定位說明 = f"第 {目前序號} 筆"
+
+    強制處理 = 強制處理報告代碼 or set()
+    for 索引 in range(0, 目標索引 + 1):
+        報告代碼 = str(報告列表[索引].get("code") or "")
+        if not 報告代碼:
+            return 0, None
+        if not 同區報告已完成檢查(報告代碼, 同區副本清單, 已知報告代碼索引, 強制處理):
+            if 索引 == 0:
+                return 0, None
+            return (
+                索引,
+                f"偵測到前次深層掃描中斷於{定位說明}；"
+                f"第 {索引 + 1}/{len(報告列表)} 筆 {報告代碼} 尚未完成 checkpoint，將從該筆接續。",
+            )
+
+    恢復起始索引 = 目標索引 + 1
+    if 恢復起始索引 <= 0:
+        return 0, None
+
+    if 恢復起始索引 >= len(報告列表):
+        接續說明 = "候選清單結尾"
+    else:
+        接續報告代碼 = str(報告列表[恢復起始索引].get("code") or "")
+        接續說明 = f"第 {恢復起始索引 + 1}/{len(報告列表)} 筆 {接續報告代碼}"
+
+    return (
+        恢復起始索引,
+        f"偵測到前次深層掃描中斷於{定位說明}；"
+        f"已確認前 {恢復起始索引} 筆都有 state/ranking 紀錄，將從{接續說明}繼續。",
+    )
+
+
+def 取得已處理報告前綴快轉索引(
+    報告列表: list[dict[str, Any]],
+    同區副本清單: list[dict[str, Any]],
+    已處理報告代碼索引: dict[str, set[str]],
+    *,
+    強制處理報告代碼: set[str] | None = None,
+) -> int:
+    強制處理 = 強制處理報告代碼 or set()
+    for 索引, 報告 in enumerate(報告列表):
+        報告代碼 = str(報告.get("code") or "")
+        if not 報告代碼:
+            return 索引
+        if not 同區報告已完成檢查(報告代碼, 同區副本清單, 已處理報告代碼索引, 強制處理):
+            return 索引
+    return len(報告列表)
 
 
 def 讀取認證設定() -> list[dict[str, Any]]:
@@ -3608,6 +3725,28 @@ def main() -> int:
     歷史補查候選報告代碼: set[str] = set()
     已完成副本清單: list[dict[str, Any]] = []
     暫時失敗副本清單: list[dict[str, Any]] = []
+    待寫入狀態檢查點數 = 0
+
+    def 標記狀態已寫入() -> None:
+        nonlocal 待寫入狀態檢查點數
+        待寫入狀態檢查點數 = 0
+
+    def 登記狀態檢查點變更(數量: int = 1) -> None:
+        nonlocal 待寫入狀態檢查點數
+        待寫入狀態檢查點數 += max(1, 數量)
+
+    def 視需要寫入狀態檢查點(原因: str, *, 強制: bool = False) -> None:
+        # checked_reports 是跨輪去重依據；大量首輪回補時每份 report 都重寫 state.json 會讓
+        # 130MB 級別的狀態檔成為瓶頸。這裡只延後「略過/待重試」checkpoint 的落地，
+        # 中斷時最多重查最近一小批 report，不會刪除或覆寫既有歷史資料。
+        if 待寫入狀態檢查點數 <= 0:
+            return
+        if not 強制 and 待寫入狀態檢查點數 < 狀態檢查點批次寫入報告數:
+            return
+
+        寫入_json(狀態檔案路徑, 狀態)
+        print(f"已批次寫入 {待寫入狀態檢查點數} 筆 state checkpoint（{原因}）。")
+        標記狀態已寫入()
 
     def 取得同區同難度副本清單(基準副本: dict[str, Any]) -> list[dict[str, Any]]:
         # 同一份 FFLogs report 常同時包含同區同難度的多個副本。
@@ -3760,6 +3899,7 @@ def main() -> int:
             處理狀態["已處理報告代碼"].add(已儲存報告代碼)
             處理狀態["已知報告代碼"].add(已儲存報告代碼)
         寫入_json(狀態檔案路徑, 狀態)
+        標記狀態已寫入()
 
         處理狀態["rankings_inserted_or_updated"] += 批次新增或更新數量
         處理狀態["reports_saved"] += 批次報告數量
@@ -3972,6 +4112,9 @@ def main() -> int:
 
     for 副本設定 in 副本清單:
         目前處理狀態 = 副本處理狀態[副本設定["key"]]
+        原始副本狀態 = (狀態.get("encounters") or {}).get(副本設定["key"]) or {}
+        原始即時進度 = 原始副本狀態.get("active_scan") if isinstance(原始副本狀態, dict) else None
+        前次即時進度 = dict(原始即時進度) if isinstance(原始即時進度, dict) else None
         顯示前次未完成掃描(狀態, 副本設定)
         狀態時間戳記 = 取得狀態時間戳記(狀態, 副本設定)
         起始時間戳記 = 取得增量掃描起點(狀態時間戳記, 副本設定)
@@ -4151,21 +4294,91 @@ def main() -> int:
             1 for 報告 in 淺層報告列表 if 是否中國區域報告(報告)
         )
         總報告數量 = len(淺層報告列表)
+        同區副本清單 = 取得同區同難度副本清單(副本設定)
+        已處理報告代碼索引 = {
+            副本鍵值: 處理狀態["已處理報告代碼"]
+            for 副本鍵值, 處理狀態 in 副本處理狀態.items()
+        }
+        強制處理報告代碼 = 重抓報告代碼 | 只處理報告代碼
+        已處理前綴快轉索引 = 取得已處理報告前綴快轉索引(
+            淺層報告列表,
+            同區副本清單,
+            已處理報告代碼索引,
+            強制處理報告代碼=強制處理報告代碼,
+        )
+        if 已處理前綴快轉索引 > 0:
+            目前處理狀態["skipped_already_processed_reports"] += 已處理前綴快轉索引
+            if 已處理前綴快轉索引 >= 總報告數量:
+                print(f"{副本設定['name']} 已快轉略過全部 {總報告數量} 筆已處理候選報告。")
+            else:
+                下一筆報告代碼 = str(淺層報告列表[已處理前綴快轉索引].get("code") or "")
+                print(
+                    f"{副本設定['name']} 已快轉略過前 {已處理前綴快轉索引}/{總報告數量} 筆已處理候選報告，"
+                    f"從第 {已處理前綴快轉索引 + 1} 筆 {下一筆報告代碼} 接續。"
+                )
 
-        for 報告序號, 報告 in enumerate(淺層報告列表, start=1):
+        深層恢復起始索引, 深層恢復說明 = 取得深層掃描恢復起始索引(
+            狀態,
+            副本設定,
+            淺層報告列表,
+            同區副本清單,
+            已處理報告代碼索引,
+            起始時間戳記,
+            強制處理報告代碼=強制處理報告代碼,
+            前次即時進度=前次即時進度,
+        )
+        if 深層恢復說明:
+            print(f"{副本設定['name']} {深層恢復說明}")
+        深層處理起始索引 = max(已處理前綴快轉索引, 深層恢復起始索引)
+
+        已處理略過摘要數 = 0
+        已處理略過首序號: int | None = None
+        已處理略過末序號: int | None = None
+
+        def 輸出已處理略過摘要() -> None:
+            nonlocal 已處理略過摘要數, 已處理略過首序號, 已處理略過末序號
+            if 已處理略過摘要數 <= 0:
+                return
+            if 已處理略過摘要數 == 1:
+                print(f"{副本設定['name']} ({已處理略過首序號}/{總報告數量}) 略過 1 筆已處理報告。")
+            else:
+                print(
+                    f"{副本設定['name']} ({已處理略過首序號}-{已處理略過末序號}/{總報告數量}) "
+                    f"略過 {已處理略過摘要數} 筆已處理報告。"
+                )
+            已處理略過摘要數 = 0
+            已處理略過首序號 = None
+            已處理略過末序號 = None
+
+        for 報告序號, 報告 in enumerate(
+            淺層報告列表[深層處理起始索引:],
+            start=深層處理起始索引 + 1,
+        ):
             報告代碼 = 報告["code"]
             進度文字 = f"({報告序號}/{總報告數量})"
             強制重抓 = 報告代碼 in 重抓報告代碼 or 報告代碼 in 只處理報告代碼
+
+            待處理副本, 目前副本已處理 = 篩選待處理副本(副本設定, 報告代碼, 強制重抓)
+            if not 待處理副本:
+                if 目前副本已處理:
+                    已處理略過摘要數 += 1
+                    if 已處理略過首序號 is None:
+                        已處理略過首序號 = 報告序號
+                    已處理略過末序號 = 報告序號
+                continue
+
             if (
-                報告序號 == 1
-                or 報告序號 % 100 == 0
-                or 報告代碼 not in 目前處理狀態["已處理報告代碼"]
+                報告序號 == 深層處理起始索引 + 1
+                or 報告序號 % 深層掃描進度落地報告數 == 0
                 or 強制重抓
             ):
+                # active_scan 是可覆寫的即時進度，也作為人工中斷後的恢復切點。
+                # 為避免大型 state.json 每份 report 都重寫，落地頻率與 checked_reports 批次一致；
+                # 恢復時仍會逐筆確認被快轉的 report 已在 state/ranking 留下紀錄。
                 更新副本掃描進度(
                     狀態,
                     副本設定,
-                    stage="深層過濾與成績整理",
+                    stage=深層掃描階段名稱,
                     current_report_index=報告序號,
                     total_reports=總報告數量,
                     current_report_code=報告代碼,
@@ -4173,13 +4386,9 @@ def main() -> int:
                     current_report_start_at_iso=毫秒轉_iso(報告.get("startTime")),
                     processed_reports_in_checkpoint=len(目前處理狀態["已處理報告代碼"]),
                 )
+                標記狀態已寫入()
 
-            待處理副本, 目前副本已處理 = 篩選待處理副本(副本設定, 報告代碼, 強制重抓)
-            if not 待處理副本:
-                if 目前副本已處理:
-                    print(f"{副本設定['name']} {進度文字} 略過已處理報告：{報告代碼}")
-                continue
-
+            輸出已處理略過摘要()
             if 目前副本已處理:
                 print(f"{副本設定['name']} {進度文字} 略過已處理報告：{報告代碼}")
                 print(f"{副本設定['name']} {進度文字} 檢查同區其他副本：{報告代碼}")
@@ -4209,7 +4418,8 @@ def main() -> int:
                         {"reason": str(錯誤)},
                         立即寫入=False,
                     )
-                寫入_json(狀態檔案路徑, 狀態)
+                登記狀態檢查點變更(len(待處理副本))
+                視需要寫入狀態檢查點("報告無法存取")
                 print(f"{副本設定['name']} {進度文字} FFLogs 報告無法存取，已略過 {len(待處理副本)} 個副本：{報告代碼}")
                 continue
             except Exception as 錯誤:
@@ -4228,7 +4438,8 @@ def main() -> int:
                         "skipped_no_traditional_chinese_players",
                         立即寫入=False,
                     )
-                寫入_json(狀態檔案路徑, 狀態)
+                登記狀態檢查點變更(len(待處理副本))
+                視需要寫入狀態檢查點("沒有繁中服玩家")
                 print(f"{副本設定['name']} {進度文字} 沒有繁中服玩家，已略過 {len(待處理副本)} 個副本：{報告代碼}")
                 continue
 
@@ -4253,7 +4464,9 @@ def main() -> int:
                             "required_fight_end_at_iso": 毫秒轉_iso(錯誤.戰鬥結束時間戳記),
                             "fight_id": 錯誤.戰鬥_id,
                         },
+                        立即寫入=False,
                     )
+                    登記狀態檢查點變更()
                     掃描來源 = str(報告.get("_scan_source") or "")
                     if 掃描來源 == "delayed":
                         目標處理狀態["delayed_reports_deferred"] += 1
@@ -4268,7 +4481,9 @@ def main() -> int:
                         報告代碼,
                         "skipped_inaccessible",
                         {"reason": str(錯誤)},
+                        立即寫入=False,
                     )
+                    登記狀態檢查點變更()
                     print(f"{目標副本['name']} {進度文字} FFLogs 報告無法存取，已略過：{報告代碼}")
                     continue
                 except Exception as 錯誤:
@@ -4289,9 +4504,14 @@ def main() -> int:
                     if len(目標處理狀態["待寫入成績清單"]) >= 排行榜批次寫入報告數:
                         批次寫入排行榜(目標處理狀態, "達到批次門檻")
                 else:
-                    標記報告略過(目標處理狀態, 報告代碼, 無通關報告狀態)
+                    標記報告略過(目標處理狀態, 報告代碼, 無通關報告狀態, 立即寫入=False)
+                    登記狀態檢查點變更()
                     print(f"{目標副本['name']} {進度文字} 未找到通關戰鬥，已略過：{報告代碼}")
 
+            視需要寫入狀態檢查點("深層處理批次")
+
+        輸出已處理略過摘要()
+        視需要寫入狀態檢查點(f"{副本設定['name']} 深層處理結尾", 強制=True)
         for 處理狀態 in 副本處理狀態.values():
             原因 = (
                 "副本掃描結尾"

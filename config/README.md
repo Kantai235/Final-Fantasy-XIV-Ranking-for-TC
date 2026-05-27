@@ -25,6 +25,7 @@
 - `fetch_gcd_coverage_enabled` 與 `fetch_gcd_coverage_max_fights_per_run` 控制新 report 落地時是否即時計算 GCD 覆蓋率，以及每輪最多查幾場 fight 的 Casts graph。專案預設關閉，GitHub Actions 會用 `FFLOGS_FETCH_GCD_COVERAGE_ENABLED=true` 與 `FFLOGS_FETCH_GCD_COVERAGE_MAX_FIGHTS_PER_RUN=500` 開啟。
 - `request_timeout` 是整體請求逾時；`request_connect_timeout` 與 `request_read_timeout` 可分別覆寫連線與讀取逾時。值為 `null` 時會沿用 `fetch_fflogs.py` 的保守預設，避免單次 FFLogs 連線卡住整輪掃描。`request_retries` 控制暫時性 500/502/503/504、429 與連線逾時的重試次數。
 - `rate_limit_requests`、`rate_limit_window_seconds`、`rate_limit_padding_seconds` 與 `rate_limited_cooldown_seconds` 控制 FFLogs API 限流、多憑證輪替與 429 後冷卻。
+- `ranking_flush_reports` 控制有效 report 累積幾份後批次寫入排行榜；`state_checkpoint_flush_reports` 控制略過/待重試 checkpoint 與深層掃描 `active_scan.current_report_*` 累積幾筆後批次寫入 `data/state.json`，目前預設 `2000`。首輪全地區回補大量無關 report 時，後者可避免每份 report 都重寫大型 state 檔；人工中斷後則可從最近已落地且已確認安全的 report 切點接續。深層掃描會先整段快轉已處理前綴，避免大量已知 report 逐筆輸出或觸發進度寫入。
 - `shallow_scan_cache_enabled` 控制淺層 reports 查詢快取。保留開啟可避免同一輪近期、延遲與歷史補查重複查相同時間窗；若需要診斷 FFLogs 查詢結果，可用環境變數暫時關閉。
 - `report_status_cache_limit` 控制 `data/state.json` 內每個副本保留多少筆 `checked_reports` 狀態快取，避免 state 無限制膨脹；它不會刪除 `data/rankings/` 的歷史 report。
 - `json_write_retries` 與 `json_write_retry_seconds` 控制 JSON 寫入遇到本機檔案鎖定時的重試策略；`ranking_flush_reports` 控制抓取流程累積幾份有效 report 後先批次落地，降低長時間掃描中斷時的資料遺失風險。

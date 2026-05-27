@@ -34,6 +34,7 @@
   "json_write_retries": 10,
   "json_write_retry_seconds": 0.5,
   "ranking_flush_reports": 25,
+  "state_checkpoint_flush_reports": 2000,
   "player_stats_batch_size": 10,
   "retry_report_codes": [],
   "only_report_codes": []

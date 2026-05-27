@@ -178,6 +178,9 @@ class FetchFFLogsBatchTest(unittest.TestCase):
     def test_history_scan_deep_report_default_limit_matches_workflow_budget(self) -> None:
         self.assertEqual(fflogs.FFLogs執行設定預設值["history_max_deep_reports_per_run"], 200)
 
+    def test_state_checkpoint_default_avoids_frequent_large_state_writes(self) -> None:
+        self.assertEqual(fflogs.FFLogs執行設定預設值["state_checkpoint_flush_reports"], 2000)
+
     def test_fflogs_runtime_settings_can_be_overridden_by_environment(self) -> None:
         原始設定 = {
             "history_scan_enabled": False,
@@ -196,6 +199,7 @@ class FetchFFLogsBatchTest(unittest.TestCase):
             "delayed_scan_recent_gap_hours": 24,
             "delayed_scan_lookback_hours": 72,
             "delayed_max_deep_reports_per_run": 0,
+            "state_checkpoint_flush_reports": 10,
             "retry_report_codes": [],
         }
 
@@ -218,6 +222,7 @@ class FetchFFLogsBatchTest(unittest.TestCase):
                 "FFLOGS_DELAYED_SCAN_RECENT_GAP_HOURS": "24",
                 "FFLOGS_DELAYED_SCAN_LOOKBACK_HOURS": "72",
                 "FFLOGS_DELAYED_MAX_DEEP_REPORTS_PER_RUN": "30",
+                "FFLOGS_STATE_CHECKPOINT_FLUSH_REPORTS": "75",
                 "FFLOGS_RETRY_REPORT_CODES": "abc123, def456",
             },
         ):
@@ -239,6 +244,7 @@ class FetchFFLogsBatchTest(unittest.TestCase):
         self.assertEqual(覆寫後設定["delayed_scan_recent_gap_hours"], 24)
         self.assertEqual(覆寫後設定["delayed_scan_lookback_hours"], 72)
         self.assertEqual(覆寫後設定["delayed_max_deep_reports_per_run"], 30)
+        self.assertEqual(覆寫後設定["state_checkpoint_flush_reports"], 75)
         self.assertEqual(覆寫後設定["retry_report_codes"], ["abc123", "def456"])
 
     def test_report_fight_list_query_does_not_request_ranked_character_claimed(self) -> None:
@@ -580,6 +586,161 @@ class FetchFFLogsBatchTest(unittest.TestCase):
             {"keep": {"status": "saved"}},
         )
         self.assertEqual(新狀態["encounters"]["deferred"]["active_scan"]["stage"], "淺層掃描")
+
+    def test_deep_scan_resume_skips_checked_prefix(self) -> None:
+        狀態 = {
+            "encounters": {
+                "ultimate": {
+                    "active_scan": {
+                        "stage": fflogs.深層掃描階段名稱,
+                        "scan_start_at": 1000,
+                        "current_report_index": 3,
+                        "current_report_code": "r3",
+                    }
+                }
+            }
+        }
+        報告列表 = [
+            {"code": "r1"},
+            {"code": "r2"},
+            {"code": "r3"},
+            {"code": "r4"},
+        ]
+
+        起始索引, 說明 = fflogs.取得深層掃描恢復起始索引(
+            狀態,
+            {"key": "ultimate"},
+            報告列表,
+            [{"key": "ultimate"}],
+            {"ultimate": {"r1", "r2", "r3"}},
+            1000,
+        )
+
+        self.assertEqual(起始索引, 3)
+        self.assertIsNotNone(說明)
+        self.assertIn("r4", 說明 or "")
+
+    def test_deep_scan_resume_starts_at_first_unchecked_prefix_report(self) -> None:
+        狀態 = {
+            "encounters": {
+                "ultimate": {
+                    "active_scan": {
+                        "stage": fflogs.深層掃描階段名稱,
+                        "scan_start_at": 1000,
+                        "current_report_code": "r4",
+                    }
+                }
+            }
+        }
+        報告列表 = [
+            {"code": "r1"},
+            {"code": "r2"},
+            {"code": "r3"},
+            {"code": "r4"},
+        ]
+
+        起始索引, 說明 = fflogs.取得深層掃描恢復起始索引(
+            狀態,
+            {"key": "ultimate"},
+            報告列表,
+            [{"key": "ultimate"}],
+            {"ultimate": {"r1", "r3", "r4"}},
+            1000,
+        )
+
+        self.assertEqual(起始索引, 1)
+        self.assertIsNotNone(說明)
+        self.assertIn("r2", 說明 or "")
+
+    def test_deep_scan_resume_does_not_skip_forced_report(self) -> None:
+        狀態 = {
+            "encounters": {
+                "ultimate": {
+                    "active_scan": {
+                        "stage": fflogs.深層掃描階段名稱,
+                        "scan_start_at": 1000,
+                        "current_report_code": "r3",
+                    }
+                }
+            }
+        }
+        報告列表 = [{"code": "r1"}, {"code": "r2"}, {"code": "r3"}]
+
+        起始索引, 說明 = fflogs.取得深層掃描恢復起始索引(
+            狀態,
+            {"key": "ultimate"},
+            報告列表,
+            [{"key": "ultimate"}],
+            {"ultimate": {"r1", "r2", "r3"}},
+            1000,
+            強制處理報告代碼={"r2"},
+        )
+
+        self.assertEqual(起始索引, 1)
+        self.assertIsNotNone(說明)
+        self.assertIn("r2", 說明 or "")
+
+    def test_deep_scan_resume_can_use_previous_progress_snapshot(self) -> None:
+        狀態 = {
+            "encounters": {
+                "ultimate": {
+                    "active_scan": {
+                        "stage": "準備掃描",
+                        "scan_start_at": 1000,
+                    }
+                }
+            }
+        }
+        前次即時進度 = {
+            "stage": fflogs.深層掃描階段名稱,
+            "scan_start_at": 1000,
+            "current_report_code": "r2",
+        }
+
+        起始索引, 說明 = fflogs.取得深層掃描恢復起始索引(
+            狀態,
+            {"key": "ultimate"},
+            [{"code": "r1"}, {"code": "r2"}, {"code": "r3"}],
+            [{"key": "ultimate"}],
+            {"ultimate": {"r1", "r2"}},
+            1000,
+            前次即時進度=前次即時進度,
+        )
+
+        self.assertEqual(起始索引, 2)
+        self.assertIsNotNone(說明)
+        self.assertIn("r3", 說明 or "")
+
+    def test_processed_prefix_fast_forward_stops_at_first_unprocessed_report(self) -> None:
+        起始索引 = fflogs.取得已處理報告前綴快轉索引(
+            [{"code": "r1"}, {"code": "r2"}, {"code": "r3"}],
+            [{"key": "ultimate"}],
+            {"ultimate": {"r1"}},
+        )
+
+        self.assertEqual(起始索引, 1)
+
+    def test_processed_prefix_fast_forward_does_not_skip_forced_report(self) -> None:
+        起始索引 = fflogs.取得已處理報告前綴快轉索引(
+            [{"code": "r1"}, {"code": "r2"}, {"code": "r3"}],
+            [{"key": "ultimate"}],
+            {"ultimate": {"r1", "r2", "r3"}},
+            強制處理報告代碼={"r2"},
+        )
+
+        self.assertEqual(起始索引, 1)
+
+    def test_processed_prefix_fast_forward_requires_all_same_zone_encounters_checked(self) -> None:
+        起始索引 = fflogs.取得已處理報告前綴快轉索引(
+            [{"code": "r1"}, {"code": "r2"}],
+            [{"key": "ultimate_a"}, {"key": "ultimate_b"}],
+            {
+                "ultimate_a": {"r1", "r2"},
+                "ultimate_b": {"r2"},
+            },
+        )
+
+        self.assertEqual(起始索引, 0)
 
     def test_batch_query_keeps_each_fight_as_separate_alias(self) -> None:
         副本設定 = {"encounter_id": 93, "difficulty": 101}
