@@ -144,5 +144,15 @@
     "difficulty": 100,
     "enabled": true,
     "scan_start_date": "2025-11-27"
+  },
+  {
+    "key": "ultimate_futures_rewritten",
+    "name": "絕 伊甸",
+    "category": "絕",
+    "zone_id": 65,
+    "encounter_id": 1079,
+    "difficulty": 100,
+    "enabled": true,
+    "scan_start_date": "2026-05-26"
   }
 ]
