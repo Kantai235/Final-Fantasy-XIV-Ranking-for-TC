@@ -367,6 +367,14 @@ async function validatePublicDataForFrontend() {
   assert(honeyFans?.feature === "honey_b_lovely_fans", "public/data/fun/honey_b_fans.json feature 必須是 honey_b_lovely_fans");
   assert(Array.isArray(honeyFans?.top_fans), "public/data/fun/honey_b_fans.json 必須包含 top_fans");
   assert(Array.isArray(honeyFans?.latest_records), "public/data/fun/honey_b_fans.json 必須包含 latest_records");
+  assert((honeyFans?.latest_records || []).length <= 5, "public/data/fun/honey_b_fans.json latest_records 最多顯示 5 筆");
+  assert((honeyFans?.latest_fans || []).length <= 16, "public/data/fun/honey_b_fans.json latest_fans 最多顯示 16 筆");
+  assert(Number.isFinite(honeyFans?.summary?.leaderboard_window_days), "public/data/fun/honey_b_fans.json 必須標示粉絲榜榜單天數");
+  assert(Number.isFinite(honeyFans?.summary?.historical_total_event_count), "public/data/fun/honey_b_fans.json 必須保留歷史粉絲紀錄總數");
+  for (const fan of honeyFans?.top_fans || []) {
+    assert(Number.isFinite(fan?.current_streak_weeks), `${fan?.id || "未知粉絲"} 必須包含 current_streak_weeks`);
+    assert(Number.isFinite(fan?.historical_total_event_count), `${fan?.id || "未知粉絲"} 必須包含 historical_total_event_count`);
+  }
   assert(Array.isArray(userIndex?.users) && userIndex.users.length > 0, "public/data/users/index.json 必須包含 users");
   assert(userIndex?.total_users === userIndex?.users?.length, "public/data/users/index.json total_users 必須等於 users 長度");
   const userDetailCache = new Map();

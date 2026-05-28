@@ -786,16 +786,32 @@ async function validateHoneyFans() {
   if (!isObjectRecord(honeyFans?.summary)) {
     reportIssue("public/data/fun/honey_b_fans.json 缺少 summary");
   }
+  if (!isFiniteNumber(honeyFans?.summary?.leaderboard_window_days) || honeyFans.summary.leaderboard_window_days < 1) {
+    reportIssue("public/data/fun/honey_b_fans.json summary.leaderboard_window_days 必須是正數");
+  }
+  if (!isFiniteNumber(honeyFans?.summary?.historical_total_event_count)) {
+    reportIssue("public/data/fun/honey_b_fans.json summary.historical_total_event_count 必須是數字");
+  }
   for (const listName of ["top_fans", "latest_records", "latest_fans", "records"]) {
     if (!Array.isArray(honeyFans?.[listName])) {
       reportIssue(`public/data/fun/honey_b_fans.json 的 ${listName} 必須是陣列`);
     }
+  }
+  if ((honeyFans?.latest_records || []).length > 5) {
+    reportIssue("public/data/fun/honey_b_fans.json 的 latest_records 最多只能輸出 5 筆");
+  }
+  if ((honeyFans?.latest_fans || []).length > 16) {
+    reportIssue("public/data/fun/honey_b_fans.json 的 latest_fans 最多只能輸出 16 筆");
   }
 
   for (const fan of honeyFans?.top_fans || []) {
     checkedHoneyFanRows += 1;
     if (!fan?.character_name || !fan?.server || !isFiniteNumber(fan?.total_event_count)) {
       reportIssue("Honey B. Lovely 粉絲榜 top_fans 有粉絲缺少角色、伺服器或次數");
+      break;
+    }
+    if (!isFiniteNumber(fan?.historical_total_event_count) || !isFiniteNumber(fan?.current_streak_weeks)) {
+      reportIssue("Honey B. Lovely 粉絲榜 top_fans 有粉絲缺少歷史總數或連續入榜週數");
       break;
     }
   }

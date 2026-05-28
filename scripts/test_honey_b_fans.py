@@ -86,6 +86,98 @@ class HoneyBFansPublicDataTest(unittest.TestCase):
         self.assertEqual(payload["latest_records"][0]["id"], "R2:1")
         self.assertEqual(payload["latest_fans"][0]["character_name"], "里區欠")
 
+    def test_public_payload_limits_leaderboard_to_recent_week_and_marks_streak(self) -> None:
+        source = honey.建立空來源()
+        source["updated_at_iso"] = "2026-05-15T00:00:00+00:00"
+        source["records"] = [
+            {
+                "id": "R1:1:7:1000",
+                "fight_key": "R1:1",
+                "report_code": "R1",
+                "report_title": "本期上傳",
+                "report_url": "https://www.fflogs.com/reports/R1",
+                "fight_id": 1,
+                "fight_name": "Honey B. Lovely",
+                "fight_completed_at_iso": "2026-05-14T12:00:00+00:00",
+                "event_at_iso": "2026-05-14T11:58:00+00:00",
+                "character_name": "岳白",
+                "server": "鳳凰",
+                "job": "Sage",
+                "collected_at_iso": "2026-05-14T12:10:00+00:00",
+            },
+            {
+                "id": "R2:1:7:1000",
+                "fight_key": "R2:1",
+                "report_code": "R2",
+                "report_title": "前一週上傳",
+                "report_url": "https://www.fflogs.com/reports/R2",
+                "fight_id": 1,
+                "fight_name": "Honey B. Lovely",
+                "fight_completed_at_iso": "2026-05-07T12:00:00+00:00",
+                "event_at_iso": "2026-05-07T11:58:00+00:00",
+                "character_name": "岳白",
+                "server": "鳳凰",
+                "job": "Sage",
+                "collected_at_iso": "2026-05-07T12:10:00+00:00",
+            },
+            {
+                "id": "R3:1:9:1000",
+                "fight_key": "R3:1",
+                "report_code": "R3",
+                "report_title": "本期另一位粉絲",
+                "report_url": "https://www.fflogs.com/reports/R3",
+                "fight_id": 1,
+                "fight_name": "Honey B. Lovely",
+                "fight_completed_at_iso": "2026-05-13T12:00:00+00:00",
+                "event_at_iso": "2026-05-13T11:58:00+00:00",
+                "character_name": "里區欠",
+                "server": "鳳凰",
+                "job": "Gunbreaker",
+                "collected_at_iso": "2026-05-13T12:10:00+00:00",
+            },
+        ]
+
+        payload = honey.建立公開資料(source)
+
+        self.assertEqual(payload["leaderboard_window"]["days"], 7)
+        self.assertEqual(payload["summary"]["total_event_count"], 2)
+        self.assertEqual(payload["summary"]["historical_total_event_count"], 3)
+        self.assertEqual([fan["character_name"] for fan in payload["top_fans"]], ["岳白", "里區欠"])
+        self.assertEqual(payload["top_fans"][0]["total_event_count"], 1)
+        self.assertEqual(payload["top_fans"][0]["historical_total_event_count"], 2)
+        self.assertEqual(payload["top_fans"][0]["historical_record_count"], 2)
+        self.assertEqual(payload["top_fans"][0]["current_streak_weeks"], 2)
+        self.assertEqual([record["id"] for record in payload["top_fans"][0]["records"]], ["R1:1"])
+        self.assertEqual([record["id"] for record in payload["latest_records"]], ["R1:1", "R3:1"])
+        self.assertEqual(len(payload["records"]), 2)
+
+    def test_public_payload_limits_latest_sections(self) -> None:
+        source = honey.建立空來源()
+        source["updated_at_iso"] = "2026-05-20T00:00:00+00:00"
+        source["records"] = [
+            {
+                "id": f"R{index}:1:{index}:1000",
+                "fight_key": f"R{index}:1",
+                "report_code": f"R{index}",
+                "report_title": "本期上傳",
+                "report_url": f"https://www.fflogs.com/reports/R{index}",
+                "fight_id": 1,
+                "fight_name": "Honey B. Lovely",
+                "fight_completed_at_iso": f"2026-05-19T{index % 24:02d}:00:00+00:00",
+                "event_at_iso": f"2026-05-19T{index % 24:02d}:01:00+00:00",
+                "character_name": f"粉絲{index:02d}",
+                "server": "鳳凰",
+                "job": "Sage",
+                "collected_at_iso": f"2026-05-19T{index % 24:02d}:02:00+00:00",
+            }
+            for index in range(20)
+        ]
+
+        payload = honey.建立公開資料(source)
+
+        self.assertEqual(len(payload["latest_records"]), 5)
+        self.assertEqual(len(payload["latest_fans"]), 16)
+
     def test_empty_public_payload_keeps_stable_generated_time(self) -> None:
         payload = honey.建立公開資料(honey.建立空來源())
 

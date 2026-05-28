@@ -51,7 +51,7 @@
 
 ## Honey B. Lovely 粉絲榜
 
-`scripts/fetch_honey_b_fans.py` 與正式排行榜分離，固定使用 `savage_m2s` 的 zone / encounter / difficulty 設定掃描 Honey B. Lovely 粉絲紀錄。它只保存通關與 wipe 場次中進入 `心醉魂迷：奴役` 的衍生資料、已檢查戰鬥狀態與 report 快取，來源檔是 `data/fun/honey_b_fans.json`，公開檔是 `public/data/fun/honey_b_fans.json`。
+`scripts/fetch_honey_b_fans.py` 與正式排行榜分離，固定使用 `savage_m2s` 的 zone / encounter / difficulty 設定掃描 Honey B. Lovely 粉絲紀錄。它只保存通關與 wipe 場次中進入 `心醉魂迷：奴役` 的衍生資料、已檢查戰鬥狀態與 report 快取，來源檔是 `data/fun/honey_b_fans.json`，公開檔是 `public/data/fun/honey_b_fans.json`。公開 `top_fans`、粉絲列 `records`、`latest_records`、公開 `records` 與本期摘要只計入以來源更新時間為基準的近 7 天紀錄；`latest_records` 最多輸出 5 筆，`latest_fans` 最多輸出 16 筆。歷史紀錄仍留在來源檔，並由建置層計算 `summary.historical_*`、粉絲列 `historical_*` 與 `current_streak_weeks`，供前端顯示歷史統計與連續入榜標示。
 
 抓取新資料：
 
@@ -60,6 +60,8 @@ npm run fetch:honey-fans
 ```
 
 這個指令會呼叫 FFLogs API。若只要從既有來源檔重建公開 JSON，使用 `npm run build:honey-fans`，它不會推進正式排行榜掃描點，也不會改動 `data/rankings/` 或 `data/state.json`。
+
+正式 `.github/workflows/update_rankings.yml` 會在 `fetch_fflogs.py` 後執行 `npm run fetch:honey-fans`，預設參數為 `--recent-days 3 --history-limit 200 --recent-window-hours 24 --history-window-hours 24`；對應的 GitHub Variables 是 `HONEY_FANS_RECENT_DAYS`、`HONEY_FANS_HISTORY_LIMIT`、`HONEY_FANS_RECENT_WINDOW_HOURS` 與 `HONEY_FANS_HISTORY_WINDOW_HOURS`。資料建置階段會再執行 `npm run build:honey-fans`，並把 `data/fun/honey_b_fans.json` 與 `public/data/fun/honey_b_fans.json` 一起納入自動資料提交。
 
 ## FFLogs 掃描策略
 

@@ -108,6 +108,24 @@ jobs:
           FFLOGS_FETCH_GCD_COVERAGE_MAX_FIGHTS_PER_RUN: ${{ vars.FFLOGS_FETCH_GCD_COVERAGE_MAX_FIGHTS_PER_RUN || '500' }}
         run: python scripts/fetch_fflogs.py
 
+      - name: 執行 Honey B. Lovely 粉絲榜抓取腳本
+        env:
+          FFLOGS_CLIENT_ID: ${{ secrets.FFLOGS_CLIENT_ID }}
+          FFLOGS_CLIENT_SECRET: ${{ secrets.FFLOGS_CLIENT_SECRET }}
+          FFLOGS_CLIENT_IDS: ${{ secrets.FFLOGS_CLIENT_IDS }}
+          FFLOGS_CLIENT_SECRETS: ${{ secrets.FFLOGS_CLIENT_SECRETS }}
+          FFLOGS_CLIENT_CREDENTIALS_JSON: ${{ secrets.FFLOGS_CLIENT_CREDENTIALS_JSON }}
+          HONEY_FANS_RECENT_DAYS: ${{ vars.HONEY_FANS_RECENT_DAYS || '3' }}
+          HONEY_FANS_HISTORY_LIMIT: ${{ vars.HONEY_FANS_HISTORY_LIMIT || '200' }}
+          HONEY_FANS_RECENT_WINDOW_HOURS: ${{ vars.HONEY_FANS_RECENT_WINDOW_HOURS || '24' }}
+          HONEY_FANS_HISTORY_WINDOW_HOURS: ${{ vars.HONEY_FANS_HISTORY_WINDOW_HOURS || '24' }}
+        run: |
+          npm run fetch:honey-fans -- \
+            --recent-days "${HONEY_FANS_RECENT_DAYS:-3}" \
+            --history-limit "${HONEY_FANS_HISTORY_LIMIT:-200}" \
+            --recent-window-hours "${HONEY_FANS_RECENT_WINDOW_HOURS:-24}" \
+            --history-window-hours "${HONEY_FANS_HISTORY_WINDOW_HOURS:-24}"
+
       # 舊版資料修補工具暫停每輪自動執行，避免排程重複回查已不常需要補齊的歷史 report。
       # 若未來需要人工修復既有缺漏，保留以下步驟作為手動恢復時的上下文。
       # - name: 補齊缺漏 FFLogs 原始資料
@@ -136,8 +154,11 @@ jobs:
       - name: 分割完整排行榜資料供 Git 追蹤
         run: python scripts/fetch_fflogs.py --split-rankings
 
-      - name: 產生個人成績單資料
-        run: node scripts/build_user_data.mjs
+      - name: 產生個人成績單與排行榜薄索引資料
+        run: npm run build:user-data
+
+      - name: 重建 Honey B. Lovely 粉絲榜公開資料
+        run: npm run build:honey-fans
 
       - name: 寫入更新執行戳記
         run: |
@@ -193,9 +214,9 @@ jobs:
       - name: 檢查排行榜資料是否有變動
         id: data-changes
         run: |
-          # build_user_data.mjs 會產生多個 public/data/*.json。這裡與下方 git add 必須使用同一批路徑，
+          # build:user-data 與 build:honey-fans 會產生多個公開資料 JSON。這裡與下方 git add 必須使用同一批路徑，
           # 否則 commit 後仍可能留下未暫存變更，導致後續 rebase 被 Git 拒絕。
-          DATA_PATHS=(data public/data/*.json)
+          DATA_PATHS=(data public/data/*.json public/data/fun/*.json)
           if [ -n "$(git status --porcelain -- "${DATA_PATHS[@]}")" ]; then
             echo "changed=true" >> "$GITHUB_OUTPUT"
           else
@@ -207,13 +228,13 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          DATA_PATHS=(data public/data/*.json)
+          DATA_PATHS=(data public/data/*.json public/data/fun/*.json)
           git add -- "${DATA_PATHS[@]}"
           git commit \
             -m "chore(data): 自動更新排行榜資料" \
             -m "原因：GitHub Actions 定時同步 FFLogs 公開報告，讓靜態網站資料保持最新。" \
-            -m "主要變更：更新 data 與 public/data 內的排行榜、個人成績單、全服統計或更新狀態產物。" \
-            -m "測試/驗證：本 workflow 已完成 fetch_fflogs.py、validate:data 與 npm run build。"
+            -m "主要變更：更新 data 與 public/data 內的排行榜、個人成績單、全服統計、Honey B. Lovely 粉絲榜或更新狀態產物。" \
+            -m "測試/驗證：本 workflow 已完成 fetch_fflogs.py、fetch:honey-fans、validate:data 與 npm run build。"
           # rebase 前工作樹必須乾淨；若未來資料建置新增了已追蹤產物但忘記納入 DATA_PATHS，
           # 這裡會列出漏掉的檔案，避免只看到 Git 的「cannot rebase: You have unstaged changes」。
           if [ -n "$(git status --porcelain --untracked-files=no)" ]; then

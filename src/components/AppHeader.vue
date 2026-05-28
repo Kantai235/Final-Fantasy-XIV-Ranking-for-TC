@@ -172,7 +172,11 @@ export default {
         :aria-pressed="蜂蜂背景音樂啟用 ? 'true' : 'false'"
         @click="切換蜂蜂背景音樂"
       >
-        <span class="標題按鈕圖示" aria-hidden="true">♪</span>
+        <svg class="標題按鈕圖示" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M9 18V5l12-2v13"></path>
+          <circle cx="6" cy="18" r="3"></circle>
+          <circle cx="18" cy="16" r="3"></circle>
+        </svg>
         <span class="標題按鈕文字">{{ 蜂蜂背景音樂啟用 ? "關閉背景音樂" : "開啟背景音樂" }}</span>
       </button>
       <AnnouncementCenter />

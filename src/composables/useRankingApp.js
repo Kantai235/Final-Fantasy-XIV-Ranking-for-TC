@@ -1807,19 +1807,21 @@ const 頭號粉絲列表 = computed(() => {
 });
 
 const 最新粉絲紀錄列表 = computed(() => {
-  return Array.isArray(蜂蜂粉絲榜來源.value.latest_records) ? 蜂蜂粉絲榜來源.value.latest_records.slice(0, 24) : [];
+  return Array.isArray(蜂蜂粉絲榜來源.value.latest_records) ? 蜂蜂粉絲榜來源.value.latest_records.slice(0, 5) : [];
 });
 
 const 最新加入粉絲列表 = computed(() => {
-  return Array.isArray(蜂蜂粉絲榜來源.value.latest_fans) ? 蜂蜂粉絲榜來源.value.latest_fans.slice(0, 24) : [];
+  return Array.isArray(蜂蜂粉絲榜來源.value.latest_fans) ? 蜂蜂粉絲榜來源.value.latest_fans.slice(0, 16) : [];
 });
 
 const 蜂蜂粉絲榜概要 = computed(() => {
   const summary = 蜂蜂粉絲榜來源.value.summary || {};
+  const 榜單天數 = summary.leaderboard_window_days || 蜂蜂粉絲榜來源.value.leaderboard_window?.days || 7;
 
   return [
-    { 標籤: "粉絲紀錄", 數值: 格式化整數(summary.total_event_count) },
-    { 標籤: "收錄粉絲", 數值: 格式化整數(summary.fan_count) },
+    { 標籤: `近 ${榜單天數} 天吃心心`, 數值: 格式化整數(summary.total_event_count) },
+    { 標籤: "本期粉絲", 數值: 格式化整數(summary.fan_count) },
+    { 標籤: "歷史紀錄", 數值: 格式化整數(summary.historical_total_event_count ?? summary.total_event_count) },
   ];
 });
 
@@ -2482,11 +2484,13 @@ function 伺服器對比分享描述() {
 
 function 蜂蜂粉絲榜分享描述() {
   const summary = 蜂蜂粉絲榜來源.value.summary || {};
+  const 榜單天數 = summary.leaderboard_window_days || 蜂蜂粉絲榜來源.value.leaderboard_window?.days || 7;
   const eventCount = 分享數量文字(summary.total_event_count, "筆粉絲紀錄");
   const fanCount = 分享數量文字(summary.fan_count, "名粉絲");
+  const historicalEventCount = 分享數量文字(summary.historical_total_event_count, "筆歷史紀錄");
   const topFan = summary.top_fan_name ? `，目前頭號粉絲是 ${summary.top_fan_name}` : "";
   return 正規化分享描述(
-    `Honey B. Lovely 粉絲榜統計 M2S 通關與 wipe 戰鬥中吃到第 4 顆愛心、進入「心醉魂迷：奴役」的趣味資料${[eventCount, fanCount].filter(Boolean).length ? `，目前收錄 ${[eventCount, fanCount].filter(Boolean).join("、")}` : ""}${topFan}。`,
+    `Honey B. Lovely 粉絲榜統計近 ${榜單天數} 天 M2S 通關與 wipe 戰鬥中吃到第 4 顆愛心、進入「心醉魂迷：奴役」的趣味資料${[eventCount, fanCount].filter(Boolean).length ? `，本期收錄 ${[eventCount, fanCount].filter(Boolean).join("、")}` : ""}${historicalEventCount ? `，歷史累計 ${historicalEventCount}` : ""}${topFan}。`,
   );
 }
 

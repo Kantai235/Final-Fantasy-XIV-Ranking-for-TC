@@ -2,6 +2,7 @@
 import { defineAsyncComponent, onMounted, onUnmounted, provide, proxyRefs } from "vue";
 import AppFooter from "./components/AppFooter.vue";
 import AppHeader from "./components/AppHeader.vue";
+import HoneyFansFloatingButton from "./components/HoneyFansFloatingButton.vue";
 import PlayerSearchHistoryDialog from "./components/PlayerSearchHistoryDialog.vue";
 import { rankingAppKey, useRankingApp } from "./composables/useRankingApp";
 import { 預熱職業Icon快取 } from "./domain/jobs";
@@ -61,6 +62,8 @@ onUnmounted(() => {
     <AppFooter />
     <PlayerSearchHistoryDialog />
   </main>
+
+  <HoneyFansFloatingButton />
 </template>
 
 <style src="./styles/app.css"></style>

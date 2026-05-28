@@ -323,6 +323,15 @@ export default {
       return `${是滅團 ? "滅團" : "通關"} ${rankingApp.格式化通關時間(秒數)}`;
     }
 
+    function 格式化粉絲榜連續入榜(粉絲) {
+      const 週數 = Number(粉絲?.current_streak_weeks || 0);
+      if (!Number.isFinite(週數) || 週數 < 2) {
+        return "";
+      }
+
+      return `連續 ${rankingApp.格式化整數(週數)} 週入榜`;
+    }
+
     function 開啟粉絲榜歷史紀錄(粉絲) {
       粉絲榜歷史紀錄彈窗粉絲.value = 粉絲;
     }
@@ -654,6 +663,7 @@ export default {
       粉絲榜紀錄剩餘粉絲數,
       格式化粉絲榜短時間,
       格式化粉絲榜戰鬥時間,
+      格式化粉絲榜連續入榜,
       開啟粉絲榜歷史紀錄,
       關閉粉絲榜歷史紀錄,
     };
@@ -717,10 +727,12 @@ export default {
             <button type="button" @click="關閉粉絲榜歷史紀錄">關閉</button>
           </header>
           <div class="粉絲榜歷史概要">
-            <span>奴役次數 <strong>{{ 格式化整數(粉絲榜歷史紀錄彈窗粉絲.total_event_count) }}</strong></span>
-            <span>戰鬥紀錄 <strong>{{ 格式化整數(粉絲榜歷史紀錄彈窗粉絲.fight_count) }}</strong></span>
+            <span>本期吃心心 <strong>{{ 格式化整數(粉絲榜歷史紀錄彈窗粉絲.total_event_count) }}</strong></span>
+            <span>本期戰鬥次數 <strong>{{ 格式化整數(粉絲榜歷史紀錄彈窗粉絲.fight_count) }}</strong></span>
+            <span>歷史吃心心 <strong>{{ 格式化整數(粉絲榜歷史紀錄彈窗粉絲.historical_total_event_count ?? 粉絲榜歷史紀錄彈窗粉絲.total_event_count) }}</strong></span>
+            <span v-if="格式化粉絲榜連續入榜(粉絲榜歷史紀錄彈窗粉絲)" class="粉絲榜連續徽章">{{ 格式化粉絲榜連續入榜(粉絲榜歷史紀錄彈窗粉絲) }}</span>
           </div>
-          <div v-if="粉絲榜歷史紀錄列表.length === 0" class="狀態列">目前沒有歷史紀錄</div>
+          <div v-if="粉絲榜歷史紀錄列表.length === 0" class="狀態列">目前沒有近 7 天紀錄</div>
           <div v-else class="粉絲榜歷史列表">
             <article v-for="紀錄 in 粉絲榜歷史紀錄列表" :key="紀錄.id" class="粉絲榜歷史項">
               <div>
@@ -809,8 +821,8 @@ export default {
       <section class="粉絲榜舞台" aria-label="Honey B. Lovely 粉絲榜舞台">
         <div class="粉絲榜舞台內容">
           <span class="粉絲榜眉標">Honey B. Lovely Fan Stage</span>
-          <h2>應援舞台開演中</h2>
-          <p>每一筆心醉魂迷：奴役，都是一張打在粉絲名冊上的亮粉票根。</p>
+          <h2>さあ、「ハニー・B・ラブリー」の登場です！</h2>
+          <p>近一週吃到「心醉魂迷：奴役」，才算進本期粉絲名冊。本榜單屬於娛樂性質，不會列入正式排行榜。</p>
           <div class="粉絲榜舞台數據列" aria-label="Honey B. Lovely 粉絲榜概要">
             <div v-for="項目 in 蜂蜂粉絲榜概要" :key="項目.標籤" class="粉絲榜舞台數字卡">
               <span>{{ 項目.標籤 }}</span>
@@ -818,9 +830,11 @@ export default {
             </div>
           </div>
           <div class="粉絲榜應援標籤列" aria-label="粉絲榜資料範圍">
+            <span>近 7 天榜單</span>
             <span>M2S 公開戰鬥紀錄</span>
             <span>第 4 顆愛心</span>
             <span>心醉魂迷：奴役</span>
+            <span>ブリリアント☆</span>
           </div>
         </div>
         <aside v-if="頭號粉絲列表.length" class="粉絲榜頭號票券" aria-label="目前頭號粉絲">
@@ -830,8 +844,9 @@ export default {
           </button>
           <small>{{ 頭號粉絲列表[0].server }}・{{ 顯示職業名稱(頭號粉絲列表[0].main_job) || 頭號粉絲列表[0].main_job || "-" }}</small>
           <strong>{{ 格式化整數(頭號粉絲列表[0].total_event_count) }} 次</strong>
+          <span v-if="格式化粉絲榜連續入榜(頭號粉絲列表[0])" class="粉絲榜連續徽章">{{ 格式化粉絲榜連續入榜(頭號粉絲列表[0]) }}</span>
           <button class="粉絲榜頭號紀錄按鈕" type="button" @click="開啟粉絲榜歷史紀錄(頭號粉絲列表[0])">
-            歷史紀錄
+            近 7 天紀錄
           </button>
         </aside>
       </section>
@@ -839,7 +854,7 @@ export default {
       <section class="統計面板 統計面板寬" aria-label="頭號粉絲">
         <header class="統計面板標題">
           <h2>頭號粉絲</h2>
-          <span>依進入「心醉魂迷：奴役」次數排序</span>
+          <span>依近一週進入「心醉魂迷：奴役」次數排序</span>
         </header>
         <div v-if="頭號粉絲列表.length === 0" class="狀態列">目前尚未收錄粉絲紀錄</div>
         <div v-else class="統計表格外框">
@@ -849,8 +864,8 @@ export default {
                 <th scope="col" class="數字">排名</th>
                 <th scope="col">粉絲</th>
                 <th scope="col">主要職業</th>
-                <th scope="col" class="數字">奴役次數</th>
-                <th scope="col" class="數字">戰鬥數</th>
+                <th scope="col" class="數字">吃心心數</th>
+                <th scope="col" class="數字">戰鬥次數</th>
                 <th scope="col">最近紀錄</th>
                 <th scope="col">報告</th>
               </tr>
@@ -858,13 +873,20 @@ export default {
             <tbody>
               <tr v-for="(粉絲, index) in 頭號粉絲列表" :key="粉絲.id" :class="{ 粉絲榜冠軍列: index === 0, 粉絲榜上位列: index < 3 }">
                 <td class="數字 粉絲榜排名格">
-                  <span class="粉絲榜排名徽章">{{ 格式化排名(index + 1) }}</span>
+                  <span class="粉絲榜排名徽章">
+                    <span class="粉絲榜排名符號" aria-hidden="true">#</span>
+                    <span class="粉絲榜排名數字">{{ 格式化整數(index + 1) }}</span>
+                  </span>
                 </td>
                 <td>
-                  <button class="文字連結" type="button" @click="載入使用者成績(粉絲.character_name, 粉絲.server)">
-                    {{ 粉絲.character_name }}
-                  </button>
-                  <small class="表格補充文字">{{ 粉絲.server }}</small>
+                  <span class="粉絲榜玩家身分">
+                    <button class="文字連結 粉絲榜玩家名稱" type="button" @click="載入使用者成績(粉絲.character_name, 粉絲.server)">
+                      {{ 粉絲.character_name }}
+                    </button>
+                    <span class="粉絲榜玩家分隔" aria-hidden="true">@</span>
+                    <small class="表格補充文字 粉絲榜玩家伺服器">{{ 粉絲.server }}</small>
+                  </span>
+                  <span v-if="格式化粉絲榜連續入榜(粉絲)" class="粉絲榜連續徽章">{{ 格式化粉絲榜連續入榜(粉絲) }}</span>
                 </td>
                 <td>
                   <span v-if="粉絲.main_job" class="職業標籤 近期動態職業標籤" :class="職業色彩類別(職業代碼色彩(粉絲.main_job))">
@@ -880,8 +902,20 @@ export default {
                   </span>
                   <span v-else>-</span>
                 </td>
-                <td class="數字">{{ 格式化整數(粉絲.total_event_count) }}</td>
-                <td class="數字">{{ 格式化整數(粉絲.fight_count) }}</td>
+                <td class="數字 粉絲榜吃心心數格">
+                  <span class="粉絲榜數值標籤">吃心心數</span>
+                  <span class="粉絲榜數值文字">
+                    <strong>{{ 格式化整數(粉絲.total_event_count) }}</strong>
+                    <span class="粉絲榜數值單位">次</span>
+                  </span>
+                </td>
+                <td class="數字 粉絲榜戰鬥次數格">
+                  <span class="粉絲榜數值標籤">戰鬥次數</span>
+                  <span class="粉絲榜數值文字">
+                    <strong>{{ 格式化整數(粉絲.fight_count) }}</strong>
+                    <span class="粉絲榜數值單位">場</span>
+                  </span>
+                </td>
                 <td>
                   <span class="緊湊紀錄時間">
                     <span>{{ 格式化紀錄日期(粉絲.latest_recorded_at_iso) }}</span>

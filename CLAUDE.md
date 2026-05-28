@@ -138,4 +138,6 @@
 2. 來源資料保存在 `data/fun/honey_b_fans.json`，公開資料保存在 `public/data/fun/honey_b_fans.json`；不得寫入 `data/rankings/` 或 `data/state.json`，避免趣味榜影響正式排行榜與個人成績單。
 3. 粉絲榜只保存通關與 wipe 場次中 `心醉魂迷：奴役`（ability id `1003926`）的 `applydebuff` 衍生紀錄、已檢查戰鬥狀態、已檢查 report 快取與掃描游標，不保存 FFLogs raw events、`masterData` 大表或其他可重查 payload。
 4. 每輪正式抓取先掃描近三天公開 M2S 紀錄，補上尚未檢查的通關與 wipe 戰鬥；再從 `scan_start_date` 的歷史游標往後掃描，每輪最多檢查 200 場未記錄戰鬥。已完成目前 `fight_scan_mode` 的 `checked_reports` 快取的 report 必須在 detail query 前略過，避免重複消耗 FFLogs API 配額；舊版只掃通關場次的快取不得阻擋 wipe 補掃。
-5. `npm run build:honey-fans` 只由既有來源檔重建公開 JSON，不呼叫 FFLogs API；`npm run validate:data` 與 `npm run test:frontend-data` 會檢查公開粉絲榜資料契約。
+5. `.github/workflows/update_rankings.yml` 會在正式排行榜抓取後執行 `npm run fetch:honey-fans`，預設 `--recent-days 3 --history-limit 200`，並可用 `HONEY_FANS_RECENT_DAYS`、`HONEY_FANS_HISTORY_LIMIT`、`HONEY_FANS_RECENT_WINDOW_HOURS`、`HONEY_FANS_HISTORY_WINDOW_HOURS` 調整排程掃描範圍。
+6. `npm run build:honey-fans` 只由既有來源檔重建公開 JSON，不呼叫 FFLogs API；正式 workflow 會在資料建置階段執行它，並把 `public/data/fun/*.json` 納入資料 commit 路徑。`npm run validate:data` 與 `npm run test:frontend-data` 會檢查公開粉絲榜資料契約。
+7. 公開粉絲榜 `top_fans`、粉絲列 `records`、`latest_records`、公開 `records` 與本期摘要只納入以 `source.updated_at_iso` 為基準的近 7 天紀錄；`latest_records` 最多輸出 5 筆，`latest_fans` 最多輸出 16 筆。來源檔仍保留歷史紀錄，建置層會用同樣 7 天切片回推 `current_streak_weeks`，並以 `summary.historical_*` 與粉絲列 `historical_*` 保留歷史統計，供前端顯示「連續 N 週入榜」。

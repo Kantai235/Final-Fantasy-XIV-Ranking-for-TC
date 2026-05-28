@@ -28,6 +28,11 @@ FIGHT_SCAN_MODE = "kills_and_wipes"
 DEFAULT_RECENT_DAYS = 3
 DEFAULT_HISTORY_LIMIT = 200000
 DEFAULT_SCAN_WINDOW_HOURS = 24
+PUBLIC_LEADERBOARD_WINDOW_DAYS = 7
+PUBLIC_LATEST_RECORD_LIMIT = 5
+PUBLIC_LATEST_FAN_LIMIT = 16
+PUBLIC_RECORD_LIMIT = 500
+MILLISECONDS_PER_DAY = 24 * 60 * 60 * 1000
 CHINA_REGION_ID = 4
 COMPLETED_FIGHT_STATUSES = {"checked", "skipped_no_tc_players"}
 COMPLETED_REPORT_STATUSES = {"checked", "skipped_no_m2s_fights", "skipped_no_m2s_kills"}
@@ -925,6 +930,112 @@ def 執行歷史掃描(
     return total_summary
 
 
+def 解析紀錄時間毫秒(record: dict[str, Any]) -> int | None:
+    for 欄位 in ("fight_completed_at_iso", "event_at_iso", "collected_at_iso"):
+        value = record.get(欄位)
+        if not value:
+            continue
+        try:
+            return fflogs.解析日期時間為毫秒(str(value))
+        except RuntimeError:
+            continue
+    return None
+
+
+def 建立公開榜單時間窗(records: list[dict[str, Any]], generated_at_iso: str) -> dict[str, Any]:
+    window_ms = PUBLIC_LEADERBOARD_WINDOW_DAYS * MILLISECONDS_PER_DAY
+    try:
+        end_at = fflogs.解析日期時間為毫秒(generated_at_iso)
+    except RuntimeError:
+        end_at = None
+
+    latest_record_at = max((解析紀錄時間毫秒(record) or 0 for record in records), default=0)
+    if end_at is None or (latest_record_at and end_at < latest_record_at):
+        end_at = latest_record_at
+    start_at = max(0, end_at - window_ms) if end_at is not None else 0
+    return {
+        "days": PUBLIC_LEADERBOARD_WINDOW_DAYS,
+        "window_ms": window_ms,
+        "start_at": start_at,
+        "end_at": end_at,
+        "start_at_iso": fflogs.毫秒轉_iso(start_at),
+        "end_at_iso": fflogs.毫秒轉_iso(end_at),
+    }
+
+
+def 篩選公開榜單紀錄(records: list[dict[str, Any]], leaderboard_window: dict[str, Any]) -> list[dict[str, Any]]:
+    start_at = 轉_int(leaderboard_window.get("start_at"))
+    end_at = 轉_int(leaderboard_window.get("end_at"))
+    if start_at is None or end_at is None:
+        return []
+
+    return [
+        record
+        for record in records
+        if (record_time := 解析紀錄時間毫秒(record)) is not None and start_at <= record_time <= end_at
+    ]
+
+
+def 計算連續入榜週數(records: list[dict[str, Any]], leaderboard_window: dict[str, Any]) -> int:
+    record_times = sorted(
+        time
+        for record in records
+        if (time := 解析紀錄時間毫秒(record)) is not None
+    )
+    if not record_times:
+        return 0
+
+    start_at = 轉_int(leaderboard_window.get("start_at"))
+    end_at = 轉_int(leaderboard_window.get("end_at"))
+    window_ms = 轉_int(leaderboard_window.get("window_ms"))
+    if start_at is None or end_at is None or not window_ms:
+        return 0
+
+    streak = 0
+    current_start = start_at
+    current_end = end_at
+    # 本期榜單是 rolling 7 天；連續入榜也用同一個 7 天切片往前回推，
+    # 這樣「本期入榜」與「連續 N 週」會由同一套資料口徑產生，不需要前端再猜週界線。
+    while True:
+        upper_bound = current_end if streak == 0 else current_end - 1
+        if not any(current_start <= record_time <= upper_bound for record_time in record_times):
+            break
+        streak += 1
+        current_end = current_start
+        current_start -= window_ms
+
+    return streak
+
+
+def 加上歷史入榜資訊(
+    top_fans: list[dict[str, Any]],
+    historical_top_fans: list[dict[str, Any]],
+    leaderboard_window: dict[str, Any],
+) -> list[dict[str, Any]]:
+    historical_by_id = {fan.get("id"): fan for fan in historical_top_fans if fan.get("id")}
+    enriched_fans: list[dict[str, Any]] = []
+
+    for fan in top_fans:
+        historical = historical_by_id.get(fan.get("id")) or {}
+        historical_records = historical.get("records") if isinstance(historical.get("records"), list) else []
+        enriched = {
+            **fan,
+            "leaderboard_window_days": PUBLIC_LEADERBOARD_WINDOW_DAYS,
+            "historical_total_event_count": historical.get("total_event_count", fan.get("total_event_count", 0)),
+            "historical_fight_count": historical.get("fight_count", fan.get("fight_count", 0)),
+            "historical_first_recorded_at_iso": historical.get("first_recorded_at_iso", fan.get("first_recorded_at_iso")),
+            "historical_latest_recorded_at_iso": historical.get("latest_recorded_at_iso", fan.get("latest_recorded_at_iso")),
+            "historical_record_count": len(historical_records),
+            "current_streak_weeks": 計算連續入榜週數(historical_records, leaderboard_window),
+            # `records` 是前端報告彈窗的資料來源，必須與本期榜單同口徑，只顯示近 7 天。
+            # 歷史紀錄仍留在來源檔，並在此處只用來計算 current_streak_weeks 與 historical_* 摘要。
+            "records": fan.get("records", []),
+        }
+        enriched_fans.append(enriched)
+
+    return enriched_fans
+
+
 def 建立戰鬥公開紀錄(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
     fight_index: dict[str, dict[str, Any]] = {}
     for record in records:
@@ -1139,12 +1250,26 @@ def 建立公開資料(source: dict[str, Any]) -> dict[str, Any]:
         records.append(record)
 
     records.sort(key=lambda record: (record.get("fight_completed_at_iso") or "", record.get("event_at_iso") or ""), reverse=True)
-    top_fans = 建立粉絲公開排行(records)
-    latest_records = 建立戰鬥公開紀錄(records)
-    kill_event_count = sum(1 for record in records if 紀錄戰鬥狀態(record) == "kill")
-    wipe_event_count = len(records) - kill_event_count
+    generated_at_iso = source.get("updated_at_iso") or source.get("created_at_iso") or "1970-01-01T00:00:00+00:00"
+    leaderboard_window = 建立公開榜單時間窗(records, generated_at_iso)
+    leaderboard_records = 篩選公開榜單紀錄(records, leaderboard_window)
+
+    historical_top_fans = 建立粉絲公開排行(records)
+    top_fans = 加上歷史入榜資訊(
+        建立粉絲公開排行(leaderboard_records),
+        historical_top_fans,
+        leaderboard_window,
+    )
+    latest_records = 建立戰鬥公開紀錄(leaderboard_records)
+    historical_latest_records = 建立戰鬥公開紀錄(records)
+    kill_event_count = sum(1 for record in leaderboard_records if 紀錄戰鬥狀態(record) == "kill")
+    wipe_event_count = len(leaderboard_records) - kill_event_count
+    historical_kill_event_count = sum(1 for record in records if 紀錄戰鬥狀態(record) == "kill")
+    historical_wipe_event_count = len(records) - historical_kill_event_count
     kill_fight_count = sum(1 for record in latest_records if record.get("fight_status") == "kill")
     wipe_fight_count = len(latest_records) - kill_fight_count
+    historical_kill_fight_count = sum(1 for record in historical_latest_records if record.get("fight_status") == "kill")
+    historical_wipe_fight_count = len(historical_latest_records) - historical_kill_fight_count
     latest_fans = sorted(
         top_fans,
         key=lambda fan: (
@@ -1153,7 +1278,6 @@ def 建立公開資料(source: dict[str, Any]) -> dict[str, Any]:
         ),
         reverse=True,
     )
-    generated_at_iso = source.get("updated_at_iso") or source.get("created_at_iso") or "1970-01-01T00:00:00+00:00"
 
     return {
         "schema_version": 1,
@@ -1162,24 +1286,40 @@ def 建立公開資料(source: dict[str, Any]) -> dict[str, Any]:
         "source_updated_at_iso": source.get("updated_at_iso"),
         "source_encounter": source.get("source_encounter") or {},
         "target_debuff": source.get("target_debuff") or {},
+        "leaderboard_window": {
+            "days": leaderboard_window["days"],
+            "start_at_iso": leaderboard_window["start_at_iso"],
+            "end_at_iso": leaderboard_window["end_at_iso"],
+        },
         "summary": {
-            "total_event_count": len(records),
+            "leaderboard_window_days": leaderboard_window["days"],
+            "leaderboard_window_start_at_iso": leaderboard_window["start_at_iso"],
+            "leaderboard_window_end_at_iso": leaderboard_window["end_at_iso"],
+            "total_event_count": len(leaderboard_records),
             "kill_event_count": kill_event_count,
             "wipe_event_count": wipe_event_count,
             "fan_count": len(top_fans),
             "fight_count": len(latest_records),
             "kill_fight_count": kill_fight_count,
             "wipe_fight_count": wipe_fight_count,
+            "historical_total_event_count": len(records),
+            "historical_kill_event_count": historical_kill_event_count,
+            "historical_wipe_event_count": historical_wipe_event_count,
+            "historical_fan_count": len(historical_top_fans),
+            "historical_fight_count": len(historical_latest_records),
+            "historical_kill_fight_count": historical_kill_fight_count,
+            "historical_wipe_fight_count": historical_wipe_fight_count,
             "top_fan_name": top_fans[0]["character_name"] if top_fans else None,
             "top_fan_server": top_fans[0]["server"] if top_fans else None,
             "top_fan_event_count": top_fans[0]["total_event_count"] if top_fans else 0,
-            "latest_recorded_at_iso": records[0].get("fight_completed_at_iso") if records else None,
+            "latest_recorded_at_iso": leaderboard_records[0].get("fight_completed_at_iso") if leaderboard_records else None,
+            "historical_latest_recorded_at_iso": records[0].get("fight_completed_at_iso") if records else None,
             "latest_collected_at_iso": max((record.get("collected_at_iso") or "" for record in records), default=None),
         },
         "top_fans": top_fans[:100],
-        "latest_records": latest_records[:100],
-        "latest_fans": latest_fans[:100],
-        "records": records[:500],
+        "latest_records": latest_records[:PUBLIC_LATEST_RECORD_LIMIT],
+        "latest_fans": latest_fans[:PUBLIC_LATEST_FAN_LIMIT],
+        "records": leaderboard_records[:PUBLIC_RECORD_LIMIT],
     }
 
 

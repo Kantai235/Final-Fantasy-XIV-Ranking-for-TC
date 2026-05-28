@@ -122,7 +122,7 @@ npm run validate:data
 npm run build
 ```
 
-Honey B. Lovely 粉絲榜是獨立趣味資料；若只要由既有來源檔重建公開 JSON：
+Honey B. Lovely 粉絲榜是獨立趣味資料；公開榜單、吃心心數、戰鬥次數與報告只計近 7 天，歷史紀錄仍會保留在來源檔用於追溯與連續入榜標示。若只要由既有來源檔重建公開 JSON：
 
 ```bash
 npm run build:honey-fans
