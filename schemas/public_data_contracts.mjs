@@ -139,6 +139,15 @@ const gcdCoverageSchema = nullable(objectOf({
   speed_stat_source: optional(stringSchema),
   coverage_downtime_ms: optional(numberSchema),
   denominator_downtime_ms: optional(numberSchema),
+  estimated_speed_below_minimum: optional(booleanSchema),
+  fallback_selection: optional(stringSchema),
+  downtime_selection: optional(stringSchema),
+  raw_events_percent: optional(nullableNumberSchema),
+  raw_events_denominator_ms: optional(nullableNumberSchema),
+  casts_graph_percent: optional(nullableNumberSchema),
+  casts_graph_denominator_ms: optional(nullableNumberSchema),
+  raw_targetability_percent: optional(nullableNumberSchema),
+  raw_targetability_denominator_ms: optional(nullableNumberSchema),
 }));
 
 const gcdCoverageStatusSchema = objectOf({

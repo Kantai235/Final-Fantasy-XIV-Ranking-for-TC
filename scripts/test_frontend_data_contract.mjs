@@ -12,6 +12,7 @@ import {
   解析公告Markdown,
 } from "../src/utils/announcements.js";
 import { buildReportExternalLinks } from "../src/utils/reportLinks.js";
+import { publicDataContracts, validateSchemaContract } from "../schemas/public_data_contracts.mjs";
 import { 建立職業佔比分組, 取得統計範圍計數 } from "../src/utils/statsDisplay.js";
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -45,6 +46,61 @@ function assert(condition, message) {
   if (!condition) {
     reportIssue(message);
   }
+}
+
+function validateGcdCoverageDiagnosticFields() {
+  const rankingEntry = {
+    id: "sample-gcd-entry",
+    character_name: "測試角色",
+    server: "陸行鳥",
+    job: "Bard",
+    dps: 1000,
+    rdps: 1000,
+    adps: 1000,
+    active_time_ms: 600000,
+    active_percent: 99.5,
+    gcd_coverage: {
+      percent: 98.82,
+      covered_time_ms: 593000,
+      denominator_ms: 600000,
+      downtime_ms: 0,
+      gcd_cast_count: 240,
+      calculation_version: 5,
+      source: "raw_events",
+      speed_stat_source: "estimated",
+      estimated_speed_below_minimum: true,
+      fallback_selection: "bard_raw_events_with_casts_graph_lock_blend",
+      downtime_selection: "casts_graph_encounter_gap",
+      raw_events_percent: 98.49,
+      raw_events_denominator_ms: 282847,
+      casts_graph_percent: 100,
+      casts_graph_denominator_ms: 414286,
+      raw_targetability_percent: 95.04,
+      raw_targetability_denominator_ms: 482477,
+    },
+    clear_time_ms: 600000,
+    clear_time_seconds: 600,
+    damage_downtime_ms: null,
+    damage_downtime_seconds: null,
+    damage_time_ms: 600000,
+    damage_time_seconds: 600,
+    recorded_at_iso: "2026-01-01T00:00:00.000Z",
+    report_code: "sample",
+    report_url: "https://www.fflogs.com/reports/sample",
+    fight_id: 1,
+    duplicate_count: 1,
+    rank: 1,
+  };
+
+  const contractIssues = validateSchemaContract(
+    rankingEntry,
+    publicDataContracts.rankingEntry,
+    "GCD 覆蓋率診斷欄位範例",
+  );
+  assert(
+    contractIssues.length === 0,
+    `GCD 覆蓋率診斷欄位應符合公開資料契約：${contractIssues.join("；")}`,
+  );
 }
 
 function validateJobIconCacheKeys() {
@@ -977,6 +1033,7 @@ async function main() {
   await validateFrontendFetchBoundary();
   await validateStaticSeoBuildOptions();
   await validateSiteFeatureFlags();
+  validateGcdCoverageDiagnosticFields();
   validateJobIconCacheKeys();
   await validateEncounterSwitchFilterPersistence();
   await validatePublicDataForFrontend();

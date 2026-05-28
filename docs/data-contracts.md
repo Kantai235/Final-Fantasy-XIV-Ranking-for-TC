@@ -59,6 +59,8 @@ npm run sync:data -- --dry-run
 
 `public/data/all/` 目前是 hidden delta 產物，不再複製所有公開 JSON；delta 檔也有自己的資料契約，驗證時會先與公開底稿合併再檢查完整資料形狀。新增或移除公開 JSON 欄位時，必須同步更新 `schemas/public_data_contracts.mjs`、資料建置腳本與前端讀取端，讓欄位漂移在 `npm test` 或 `npm run validate:data` 階段被抓到。
 
+`gcd_coverage` 是公開資料中可顯示的衍生結果；除了 `percent`、分母與計算版本，也允許保留小型診斷欄位，例如 `estimated_speed_below_minimum`、`fallback_selection`、`downtime_selection`，以及 raw events、Casts graph、raw targetability fallback 的比較百分比與分母。這些欄位只說明本地演算法為什麼選用某個覆蓋率結果，不保存 FFLogs raw events 或 Casts graph payload，因此符合公開 JSON 的瘦身邊界。
+
 ## 資料守恆與 payload 預算
 
 `scripts/test_data_conservation.mjs` 是資料瘦身前的守門測試，會檢查：
