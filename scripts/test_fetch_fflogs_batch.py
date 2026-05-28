@@ -253,6 +253,71 @@ class FetchFFLogsBatchTest(unittest.TestCase):
         self.assertIn("rankedCharacters", fflogs.戰鬥清單查詢)
         self.assertNotIn("claimed", fflogs.戰鬥清單查詢)
 
+    def test_ucob_fight_list_does_not_depend_on_fflogs_kill_flag(self) -> None:
+        副本設定 = {"encounter_id": 1073, "difficulty": 100}
+        呼叫查詢: list[str] = []
+
+        def 假_graphql(
+            session: Any,
+            認證池: Any,
+            查詢: str,
+            變數: dict[str, Any] | None = None,
+        ) -> dict[str, Any]:
+            呼叫查詢.append(查詢)
+            return {
+                "reportData": {
+                    "report": {
+                        "code": "ucob123",
+                        "fights": [
+                            {
+                                "id": 21,
+                                "encounterID": 1073,
+                                "name": "Nael Deus Darnus / Bahamut Prime / Twintania",
+                                "kill": False,
+                                "startTime": 0,
+                                "endTime": 619000,
+                                "fightPercentage": 80,
+                            },
+                            {
+                                "id": 22,
+                                "encounterID": 1073,
+                                "name": "Nael Deus Darnus / Bahamut Prime / Twintania",
+                                "kill": False,
+                                "startTime": 0,
+                                "endTime": 957000,
+                                "fightPercentage": 80,
+                            },
+                            {
+                                "id": 23,
+                                "encounterID": 1073,
+                                "name": "Twintania",
+                                "kill": False,
+                                "startTime": 0,
+                                "endTime": 900000,
+                                "fightPercentage": 80,
+                            },
+                            {
+                                "id": 24,
+                                "encounterID": 1073,
+                                "name": "Nael Deus Darnus / Bahamut Prime / Twintania",
+                                "kill": True,
+                                "startTime": 0,
+                                "endTime": 1000,
+                                "fightPercentage": 0,
+                            },
+                        ],
+                    }
+                }
+            }
+
+        with patch.object(fflogs, "執行_graphql", 假_graphql):
+            報告 = fflogs.查詢通關戰鬥(None, None, 副本設定, "ucob123")
+
+        self.assertEqual(呼叫查詢, [fflogs.戰鬥清單全部查詢])
+        self.assertNotIn("killType: Kills", 呼叫查詢[0])
+        self.assertIsNotNone(報告)
+        self.assertEqual([戰鬥["id"] for 戰鬥 in 報告["fights"]], [22, 24])
+
     def test_delayed_scan_window_targets_24_to_72_hours_before_scan_end(self) -> None:
         一小時 = 60 * 60 * 1000
         掃描結束 = 100 * 一小時
@@ -755,6 +820,7 @@ class FetchFFLogsBatchTest(unittest.TestCase):
             呼叫紀錄.append((查詢, 變數 or {}))
             self.assertIn("fightIDs: [11]", 查詢)
             self.assertIn("fightIDs: [22]", 查詢)
+            self.assertIn("killType: Kills", 查詢)
             return {
                 "reportData": {
                     "report": {
@@ -775,6 +841,35 @@ class FetchFFLogsBatchTest(unittest.TestCase):
         self.assertEqual(呼叫紀錄[0][1], {"code": "abc123", "encounterID": 93, "difficulty": 101})
         self.assertEqual(結果[11]["player_details"], {"fight": 11})
         self.assertEqual(結果[22]["damage_done"], {"fight": 22})
+
+    def test_ucob_batch_player_stats_omits_native_kill_filter(self) -> None:
+        副本設定 = {"encounter_id": 1073, "difficulty": 100}
+        呼叫查詢: list[str] = []
+
+        def 假_graphql(
+            session: Any,
+            認證池: Any,
+            查詢: str,
+            變數: dict[str, Any] | None = None,
+        ) -> dict[str, Any]:
+            呼叫查詢.append(查詢)
+            return {
+                "reportData": {
+                    "report": {
+                        "playerDetails_0": {"fight": 42},
+                        "damageDone_0": {"fight": 42},
+                        "rankings_0": {"fight": 42},
+                    }
+                }
+            }
+
+        with patch.object(fflogs, "執行_graphql", 假_graphql), contextlib.redirect_stderr(io.StringIO()):
+            結果 = fflogs.查詢多場玩家成績(None, None, 副本設定, "ucob123", [42])
+
+        self.assertEqual(len(呼叫查詢), 1)
+        self.assertIn("fightIDs: [42]", 呼叫查詢[0])
+        self.assertNotIn("killType: Kills", 呼叫查詢[0])
+        self.assertEqual(結果[42]["damage_done"], {"fight": 42})
 
     def test_batch_query_can_pin_each_fight_to_explicit_time_window(self) -> None:
         副本設定 = {"encounter_id": 94, "difficulty": 101}

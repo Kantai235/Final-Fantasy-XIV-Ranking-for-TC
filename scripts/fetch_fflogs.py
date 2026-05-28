@@ -18,8 +18,10 @@ from fflogs_pipeline.graphql_queries import (
     深層過濾查詢,
     報告狀態查詢,
     戰鬥清單查詢,
+    戰鬥清單全部查詢,
     淺層掃描查詢,
     玩家成績查詢,
+    玩家成績全部查詢,
 )
 import gcd_coverage_core as gcd_core
 
@@ -29,6 +31,9 @@ import gcd_coverage_core as gcd_core
 # 前端顯示用的統計、個人成績單與職業分布，必須留給 scripts/build_user_data.mjs 聚合。
 API_URL = "https://www.fflogs.com/api/v2/client"
 TOKEN_URL = "https://www.fflogs.com/oauth/token"
+絕巴哈副本ID = 1073
+絕巴哈通關FightPercentage = 80
+絕巴哈最低通關毫秒 = 780_000
 
 專案根目錄 = Path(__file__).resolve().parents[1]
 load_dotenv(專案根目錄 / ".env")
@@ -1852,19 +1857,84 @@ def 查詢報告目前狀態(
     return 報告
 
 
+def 是絕巴哈副本(副本設定: dict[str, Any]) -> bool:
+    return 副本設定.get("encounter_id") == 絕巴哈副本ID
+
+
+def 計算FFLogs戰鬥持續毫秒(戰鬥: dict[str, Any]) -> float | None:
+    戰鬥開始 = 轉_float(戰鬥.get("startTime"))
+    戰鬥結束 = 轉_float(戰鬥.get("endTime"))
+    if 戰鬥開始 is not None and 戰鬥結束 is not None and 戰鬥結束 >= 戰鬥開始:
+        return 戰鬥結束 - 戰鬥開始
+
+    return 轉_float(戰鬥.get("combatTime"))
+
+
+def 絕巴哈戰鬥名稱已進入巴哈本體(戰鬥: dict[str, Any]) -> bool:
+    名稱 = str(戰鬥.get("name") or "").strip().lower()
+    if "bahamut prime" in 名稱:
+        return True
+
+    # FFLogs 新格式可能以 P3/P4/P5 作為 fight.name 前綴；這些都已越過前段，
+    # 仍需再搭配 fightPercentage 與時長門檻，避免把 P4→P5 轉換點全滅誤認為通關。
+    return any(名稱.startswith(f"p{相位} ") or 名稱.startswith(f"p{相位}:") for 相位 in (3, 4, 5))
+
+
+def 是絕巴哈補判通關戰鬥(戰鬥: dict[str, Any]) -> bool:
+    fight_percentage = 轉_float(戰鬥.get("fightPercentage"))
+    戰鬥持續毫秒 = 計算FFLogs戰鬥持續毫秒(戰鬥)
+    return (
+        fight_percentage == 絕巴哈通關FightPercentage
+        and 絕巴哈戰鬥名稱已進入巴哈本體(戰鬥)
+        and 戰鬥持續毫秒 is not None
+        and 戰鬥持續毫秒 >= 絕巴哈最低通關毫秒
+    )
+
+
+def 是絕巴哈通關戰鬥(戰鬥: dict[str, Any]) -> bool:
+    return 戰鬥.get("kill") is True or 是絕巴哈補判通關戰鬥(戰鬥)
+
+
+def 套用絕巴哈通關戰鬥篩選(副本設定: dict[str, Any], 報告: dict[str, Any]) -> dict[str, Any]:
+    if not 是絕巴哈副本(副本設定):
+        return 報告
+
+    # UCoB（encounterID 1073）在不同年代的 FFLogs 回傳並不一致：部分通關會有 kill=true，
+    # 部分則只留下 fightPercentage=80。這裡保留 FFLogs 原生 kill=true 的紀錄，同時補上
+    # 「80%、已進 Bahamut Prime 後段、戰鬥至少 13 分鐘」三條件，排除 P4→P5 轉換點全滅。
+    戰鬥列表 = 報告.get("fights") or []
+    if not isinstance(戰鬥列表, list):
+        return {**報告, "fights": []}
+
+    通關戰鬥列表 = [
+        戰鬥
+        for 戰鬥 in 戰鬥列表
+        if isinstance(戰鬥, dict) and 是絕巴哈通關戰鬥(戰鬥)
+    ]
+    return {**報告, "fights": 通關戰鬥列表}
+
+
 def 查詢通關戰鬥(
     session: requests.Session,
     認證池: FFLogs認證池,
     副本設定: dict[str, Any],
     報告代碼: str,
 ) -> dict[str, Any] | None:
+    查詢字串 = 戰鬥清單全部查詢 if 是絕巴哈副本(副本設定) else 戰鬥清單查詢
     資料 = 執行_graphql(
         session,
         認證池,
-        戰鬥清單查詢,
+        查詢字串,
         {"code": 報告代碼, "encounterID": 副本設定["encounter_id"], "difficulty": 副本設定["difficulty"]},
     )
-    return ((資料.get("reportData") or {}).get("report")) or None
+    報告 = ((資料.get("reportData") or {}).get("report")) or None
+    if not isinstance(報告, dict):
+        return None
+    return 套用絕巴哈通關戰鬥篩選(副本設定, 報告)
+
+
+def 需要FFLogs原生通關篩選(副本設定: dict[str, Any]) -> bool:
+    return not 是絕巴哈副本(副本設定)
 
 
 def 查詢玩家成績(
@@ -1874,10 +1944,11 @@ def 查詢玩家成績(
     報告代碼: str,
     戰鬥_id: int,
 ) -> dict[str, Any]:
+    查詢字串 = 玩家成績查詢 if 需要FFLogs原生通關篩選(副本設定) else 玩家成績全部查詢
     資料 = 執行_graphql(
         session,
         認證池,
-        玩家成績查詢,
+        查詢字串,
         {
             "code": 報告代碼,
             "fightIDs": [戰鬥_id],
@@ -1896,11 +1967,13 @@ def 查詢玩家成績(
 def 建立玩家成績批次查詢(
     戰鬥_id清單: list[int],
     戰鬥時間範圍索引: dict[int, dict[str, int | float]] | None = None,
+    套用通關篩選: bool = True,
 ) -> str:
     # playerDetails 與 damageDone 必須維持「單一 fight」語意，否則多場通關會被 FFLogs 聚合成同一張表，
     # rDPS/aDPS 分母、停手時間與玩家列表都會失去逐場可追溯性。這裡用 GraphQL alias 把多個單 fight
     # 查詢包進同一個 HTTP request，降低 workflow 遇到多場戰鬥 report 時的 API request 數量。
     欄位片段: list[str] = []
+    通關篩選列 = "        killType: Kills,\n" if 套用通關篩選 else ""
     for 索引, 戰鬥_id in enumerate(戰鬥_id清單):
         時間範圍 = (戰鬥時間範圍索引 or {}).get(戰鬥_id) or {}
         起始時間 = 轉_float(時間範圍.get("start_time"))
@@ -1919,7 +1992,7 @@ def 建立玩家成績批次查詢(
 {時間範圍參數}
         encounterID: $encounterID,
         difficulty: $difficulty,
-        killType: Kills,
+{通關篩選列.rstrip()}
         translate: true,
         includeCombatantInfo: false
       )
@@ -1929,7 +2002,7 @@ def 建立玩家成績批次查詢(
 {時間範圍參數}
         encounterID: $encounterID,
         difficulty: $difficulty,
-        killType: Kills,
+{通關篩選列.rstrip()}
         hostilityType: Friendlies,
         viewBy: Source,
         translate: true
@@ -1963,11 +2036,13 @@ def 查詢多場玩家成績(
     戰鬥_id清單: list[int],
     戰鬥時間範圍索引: dict[int, dict[str, int | float]] | None = None,
 ) -> dict[int, dict[str, Any]]:
+    套用通關篩選 = 需要FFLogs原生通關篩選(副本設定)
+
     def 查詢批次(批次戰鬥_id清單: list[int]) -> dict[int, dict[str, Any]]:
         資料 = 執行_graphql(
             session,
             認證池,
-            建立玩家成績批次查詢(批次戰鬥_id清單, 戰鬥時間範圍索引),
+            建立玩家成績批次查詢(批次戰鬥_id清單, 戰鬥時間範圍索引, 套用通關篩選),
             {
                 "code": 報告代碼,
                 "encounterID": 副本設定["encounter_id"],
@@ -3190,6 +3265,10 @@ def 建立報告成績(
     戰鬥列表 = 報告.get("fights") or []
     if not 戰鬥列表:
         return None
+    if 是絕巴哈副本(副本設定):
+        戰鬥列表 = 套用絕巴哈通關戰鬥篩選(副本設定, {"fights": 戰鬥列表}).get("fights") or []
+        if not 戰鬥列表:
+            return None
 
     整理後戰鬥列表: list[dict[str, Any]] = []
     報告起始時間戳記 = 報告.get("startTime") or 淺層報告.get("startTime")

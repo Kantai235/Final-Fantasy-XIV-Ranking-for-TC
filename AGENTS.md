@@ -97,6 +97,7 @@
 11. `scripts/backfill_gcd_coverage_xivanalysis.py` 只保留為人工抽樣診斷工具，會以 Playwright 開啟 xivanalysis report/fight/player 頁面並解析 Checklist 的 `Always be casting` 百分比；GitHub Actions 預設不得使用此入口，避免觸發 xivanalysis 的 `Slow down / Too many requests` 限流。xivanalysis 沒有正式結果 JSON API；此腳本不得保存頁面或 FFLogs raw events。
 12. 排行榜報告欄以「報告」按鈕開啟可關閉的彈跳視窗，集中呈現該筆成績數值與外部工具連結。前端外部報告工具連結依 `report_code`、`fight_id` 與 `fflogs_source_id` 組成；`fflogs_source_id` 來自 FFLogs `playerDetails` 的 sourceID，只用於 xivanalysis `/fflogs/{report}/{fight}/{sourceID}` 深連結，不得取代角色名稱、伺服器與職業組成的排行榜身分判定；ffreplay 連結則使用含 `fight` query 的 FFLogs URL 進行 URL encode。
 13. 少數副本的 FFLogs `Casts` graph 不會回傳 downtime，但 Boss 轉場仍應從 GCD 覆蓋率分母扣除；`unreal_byakko` 以 raw `targetabilityupdate` 推出所有敵人都不可選取的窗口，並以 XIVAPI `Status.csv` 的 `LockActions/LockControl` 狀態補上玩家 UnableToAct。推導 targetability 時只使用實際出現 targetability 事件的敵方 actor，避免把雜項 actor 誤當成仍可攻擊敵人；此規則應限縮在已驗證的副本 key，避免多目標或換目標副本被錯誤套用。
+14. UCoB（絕巴哈姆特，encounterID 1073）不能只依賴 FFLogs 原生 `kill=true`；資料管線查 fight list 時需取回所有同副本 fight，保留原生 `kill=true`，並補判 `fightPercentage == 80`、名稱已進入 Bahamut Prime 後段、`endTime - startTime >= 780000` 的場次。UCoB 的 `playerDetails` / `damageDone` 查詢也不得套 `killType: Kills`，否則補判通關的 fight 會抓不到玩家與傷害表。其他絕本仍使用 FFLogs 原生 kill 旗標。
 
 ### E. 驗證與同步
 1. 文件或註解變更仍需至少執行語法檢查與 `npm run build:user-data`，確認資料聚合可完成。

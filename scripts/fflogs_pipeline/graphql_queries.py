@@ -74,7 +74,7 @@ query ReportStatus($code: String!) {
 """
 
 
-戰鬥清單查詢 = """
+戰鬥清單查詢模板 = """
 query ReportFightList($code: String!, $encounterID: Int!, $difficulty: Int!) {
   reportData {
     report(code: $code) {
@@ -139,7 +139,7 @@ query ReportFightList($code: String!, $encounterID: Int!, $difficulty: Int!) {
           isIntermission
         }
       }
-      fights(encounterID: $encounterID, difficulty: $difficulty, killType: Kills) {
+      fights(encounterID: $encounterID, difficulty: $difficulty__KILL_TYPE_FILTER__) {
         id
         encounterID
         name
@@ -259,7 +259,18 @@ fragment ServerFields on Server {
 """
 
 
-玩家成績查詢 = """
+def 建立戰鬥清單查詢(套用通關篩選: bool = True) -> str:
+    # UCoB 的 FFLogs 原生 kill 旗標不穩定；用同一份欄位模板只切換 killType，
+    # 避免兩份 GraphQL 查詢欄位日後不同步而讓資料追溯欄位缺漏。
+    通關篩選參數 = ", killType: Kills" if 套用通關篩選 else ""
+    return 戰鬥清單查詢模板.replace("__KILL_TYPE_FILTER__", 通關篩選參數)
+
+
+戰鬥清單查詢 = 建立戰鬥清單查詢()
+戰鬥清單全部查詢 = 建立戰鬥清單查詢(套用通關篩選=False)
+
+
+玩家成績查詢模板 = """
 query FightPlayerStats($code: String!, $fightIDs: [Int], $encounterID: Int!, $difficulty: Int!) {
   reportData {
     report(code: $code) {
@@ -267,7 +278,7 @@ query FightPlayerStats($code: String!, $fightIDs: [Int], $encounterID: Int!, $di
         fightIDs: $fightIDs,
         encounterID: $encounterID,
         difficulty: $difficulty,
-        killType: Kills,
+__KILL_TYPE_FILTER__
         translate: true,
         includeCombatantInfo: false
       )
@@ -276,7 +287,7 @@ query FightPlayerStats($code: String!, $fightIDs: [Int], $encounterID: Int!, $di
         fightIDs: $fightIDs,
         encounterID: $encounterID,
         difficulty: $difficulty,
-        killType: Kills,
+__KILL_TYPE_FILTER__
         hostilityType: Friendlies,
         viewBy: Source,
         translate: true
@@ -292,3 +303,12 @@ query FightPlayerStats($code: String!, $fightIDs: [Int], $encounterID: Int!, $di
   }
 }
 """
+
+
+def 建立玩家成績查詢(套用通關篩選: bool = True) -> str:
+    通關篩選列 = "        killType: Kills,\n" if 套用通關篩選 else ""
+    return 玩家成績查詢模板.replace("__KILL_TYPE_FILTER__\n", 通關篩選列)
+
+
+玩家成績查詢 = 建立玩家成績查詢()
+玩家成績全部查詢 = 建立玩家成績查詢(套用通關篩選=False)
