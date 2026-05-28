@@ -26,6 +26,7 @@ flowchart LR
 GraphQL 查詢字串集中在 `scripts/fflogs_pipeline/graphql_queries.py`；這個子模組只描述 FFLogs 欄位需求，不處理限流、掃描游標、資料寫入或 UI 產物格式。`fetch_fflogs.py` 仍是資料權威入口，拆出查詢文本只是降低單檔責任，避免未來調整查詢欄位時誤動掃描策略。
 
 這一層只保存可重建排行榜所需的 report/fight/player 脈絡，不應輸出 UI 專用格式。
+`scripts/fetch_honey_b_fans.py` 是例外的趣味資料管線，固定解析 M2S `心醉魂迷：奴役` 衍生紀錄，來源寫入 `data/fun/honey_b_fans.json`，公開輸出寫入 `public/data/fun/honey_b_fans.json`；它不得寫入正式 `data/rankings/` 或 `data/state.json`。
 
 ### Data Building Layer
 
@@ -79,6 +80,7 @@ GraphQL 查詢字串集中在 `scripts/fflogs_pipeline/graphql_queries.py`；這
 ├── scripts/
 │   ├── fetch_fflogs.py
 │   ├── fflogs_pipeline/
+│   ├── fetch_honey_b_fans.py
 │   ├── gcd_coverage_core.py
 │   ├── backfill_gcd_coverage.py
 │   ├── backfill_gcd_coverage_xivanalysis.py
@@ -93,6 +95,7 @@ GraphQL 查詢字串集中在 `scripts/fflogs_pipeline/graphql_queries.py`；這
 │   └── site.json
 ├── data/
 │   ├── rankings/
+│   ├── fun/
 │   ├── state.json
 │   └── update_status.json
 ├── public/
@@ -114,6 +117,7 @@ GraphQL 查詢字串集中在 `scripts/fflogs_pipeline/graphql_queries.py`；這
 - 伺服器對比：收錄玩家、副本通關、職能比例、熱門職業與副本落點。
 - 職業分析：各職能與職業的 rDPS 分位、副本分布、伺服器分布與代表紀錄。
 - 近期動態：最新公開成績、刷新個人最佳、新收錄玩家、伺服器活躍與副本活躍。
+- Honey B. Lovely 粉絲榜：獨立趣味頁，顯示 M2S 近 7 天 `心醉魂迷：奴役` 粉絲榜、近 7 天報告彈窗、歷史追溯與連續入榜標示，不參與正式排行榜聚合。
 
 ## 功能旗標
 

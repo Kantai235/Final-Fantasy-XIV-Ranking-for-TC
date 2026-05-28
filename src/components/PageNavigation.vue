@@ -16,6 +16,11 @@ const 頁面切換項目 = [
   { 模式: "activity", 名稱: "近期動態", 動作: "切換到近期動態" },
 ];
 
+const 頁面名稱對照 = Object.freeze({
+  ...Object.fromEntries(頁面切換項目.map((項目) => [項目.模式, 項目.名稱])),
+  "honey-fans": "粉絲榜",
+});
+
 export default {
   name: "PageNavigation",
   setup() {
@@ -23,9 +28,7 @@ export default {
     const 手機選單開啟 = ref(false);
     const 頁面選單開關 = ref(null);
     const 頁面選單按鈕文字 = computed(() => {
-      const 目前項目 = 頁面切換項目.find((項目) => 項目.模式 === app.頁面模式.value);
-
-      return 目前項目?.名稱 || "頁面切換";
+      return 頁面名稱對照[app.頁面模式.value] || "頁面切換";
     });
 
     function 設定頁面選單鎖定(是否鎖定) {
@@ -103,7 +106,7 @@ export default {
 </script>
 
 <template>
-  <div class="頁面切換容器">
+  <div class="頁面切換容器" :data-accent="主色模式">
     <button
       ref="頁面選單開關"
       class="頁面選單開關"
@@ -117,7 +120,7 @@ export default {
       <strong>{{ 頁面選單按鈕文字 }}</strong>
     </button>
 
-    <nav class="頁面切換 桌機頁面切換" aria-label="頁面切換">
+    <nav class="頁面切換 桌機頁面切換" :data-accent="主色模式" aria-label="頁面切換">
       <button
         v-for="項目 in 頁面切換項目"
         :key="項目.模式"
@@ -131,12 +134,13 @@ export default {
     </nav>
 
     <Teleport to="body">
-      <div v-if="手機選單開啟" class="頁面切換遮罩" aria-hidden="true" @click="關閉頁面選單"></div>
+      <div v-if="手機選單開啟" class="頁面切換遮罩" :data-accent="主色模式" aria-hidden="true" @click="關閉頁面選單"></div>
 
       <nav
         id="page-navigation-drawer"
         class="頁面切換 手機頁面抽屜"
         :class="{ 展開: 手機選單開啟 }"
+        :data-accent="主色模式"
         aria-label="頁面切換"
       >
         <div class="頁面切換抽屜標題列">

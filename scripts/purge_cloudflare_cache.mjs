@@ -26,6 +26,7 @@ const PrefixesToPurge = [
   `${SiteHostname}/servers`,
   `${SiteHostname}/jobs`,
   `${SiteHostname}/activity`,
+  `${SiteHostname}/honey-fans`,
   `${SiteHostname}/og`,
 ];
 

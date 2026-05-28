@@ -26,7 +26,7 @@ function 偵測初始主題() {
 export function useTheme() {
   const 主題模式 = ref("dark");
 
-  function 套用主題(主題) {
+  function 套用主題狀態(主題, { 寫入偏好 = true } = {}) {
     const 有效主題 = 主題 === "light" ? "light" : "dark";
     主題模式.value = 有效主題;
 
@@ -35,9 +35,18 @@ export function useTheme() {
       document.documentElement.style.colorScheme = 有效主題;
     }
 
-    if (typeof window !== "undefined") {
+    if (寫入偏好 && typeof window !== "undefined") {
       window.localStorage.setItem(主題儲存鍵, 有效主題);
     }
+  }
+
+  function 套用主題(主題) {
+    套用主題狀態(主題);
+  }
+
+  // Honey B. Lovely 的演出轉場需要暫時切換全站亮暗色，但不能覆寫使用者原本偏好。
+  function 套用暫時主題(主題) {
+    套用主題狀態(主題, { 寫入偏好: false });
   }
 
   function 初始化主題() {
@@ -63,6 +72,7 @@ export function useTheme() {
     目前主題文字,
     初始化主題,
     套用主題,
+    套用暫時主題,
     切換主題,
   };
 }

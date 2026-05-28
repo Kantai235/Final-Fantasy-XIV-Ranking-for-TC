@@ -56,10 +56,13 @@ npm run sync:data -- --dry-run
 - `public/data/user-entry-details/*.json` 的個人成績報告分頁細節。
 - `public/data/team_rankings.json` 的副本、隊伍紀錄與 8 人隊員列。
 - `public/data/server_compare.json` 的伺服器列、副本列、職業/職能統計與傷害分位。
+- `public/data/fun/honey_b_fans.json` 的 Honey B. Lovely 粉絲榜摘要、頭號粉絲、近期紀錄與完整趣味紀錄。
 
 `public/data/all/` 目前是 hidden delta 產物，不再複製所有公開 JSON；delta 檔也有自己的資料契約，驗證時會先與公開底稿合併再檢查完整資料形狀。新增或移除公開 JSON 欄位時，必須同步更新 `schemas/public_data_contracts.mjs`、資料建置腳本與前端讀取端，讓欄位漂移在 `npm test` 或 `npm run validate:data` 階段被抓到。
 
 `gcd_coverage` 是公開資料中可顯示的衍生結果；除了 `percent`、分母與計算版本，也允許保留小型診斷欄位，例如 `estimated_speed_below_minimum`、`fallback_selection`、`downtime_selection`，以及 raw events、Casts graph、raw targetability fallback 的比較百分比與分母。這些欄位只說明本地演算法為什麼選用某個覆蓋率結果，不保存 FFLogs raw events 或 Casts graph payload，因此符合公開 JSON 的瘦身邊界。
+
+Honey B. Lovely 粉絲榜來源在 `data/fun/honey_b_fans.json`，公開檔在 `public/data/fun/honey_b_fans.json`。它是與正式排行榜分離的趣味資料，只記錄 M2S `心醉魂迷：奴役` 衍生結果與掃描快取，不參與個人成績單、全服統計或 `data/rankings/` 去重規則。公開檔的 `top_fans`、粉絲列 `records`、`latest_records`、公開 `records` 與本期摘要只納入近 7 天；`latest_records` 最多 5 筆，`latest_fans` 最多 16 筆。歷史紀錄留在來源檔，公開檔以 `summary.historical_*` 與粉絲列的 `historical_*` / `current_streak_weeks` 保留歷史追溯與連續入榜語意。
 
 ## 資料守恆與 payload 預算
 

@@ -41,6 +41,7 @@ import {
   近期動態網址,
   隊伍榜網址,
   伺服器對比網址,
+  蜂蜂粉絲榜網址,
   建立公開資料網址,
   建立排行榜表格資料網址,
 } from "../utils/publicData";
@@ -89,6 +90,10 @@ import { useRankingData } from "./rankingApp/useRankingData";
 export { injectRankingApp, rankingAppKey } from "./rankingApp/context";
 import { useTheme } from "./useTheme";
 
+const 蜂蜂背景音樂偏好儲存鍵 = "ffxiv-tc-rankings-honey-bgm";
+const 蜂蜂背景音樂影片Id = "07V_j5a9kHw";
+const 蜂蜂背景音樂嵌入網址 = `https://www.youtube.com/embed/${蜂蜂背景音樂影片Id}`;
+
 export function useRankingApp() {
 
 // 核心 Vue 狀態只保留畫面會變動的資料；不隨操作變動的職業定義、
@@ -112,8 +117,21 @@ const 排序方向 = ref(預設排序方向);
 const 排行榜版本範圍 = ref(預設版本紀錄範圍);
 const 目前頁碼 = ref(1);
 const 每頁筆數 = 100;
-const { 主題模式, 主題儲存鍵, 主題按鈕文字, 目前主題文字, 初始化主題, 套用主題, 切換主題 } = useTheme();
+const {
+  主題模式,
+  主題儲存鍵,
+  主題按鈕文字,
+  目前主題文字,
+  初始化主題,
+  套用主題,
+  套用暫時主題,
+  切換主題: 切換使用者主題,
+} = useTheme();
 const 頁面模式 = ref("ranking");
+const 停用主題切換 = computed(() => 頁面模式.value === "honey-fans");
+const 蜂蜂背景音樂啟用 = ref(false);
+const 蜂蜂背景音樂偏好已設定 = ref(false);
+const 顯示蜂蜂背景音樂詢問 = ref(false);
 const 使用者索引 = ref(null);
 const 使用者資料 = ref(null);
 const 使用者搜尋關鍵字 = ref("");
@@ -165,6 +183,9 @@ const 伺服器對比讀取中 = ref(false);
 const 伺服器對比錯誤訊息 = ref("");
 const 伺服器對比左伺服器 = ref("");
 const 伺服器對比右伺服器 = ref("");
+const 蜂蜂粉絲榜資料 = ref(null);
+const 蜂蜂粉絲榜讀取中 = ref(false);
+const 蜂蜂粉絲榜錯誤訊息 = ref("");
 const 分享狀態訊息 = ref("");
 const 正在分享 = ref(false);
 const 排行榜詳細資料快取 = new Map();
@@ -338,6 +359,9 @@ function 目前頁面主色() {
   }
   if (頁面模式.value === "jobs") {
     return 主色由職業範圍(職業分析目前範圍代碼.value);
+  }
+  if (頁面模式.value === "honey-fans") {
+    return "honey";
   }
   if (頁面模式.value === "activity" || 頁面模式.value === "teams" || 頁面模式.value === "servers") {
     return "default";
@@ -1776,6 +1800,108 @@ const 近期動態概要 = computed(() => {
   ];
 });
 
+const 蜂蜂粉絲榜來源 = computed(() => 蜂蜂粉絲榜資料.value || {});
+
+const 頭號粉絲列表 = computed(() => {
+  return Array.isArray(蜂蜂粉絲榜來源.value.top_fans) ? 蜂蜂粉絲榜來源.value.top_fans.slice(0, 50) : [];
+});
+
+const 最新粉絲紀錄列表 = computed(() => {
+  return Array.isArray(蜂蜂粉絲榜來源.value.latest_records) ? 蜂蜂粉絲榜來源.value.latest_records.slice(0, 5) : [];
+});
+
+const 最新加入粉絲列表 = computed(() => {
+  return Array.isArray(蜂蜂粉絲榜來源.value.latest_fans) ? 蜂蜂粉絲榜來源.value.latest_fans.slice(0, 16) : [];
+});
+
+const 蜂蜂粉絲榜概要 = computed(() => {
+  const summary = 蜂蜂粉絲榜來源.value.summary || {};
+  const 榜單天數 = summary.leaderboard_window_days || 蜂蜂粉絲榜來源.value.leaderboard_window?.days || 7;
+
+  return [
+    { 標籤: `近 ${榜單天數} 天吃心心`, 數值: 格式化整數(summary.total_event_count) },
+    { 標籤: "本期粉絲", 數值: 格式化整數(summary.fan_count) },
+    { 標籤: "歷史紀錄", 數值: 格式化整數(summary.historical_total_event_count ?? summary.total_event_count) },
+  ];
+});
+
+function 蜂蜂粉絲雜湊(文字) {
+  return Array.from(String(文字 || "")).reduce((總和, 字元) => (總和 * 31 + 字元.charCodeAt(0)) % 1000003, 17);
+}
+
+const 蜂蜂觀眾粉絲列表 = computed(() => {
+  const 候選 = [...頭號粉絲列表.value, ...最新加入粉絲列表.value];
+  const 已加入 = new Set();
+  const 唯一粉絲 = [];
+
+  for (const 粉絲 of 候選) {
+    const id = 粉絲?.id || `${粉絲?.character_name || ""}@${粉絲?.server || ""}`;
+    if (!粉絲?.character_name || 已加入.has(id)) {
+      continue;
+    }
+    已加入.add(id);
+    唯一粉絲.push(粉絲);
+  }
+
+  const 抽樣粉絲 = 唯一粉絲
+    .map((粉絲) => ({ 粉絲, 排序值: 蜂蜂粉絲雜湊(`${粉絲.id}:${蜂蜂粉絲榜來源.value.generated_at_iso || ""}`) }))
+    .sort((左, 右) => 左.排序值 - 右.排序值)
+    .slice(0, 84);
+  const 欄數 = 12;
+  const 列數 = Math.max(1, Math.ceil(抽樣粉絲.length / 欄數));
+
+  return 抽樣粉絲.map(({ 粉絲, 排序值 }, index) => {
+    const 欄 = index % 欄數;
+    const 列 = Math.floor(index / 欄數);
+    const 基礎x = 欄數 > 1 ? (欄 / (欄數 - 1)) * 100 : 50;
+    const 基礎y = 列數 > 1 ? (列 / (列數 - 1)) * 100 : 50;
+    const 偏移x = ((排序值 >> 4) % 7) - 3;
+    const 偏移y = ((排序值 >> 8) % 9) - 4;
+
+    return {
+      id: `audience:${粉絲.id}`,
+      character_name: 粉絲.character_name,
+      style: {
+        "--觀眾x": `${Math.max(0, Math.min(100, 基礎x + 偏移x)).toFixed(1)}%`,
+        "--觀眾y": `${Math.max(0, Math.min(100, 基礎y + 偏移y)).toFixed(1)}%`,
+        "--觀眾大小": (0.78 + ((排序值 >> 5) % 34) / 100).toFixed(2),
+        "--觀眾延遲": `${-1 * (((排序值 >> 7) % 90) / 10).toFixed(1)}s`,
+        "--觀眾週期": `${(5.8 + ((排序值 >> 11) % 38) / 10).toFixed(1)}s`,
+        "--觀眾層": String(10 + index),
+      },
+    };
+  });
+});
+
+function 建立粉絲榜愛心陰影(圖層索引, 數量) {
+  let seed = 7919 + 圖層索引 * 104729;
+  const 陰影 = [];
+
+  for (let index = 0; index < 數量; index += 1) {
+    seed = (seed * 1664525 + 1013904223) % 4294967296;
+    const x = ((seed % 10800) / 100 - 4).toFixed(2);
+    seed = (seed * 1664525 + 1013904223) % 4294967296;
+    const y = ((seed % 10800) / 100 - 4).toFixed(2);
+    seed = (seed * 1664525 + 1013904223) % 4294967296;
+    const 模糊 = ((seed % 3) / 2).toFixed(1);
+    const 透明度 = (0.44 + (seed % 18) / 100).toFixed(2);
+    陰影.push(`${x}vw ${y}vh ${模糊}px rgba(255, 121, 180, ${透明度})`);
+  }
+
+  return 陰影.join(", ");
+}
+
+const 粉絲榜愛心列表 = Array.from({ length: 10 }, (_, index) => ({
+  id: `honey-heart-layer:${index}`,
+  style: {
+    "--愛心尺寸": `${18 + ((index * 7) % 18)}px`,
+    "--愛心陰影": 建立粉絲榜愛心陰影(index, 84),
+    "--愛心透明度": (0.3 - index * 0.012).toFixed(2),
+    "--愛心延遲": `${-1 * (index * 2.4).toFixed(1)}s`,
+    "--愛心週期": `${(9.5 + index * 1.6).toFixed(1)}s`,
+  },
+}));
+
 const 隊伍榜副本列表 = computed(() => {
   return Array.isArray(隊伍榜資料.value?.encounters) ? 隊伍榜資料.value.encounters : [];
 });
@@ -2170,6 +2296,11 @@ const 更新時間文字 = computed(() => {
     return 更新時間 ? `資料更新時間 ${格式化紀錄時間(更新時間)}` : "伺服器對比資料";
   }
 
+  if (頁面模式.value === "honey-fans") {
+    const 更新時間 = 蜂蜂粉絲榜資料.value?.source_updated_at_iso || 蜂蜂粉絲榜資料.value?.generated_at_iso;
+    return 更新時間 ? `資料更新時間 ${格式化紀錄時間(更新時間)}` : "Honey B. Lovely 粉絲榜資料";
+  }
+
   const 更新時間 = 排行榜資料.value?.updated_at_iso;
   return 更新時間 ? `更新時間 ${格式化紀錄時間(更新時間)}` : "尚未取得更新時間";
 });
@@ -2201,6 +2332,10 @@ const 頁面副標 = computed(() => {
 
   if (頁面模式.value === "servers") {
     return "Final Fantasy XIV 繁中服・伺服器對比";
+  }
+
+  if (頁面模式.value === "honey-fans") {
+    return "Final Fantasy XIV 繁中服・趣味榜單";
   }
 
   return 目前副本.value?.category ? `Final Fantasy XIV 繁中服・${目前副本.value.category}` : "Final Fantasy XIV 繁中服";
@@ -2236,6 +2371,10 @@ const 頁面標題 = computed(() => {
 
   if (頁面模式.value === "servers") {
     return 伺服器對比已完成.value ? `${伺服器對比左資料.value.server} vs ${伺服器對比右資料.value.server}` : "伺服器對比";
+  }
+
+  if (頁面模式.value === "honey-fans") {
+    return "Honey B. Lovely 粉絲榜";
   }
 
   return 目前副本.value?.name ? `${目前副本.value.name} 排行榜` : "排行榜";
@@ -2343,6 +2482,18 @@ function 伺服器對比分享描述() {
   return "並排比較兩個 FFXIV 繁中服伺服器的收錄玩家、副本通關、職能比例、熱門職業與副本落點。";
 }
 
+function 蜂蜂粉絲榜分享描述() {
+  const summary = 蜂蜂粉絲榜來源.value.summary || {};
+  const 榜單天數 = summary.leaderboard_window_days || 蜂蜂粉絲榜來源.value.leaderboard_window?.days || 7;
+  const eventCount = 分享數量文字(summary.total_event_count, "筆粉絲紀錄");
+  const fanCount = 分享數量文字(summary.fan_count, "名粉絲");
+  const historicalEventCount = 分享數量文字(summary.historical_total_event_count, "筆歷史紀錄");
+  const topFan = summary.top_fan_name ? `，目前頭號粉絲是 ${summary.top_fan_name}` : "";
+  return 正規化分享描述(
+    `Honey B. Lovely 粉絲榜統計近 ${榜單天數} 天 M2S 通關與 wipe 戰鬥中吃到第 4 顆愛心、進入「心醉魂迷：奴役」的趣味資料${[eventCount, fanCount].filter(Boolean).length ? `，本期收錄 ${[eventCount, fanCount].filter(Boolean).join("、")}` : ""}${historicalEventCount ? `，歷史累計 ${historicalEventCount}` : ""}${topFan}。`,
+  );
+}
+
 const 分享標題 = computed(() => {
   const 標題 = 頁面標題.value || 預設分享標題;
   if (標題 === "排行榜" || 標題 === 預設分享標題) {
@@ -2372,6 +2523,9 @@ const 分享描述 = computed(() => {
   }
   if (頁面模式.value === "servers") {
     return 伺服器對比分享描述();
+  }
+  if (頁面模式.value === "honey-fans") {
+    return 蜂蜂粉絲榜分享描述();
   }
 
   const 副本名稱 = 目前副本.value?.name || "高難度副本";
@@ -3533,6 +3687,25 @@ async function 讀取伺服器對比資料() {
   }
 }
 
+async function 讀取蜂蜂粉絲榜資料() {
+  if (蜂蜂粉絲榜資料.value) {
+    return 蜂蜂粉絲榜資料.value;
+  }
+
+  蜂蜂粉絲榜讀取中.value = true;
+  蜂蜂粉絲榜錯誤訊息.value = "";
+
+  try {
+    蜂蜂粉絲榜資料.value = await 讀取Json(蜂蜂粉絲榜網址, "讀取 Honey B. Lovely 粉絲榜失敗");
+    return 蜂蜂粉絲榜資料.value;
+  } catch (錯誤) {
+    蜂蜂粉絲榜錯誤訊息.value = 錯誤 instanceof Error ? 錯誤.message : "無法讀取 Honey B. Lovely 粉絲榜資料";
+    return null;
+  } finally {
+    蜂蜂粉絲榜讀取中.value = false;
+  }
+}
+
 function 尋找使用者索引條目(角色名稱, 伺服器 = "") {
   return 尋找使用者索引條目於列表(使用者索引列表.value, 角色名稱, 伺服器);
 }
@@ -3660,6 +3833,10 @@ function 更新網址為伺服器對比(選項 = {}) {
     left: 伺服器對比左伺服器.value,
     right: 伺服器對比右伺服器.value,
   }, 選項);
+}
+
+function 更新網址為蜂蜂粉絲榜(選項 = {}) {
+  更新分享網址("honey-fans", {}, 選項);
 }
 
 function 設定分享狀態(訊息) {
@@ -3799,6 +3976,59 @@ async function 提交角色比較(選項 = {}) {
   }
 }
 
+function 切換主題() {
+  if (停用主題切換.value) {
+    return;
+  }
+
+  切換使用者主題();
+}
+
+function 讀取蜂蜂背景音樂偏好() {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  const 已儲存偏好 = window.localStorage.getItem(蜂蜂背景音樂偏好儲存鍵);
+  if (已儲存偏好 === "enabled") {
+    return true;
+  }
+  if (已儲存偏好 === "disabled") {
+    return false;
+  }
+  return null;
+}
+
+function 套用蜂蜂背景音樂偏好(啟用, { 寫入偏好 = false } = {}) {
+  蜂蜂背景音樂啟用.value = Boolean(啟用);
+  蜂蜂背景音樂偏好已設定.value = true;
+  顯示蜂蜂背景音樂詢問.value = false;
+
+  if (寫入偏好 && typeof window !== "undefined") {
+    window.localStorage.setItem(蜂蜂背景音樂偏好儲存鍵, 啟用 ? "enabled" : "disabled");
+  }
+}
+
+function 準備蜂蜂背景音樂偏好() {
+  const 已儲存偏好 = 讀取蜂蜂背景音樂偏好();
+  if (已儲存偏好 === null) {
+    蜂蜂背景音樂啟用.value = false;
+    蜂蜂背景音樂偏好已設定.value = false;
+    顯示蜂蜂背景音樂詢問.value = true;
+    return;
+  }
+
+  套用蜂蜂背景音樂偏好(已儲存偏好);
+}
+
+function 設定蜂蜂背景音樂偏好(啟用) {
+  套用蜂蜂背景音樂偏好(啟用, { 寫入偏好: true });
+}
+
+function 切換蜂蜂背景音樂() {
+  設定蜂蜂背景音樂偏好(!蜂蜂背景音樂啟用.value);
+}
+
 function 切換到排行榜() {
   頁面模式.value = "ranking";
   更新網址為排行榜();
@@ -3850,6 +4080,14 @@ function 切換到伺服器對比() {
   頁面模式.value = "servers";
   更新網址為伺服器對比();
   讀取伺服器對比資料();
+}
+
+function 切換到蜂蜂粉絲榜() {
+  頁面模式.value = "honey-fans";
+  更新網址為蜂蜂粉絲榜();
+  蜂蜂粉絲榜錯誤訊息.value = "";
+  準備蜂蜂背景音樂偏好();
+  讀取蜂蜂粉絲榜資料();
 }
 
 function 選擇隊伍榜副本(副本鍵值) {
@@ -3991,6 +4229,13 @@ async function 套用伺服器對比網址狀態(網址狀態) {
   更新網址為伺服器對比({ replace: true, 強制: true });
 }
 
+async function 套用蜂蜂粉絲榜網址狀態() {
+  頁面模式.value = "honey-fans";
+  蜂蜂粉絲榜錯誤訊息.value = "";
+  準備蜂蜂背景音樂偏好();
+  await 讀取蜂蜂粉絲榜資料();
+}
+
 async function 套用網址狀態(網址狀態 = 讀取目前網址狀態()) {
   // URL 是分享入口，也是瀏覽器上一頁/下一頁的狀態來源。套用期間暫停寫回，
   // 避免 popstate 讀取舊網址後又立刻 push 一筆新歷史紀錄。
@@ -4010,6 +4255,8 @@ async function 套用網址狀態(網址狀態 = 讀取目前網址狀態()) {
       await 套用隊伍榜網址狀態(網址狀態);
     } else if (網址狀態.page === "servers") {
       await 套用伺服器對比網址狀態(網址狀態);
+    } else if (網址狀態.page === "honey-fans") {
+      await 套用蜂蜂粉絲榜網址狀態();
     } else {
       套用排行榜網址狀態(網址狀態);
     }
@@ -4174,6 +4421,15 @@ watch([伺服器對比左伺服器, 伺服器對比右伺服器], () => {
   }
 });
 
+watch(頁面模式, (目前頁面模式) => {
+  if (目前頁面模式 === "honey-fans") {
+    準備蜂蜂背景音樂偏好();
+    return;
+  }
+
+  顯示蜂蜂背景音樂詢問.value = false;
+});
+
 onMounted(() => {
   初始化主題();
   初始化玩家搜尋歷史();
@@ -4279,6 +4535,15 @@ onUnmounted(() => {
     伺服器對比錯誤訊息,
     伺服器對比左伺服器,
     伺服器對比右伺服器,
+    蜂蜂粉絲榜資料,
+    蜂蜂粉絲榜讀取中,
+    蜂蜂粉絲榜錯誤訊息,
+    蜂蜂背景音樂啟用,
+    蜂蜂背景音樂偏好已設定,
+    顯示蜂蜂背景音樂詢問,
+    蜂蜂背景音樂偏好儲存鍵,
+    蜂蜂背景音樂影片Id,
+    蜂蜂背景音樂嵌入網址,
     分享狀態訊息,
     正在分享,
     副本清單網址,
@@ -4287,6 +4552,7 @@ onUnmounted(() => {
     近期動態網址,
     隊伍榜網址,
     伺服器對比網址,
+    蜂蜂粉絲榜網址,
     目前副本,
     資料網址,
     排行榜表格資料網址,
@@ -4300,6 +4566,8 @@ onUnmounted(() => {
     排行榜版本說明文字,
     取得版本紀錄範圍文字,
     套用主題,
+    套用暫時主題,
+    停用主題切換,
     切換主題,
     主題按鈕文字,
     目前主題文字,
@@ -4477,6 +4745,13 @@ onUnmounted(() => {
     近期副本活躍列表,
     近期動態角色列表,
     近期動態概要,
+    蜂蜂粉絲榜來源,
+    頭號粉絲列表,
+    最新粉絲紀錄列表,
+    最新加入粉絲列表,
+    蜂蜂粉絲榜概要,
+    蜂蜂觀眾粉絲列表,
+    粉絲榜愛心列表,
     隊伍榜副本列表,
     隊伍榜副本分組,
     目前隊伍榜副本,
@@ -4586,6 +4861,10 @@ onUnmounted(() => {
     讀取近期動態資料,
     讀取隊伍榜資料,
     讀取伺服器對比資料,
+    讀取蜂蜂粉絲榜資料,
+    準備蜂蜂背景音樂偏好,
+    設定蜂蜂背景音樂偏好,
+    切換蜂蜂背景音樂,
     尋找使用者索引條目,
     格式化使用者搜尋文字,
     解析使用者搜尋輸入,
@@ -4593,6 +4872,7 @@ onUnmounted(() => {
     更新網址為排行榜,
     更新網址為隊伍榜,
     更新網址為伺服器對比,
+    更新網址為蜂蜂粉絲榜,
     分享目前頁面,
     載入使用者成績,
     載入比較角色資料,
@@ -4605,6 +4885,7 @@ onUnmounted(() => {
     切換到近期動態,
     切換到隊伍榜,
     切換到伺服器對比,
+    切換到蜂蜂粉絲榜,
     切換隊伍榜副本選單,
     處理隊伍榜副本選單失焦,
     選擇隊伍榜副本,

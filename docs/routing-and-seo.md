@@ -14,6 +14,7 @@
 | 伺服器對比 | `./servers/陸行鳥/vs/莫古力` |
 | 職業分析 | `./jobs?jobScope=role:tank`、`./jobs/Paladin` |
 | 近期動態 | `./activity` |
+| Honey B. Lovely 粉絲榜 | `./honey-fans` |
 
 排行榜預設副本與隊伍榜預設副本目前都是 `savage_m4s`（零式 M4S / 狡雷），全服統計的「全部副本」與玩家比較的預設防護職能不會寫入 URL。
 
@@ -48,6 +49,7 @@
 - `/servers/`
 - `/jobs/`
 - `/activity/`
+- `/honey-fans/`
 
 這些 route 專屬 HTML 可讓不執行 JavaScript 的社群爬蟲讀到各頁預設標題、描述、canonical 與 OG/Twitter meta。
 

@@ -141,7 +141,14 @@ export default {
         </svg>
         <span class="標題按鈕文字">{{ 正在分享 ? "分享中" : "分享" }}</span>
       </button>
-      <button class="主題切換" type="button" :aria-label="`切換為${主題按鈕文字}模式`" @click="切換主題">
+      <button
+        class="主題切換"
+        type="button"
+        :disabled="停用主題切換"
+        :aria-label="停用主題切換 ? 'Honey B. Lovely 粉絲榜固定由演出控制亮暗模式' : `切換為${主題按鈕文字}模式`"
+        :title="停用主題切換 ? 'Honey B. Lovely 粉絲榜固定由演出控制亮暗模式' : ''"
+        @click="切換主題"
+      >
         <svg v-if="主題模式 === 'dark'" class="標題按鈕圖示" viewBox="0 0 24 24" aria-hidden="true">
           <circle cx="12" cy="12" r="4"></circle>
           <path d="M12 2v2"></path>
@@ -157,6 +164,20 @@ export default {
           <path d="M20.4 14.5A8.5 8.5 0 0 1 9.5 3.6 8.7 8.7 0 1 0 20.4 14.5Z"></path>
         </svg>
         <span class="標題按鈕文字">{{ 目前主題文字 }}</span>
+      </button>
+      <button
+        v-if="頁面模式 === 'honey-fans'"
+        class="蜂蜂背景音樂切換"
+        type="button"
+        :aria-pressed="蜂蜂背景音樂啟用 ? 'true' : 'false'"
+        @click="切換蜂蜂背景音樂"
+      >
+        <svg class="標題按鈕圖示" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M9 18V5l12-2v13"></path>
+          <circle cx="6" cy="18" r="3"></circle>
+          <circle cx="18" cy="16" r="3"></circle>
+        </svg>
+        <span class="標題按鈕文字">{{ 蜂蜂背景音樂啟用 ? "關閉背景音樂" : "開啟背景音樂" }}</span>
       </button>
       <AnnouncementCenter />
     </div>

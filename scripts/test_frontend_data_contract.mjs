@@ -342,6 +342,7 @@ async function validatePublicDataForFrontend() {
   const announcements = await readJson(path.join(publicDataDir, "announcements.json"), "public/data/announcements.json");
   const globalStats = await readJson(path.join(publicDataDir, "global_stats.json"), "public/data/global_stats.json");
   const serverCompare = await readJson(path.join(publicDataDir, "server_compare.json"), "public/data/server_compare.json");
+  const honeyFans = await readJson(path.join(publicDataDir, "fun", "honey_b_fans.json"), "public/data/fun/honey_b_fans.json");
   const userIndex = await readJson(path.join(publicDataDir, "users", "index.json"), "public/data/users/index.json");
   const versionedEncounterKeys = new Set((encounters || []).filter((encounter) => encounter?.version_cutoff).map((encounter) => encounter.key));
 
@@ -362,6 +363,18 @@ async function validatePublicDataForFrontend() {
   assert(Array.isArray(globalStats?.encounters), "public/data/global_stats.json 必須包含 encounters");
   assert(serverCompare?.schema_version === 1, "public/data/server_compare.json schema_version 必須是 1");
   assert(Array.isArray(serverCompare?.servers), "public/data/server_compare.json 必須包含 servers");
+  assert(honeyFans?.schema_version === 1, "public/data/fun/honey_b_fans.json schema_version 必須是 1");
+  assert(honeyFans?.feature === "honey_b_lovely_fans", "public/data/fun/honey_b_fans.json feature 必須是 honey_b_lovely_fans");
+  assert(Array.isArray(honeyFans?.top_fans), "public/data/fun/honey_b_fans.json 必須包含 top_fans");
+  assert(Array.isArray(honeyFans?.latest_records), "public/data/fun/honey_b_fans.json 必須包含 latest_records");
+  assert((honeyFans?.latest_records || []).length <= 5, "public/data/fun/honey_b_fans.json latest_records 最多顯示 5 筆");
+  assert((honeyFans?.latest_fans || []).length <= 16, "public/data/fun/honey_b_fans.json latest_fans 最多顯示 16 筆");
+  assert(Number.isFinite(honeyFans?.summary?.leaderboard_window_days), "public/data/fun/honey_b_fans.json 必須標示粉絲榜榜單天數");
+  assert(Number.isFinite(honeyFans?.summary?.historical_total_event_count), "public/data/fun/honey_b_fans.json 必須保留歷史粉絲紀錄總數");
+  for (const fan of honeyFans?.top_fans || []) {
+    assert(Number.isFinite(fan?.current_streak_weeks), `${fan?.id || "未知粉絲"} 必須包含 current_streak_weeks`);
+    assert(Number.isFinite(fan?.historical_total_event_count), `${fan?.id || "未知粉絲"} 必須包含 historical_total_event_count`);
+  }
   assert(Array.isArray(userIndex?.users) && userIndex.users.length > 0, "public/data/users/index.json 必須包含 users");
   assert(userIndex?.total_users === userIndex?.users?.length, "public/data/users/index.json total_users 必須等於 users 長度");
   const userDetailCache = new Map();
@@ -963,6 +976,11 @@ async function validateShareUrlStateCompatibility() {
       href: "https://ranking.init.engineer/servers?left=%E9%B3%B3%E5%87%B0&right=%E4%BC%8A%E5%BC%97%E5%88%A9%E7%89%B9",
       expected: { page: "servers", left: "鳳凰", right: "伊弗利特" },
     },
+    {
+      label: "Honey B. Lovely 粉絲榜乾淨路徑",
+      href: "https://ranking.init.engineer/honey-fans",
+      expected: { page: "honey-fans" },
+    },
   ];
 
   const events = [];
@@ -1022,6 +1040,13 @@ async function validateShareUrlStateCompatibility() {
     globalThis.window.location.href ===
       "https://ranking.init.engineer/servers/%E9%B3%B3%E5%87%B0/vs/%E4%BC%8A%E5%BC%97%E5%88%A9%E7%89%B9",
     "伺服器對比分享網址必須寫成 /servers/{left}/vs/{right}",
+  );
+
+  installUrlStateWindow("https://ranking.init.engineer/activity", events);
+  module.writeState({ page: "honey-fans" }, { replace: true });
+  assert(
+    globalThis.window.location.href === "https://ranking.init.engineer/honey-fans",
+    "Honey B. Lovely 粉絲榜分享網址必須寫成 /honey-fans",
   );
 
   delete globalThis.window;

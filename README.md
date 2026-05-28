@@ -4,7 +4,7 @@ Final Fantasy XIV 繁中服排行榜是一個以 FFLogs 公開資料為來源的
 
 專案由兩個主要部分組成：
 
-- 前端網站：瀏覽排行榜、全服統計、個人成績單、玩家比較、隊伍榜、伺服器對比、職業分析與近期動態。
+- 前端網站：瀏覽排行榜、全服統計、個人成績單、玩家比較、隊伍榜、伺服器對比、職業分析、近期動態與 Honey B. Lovely 粉絲榜趣味頁。
 - 資料管線：透過 FFLogs GraphQL API 抓取報告，篩選繁中服玩家，建置排行榜與前端需要的靜態 JSON。
 
 > 這是非官方社群工具，資料來自 FFLogs 公開報告；顯示結果不代表遊戲內完整人口或所有通關紀錄。
@@ -64,9 +64,10 @@ npm run dev
 - 顯示 DPS、rDPS、aDPS、Active、GCD 覆蓋率參考值、通關時間與紀錄時間。
 - 個人成績單可查看各副本最佳紀錄、歷史紀錄、同職分位與常同場隊友。
 - 玩家比較、隊伍榜、伺服器對比、職業分析與近期動態皆由靜態資料產生。
+- Honey B. Lovely 粉絲榜以獨立趣味資料呈現 M2S `心醉魂迷：奴役` 衍生紀錄；本期榜單、吃心心數、戰鬥次數與報告只計近 7 天，最新收錄紀錄顯示 5 筆、最新加入粉絲顯示 16 筆，來源歷史紀錄仍保留用於連續入榜標示，不混入正式排行榜。
 - 支援深色 / 亮色主題，並依目前頁面的職業或職能篩選切換主色調。
 - 支援全域公告通知，公告內容由 `public/data/announcements.json` 隨 commit 更新，使用者關閉後不再主動顯示。
-- GitHub Actions 可定時抓取 FFLogs、建置資料並部署 GitHub Pages，也提供不抓 FFLogs 的手動緊急部署通道。
+- GitHub Actions 可定時抓取 FFLogs 與 Honey B. Lovely 粉絲榜、建置資料並部署 GitHub Pages，也提供不抓 FFLogs 的手動緊急部署通道。
 
 ## 文件地圖
 
@@ -98,9 +99,11 @@ README 只保留入口與最小操作脈絡，完整說明請依主題閱讀：
 | 指令 | 用途 |
 | --- | --- |
 | `npm run build:public-rankings` | 只重建公開排行榜與副本清單，不呼叫 FFLogs API。 |
+| `npm run fetch:honey-fans` | 抓取 Honey B. Lovely 粉絲榜趣味資料，會呼叫 FFLogs API。 |
+| `npm run build:honey-fans` | 由 `data/fun/honey_b_fans.json` 重建公開趣味榜 JSON，不呼叫 FFLogs API。 |
 | `npm run build:ranking-tables` | 由公開排行榜產生前端薄索引與按需載入報告細節檔。 |
 | `npm run build:user-data` | 建置個人成績單、個人成績報告細節、全服統計、近期動態、隊伍榜、伺服器對比與排行榜薄索引。 |
-| `npm run validate:data` | 驗證公開資料、schema 契約、分片、全服統計與使用者索引完整性。 |
+| `npm run validate:data` | 驗證公開資料、schema 契約、分片、全服統計、使用者索引與 Honey B. Lovely 粉絲榜完整性。 |
 | `npm run audit:gcd:xivanalysis` | 以固定 seed 對零式、極、幻的每個副本各抽樣 10 場，若 10 場未涵蓋全職業會自動補抽缺漏職業所在戰鬥，並將本地 GCD 覆蓋率重算結果與 xivanalysis 畫面值比對。 |
 | `npm run test:data-conservation` | 檢查排行榜薄索引、細節檔、使用者檔與 hidden delta 的資料守恆。 |
 | `npm run audit:pages-payload` | 以 baseline 模式稽核 `dist/` 與 GitHub Pages payload 體積，只在超過硬上限時失敗，可用 `-- --write-history <path>` 記錄趨勢。 |
@@ -120,5 +123,6 @@ README 只保留入口與最小操作脈絡，完整說明請依主題閱讀：
 - `config/encounters.json` 的 `key`、`data/state.json` 的 report 狀態與 `data/rankings/` 歷史資料都是 append-only 資產，不可任意改名、硬刪或覆寫。
 - `.env` 內的 FFLogs 與 Cloudflare 憑證是敏感資訊，不應提交到版本控制，也不要印到 Log。
 - 若新增前端畫面需要新的統計欄位，請先擴充資料建置層，再讓 Vue 讀取新的靜態 JSON。
+- Honey B. Lovely 粉絲榜來源在 `data/fun/honey_b_fans.json`，公開輸出在 `public/data/fun/honey_b_fans.json`；它是獨立趣味資料，不屬於正式 `data/rankings/` schema。公開榜單、粉絲報告與本期 `records` 只計近 7 天，歷史紀錄仍留在來源檔並輸出 `historical_*` 與連續入榜週數；正式 workflow 會執行 `npm run fetch:honey-fans` 抓新資料，再用 `npm run build:honey-fans` 整理公開 JSON。
 - 若 GitHub Actions 與本機同時產生資料，先跑 `npm run sync:data -- --dry-run`；看到 `REMOVAL` 或 `CONFLICT` 時不可自動套用。
-- 文件或註解變更仍需至少執行 `npm run check` 與 `npm run build:user-data`，確認資料聚合流程可完成。
+- 文件或註解變更仍需至少執行 `npm run check` 與 `npm run build:user-data`，若碰到 Honey B. Lovely 粉絲榜流程也要執行 `npm run build:honey-fans`。

@@ -12,7 +12,8 @@ npm run build
 
 1. `npm run build:public-rankings`
 2. `npm run build:user-data`
-3. `npm run validate:data`
+3. `npm run build:honey-fans`
+4. `npm run validate:data`
 
 接著由 Vite 建置靜態網站，最後用 `scripts/build_spa_fallback.mjs` 產生 route fallback、SEO/OG 靜態頁、OG PNG、`sitemap.xml`、`robots.txt` 與 `404.html`。
 
@@ -37,17 +38,19 @@ npm run build
 3. 安裝 Python 與 Node.js 依賴。
 4. 若有 Cloudflare secrets，先同步 Cloudflare Cache Rules、Facebook 分享爬蟲例外與 Rate Limiting Rules。
 5. 使用 GitHub Secrets 中的 FFLogs 憑證執行 `python scripts/fetch_fflogs.py`，掃描全部地區候選 report，近期 24 小時完整重查、24-72 小時只選未知 report，並以低量歷史補查檢查更舊時間窗是否有新的公開 logs 可抓取，同時對新落地 fight 即時計算 GCD 覆蓋率。
-6. 執行 `python scripts/backfill_gcd_coverage.py --stateful-report-backfill --report-limit 200`，從固定切點往更舊 report 逐輪追平既有 GCD。
-7. 執行 `python scripts/fetch_fflogs.py --split-rankings`，將完整排行榜資料拆分成適合 Git 追蹤的檔案。
-8. 執行 `node scripts/build_user_data.mjs`，產生個人成績單、個人成績報告細節、全服統計、近期動態、隊伍榜與伺服器對比。
-9. 由 workflow 寫入 `data/update_status.json`，記錄本輪 GitHub Actions run、資料更新時間與總量摘要。
-10. 執行 `npm run build`，完成公開資料驗證與 Vite 建置，並把建置秒數寫入後續 payload 稽核。
-11. 若 `data` 或 `public/data` 有變更，先提交並推送更新，避免後續 artifact 體積超標時白白丟失本輪 FFLogs 抓取成果。
-12. 執行 `npm run audit:pages-payload:strict -- --write-history data/pages_payload_history.jsonl`，讓 artifact 體積超過 target 時在上傳 Pages artifact 前失敗，並在 GitHub Step Summary 顯示本輪與上一筆歷史差異。
-13. 若 `data/pages_payload_history.jsonl` 有變更，另行提交並推送 payload 稽核歷史。
-14. 執行 `npm run cloudflare:estimate` 與 `npm run cloudflare:purge -- --dry-run --summary`，在 Step Summary 顯示 HIT ratio 承載估算與 scoped purge 範圍。
-15. 上傳 `dist/` 並部署到 GitHub Pages。
-16. 若有 Cloudflare purge token，部署成功後清除會變動的 CDN 快取。
+6. 執行 `npm run fetch:honey-fans`，以同一組 FFLogs 憑證抓取 Honey B. Lovely 粉絲榜趣味資料；workflow 預設掃近 3 天，並從歷史游標最多檢查 200 場未記錄戰鬥。
+7. 執行 `python scripts/backfill_gcd_coverage.py --stateful-report-backfill --report-limit 200`，從固定切點往更舊 report 逐輪追平既有 GCD。
+8. 執行 `python scripts/fetch_fflogs.py --split-rankings`，將完整排行榜資料拆分成適合 Git 追蹤的檔案。
+9. 執行 `npm run build:user-data`，產生個人成績單、個人成績報告細節、全服統計、近期動態、隊伍榜、伺服器對比與排行榜薄索引。
+10. 執行 `npm run build:honey-fans`，由 `data/fun/honey_b_fans.json` 重建 `public/data/fun/honey_b_fans.json`。
+11. 由 workflow 寫入 `data/update_status.json`，記錄本輪 GitHub Actions run、資料更新時間與總量摘要。
+12. 執行 `npm run build`，重建公開排行榜、使用者資料、Honey B. Lovely 粉絲榜公開 JSON，完成公開資料驗證與 Vite 建置，並把建置秒數寫入後續 payload 稽核。
+13. 若 `data`、`public/data/*.json` 或 `public/data/fun/*.json` 有變更，先提交並推送更新，避免後續 artifact 體積超標時白白丟失本輪 FFLogs 抓取成果。
+14. 執行 `npm run audit:pages-payload:strict -- --write-history data/pages_payload_history.jsonl`，讓 artifact 體積超過 target 時在上傳 Pages artifact 前失敗，並在 GitHub Step Summary 顯示本輪與上一筆歷史差異。
+15. 若 `data/pages_payload_history.jsonl` 有變更，另行提交並推送 payload 稽核歷史。
+16. 執行 `npm run cloudflare:estimate` 與 `npm run cloudflare:purge -- --dry-run --summary`，在 Step Summary 顯示 HIT ratio 承載估算與 scoped purge 範圍。
+17. 上傳 `dist/` 並部署到 GitHub Pages。
+18. 若有 Cloudflare purge token，部署成功後清除會變動的 CDN 快取。
 
 ## 緊急部署
 
@@ -62,7 +65,7 @@ npm run build
    - `scoped`：只清除本專案既有 prefix 與核心檔案，適合一般靜態頁或資料路徑更新。
 4. 執行後確認 workflow 的 `部署 GitHub Pages` 與 `清除 Cloudflare CDN 快取` 步驟完成。
 
-緊急部署仍會跑 `npm run build`，因此會重建公開排行榜、個人成績單、排行榜薄索引、SEO/OG 靜態頁、`sitemap.xml`、`robots.txt` 與 `404.html`，並執行 `validate:data`。這是為了確保部署出去的靜態產物與 repo 內資料契約一致；差別在於它只重建已提交資料，不向 FFLogs 取得新資料。
+緊急部署仍會跑 `npm run build`，因此會重建公開排行榜、個人成績單、排行榜薄索引、Honey B. Lovely 粉絲榜公開 JSON、SEO/OG 靜態頁、`sitemap.xml`、`robots.txt` 與 `404.html`，並執行 `validate:data`。這是為了確保部署出去的靜態產物與 repo 內資料契約一致；差別在於它只重建已提交資料，不向 FFLogs 取得新資料。
 
 ## GitHub Secrets 與 Variables
 
@@ -103,11 +106,15 @@ npm run build
 - `FFLOGS_FETCH_GCD_COVERAGE_MAX_FIGHTS_PER_RUN`
 - `FFLOGS_GCD_BACKFILL_REPORT_LIMIT`
 - `FFLOGS_GCD_BACKFILL_CUTOFF_ISO`
+- `HONEY_FANS_RECENT_DAYS`
+- `HONEY_FANS_HISTORY_LIMIT`
+- `HONEY_FANS_RECENT_WINDOW_HOURS`
+- `HONEY_FANS_HISTORY_WINDOW_HOURS`
 - `CLOUDFLARE_HOSTNAME`
 - `CLOUDFLARE_MANAGE_RATE_LIMIT`
 - `VITE_GA_MEASUREMENT_ID`
 
-workflow 預設掃全部地區候選 report，近期 24 小時完整重查，24-72 小時只選未知 report，並以低量歷史補查檢查更舊時間窗是否有新的公開 logs 可抓取，同時對新落地 fight 即時計算 GCD 覆蓋率。
+workflow 預設掃全部地區候選 report，近期 24 小時完整重查，24-72 小時只選未知 report，並以低量歷史補查檢查更舊時間窗是否有新的公開 logs 可抓取，同時對新落地 fight 即時計算 GCD 覆蓋率。Honey B. Lovely 粉絲榜另以 `HONEY_FANS_*` variables 控制近期掃描天數、每輪歷史檢查上限與查詢切窗，預設為近 3 天、每輪 200 場、24 小時切窗。
 
 ## 暫停的維護步驟
 

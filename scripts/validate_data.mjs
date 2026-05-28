@@ -25,6 +25,7 @@ let checkedActivityItems = 0;
 let checkedTeamRecords = 0;
 let checkedServerCompareRows = 0;
 let checkedUserEntryDetails = 0;
+let checkedHoneyFanRows = 0;
 
 function reportIssue(message) {
   issues.push(message);
@@ -768,6 +769,54 @@ async function validateServerCompare() {
   }
 }
 
+async function validateHoneyFans() {
+  const honeyFansPath = path.join(publicDataDir, "fun", "honey_b_fans.json");
+  if (!existsSync(honeyFansPath)) {
+    reportIssue("缺少 public/data/fun/honey_b_fans.json，請先執行 npm run build:honey-fans");
+    return;
+  }
+
+  const honeyFans = await readJson(honeyFansPath, "public/data/fun/honey_b_fans.json");
+  if (honeyFans?.schema_version !== 1) {
+    reportIssue("public/data/fun/honey_b_fans.json 的 schema_version 必須是 1");
+  }
+  if (honeyFans?.feature !== "honey_b_lovely_fans") {
+    reportIssue("public/data/fun/honey_b_fans.json 的 feature 必須是 honey_b_lovely_fans");
+  }
+  if (!isObjectRecord(honeyFans?.summary)) {
+    reportIssue("public/data/fun/honey_b_fans.json 缺少 summary");
+  }
+  if (!isFiniteNumber(honeyFans?.summary?.leaderboard_window_days) || honeyFans.summary.leaderboard_window_days < 1) {
+    reportIssue("public/data/fun/honey_b_fans.json summary.leaderboard_window_days 必須是正數");
+  }
+  if (!isFiniteNumber(honeyFans?.summary?.historical_total_event_count)) {
+    reportIssue("public/data/fun/honey_b_fans.json summary.historical_total_event_count 必須是數字");
+  }
+  for (const listName of ["top_fans", "latest_records", "latest_fans", "records"]) {
+    if (!Array.isArray(honeyFans?.[listName])) {
+      reportIssue(`public/data/fun/honey_b_fans.json 的 ${listName} 必須是陣列`);
+    }
+  }
+  if ((honeyFans?.latest_records || []).length > 5) {
+    reportIssue("public/data/fun/honey_b_fans.json 的 latest_records 最多只能輸出 5 筆");
+  }
+  if ((honeyFans?.latest_fans || []).length > 16) {
+    reportIssue("public/data/fun/honey_b_fans.json 的 latest_fans 最多只能輸出 16 筆");
+  }
+
+  for (const fan of honeyFans?.top_fans || []) {
+    checkedHoneyFanRows += 1;
+    if (!fan?.character_name || !fan?.server || !isFiniteNumber(fan?.total_event_count)) {
+      reportIssue("Honey B. Lovely 粉絲榜 top_fans 有粉絲缺少角色、伺服器或次數");
+      break;
+    }
+    if (!isFiniteNumber(fan?.historical_total_event_count) || !isFiniteNumber(fan?.current_streak_weeks)) {
+      reportIssue("Honey B. Lovely 粉絲榜 top_fans 有粉絲缺少歷史總數或連續入榜週數");
+      break;
+    }
+  }
+}
+
 async function validateUserDataset(dataDir, label, { countFiles = false } = {}) {
   const usersDir = path.join(dataDir, "users");
   const userIndexPath = path.join(usersDir, "index.json");
@@ -860,6 +909,7 @@ async function main() {
   await validateAnnouncements();
   await validateTeamRankings();
   await validateServerCompare();
+  await validateHoneyFans();
   await validateUsers();
   await validateAllDataMirror();
 
@@ -875,7 +925,7 @@ async function main() {
   }
 
   console.log(
-    `資料驗證通過：${publicEncounters.length} 個公開副本、${checkedSourceReports} 份來源 report、${checkedUserFiles} 份使用者檔案、${checkedUserEntryDetails} 筆個人成績報告細節、${checkedActivityItems} 筆近期動態項目、${checkedTeamRecords} 筆隊伍榜紀錄、${checkedServerCompareRows} 筆伺服器對比資料。`,
+    `資料驗證通過：${publicEncounters.length} 個公開副本、${checkedSourceReports} 份來源 report、${checkedUserFiles} 份使用者檔案、${checkedUserEntryDetails} 筆個人成績報告細節、${checkedActivityItems} 筆近期動態項目、${checkedTeamRecords} 筆隊伍榜紀錄、${checkedServerCompareRows} 筆伺服器對比資料、${checkedHoneyFanRows} 筆蜂蜂粉絲資料。`,
   );
 }
 

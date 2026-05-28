@@ -186,6 +186,7 @@ function buildCacheRules() {
         `starts_with(http.request.uri.path, "/servers")`,
         `starts_with(http.request.uri.path, "/jobs")`,
         `starts_with(http.request.uri.path, "/activity")`,
+        `starts_with(http.request.uri.path, "/honey-fans")`,
       ].join(" or "),
       HtmlEdgeTtlSeconds,
       HtmlBrowserTtlSeconds,

@@ -104,7 +104,7 @@
 2. `python scripts/fetch_fflogs.py --rebuild-public` 只重建公開排行榜與副本清單，不會呼叫 FFLogs API；適合在沒有憑證或不想推進掃描點時驗證公開產物。
 3. 若本機與 GitHub Actions 都產生資料，必須先執行 `npm run sync:data -- --dry-run`；看到 `REMOVAL` 或 `CONFLICT` 不可自動套用。
 4. 清理既有 ranking raw 欄位時，先跑 `npm run compact:rankings -- --dry-run` 確認只移除 `fflogs_raw`、`master_data`、`matched_players` 與 fight 層 raw payload，再執行正式清理。
-5. `npm run validate:data` 會檢查公開副本是否都有 ranking 檔、來源分片是否存在、raw 欄位是否回流、全服統計與使用者索引是否完整；`npm run build` 會在 Vite 建置前自動執行這個驗證。
+5. `npm run validate:data` 會檢查公開副本是否都有 ranking 檔、來源分片是否存在、raw 欄位是否回流、全服統計、近期動態、隊伍榜、伺服器對比、Honey B. Lovely 粉絲榜與使用者索引是否完整；`npm run build` 會在 Vite 建置前自動執行這個驗證。
 6. `npm run compact:state` 只可移除已由 `checked_reports` 完整保留的 `processed_reports` 重複 checkpoint；執行正式壓縮前必須先跑 `npm run compact:state -- --dry-run`。
 7. `build_user_data.mjs` 預設以最新 `rankings_updated_at_iso` 作為 `generated_at_iso`，讓同一批排行榜重建時輸出穩定；可用 `FFXIV_TC_GENERATED_AT_ISO` 覆寫，`npm test` 會用 fixture 驗證這個規則。
 8. `npm run test:frontend-data` 會檢查前端資料讀取邊界、`useRankingApp()` 匯出的 shorthand 是否都有定義，以及公開 JSON 是否具備頁面會讀取的必要欄位。
@@ -132,3 +132,12 @@
 2. `scripts/fetch_fflogs.py --rebuild-public` 會依 `start_time` 標記公開排行榜條目的 `is_obsolete_record`、`version_status` 與 `version_cutoff_iso`，並為支援切點的副本輸出 `version_ranking_entries.all|valid|obsolete`；這是避免前端重新實作排行榜去重與排序規則。
 3. `scripts/build_user_data.mjs` 會在全服統計、個人成績單與隊伍榜輸出 `version_slices.all|valid|obsolete`。同職分位、個人最佳紀錄與職業最佳紀錄只能使用 `valid` 紀錄，過版紀錄只作為歷史資料呈現與追溯。
 4. 前端版本篩選一律使用 `version=all|valid|obsolete` 的網址狀態；若副本沒有 `version_cutoff`，必須自動回到 `all`，避免非過版副本出現無效篩選。
+
+### G. Honey B. Lovely 粉絲榜趣味資料
+1. `scripts/fetch_honey_b_fans.py` 是獨立於正式排行榜的趣味資料管線，固定使用 `savage_m2s` 的 `zone_id`、`encounter_id` 與 `difficulty`，不依賴 `enabled` 是否為 `true`。
+2. 來源資料保存在 `data/fun/honey_b_fans.json`，公開資料保存在 `public/data/fun/honey_b_fans.json`；不得寫入 `data/rankings/` 或 `data/state.json`，避免趣味榜影響正式排行榜與個人成績單。
+3. 粉絲榜只保存通關與 wipe 場次中 `心醉魂迷：奴役`（ability id `1003926`）的 `applydebuff` 衍生紀錄、已檢查戰鬥狀態、已檢查 report 快取與掃描游標，不保存 FFLogs raw events、`masterData` 大表或其他可重查 payload。
+4. 每輪正式抓取先掃描近三天公開 M2S 紀錄，補上尚未檢查的通關與 wipe 戰鬥；再從 `scan_start_date` 的歷史游標往後掃描，每輪最多檢查 200 場未記錄戰鬥。已完成目前 `fight_scan_mode` 的 `checked_reports` 快取的 report 必須在 detail query 前略過，避免重複消耗 FFLogs API 配額；舊版只掃通關場次的快取不得阻擋 wipe 補掃。
+5. `.github/workflows/update_rankings.yml` 會在正式排行榜抓取後執行 `npm run fetch:honey-fans`，預設 `--recent-days 3 --history-limit 200`，並可用 `HONEY_FANS_RECENT_DAYS`、`HONEY_FANS_HISTORY_LIMIT`、`HONEY_FANS_RECENT_WINDOW_HOURS`、`HONEY_FANS_HISTORY_WINDOW_HOURS` 調整排程掃描範圍。
+6. `npm run build:honey-fans` 只由既有來源檔重建公開 JSON，不呼叫 FFLogs API；正式 workflow 會在資料建置階段執行它，並把 `public/data/fun/*.json` 納入資料 commit 路徑。`npm run validate:data` 與 `npm run test:frontend-data` 會檢查公開粉絲榜資料契約。
+7. 公開粉絲榜 `top_fans`、粉絲列 `records`、`latest_records`、公開 `records` 與本期摘要只納入以 `source.updated_at_iso` 為基準的近 7 天紀錄；`latest_records` 最多輸出 5 筆，`latest_fans` 最多輸出 16 筆。來源檔仍保留歷史紀錄，建置層會用同樣 7 天切片回推 `current_streak_weeks`，並以 `summary.historical_*` 與粉絲列 `historical_*` 保留歷史統計，供前端顯示「連續 N 週入榜」。

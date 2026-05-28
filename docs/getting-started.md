@@ -84,9 +84,11 @@ VITE_GA_ENABLE_IN_DEV=false
 | `npm run python:venv` | 使用可用的 Python 3.11+ 建立 `.venv`。 |
 | `npm run python:install` | 使用專案 Python 3.11+ 直譯器安裝 `requirements.txt`。 |
 | `npm run build:public-rankings` | 執行 `fetch_fflogs.py --rebuild-public`，只重建公開排行榜與副本清單，不呼叫 FFLogs API。 |
+| `npm run fetch:honey-fans` | 抓取 Honey B. Lovely 粉絲榜趣味資料，會呼叫 FFLogs API。 |
+| `npm run build:honey-fans` | 由 `data/fun/honey_b_fans.json` 重建公開趣味榜 JSON，不呼叫 FFLogs API。 |
 | `npm run build:ranking-tables` | 由公開排行榜產生 `ranking-tables` 薄索引與 `ranking-details` 報告細節檔。 |
 | `npm run build:user-data` | 產生個人成績單、個人成績報告細節、全服統計、近期動態、隊伍榜、伺服器對比與排行榜薄索引資料。 |
-| `npm run validate:data` | 驗證公開副本、公開資料 schema、排行榜分片、raw 欄位、全服統計與使用者索引。 |
+| `npm run validate:data` | 驗證公開副本、公開資料 schema、排行榜分片、raw 欄位、全服統計、使用者索引與 Honey B. Lovely 粉絲榜。 |
 | `npm run audit:gcd:xivanalysis` | 以固定 seed 對零式、極、幻的每個副本各抽樣 10 場；若 10 場未涵蓋全職業，會自動補抽缺漏職業所在戰鬥，並將本地 GCD 覆蓋率重算結果與 xivanalysis 畫面值比對。此流程會存取外部站台並集中重試頁面讀取錯誤，遇到限流請拉長 `--delay-ms`。 |
 | `npm run test:data-conservation` | 檢查公開資料與 hidden delta 的資料守恆，避免瘦身時漏掉成績或報告來源。 |
 | `npm run audit:pages-payload` | 以 baseline 模式稽核 `dist/`、`dist/data/`、`dist/data/all/`、`dist/data/users/` 與 `dist/og/` 體積，可加 `-- --write-history <path>` 記錄趨勢。 |
@@ -120,7 +122,13 @@ npm run validate:data
 npm run build
 ```
 
-`npm run build` 會先執行 `build:public-rankings`、`build:user-data` 與 `validate:data`，再輸出 Vite 產物。`build:public-rankings` 不會呼叫 FFLogs API，適合在沒有憑證或不想推進掃描點時重建公開資料。
+Honey B. Lovely 粉絲榜是獨立趣味資料；公開榜單、吃心心數、戰鬥次數與報告只計近 7 天，歷史紀錄仍會保留在來源檔用於追溯與連續入榜標示。若只要由既有來源檔重建公開 JSON：
+
+```bash
+npm run build:honey-fans
+```
+
+`npm run build` 會先執行 `build:public-rankings`、`build:user-data`、`build:honey-fans` 與 `validate:data`，再輸出 Vite 產物。`build:public-rankings` 與 `build:honey-fans` 都不會呼叫 FFLogs API，適合在沒有憑證或不想推進掃描點時重建公開資料。
 
 ## 同步本機與 GitHub Actions 資料
 
