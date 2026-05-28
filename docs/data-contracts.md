@@ -130,7 +130,9 @@ npm run sync:data -- --dry-run
 
 單場 `playerDetails` 與 `damageDone` GraphQL 查詢必須同時帶 `fightIDs` 以及該 fight 的相對 `startTime` / `endTime`。少數 FFLogs 舊報告的 `report.endTime` 可能停在 fight 中途；只用 `fightIDs` 會拿到 partial table，導致 rDPS/aDPS 異常放大。
 
-UCoB（絕巴哈姆特，encounterID 1073）通關判斷需由資料管線補判：先取回所有同副本 fight，保留原生 `kill=true`，再接受 `fightPercentage == 80`、名稱已進入 Bahamut Prime 後段、`endTime - startTime >= 780000` 的 fight。UCoB 的 `playerDetails` / `damageDone` 查詢也不能套 `killType: Kills`，避免 FFLogs 未標記 kill 的通關場抓不到玩家與傷害表；其他絕本仍使用原生 kill 旗標。
+UCoB（絕巴哈姆特，encounterID 1073）通關判斷需由資料管線補判：先取回所有同副本 fight，保留原生 `kill=true`，再接受 `fightPercentage == 80`、名稱已進入 Bahamut Prime 後段、`endTime - startTime >= 780000` 的 fight。UCoB 的 `playerDetails` / `damageDone` 查詢也不能套 `killType: Kills`，避免 FFLogs 未標記 kill 的通關場抓不到玩家與傷害表；其他絕本仍使用原生 kill 旗標。TOP（絕歐，encounterID 1077）P3/P4 也有 enemy preload 造成 Phase 判斷困難的情境，但這是 Phase 分類風險，不是目前通關收錄需要移除 `killType: Kills` 的理由。
+
+未來若要輸出團滅 Phase 或相位統計，UCoB 與 TOP 需要各自的副本特例，不能只靠 `enemyNPCs[].gameID` 或 enemy 是否出現判斷；應優先確認 FFLogs 的 `lastPhase` / `phaseTransitions` 是否可靠，再用 report/fight 實例交叉校正。
 
 `active_percent` 對齊 FFLogs Damage Done CSV 的 Active%，優先使用 `fflogs_total_time_ms` 作為分母；DPS/rDPS/aDPS 仍使用 `damage_time_ms` 作為分母。
 

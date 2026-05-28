@@ -318,6 +318,45 @@ class FetchFFLogsBatchTest(unittest.TestCase):
         self.assertIsNotNone(報告)
         self.assertEqual([戰鬥["id"] for 戰鬥 in 報告["fights"]], [22, 24])
 
+    def test_top_fight_list_still_uses_native_kill_filter(self) -> None:
+        # TOP（絕歐）P3/P4 的 enemy preload 會影響未來 Phase 判斷，但 FFLogs kill 旗標目前可用。
+        # 這個測試鎖住 UCoB workaround 的範圍，避免把所有絕本都改成全 fight 查詢而增加誤收風險。
+        副本設定 = {"encounter_id": 1077, "difficulty": 100}
+        呼叫查詢: list[str] = []
+
+        def 假_graphql(
+            session: Any,
+            認證池: Any,
+            查詢: str,
+            變數: dict[str, Any] | None = None,
+        ) -> dict[str, Any]:
+            呼叫查詢.append(查詢)
+            return {
+                "reportData": {
+                    "report": {
+                        "code": "top123",
+                        "fights": [
+                            {
+                                "id": 88,
+                                "encounterID": 1077,
+                                "name": "The Omega Protocol",
+                                "kill": True,
+                                "startTime": 0,
+                                "endTime": 1120000,
+                            }
+                        ],
+                    }
+                }
+            }
+
+        with patch.object(fflogs, "執行_graphql", 假_graphql):
+            報告 = fflogs.查詢通關戰鬥(None, None, 副本設定, "top123")
+
+        self.assertEqual(呼叫查詢, [fflogs.戰鬥清單查詢])
+        self.assertIn("killType: Kills", 呼叫查詢[0])
+        self.assertIsNotNone(報告)
+        self.assertEqual([戰鬥["id"] for 戰鬥 in 報告["fights"]], [88])
+
     def test_delayed_scan_window_targets_24_to_72_hours_before_scan_end(self) -> None:
         一小時 = 60 * 60 * 1000
         掃描結束 = 100 * 一小時
