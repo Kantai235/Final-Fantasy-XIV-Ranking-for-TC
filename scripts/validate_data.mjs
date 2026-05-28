@@ -2,11 +2,20 @@ import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { publicDataContracts, validateSchemaContract } from "../schemas/public_data_contracts.mjs";
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const publicDataDir = path.join(rootDir, "public", "data");
+const publicAllDataDir = path.join(publicDataDir, "all");
 const sourceRankingsDir = path.join(rootDir, "data", "rankings");
 const publicRankingsDir = path.join(publicDataDir, "rankings");
+const publicRankingTablesDir = path.join(publicDataDir, "ranking-tables");
+const publicRankingDetailsDir = path.join(publicDataDir, "ranking-details");
+const publicUserEntryDetailsDir = path.join(publicDataDir, "user-entry-details");
+const publicAllRankingsDir = path.join(publicAllDataDir, "rankings");
+const publicAllRankingTablesDir = path.join(publicAllDataDir, "ranking-tables");
+const publicAllRankingDetailsDir = path.join(publicAllDataDir, "ranking-details");
+const publicAllUserEntryDetailsDir = path.join(publicAllDataDir, "user-entry-details");
 const rawFieldNames = new Set(["fflogs_raw", "master_data", "matched_players"]);
 
 const issues = [];
@@ -15,6 +24,7 @@ let checkedUserFiles = 0;
 let checkedActivityItems = 0;
 let checkedTeamRecords = 0;
 let checkedServerCompareRows = 0;
+let checkedUserEntryDetails = 0;
 let checkedHoneyFanRows = 0;
 
 function reportIssue(message) {
@@ -43,6 +53,12 @@ async function readJson(filePath, label) {
   }
 }
 
+function validateContract(value, schema, label) {
+  for (const issue of validateSchemaContract(value, schema, label)) {
+    reportIssue(issue);
+  }
+}
+
 function ensureUniqueKeys(items, keyName, label) {
   const seen = new Set();
   for (const item of items) {
@@ -62,12 +78,261 @@ function hasRankingData(ranking) {
   return Array.isArray(ranking?.ranking_entries) || Array.isArray(ranking?.report_shards) || ranking?.reports;
 }
 
+function mergeEntriesByOrder(baseEntries = [], deltaEntries = [], order = []) {
+  const entriesById = new Map();
+  for (const entry of [...baseEntries, ...deltaEntries]) {
+    if (entry?.id) {
+      entriesById.set(entry.id, entry);
+    }
+  }
+
+  const merged = [];
+  const usedIds = new Set();
+  for (const id of Array.isArray(order) ? order : []) {
+    const entry = entriesById.get(id);
+    if (entry) {
+      merged.push(entry);
+      usedIds.add(id);
+    }
+  }
+  if (Array.isArray(order) && order.length > 0) {
+    return merged;
+  }
+  for (const entry of [...baseEntries, ...deltaEntries]) {
+    if (entry?.id && !usedIds.has(entry.id)) {
+      merged.push(entry);
+      usedIds.add(entry.id);
+    }
+  }
+  return merged;
+}
+
+function tableRowId(row, columns) {
+  if (Array.isArray(row)) {
+    const idIndex = columns.indexOf("id");
+    return idIndex >= 0 ? row[idIndex] : null;
+  }
+  return row?.id || null;
+}
+
+function mergeRowsByOrder(baseRows = [], deltaRows = [], order = [], columns = []) {
+  const rowsById = new Map();
+  for (const row of [...baseRows, ...deltaRows]) {
+    const id = tableRowId(row, columns);
+    if (id) {
+      rowsById.set(id, row);
+    }
+  }
+
+  const merged = [];
+  const usedIds = new Set();
+  for (const id of Array.isArray(order) ? order : []) {
+    const row = rowsById.get(id);
+    if (row) {
+      merged.push(row);
+      usedIds.add(id);
+    }
+  }
+  if (Array.isArray(order) && order.length > 0) {
+    return merged;
+  }
+  for (const row of [...baseRows, ...deltaRows]) {
+    const id = tableRowId(row, columns);
+    if (id && !usedIds.has(id)) {
+      merged.push(row);
+      usedIds.add(id);
+    }
+  }
+  return merged;
+}
+
+async function resolveRankingPayload(ranking, label) {
+  if (ranking?.format !== "ranking_hidden_delta_v1") {
+    return ranking;
+  }
+
+  validateContract(ranking, publicDataContracts.rankingHiddenDeltaPayload, label);
+  const basePath = path.resolve(publicDataDir, ranking.base_path.replace(/^data\//, ""));
+  if (!assertInside(publicDataDir, basePath, `${label} base_path`)) {
+    return ranking;
+  }
+  const baseRanking = await readJson(basePath, `${label} 公開底稿`);
+  const merged = {
+    ...baseRanking,
+    ...ranking,
+    hidden_reports_included: true,
+    ranking_entries: mergeEntriesByOrder(baseRanking?.ranking_entries, ranking.ranking_entries, ranking.ranking_entry_order),
+  };
+  const versionModes = new Set([
+    ...Object.keys(baseRanking?.version_ranking_entries || {}),
+    ...Object.keys(ranking.version_ranking_entries || {}),
+  ]);
+  if (versionModes.size > 0) {
+    merged.version_ranking_entries = {};
+    for (const versionMode of versionModes) {
+      merged.version_ranking_entries[versionMode] = mergeEntriesByOrder(
+        baseRanking?.version_ranking_entries?.[versionMode],
+        ranking.version_ranking_entries?.[versionMode],
+        ranking.version_ranking_entry_order?.[versionMode],
+      );
+    }
+  }
+  delete merged.format;
+  delete merged.base_path;
+  delete merged.ranking_entry_order;
+  delete merged.version_ranking_entry_order;
+  return merged;
+}
+
+async function resolveRankingTablePayload(table, label) {
+  if (table?.format !== "ranking_table_hidden_delta_v1") {
+    return table;
+  }
+
+  const basePath = path.resolve(publicDataDir, table.base_path.replace(/^data\//, ""));
+  if (!assertInside(publicDataDir, basePath, `${label} base_path`)) {
+    return table;
+  }
+  const baseTable = await readJson(basePath, `${label} 公開底稿`);
+  const columns = Array.isArray(table.table_columns) ? table.table_columns : baseTable?.table_columns || [];
+  const merged = {
+    ...baseTable,
+    ...table,
+    format: "ranking_table_index_v1",
+    hidden_reports_included: true,
+    table_columns: columns,
+    table_rows: mergeRowsByOrder(baseTable?.table_rows, table.table_rows, table.table_row_order, columns),
+  };
+  const versionModes = new Set([
+    ...Object.keys(baseTable?.version_table_rows || {}),
+    ...Object.keys(table.version_table_rows || {}),
+  ]);
+  if (versionModes.size > 0) {
+    merged.version_table_rows = {};
+    for (const versionMode of versionModes) {
+      merged.version_table_rows[versionMode] = mergeRowsByOrder(
+        baseTable?.version_table_rows?.[versionMode],
+        table.version_table_rows?.[versionMode],
+        table.version_table_row_order?.[versionMode],
+        columns,
+      );
+    }
+  }
+  return merged;
+}
+
+async function resolveRankingDetailsPayload(details, label) {
+  if (details?.format !== "ranking_detail_hidden_delta_v1") {
+    return details;
+  }
+
+  validateContract(details, publicDataContracts.rankingDetailsHiddenDeltaPayload, label);
+  const basePath = path.resolve(publicDataDir, details.base_path.replace(/^data\//, ""));
+  if (!assertInside(publicDataDir, basePath, `${label} base_path`)) {
+    return details;
+  }
+  const baseDetails = await readJson(basePath, `${label} 公開底稿`);
+  const merged = {
+    ...baseDetails,
+    ...details,
+    format: "ranking_detail_entries_v1",
+    hidden_reports_included: true,
+    entries: {
+      ...(baseDetails?.entries || {}),
+      ...(details.entries || {}),
+    },
+  };
+  delete merged.base_path;
+  return merged;
+}
+
 function isFiniteNumber(value) {
   return Number.isFinite(Number(value));
 }
 
 function isObjectRecord(value) {
   return value && typeof value === "object" && !Array.isArray(value);
+}
+
+function collectUserProfileEntries(profile) {
+  const entries = [];
+  for (const encounter of profile?.encounters || []) {
+    if (encounter?.best_entry) {
+      entries.push(encounter.best_entry);
+    }
+    entries.push(...(Array.isArray(encounter?.best_by_job) ? encounter.best_by_job : []));
+    entries.push(...(Array.isArray(encounter?.public_entries) ? encounter.public_entries : []));
+  }
+  return entries;
+}
+
+async function readUserEntryDetails(detailCache, pathText, label) {
+  if (typeof pathText !== "string" || !pathText) {
+    reportIssue(`${label} 缺少 report_detail_path`);
+    return null;
+  }
+
+  const detailPath = path.resolve(publicDataDir, pathText.replace(/^data\//, ""));
+  const allowedDir = pathText.startsWith("data/all/")
+    ? publicAllUserEntryDetailsDir
+    : publicUserEntryDetailsDir;
+  if (!assertInside(allowedDir, detailPath, `${label} report_detail_path`)) {
+    return null;
+  }
+  if (!existsSync(detailPath)) {
+    reportIssue(`${label} 指向不存在的個人成績報告細節檔：${pathText}`);
+    return null;
+  }
+
+  if (!detailCache.has(pathText)) {
+    const details = await readJson(detailPath, `${label} ${pathText}`);
+    validateContract(details, publicDataContracts.userEntryDetailsPayload, `${label} ${pathText}`);
+    if (details?.format !== "user_entry_details_v1") {
+      reportIssue(`${label} ${pathText} format 必須是 user_entry_details_v1`);
+    }
+    const entryCount = Object.keys(details?.entries || {}).length;
+    if (details?.entry_count !== entryCount) {
+      reportIssue(`${label} ${pathText} entry_count=${details?.entry_count} 與 entries 數量 ${entryCount} 不一致`);
+    }
+    detailCache.set(pathText, details);
+  }
+
+  return detailCache.get(pathText);
+}
+
+async function validateUserProfileReportDetails(profile, label, detailCache) {
+  for (const entry of collectUserProfileEntries(profile)) {
+    const duplicateCount = Number(entry?.duplicate_count) || 0;
+    if (duplicateCount <= 1) {
+      continue;
+    }
+
+    const inlineVariants = Array.isArray(entry?.report_variants) ? entry.report_variants : [];
+    const inlineSources = Array.isArray(entry?.source_reports) ? entry.source_reports : [];
+    if (inlineVariants.length >= Math.min(duplicateCount, 2) || inlineSources.length >= Math.min(duplicateCount, 2)) {
+      continue;
+    }
+
+    const detailId = entry?.report_detail_id || entry?.id;
+    if (!entry?.report_detail_path || !detailId) {
+      reportIssue(`${label} 的 ${entry?.id || "(未知成績)"} duplicate_count=${duplicateCount}，但缺少 report_variants/source_reports 或 report_detail_path/report_detail_id`);
+      continue;
+    }
+
+    const details = await readUserEntryDetails(detailCache, entry.report_detail_path, `${label} 的 ${entry.id}`);
+    const detailEntry = details?.entries?.[detailId];
+    if (!detailEntry) {
+      reportIssue(`${label} 的 ${entry.id} 指向 ${entry.report_detail_path}，但細節檔缺少 ${detailId}`);
+      continue;
+    }
+    checkedUserEntryDetails += 1;
+
+    const detailVariants = Array.isArray(detailEntry.report_variants) ? detailEntry.report_variants : [];
+    const detailSources = Array.isArray(detailEntry.source_reports) ? detailEntry.source_reports : [];
+    if (detailVariants.length < Math.min(duplicateCount, 2) && detailSources.length < Math.min(duplicateCount, 2)) {
+      reportIssue(`${label} 的 ${entry.id} 細節檔來源數不足：duplicate_count=${duplicateCount}`);
+    }
+  }
 }
 
 async function loadSourceReports(ranking, rankingLabel) {
@@ -171,11 +436,90 @@ async function validateRankings(publicEncounters) {
     }
 
     const publicRanking = await readJson(publicRankingPath, `${key} 公開排行榜`);
+    validateContract(publicRanking, publicDataContracts.rankingPayload, `${key} 公開排行榜`);
     if (!hasRankingData(publicRanking)) {
       reportIssue(`${key} 公開排行榜缺少 ranking_entries 或 reports`);
     }
     if (publicRanking?.reports || publicRanking?.report_shards) {
       reportIssue(`${key} 公開排行榜不應包含完整 reports 或 report_shards`);
+    }
+
+    const tablePath = path.join(publicRankingTablesDir, `${key}.json`);
+    const detailPath = path.join(publicRankingDetailsDir, `${key}.json`);
+    if (!existsSync(tablePath)) {
+      reportIssue(`${key} 缺少排行榜薄索引：public/data/ranking-tables/${key}.json`);
+    } else {
+      const table = await readJson(tablePath, `${key} 排行榜薄索引`);
+      if (table?.format !== "ranking_table_index_v1") {
+        reportIssue(`${key} 排行榜薄索引 format 必須是 ranking_table_index_v1`);
+      }
+      if (!Array.isArray(table?.table_columns) || !Array.isArray(table?.table_rows)) {
+        reportIssue(`${key} 排行榜薄索引必須包含 table_columns 與 table_rows`);
+      }
+      if (table?.detail_path !== `data/ranking-details/${key}.json`) {
+        reportIssue(`${key} 排行榜薄索引 detail_path 不正確`);
+      }
+      if (table?.table_rows?.length !== publicRanking?.ranking_entries?.length) {
+        reportIssue(`${key} 排行榜薄索引列數需等於公開 ranking_entries`);
+      }
+    }
+    if (!existsSync(detailPath)) {
+      reportIssue(`${key} 缺少排行榜報告細節檔：public/data/ranking-details/${key}.json`);
+    } else {
+      const details = await readJson(detailPath, `${key} 排行榜報告細節`);
+      validateContract(details, publicDataContracts.rankingDetailsPayload, `${key} 排行榜報告細節`);
+      if (details?.format !== "ranking_detail_entries_v1") {
+        reportIssue(`${key} 排行榜報告細節 format 必須是 ranking_detail_entries_v1`);
+      }
+      if (!details?.entries || typeof details.entries !== "object" || Array.isArray(details.entries)) {
+        reportIssue(`${key} 排行榜報告細節必須包含 entries 索引物件`);
+      }
+    }
+
+    const allRankingPath = path.join(publicAllRankingsDir, `${key}.json`);
+    if (!existsSync(allRankingPath)) {
+      reportIssue(`${key} 缺少完整排行榜鏡像：public/data/all/rankings/${key}.json`);
+    } else {
+      const rawAllRanking = await readJson(allRankingPath, `${key} 完整排行榜鏡像`);
+      const allRanking = await resolveRankingPayload(rawAllRanking, `${key} 完整排行榜鏡像`);
+      validateContract(allRanking, publicDataContracts.rankingPayload, `${key} 完整排行榜鏡像`);
+      if (!hasRankingData(allRanking)) {
+        reportIssue(`${key} 完整排行榜鏡像缺少 ranking_entries`);
+      }
+      if (allRanking?.hidden_reports_included !== true) {
+        reportIssue(`${key} 完整排行榜鏡像必須標記 hidden_reports_included=true`);
+      }
+      if (allRanking?.reports || allRanking?.report_shards) {
+        reportIssue(`${key} 完整排行榜鏡像不應包含完整 reports 或 report_shards`);
+      }
+    }
+
+    const allTablePath = path.join(publicAllRankingTablesDir, `${key}.json`);
+    const allDetailPath = path.join(publicAllRankingDetailsDir, `${key}.json`);
+    if (!existsSync(allTablePath)) {
+      reportIssue(`${key} 缺少完整鏡像排行榜薄索引：public/data/all/ranking-tables/${key}.json`);
+    } else {
+      const rawAllTable = await readJson(allTablePath, `${key} 完整鏡像排行榜薄索引`);
+      const allTable = await resolveRankingTablePayload(rawAllTable, `${key} 完整鏡像排行榜薄索引`);
+      if (allTable?.hidden_reports_included !== true) {
+        reportIssue(`${key} 完整鏡像排行榜薄索引必須標記 hidden_reports_included=true`);
+      }
+      if (allTable?.detail_path !== `data/all/ranking-details/${key}.json`) {
+        reportIssue(`${key} 完整鏡像排行榜薄索引 detail_path 不正確`);
+      }
+    }
+    if (!existsSync(allDetailPath)) {
+      reportIssue(`${key} 缺少完整鏡像排行榜報告細節檔：public/data/all/ranking-details/${key}.json`);
+    } else {
+      const rawAllDetails = await readJson(allDetailPath, `${key} 完整鏡像排行榜報告細節`);
+      const allDetails = await resolveRankingDetailsPayload(rawAllDetails, `${key} 完整鏡像排行榜報告細節`);
+      validateContract(allDetails, publicDataContracts.rankingDetailsPayload, `${key} 完整鏡像排行榜報告細節`);
+      if (allDetails?.format !== "ranking_detail_entries_v1") {
+        reportIssue(`${key} 完整鏡像排行榜報告細節 format 必須是 ranking_detail_entries_v1`);
+      }
+      if (!allDetails?.entries || typeof allDetails.entries !== "object" || Array.isArray(allDetails.entries)) {
+        reportIssue(`${key} 完整鏡像排行榜報告細節必須包含 entries 索引物件`);
+      }
     }
 
     const sourceRankingPath = path.join(sourceRankingsDir, `${key}.json`);
@@ -249,6 +593,91 @@ async function validateActivity() {
   }
 }
 
+function isOptionalIsoTimestamp(value) {
+  if (value === null || value === undefined || value === "") {
+    return true;
+  }
+  return Number.isFinite(new Date(value).getTime());
+}
+
+function validateAnnouncementLinks(links, label) {
+  if (links === undefined) {
+    return;
+  }
+  if (!Array.isArray(links)) {
+    reportIssue(`${label} 的 links 必須是陣列`);
+    return;
+  }
+
+  for (const [index, link] of links.entries()) {
+    if (!link?.label || !link?.url) {
+      reportIssue(`${label} 的 links[${index}] 必須包含 label 與 url`);
+      continue;
+    }
+
+    try {
+      const url = new URL(link.url, "https://ranking.init.engineer");
+      if (!["http:", "https:", "mailto:"].includes(url.protocol)) {
+        reportIssue(`${label} 的 links[${index}] 使用不允許的連結協定：${url.protocol}`);
+      }
+    } catch (error) {
+      reportIssue(`${label} 的 links[${index}] 不是有效 URL：${error.message}`);
+    }
+  }
+}
+
+function validateAnnouncementPayload(payload, label) {
+  if (payload?.schema_version !== 1) {
+    reportIssue(`${label} 的 schema_version 必須是 1`);
+  }
+  if (!Array.isArray(payload?.announcements)) {
+    reportIssue(`${label} 必須包含 announcements 陣列`);
+    return;
+  }
+
+  ensureUniqueKeys(payload.announcements, "id", `${label} announcements`);
+  for (const announcement of payload.announcements) {
+    const announcementLabel = `${label} 公告 ${announcement?.id || "(缺少 id)"}`;
+    if (!announcement?.title || !announcement?.summary || !announcement?.details_markdown) {
+      reportIssue(`${announcementLabel} 必須包含 title、summary 與 details_markdown`);
+    }
+    if (!isOptionalIsoTimestamp(announcement?.starts_at_iso)) {
+      reportIssue(`${announcementLabel} 的 starts_at_iso 必須是有效 ISO 時間或空值`);
+    }
+    if (!isOptionalIsoTimestamp(announcement?.expires_at_iso)) {
+      reportIssue(`${announcementLabel} 的 expires_at_iso 必須是有效 ISO 時間或空值`);
+    }
+
+    const startsAt = announcement?.starts_at_iso ? new Date(announcement.starts_at_iso).getTime() : null;
+    const expiresAt = announcement?.expires_at_iso ? new Date(announcement.expires_at_iso).getTime() : null;
+    if (Number.isFinite(startsAt) && Number.isFinite(expiresAt) && expiresAt < startsAt) {
+      reportIssue(`${announcementLabel} 的 expires_at_iso 不可早於 starts_at_iso`);
+    }
+
+    validateAnnouncementLinks(announcement?.links, announcementLabel);
+  }
+}
+
+async function validateAnnouncements() {
+  const announcementsPath = path.join(publicDataDir, "announcements.json");
+  const announcementsMirrorPath = path.join(publicAllDataDir, "announcements.json");
+  if (!existsSync(announcementsPath)) {
+    reportIssue("缺少 public/data/announcements.json");
+    return;
+  }
+
+  const announcements = await readJson(announcementsPath, "public/data/announcements.json");
+  validateAnnouncementPayload(announcements, "public/data/announcements.json");
+
+  if (existsSync(announcementsMirrorPath)) {
+    const mirror = await readJson(announcementsMirrorPath, "public/data/all/announcements.json");
+    validateAnnouncementPayload(mirror, "public/data/all/announcements.json");
+    if (JSON.stringify(announcements) !== JSON.stringify(mirror)) {
+      reportIssue("public/data/all/announcements.json 必須與 public/data/announcements.json 同步");
+    }
+  }
+}
+
 async function validateTeamRankings() {
   const teamRankingsPath = path.join(publicDataDir, "team_rankings.json");
   if (!existsSync(teamRankingsPath)) {
@@ -257,6 +686,7 @@ async function validateTeamRankings() {
   }
 
   const teamRankings = await readJson(teamRankingsPath, "public/data/team_rankings.json");
+  validateContract(teamRankings, publicDataContracts.teamRankingsPayload, "public/data/team_rankings.json");
   if (teamRankings?.schema_version !== 1) {
     reportIssue("public/data/team_rankings.json 的 schema_version 必須是 1");
   }
@@ -311,6 +741,7 @@ async function validateServerCompare() {
   }
 
   const serverCompare = await readJson(serverComparePath, "public/data/server_compare.json");
+  validateContract(serverCompare, publicDataContracts.serverComparePayload, "public/data/server_compare.json");
   if (serverCompare?.schema_version !== 1) {
     reportIssue("public/data/server_compare.json 的 schema_version 必須是 1");
   }
@@ -370,18 +801,20 @@ async function validateHoneyFans() {
   }
 }
 
-async function validateUsers() {
-  const usersDir = path.join(publicDataDir, "users");
+async function validateUserDataset(dataDir, label, { countFiles = false } = {}) {
+  const usersDir = path.join(dataDir, "users");
   const userIndexPath = path.join(usersDir, "index.json");
+  const detailCache = new Map();
   if (!existsSync(userIndexPath)) {
-    reportIssue("缺少 public/data/users/index.json，請先執行 npm run build:user-data");
+    reportIssue(`缺少 ${label}/users/index.json，請先執行 npm run build:user-data`);
     return;
   }
 
-  const index = await readJson(userIndexPath, "public/data/users/index.json");
+  const index = await readJson(userIndexPath, `${label}/users/index.json`);
+  validateContract(index, publicDataContracts.userIndexPayload, `${label}/users/index.json`);
   const users = Array.isArray(index?.users) ? index.users : [];
   if (index?.total_users !== users.length) {
-    reportIssue(`public/data/users/index.json 的 total_users=${index?.total_users} 與 users 長度 ${users.length} 不一致`);
+    reportIssue(`${label}/users/index.json 的 total_users=${index?.total_users} 與 users 長度 ${users.length} 不一致`);
   }
 
   for (const user of users) {
@@ -392,14 +825,63 @@ async function validateUsers() {
     }
 
     const userPath = path.resolve(publicDataDir, filePathText.replace(/^data\//, ""));
-    if (!assertInside(usersDir, userPath, `使用者索引 ${user?.character_name || filePathText}`)) {
+    if (!assertInside(publicDataDir, userPath, `使用者索引 ${user?.character_name || filePathText}`)) {
       continue;
     }
     if (!existsSync(userPath)) {
       reportIssue(`使用者索引指向不存在檔案：${filePathText}`);
       continue;
     }
-    checkedUserFiles += 1;
+    const profile = await readJson(userPath, `${label}/${filePathText}`);
+    if (profile?.format === "user_profile_hidden_delta_v1") {
+      validateContract(profile, publicDataContracts.userProfileHiddenDelta, `${label}/${filePathText}`);
+      const basePath = path.resolve(publicDataDir, profile.base_path.replace(/^data\//, ""));
+      if (assertInside(publicDataDir, basePath, `${label}/${filePathText} base_path`) && !existsSync(basePath)) {
+        reportIssue(`${label}/${filePathText} 指向不存在的公開成績單底稿：${profile.base_path}`);
+      }
+    } else {
+      validateContract(profile, publicDataContracts.userProfile, `${label}/${filePathText}`);
+    }
+    await validateUserProfileReportDetails(profile, `${label}/${filePathText}`, detailCache);
+    if (countFiles) {
+      checkedUserFiles += 1;
+    }
+  }
+}
+
+async function validateUsers() {
+  await validateUserDataset(publicDataDir, "public/data", { countFiles: true });
+  if (existsSync(path.join(publicAllDataDir, "users", "index.json"))) {
+    await validateUserDataset(publicAllDataDir, "public/data/all");
+  }
+}
+
+async function validateAllDataMirror() {
+  const requiredMirrorFiles = [
+    "announcements.json",
+    "encounters.json",
+    "global_stats.json",
+    "activity.json",
+    "team_rankings.json",
+    "server_compare.json",
+    "users/index.json",
+  ];
+  const mirrorContracts = {
+    "team_rankings.json": publicDataContracts.teamRankingsPayload,
+    "server_compare.json": publicDataContracts.serverComparePayload,
+  };
+
+  for (const relativePath of requiredMirrorFiles) {
+    const mirrorPath = path.join(publicAllDataDir, relativePath);
+    if (!existsSync(mirrorPath)) {
+      reportIssue(`缺少完整資料鏡像：public/data/all/${normalizePath(relativePath)}`);
+      continue;
+    }
+    const mirror = await readJson(mirrorPath, `public/data/all/${normalizePath(relativePath)}`);
+    const contract = mirrorContracts[relativePath];
+    if (contract) {
+      validateContract(mirror, contract, `public/data/all/${normalizePath(relativePath)}`);
+    }
   }
 }
 
@@ -408,10 +890,12 @@ async function main() {
   await validateRankings(publicEncounters);
   await validateGlobalStats();
   await validateActivity();
+  await validateAnnouncements();
   await validateTeamRankings();
   await validateServerCompare();
   await validateHoneyFans();
   await validateUsers();
+  await validateAllDataMirror();
 
   if (issues.length > 0) {
     console.error(`資料驗證失敗：${issues.length} 個問題`);
@@ -425,7 +909,7 @@ async function main() {
   }
 
   console.log(
-    `資料驗證通過：${publicEncounters.length} 個公開副本、${checkedSourceReports} 份來源 report、${checkedUserFiles} 份使用者檔案、${checkedActivityItems} 筆近期動態項目、${checkedTeamRecords} 筆隊伍榜紀錄、${checkedServerCompareRows} 筆伺服器對比資料、${checkedHoneyFanRows} 筆蜂蜂粉絲資料。`,
+    `資料驗證通過：${publicEncounters.length} 個公開副本、${checkedSourceReports} 份來源 report、${checkedUserFiles} 份使用者檔案、${checkedUserEntryDetails} 筆個人成績報告細節、${checkedActivityItems} 筆近期動態項目、${checkedTeamRecords} 筆隊伍榜紀錄、${checkedServerCompareRows} 筆伺服器對比資料、${checkedHoneyFanRows} 筆蜂蜂粉絲資料。`,
   );
 }
 

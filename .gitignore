@@ -42,7 +42,11 @@ Desktop.ini
 *.swo
 
 # Generated data
+public/data/all/
+public/data/ranking-details/
 public/data/rankings/
+public/data/ranking-tables/
+public/data/user-entry-details/
 public/data/users/
 
 # Local crawler state variants

@@ -6,7 +6,6 @@ on:
       - main
   schedule:
     - cron: "17 * * * *"
-    - cron: "47 * * * *"
   workflow_dispatch:
 
 permissions:
@@ -70,11 +69,11 @@ jobs:
             exit 0
           fi
 
+          CLOUDFLARE_APPLY_ARGS=(--allow-transient-failure)
           if [ "$CLOUDFLARE_MANAGE_RATE_LIMIT" = "false" ]; then
-            npm run cloudflare:apply -- --skip-rate-limit
-          else
-            npm run cloudflare:apply
+            CLOUDFLARE_APPLY_ARGS+=(--skip-rate-limit)
           fi
+          npm run cloudflare:apply -- "${CLOUDFLARE_APPLY_ARGS[@]}"
 
       - name: 執行 FFLogs 排行榜抓取腳本
         env:
@@ -83,25 +82,56 @@ jobs:
           FFLOGS_CLIENT_IDS: ${{ secrets.FFLOGS_CLIENT_IDS }}
           FFLOGS_CLIENT_SECRETS: ${{ secrets.FFLOGS_CLIENT_SECRETS }}
           FFLOGS_CLIENT_CREDENTIALS_JSON: ${{ secrets.FFLOGS_CLIENT_CREDENTIALS_JSON }}
+          # 玩家可能把繁中服角色的 report 上傳到其他地區；workflow 掃全部地區候選，再由 Python 以伺服器名稱篩繁中服玩家。
+          FFLOGS_REPORT_REGION_SCOPE: ${{ vars.FFLOGS_REPORT_REGION_SCOPE || 'all' }}
+          # 近期完整重查只回溯 24 小時；這段會放行近期 no-clear report 重新深查，避免剛匯出的 kill 被快取擋住。
+          FFLOGS_INCREMENTAL_LOOKBACK_HOURS: ${{ vars.FFLOGS_INCREMENTAL_LOOKBACK_HOURS || '24' }}
+          # 近期 report 可能先被掃到但尚未出現通關 fight；保留 24 小時重試窗，避免 skipped_no_clear 永久擋掉後續匯出的 kill。
+          FFLOGS_NO_CLEAR_RETRY_HOURS: ${{ vars.FFLOGS_NO_CLEAR_RETRY_HOURS || '24' }}
+          # 延遲淺層掃描固定檢查 24-72 小時前的 reports，只選入 state 與排行榜都沒見過的新 report，不重查既有紀錄。
+          FFLOGS_DELAYED_SCAN_ENABLED: ${{ vars.FFLOGS_DELAYED_SCAN_ENABLED || 'true' }}
+          FFLOGS_DELAYED_SCAN_RECENT_GAP_HOURS: ${{ vars.FFLOGS_DELAYED_SCAN_RECENT_GAP_HOURS || '24' }}
+          FFLOGS_DELAYED_SCAN_LOOKBACK_HOURS: ${{ vars.FFLOGS_DELAYED_SCAN_LOOKBACK_HOURS || '72' }}
+          FFLOGS_DELAYED_MAX_DEEP_REPORTS_PER_RUN: ${{ vars.FFLOGS_DELAYED_MAX_DEEP_REPORTS_PER_RUN || '0' }}
+          # config/fflogs.json 預設關閉歷史補查；workflow 以低量輪巡方式檢查舊時間窗是否新增公開 logs。
+          FFLOGS_HISTORY_SCAN_ENABLED: ${{ vars.FFLOGS_HISTORY_SCAN_ENABLED || 'true' }}
+          FFLOGS_HISTORY_SCAN_FULL_RUN: ${{ vars.FFLOGS_HISTORY_SCAN_FULL_RUN || 'false' }}
+          FFLOGS_HISTORY_SCAN_WINDOW_HOURS: ${{ vars.FFLOGS_HISTORY_SCAN_WINDOW_HOURS || '168' }}
+          FFLOGS_HISTORY_SCAN_WINDOWS_PER_RUN: ${{ vars.FFLOGS_HISTORY_SCAN_WINDOWS_PER_RUN || '1' }}
+          FFLOGS_HISTORY_SCAN_RECENT_GAP_HOURS: ${{ vars.FFLOGS_HISTORY_SCAN_RECENT_GAP_HOURS || '6' }}
+          FFLOGS_HISTORY_MAX_DEEP_REPORTS_PER_RUN: ${{ vars.FFLOGS_HISTORY_MAX_DEEP_REPORTS_PER_RUN || '200' }}
+          # 每輪由舊到新抽查既有排行榜 report 是否仍可存取，跑完後會從最舊紀錄重新輪巡。
+          FFLOGS_EXISTING_REPORT_STATUS_CHECK_ENABLED: ${{ vars.FFLOGS_EXISTING_REPORT_STATUS_CHECK_ENABLED || 'true' }}
+          FFLOGS_EXISTING_REPORT_STATUS_CHECK_LIMIT: ${{ vars.FFLOGS_EXISTING_REPORT_STATUS_CHECK_LIMIT || '200' }}
+          # 新 report 抓取時順手查同一場 Casts graph 並以本地演算法計算 GCD，只保存衍生結果。
+          FFLOGS_FETCH_GCD_COVERAGE_ENABLED: ${{ vars.FFLOGS_FETCH_GCD_COVERAGE_ENABLED || 'true' }}
+          FFLOGS_FETCH_GCD_COVERAGE_MAX_FIGHTS_PER_RUN: ${{ vars.FFLOGS_FETCH_GCD_COVERAGE_MAX_FIGHTS_PER_RUN || '500' }}
         run: python scripts/fetch_fflogs.py
 
-      - name: 補齊缺漏 FFLogs 原始資料
-        env:
-          FFLOGS_CLIENT_ID: ${{ secrets.FFLOGS_CLIENT_ID }}
-          FFLOGS_CLIENT_SECRET: ${{ secrets.FFLOGS_CLIENT_SECRET }}
-          FFLOGS_CLIENT_IDS: ${{ secrets.FFLOGS_CLIENT_IDS }}
-          FFLOGS_CLIENT_SECRETS: ${{ secrets.FFLOGS_CLIENT_SECRETS }}
-          FFLOGS_CLIENT_CREDENTIALS_JSON: ${{ secrets.FFLOGS_CLIENT_CREDENTIALS_JSON }}
-        run: python scripts/backfill_missing_fflogs_data.py --limit 250
+      # 舊版資料修補工具暫停每輪自動執行，避免排程重複回查已不常需要補齊的歷史 report。
+      # 若未來需要人工修復既有缺漏，保留以下步驟作為手動恢復時的上下文。
+      # - name: 補齊缺漏 FFLogs 原始資料
+      #   env:
+      #     FFLOGS_CLIENT_ID: ${{ secrets.FFLOGS_CLIENT_ID }}
+      #     FFLOGS_CLIENT_SECRET: ${{ secrets.FFLOGS_CLIENT_SECRET }}
+      #     FFLOGS_CLIENT_IDS: ${{ secrets.FFLOGS_CLIENT_IDS }}
+      #     FFLOGS_CLIENT_SECRETS: ${{ secrets.FFLOGS_CLIENT_SECRETS }}
+      #     FFLOGS_CLIENT_CREDENTIALS_JSON: ${{ secrets.FFLOGS_CLIENT_CREDENTIALS_JSON }}
+      #   run: python scripts/backfill_missing_fflogs_data.py --limit 250
 
-      - name: 補齊 GCD 覆蓋率
+      - name: 由新往舊補齊既有 report 的 GCD 覆蓋率
         env:
           FFLOGS_CLIENT_ID: ${{ secrets.FFLOGS_CLIENT_ID }}
           FFLOGS_CLIENT_SECRET: ${{ secrets.FFLOGS_CLIENT_SECRET }}
           FFLOGS_CLIENT_IDS: ${{ secrets.FFLOGS_CLIENT_IDS }}
           FFLOGS_CLIENT_SECRETS: ${{ secrets.FFLOGS_CLIENT_SECRETS }}
           FFLOGS_CLIENT_CREDENTIALS_JSON: ${{ secrets.FFLOGS_CLIENT_CREDENTIALS_JSON }}
-        run: python scripts/backfill_gcd_coverage.py --limit 2000
+          FFLOGS_GCD_BACKFILL_REPORT_LIMIT: ${{ vars.FFLOGS_GCD_BACKFILL_REPORT_LIMIT || '200' }}
+          FFLOGS_GCD_BACKFILL_CUTOFF_ISO: ${{ vars.FFLOGS_GCD_BACKFILL_CUTOFF_ISO }}
+        run: |
+          python scripts/backfill_gcd_coverage.py \
+            --stateful-report-backfill \
+            --report-limit "${FFLOGS_GCD_BACKFILL_REPORT_LIMIT:-200}"
 
       - name: 分割完整排行榜資料供 Git 追蹤
         run: python scripts/fetch_fflogs.py --split-rankings
@@ -150,9 +180,15 @@ jobs:
           sudo apt-get install -y fonts-noto-cjk
 
       - name: 建置並驗證 GitHub Pages 靜態網站
+        id: build-site
         env:
           VITE_GA_MEASUREMENT_ID: ${{ vars.VITE_GA_MEASUREMENT_ID || secrets.VITE_GA_MEASUREMENT_ID }}
-        run: npm run build
+        run: |
+          START_SECONDS=$SECONDS
+          npm run build
+          BUILD_SECONDS=$((SECONDS - START_SECONDS))
+          echo "PAGES_BUILD_SECONDS=${BUILD_SECONDS}" >> "$GITHUB_ENV"
+          echo "build_seconds=${BUILD_SECONDS}" >> "$GITHUB_OUTPUT"
 
       - name: 檢查排行榜資料是否有變動
         id: data-changes
@@ -177,7 +213,7 @@ jobs:
             -m "chore(data): 自動更新排行榜資料" \
             -m "原因：GitHub Actions 定時同步 FFLogs 公開報告，讓靜態網站資料保持最新。" \
             -m "主要變更：更新 data 與 public/data 內的排行榜、個人成績單、全服統計或更新狀態產物。" \
-            -m "測試/驗證：本 workflow 已完成 fetch_fflogs.py、backfill_missing_fflogs_data.py、backfill_gcd_coverage.py、validate:data 與 npm run build。"
+            -m "測試/驗證：本 workflow 已完成 fetch_fflogs.py、validate:data 與 npm run build。"
           # rebase 前工作樹必須乾淨；若未來資料建置新增了已追蹤產物但忘記納入 DATA_PATHS，
           # 這裡會列出漏掉的檔案，避免只看到 Git 的「cannot rebase: You have unstaged changes」。
           if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
@@ -196,6 +232,50 @@ jobs:
           done
           echo "Unable to push ranking data after syncing remote branch."
           exit 1
+
+      - name: 稽核 GitHub Pages payload 體積
+        env:
+          PAGES_BUILD_SECONDS: ${{ steps.build-site.outputs.build_seconds }}
+          PAGES_PAYLOAD_HISTORY_LIMIT: ${{ vars.PAGES_PAYLOAD_HISTORY_LIMIT || '200' }}
+        run: |
+          npm run audit:pages-payload:strict -- \
+            --write-history data/pages_payload_history.jsonl \
+            --history-limit "${PAGES_PAYLOAD_HISTORY_LIMIT:-200}"
+
+      - name: Commit 並 Push payload 稽核歷史
+        run: |
+          if [ -z "$(git status --porcelain -- data/pages_payload_history.jsonl)" ]; then
+            echo "payload 稽核歷史沒有變更，略過提交。"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/pages_payload_history.jsonl
+          git commit \
+            -m "chore(data): 更新 Pages payload 稽核歷史" \
+            -m "原因：GitHub Actions 在資料提交後、Pages artifact 上傳前記錄 payload 體積趨勢。" \
+            -m "主要變更：更新 data/pages_payload_history.jsonl，保存 Pages payload 檔案數、大小與趨勢紀錄。" \
+            -m "測試/驗證：本 workflow 已完成 npm run audit:pages-payload:strict。"
+          for attempt in 1 2 3; do
+            git fetch origin "${{ github.ref_name }}"
+            git rebase "origin/${{ github.ref_name }}"
+            if git push origin "HEAD:${{ github.ref_name }}"; then
+              exit 0
+            fi
+            echo "Push was rejected, retrying after syncing remote branch..."
+            sleep $((attempt * 5))
+          done
+          echo "Unable to push payload audit history after syncing remote branch."
+          exit 1
+
+      - name: 估算 Cloudflare 快取承載量
+        run: npm run cloudflare:estimate | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: 檢查 Cloudflare purge 範圍
+        env:
+          CLOUDFLARE_HOSTNAME: ${{ vars.CLOUDFLARE_HOSTNAME }}
+        run: npm run cloudflare:purge -- --dry-run --summary
 
       - name: 上傳 GitHub Pages artifact
         uses: actions/upload-pages-artifact@v3

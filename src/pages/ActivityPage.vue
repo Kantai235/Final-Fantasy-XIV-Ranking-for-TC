@@ -1,8 +1,12 @@
 <script>
+import JobIcon from "../components/JobIcon.vue";
 import { injectRankingApp } from "../composables/useRankingApp";
 
 export default {
   name: "ActivityPage",
+  components: {
+    JobIcon,
+  },
   setup() {
     return injectRankingApp();
   },
@@ -28,6 +32,7 @@ export default {
           <h2>刷新個人最佳</h2>
           <span>依 rDPS 提升幅度排序</span>
         </header>
+        <p v-if="近期刷新版本說明文字" class="版本紀錄說明">{{ 近期刷新版本說明文字 }}</p>
         <div class="統計表格外框">
           <table class="統計表格 近期動態表格 近期刷新表格">
             <thead>
@@ -37,11 +42,12 @@ export default {
                 <th scope="col">職業</th>
                 <th scope="col" class="數字">rDPS 提升</th>
                 <th scope="col" class="數字">同職分位</th>
+                <th v-show="顯示Gcd覆蓋率" scope="col" class="數字 gcd參考文字">GCD</th>
                 <th scope="col">紀錄時間</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="成績 in 近期刷新紀錄列表" :key="成績.id">
+              <tr v-for="成績 in 近期刷新紀錄列表" :key="成績.id" :class="{ 過版紀錄列: 成績.is_obsolete_record }">
                 <td>
                   <button class="文字連結" type="button" @click="載入使用者成績(成績.character_name, 成績.server)">
                     {{ 成績.character_name }}
@@ -56,20 +62,20 @@ export default {
                 </td>
                 <td>
                   <span v-if="成績.job" class="職業標籤 近期動態職業標籤" :class="職業色彩類別(職業代碼色彩(成績.job))">
-                    <img
-                      v-if="職業Icon路徑(成績.job)"
+                    <JobIcon
                       class="職業圖示 職業標籤圖示"
-                      :src="職業Icon路徑(成績.job)"
-                      alt=""
-                      loading="lazy"
-                      @error="隱藏載入失敗圖片"
+                      :code="成績.job"
                     />
                     <span>{{ 顯示職業名稱(成績.job) }}</span>
                   </span>
                   <span v-else>-</span>
                 </td>
                 <td class="數字">{{ 格式化帶號整數(成績.rdps_gain) }}</td>
-                <td class="數字">{{ 格式化前段百分位(成績.performance?.rank, 成績.performance?.sample_count) }}</td>
+                <td class="數字">
+                  <span v-if="成績.is_obsolete_record" class="版本紀錄標籤">過版紀錄</span>
+                  <template v-else>{{ 格式化前段百分位(成績.performance?.rank, 成績.performance?.sample_count) }}</template>
+                </td>
+                <td v-show="顯示Gcd覆蓋率" class="數字 gcd參考文字">{{ 格式化Gcd覆蓋率(成績.gcd_coverage) }}</td>
                 <td>{{ 格式化紀錄時間(成績.recorded_at_iso) }}</td>
               </tr>
             </tbody>
@@ -91,6 +97,7 @@ export default {
                 <th scope="col">副本</th>
                 <th scope="col">職業</th>
                 <th scope="col" class="數字">rDPS</th>
+                <th v-show="顯示Gcd覆蓋率" scope="col" class="數字 gcd參考文字">GCD</th>
                 <th scope="col">紀錄時間</th>
               </tr>
             </thead>
@@ -105,19 +112,16 @@ export default {
                 <td>{{ 成績.encounter_name || "-" }}</td>
                 <td>
                   <span v-if="成績.job" class="職業標籤 近期動態職業標籤" :class="職業色彩類別(職業代碼色彩(成績.job))">
-                    <img
-                      v-if="職業Icon路徑(成績.job)"
+                    <JobIcon
                       class="職業圖示 職業標籤圖示"
-                      :src="職業Icon路徑(成績.job)"
-                      alt=""
-                      loading="lazy"
-                      @error="隱藏載入失敗圖片"
+                      :code="成績.job"
                     />
                     <span>{{ 顯示職業名稱(成績.job) }}</span>
                   </span>
                   <span v-else>-</span>
                 </td>
                 <td class="數字">{{ 格式化傷害數值(成績.rdps) }}</td>
+                <td v-show="顯示Gcd覆蓋率" class="數字 gcd參考文字">{{ 格式化Gcd覆蓋率(成績.gcd_coverage) }}</td>
                 <td>{{ 格式化紀錄時間(成績.recorded_at_iso || 成績.last_recorded_at_iso) }}</td>
               </tr>
             </tbody>
@@ -179,7 +183,10 @@ export default {
             @click="載入使用者成績(角色.character_name, 角色.server)"
           >
             <strong>{{ 角色.character_name }}</strong>
-            <span>{{ 角色.server }}・{{ 格式化整數(角色.encounter_count) }} 副本・{{ 格式化傷害數值(角色.best_entry?.rdps) }}</span>
+            <span>
+              {{ 角色.server }}・{{ 格式化整數(角色.encounter_count) }} 副本・rDPS {{ 格式化傷害數值(角色.best_entry?.rdps) }}
+              <span v-if="顯示Gcd覆蓋率" class="gcd參考文字">・GCD {{ 格式化Gcd覆蓋率(角色.best_entry?.gcd_coverage) }}</span>
+            </span>
           </button>
         </div>
       </section>

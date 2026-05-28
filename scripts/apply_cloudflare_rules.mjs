@@ -10,15 +10,18 @@ const ManagedRuleDescriptionPrefix = "FFXIV TC - ";
 const Args = new Set(process.argv.slice(2));
 const DryRun = Args.has("--dry-run");
 const SkipRateLimit = Args.has("--skip-rate-limit");
+const AllowTransientFailure = Args.has("--allow-transient-failure");
 
 loadLocalEnv();
 
 const SiteConfig = JSON.parse(readFileSync(new URL("../config/site.json", import.meta.url), "utf8"));
 const SiteHostname = normalizeHostname(
-  process.env.CLOUDFLARE_HOSTNAME || new URL(SiteConfig.site_url || "https://ranking.init.engineer/").hostname,
+  readOptionalEnv("CLOUDFLARE_HOSTNAME") || new URL(SiteConfig.site_url || "https://ranking.init.engineer/").hostname,
 );
 const ZoneId = process.env.CLOUDFLARE_ZONE_ID || "";
 const ApiToken = process.env.CLOUDFLARE_RULES_API_TOKEN || process.env.CLOUDFLARE_API_TOKEN || "";
+const CloudflareMaxAttempts = readPositiveIntegerEnv("CLOUDFLARE_RULES_API_MAX_ATTEMPTS", 3);
+const CloudflareRetryBaseDelayMs = readPositiveIntegerEnv("CLOUDFLARE_RULES_API_RETRY_BASE_MS", 750);
 
 const DataEdgeTtlSeconds = readPositiveIntegerEnv("CLOUDFLARE_DATA_EDGE_TTL_SECONDS", 7200);
 const DataBrowserTtlSeconds = readPositiveIntegerEnv("CLOUDFLARE_DATA_BROWSER_TTL_SECONDS", 300);
@@ -56,6 +59,11 @@ function loadLocalEnv() {
 
     process.env[key] = rawValue.replace(/^(['"])(.*)\1$/, "$2");
   }
+}
+
+function readOptionalEnv(name) {
+  const value = String(process.env[name] || "").trim();
+  return value || "";
 }
 
 function normalizeHostname(hostname) {
@@ -250,28 +258,131 @@ function mergeRules(existingRules, managedRules, { managedFirst = false } = {}) 
   return managedFirst ? [...managedRules, ...unmanagedRules] : [...unmanagedRules, ...managedRules];
 }
 
-async function cloudflareRequest(path, options = {}) {
-  const response = await fetch(`${CloudflareApiBase}${path}`, {
-    ...options,
-    headers: {
-      Authorization: `Bearer ${ApiToken}`,
-      "Content-Type": "application/json",
-      ...(options.headers || {}),
-    },
-  });
-  const bodyText = await response.text();
-  const body = bodyText ? JSON.parse(bodyText) : null;
+class CloudflareApiError extends Error {
+  constructor(message, { status = 0, method = "GET", path = "" } = {}) {
+    super(message);
+    this.name = "CloudflareApiError";
+    this.status = status;
+    this.method = method;
+    this.path = path;
+  }
 
-  if (response.status === 404) {
+  get isTransient() {
+    return this.status === 0 || this.status === 429 || (this.status >= 500 && this.status <= 599);
+  }
+}
+
+function parseCloudflareResponseBody(bodyText) {
+  if (!bodyText) {
     return null;
   }
 
-  if (!response.ok || body?.success === false) {
-    const errors = Array.isArray(body?.errors) ? body.errors.map((error) => error.message).join("; ") : bodyText;
-    throw new Error(`Cloudflare API 呼叫失敗：HTTP ${response.status} ${errors || ""}`.trim());
+  try {
+    return JSON.parse(bodyText);
+  } catch {
+    return null;
+  }
+}
+
+function describeCloudflareResponse(body, bodyText) {
+  const messages = [];
+  const responseItems = [
+    ...(Array.isArray(body?.errors) ? body.errors : []),
+    ...(Array.isArray(body?.messages) ? body.messages : []),
+  ];
+  for (const item of responseItems) {
+    const code = item?.code ? `#${item.code} ` : "";
+    const message = item?.message || JSON.stringify(item);
+    if (message) {
+      messages.push(`${code}${message}`.trim());
+    }
   }
 
-  return body?.result || null;
+  if (messages.length > 0) {
+    return messages.join("; ");
+  }
+
+  return bodyText ? bodyText.slice(0, 500) : "";
+}
+
+function cloudflareRetryDelayMs(attempt) {
+  return CloudflareRetryBaseDelayMs * 2 ** (attempt - 1);
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+async function retryCloudflareRequest(error, attempt) {
+  if (!(error instanceof CloudflareApiError) || !error.isTransient || attempt >= CloudflareMaxAttempts) {
+    return false;
+  }
+
+  const delayMs = cloudflareRetryDelayMs(attempt);
+  const statusLabel = error.status === 0 ? "network" : `HTTP ${error.status}`;
+  console.warn(
+    `Cloudflare API 暫時性錯誤：${error.method} ${error.path} ${statusLabel}，第 ${attempt}/${CloudflareMaxAttempts} 次失敗，${delayMs}ms 後重試。`,
+  );
+  await sleep(delayMs);
+  return true;
+}
+
+async function cloudflareRequest(path, options = {}) {
+  const method = String(options.method || "GET").toUpperCase();
+
+  for (let attempt = 1; attempt <= CloudflareMaxAttempts; attempt += 1) {
+    let response = null;
+    try {
+      response = await fetch(`${CloudflareApiBase}${path}`, {
+        ...options,
+        method,
+        headers: {
+          Authorization: `Bearer ${ApiToken}`,
+          "Content-Type": "application/json",
+          ...(options.headers || {}),
+        },
+      });
+    } catch (cause) {
+      const reason = cause instanceof Error ? cause.message : String(cause);
+      const error = new CloudflareApiError(`Cloudflare API 呼叫失敗：${method} ${path} 網路錯誤 ${reason}`, {
+        method,
+        path,
+      });
+      if (await retryCloudflareRequest(error, attempt)) {
+        continue;
+      }
+      throw error;
+    }
+
+    const bodyText = await response.text();
+    const body = parseCloudflareResponseBody(bodyText);
+
+    if (response.status === 404) {
+      return null;
+    }
+
+    if (response.ok && body?.success !== false) {
+      return body?.result || null;
+    }
+
+    const details = describeCloudflareResponse(body, bodyText);
+    const error = new CloudflareApiError(
+      `Cloudflare API 呼叫失敗：${method} ${path} HTTP ${response.status} ${details || ""}`.trim(),
+      {
+        status: response.status,
+        method,
+        path,
+      },
+    );
+    if (await retryCloudflareRequest(error, attempt)) {
+      continue;
+    }
+    throw error;
+  }
+
+  return null;
 }
 
 async function getEntrypointRuleset(phase) {
@@ -335,6 +446,11 @@ async function main() {
 }
 
 main().catch((error) => {
+  if (AllowTransientFailure && error instanceof CloudflareApiError && error.isTransient) {
+    console.warn(`::warning::Cloudflare 規則同步遇到暫時性錯誤，已略過本次同步：${error.message}`);
+    return;
+  }
+
   console.error(error instanceof Error ? error.message : error);
   process.exitCode = 1;
 });

@@ -1,0 +1,1260 @@
+/* 個人成績、角色比較、伺服器對比、趨勢圖與分頁資訊樣式。 */
+
+.個人成績區 {
+  display: grid;
+  gap: 16px;
+  overflow: visible;
+}
+
+.角色比較區 {
+  display: grid;
+  gap: 16px;
+  overflow: visible;
+}
+
+.角色比較概要 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.比較角色卡 {
+  overflow: hidden;
+  border: 1px solid var(--邊框色);
+  border-radius: 8px;
+  background: var(--表面背景);
+}
+
+.比較角色卡 header {
+  display: grid;
+  gap: 3px;
+  border-bottom: 1px solid var(--邊框柔和色);
+  padding: 13px 14px;
+}
+
+.比較角色卡 header span,
+.比較角色卡 header em {
+  color: var(--次要文字);
+  font-size: 0.82rem;
+  font-style: normal;
+  font-weight: 720;
+}
+
+.比較角色卡 header strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--主要文字);
+  font-size: 1.12rem;
+  font-weight: 840;
+}
+
+.比較角色數據 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  background: var(--邊框柔和色);
+}
+
+.比較角色數據 > span {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+  color: var(--次要文字);
+  background: var(--表面背景);
+  font-size: 0.8rem;
+  font-weight: 720;
+}
+
+.比較角色數據 strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--主要文字);
+  font-size: 0.96rem;
+  font-weight: 820;
+  font-variant-numeric: tabular-nums;
+}
+
+.伺服器對比工具列 {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) auto minmax(180px, 1fr);
+  align-items: end;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.伺服器交換按鈕 {
+  min-width: 82px;
+}
+
+.伺服器對比區 {
+  display: grid;
+  gap: 16px;
+}
+
+.伺服器對比主卡列 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.伺服器對比主卡 {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--邊框色);
+  border-radius: 8px;
+  background: var(--表面背景);
+}
+
+.伺服器對比主卡 header {
+  display: grid;
+  gap: 4px;
+  border-bottom: 1px solid var(--邊框柔和色);
+  padding: 14px;
+}
+
+.伺服器對比主卡 header span,
+.伺服器對比主數據 span {
+  color: var(--次要文字);
+  font-size: 0.82rem;
+  font-weight: 720;
+}
+
+.伺服器對比主卡 header strong {
+  color: var(--主要文字);
+  font-size: 1.28rem;
+  font-weight: 880;
+}
+
+.伺服器對比主數據 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  background: var(--邊框柔和色);
+}
+
+.伺服器對比主數據 span {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  background: var(--表面背景);
+}
+
+.伺服器對比主數據 strong {
+  color: var(--主要文字);
+  font-size: 1rem;
+  font-weight: 850;
+  font-variant-numeric: tabular-nums;
+}
+
+.伺服器對比指標列表 {
+  display: grid;
+  gap: 1px;
+  background: var(--邊框柔和色);
+}
+
+.伺服器對比指標 {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(92px, auto) minmax(92px, auto);
+  align-items: center;
+  gap: 12px;
+  padding: 11px 14px;
+  background: var(--表面背景);
+}
+
+.伺服器對比指標 span {
+  color: var(--次要文字);
+  font-size: 0.82rem;
+  font-weight: 760;
+}
+
+.伺服器對比指標 strong,
+.伺服器對比指標 em {
+  color: var(--主要文字);
+  font-size: 0.92rem;
+  font-style: normal;
+  font-weight: 820;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.伺服器對比指標.左領先 strong,
+.伺服器對比指標.右領先 em {
+  color: var(--重點色);
+}
+
+.伺服器職能對比列表 {
+  display: grid;
+}
+
+.伺服器職能對比項 {
+  display: grid;
+  gap: 8px;
+  border-bottom: 1px solid var(--邊框柔和色);
+  padding: 12px 14px;
+}
+
+.伺服器雙向條 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.伺服器雙向條 span {
+  height: 9px;
+  border-radius: 999px;
+  background: var(--重點色);
+}
+
+.伺服器雙向條 .左側 {
+  justify-self: end;
+  transform-origin: right center;
+}
+
+.伺服器雙向條 .右側 {
+  justify-self: start;
+  transform-origin: left center;
+}
+
+.伺服器職能數值 {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--次要文字);
+  font-size: 0.76rem;
+  font-weight: 730;
+}
+
+.伺服器對比表格 small {
+  display: block;
+  margin-top: 3px;
+  color: var(--次要文字);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.伺服器對比表格 th,
+.伺服器對比表格 td {
+  text-align: center;
+}
+
+.伺服器對比表格 td:first-child,
+.伺服器對比表格 th:first-child {
+  text-align: left;
+}
+
+.成績趨勢區 {
+  overflow: hidden;
+  border: 1px solid var(--邊框色);
+  border-radius: 8px;
+  background: var(--表面背景);
+}
+
+.成績趨勢標題 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px solid var(--邊框柔和色);
+  padding: 12px 14px;
+}
+
+.成績趨勢標題 h2 {
+  margin: 0;
+  color: var(--主要文字);
+  font-size: 1rem;
+  font-weight: 820;
+}
+
+.成績趨勢標題 span {
+  color: var(--次要文字);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.成績趨勢列表 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  background: var(--邊框柔和色);
+}
+
+.使用者徽章區 {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.使用者徽章 {
+  min-width: min(230px, 100%);
+  display: grid;
+  gap: 3px;
+  border: 1px solid var(--邊框色);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: var(--表面背景);
+}
+
+.使用者徽章.作者徽章 {
+  border-color: color-mix(in srgb, var(--作者色) 70%, var(--邊框色));
+  background:
+    linear-gradient(135deg, var(--作者色柔和), transparent 64%),
+    var(--表面背景);
+  box-shadow: inset 0 0 0 1px var(--作者色柔和);
+}
+
+.使用者徽章 strong {
+  color: var(--重點色);
+  font-size: 0.9rem;
+  font-weight: 840;
+}
+
+.使用者徽章.作者徽章 strong {
+  color: var(--作者色);
+}
+
+.使用者徽章 span {
+  color: var(--次要文字);
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.使用者徽章.作者徽章 span {
+  color: var(--主要文字);
+}
+
+.個人分位區 {
+  overflow: hidden;
+  border: 1px solid var(--邊框色);
+  border-radius: 8px;
+  background: var(--表面背景);
+}
+
+.個人分位列表 {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  background: var(--邊框柔和色);
+}
+
+.個人分位項 {
+  min-width: 0;
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  padding: 13px 14px;
+  background: var(--表面背景);
+}
+
+.個人分位項 > strong {
+  color: var(--重點色);
+  font-size: 1.08rem;
+  font-weight: 880;
+  font-variant-numeric: tabular-nums;
+}
+
+.個人分位項 > small {
+  color: var(--次要文字);
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.趨勢項 {
+  display: grid;
+  gap: 12px;
+  padding: 13px 14px;
+  background: var(--表面背景);
+}
+
+.趨勢項標題 {
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.趨勢標題文字 {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.趨勢項標題 small,
+.趨勢摘要 {
+  color: var(--次要文字);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.趨勢項標題 strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--主要文字);
+  font-size: 0.94rem;
+  font-weight: 820;
+}
+
+.趨勢職能標籤 {
+  justify-self: start;
+  min-height: 24px;
+  margin-top: 2px;
+  font-size: 0.78rem;
+}
+
+.趨勢項標題 em {
+  flex: 0 0 auto;
+  color: var(--次要文字);
+  font-style: normal;
+  font-size: 0.86rem;
+  font-weight: 850;
+  font-variant-numeric: tabular-nums;
+}
+
+.趨勢項標題 em.上升 {
+  color: var(--治療色);
+}
+
+.趨勢項標題 em.下降 {
+  color: var(--輸出色);
+}
+
+.趨勢摘要 {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.趨勢圖 {
+  position: relative;
+  height: 118px;
+  overflow: hidden;
+  border-radius: 8px;
+  background: var(--表面背景柔和);
+}
+
+.趨勢曲線圖 {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.趨勢格線 {
+  stroke: var(--邊框柔和色);
+  stroke-width: 0.8;
+}
+
+.趨勢面積 {
+  fill: color-mix(in srgb, var(--重點色) 18%, transparent);
+}
+
+.趨勢面積.過版 {
+  fill: color-mix(in srgb, var(--靜音文字) 20%, transparent);
+}
+
+.趨勢折線 {
+  fill: none;
+  stroke: var(--重點色);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2.1;
+  vector-effect: non-scaling-stroke;
+}
+
+.趨勢折線.過版 {
+  stroke: var(--靜音文字);
+}
+
+.趨勢點層 {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.趨勢點 {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  transform: translate(-50%, -50%);
+  border: 2px solid var(--重點色);
+  border-radius: 999px;
+  background: var(--表面背景);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--表面背景) 70%, transparent);
+}
+
+.趨勢點.過版 {
+  border-color: var(--靜音文字);
+  background: var(--表面背景柔和);
+}
+
+.趨勢刻度 {
+  position: absolute;
+  inset: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  pointer-events: none;
+}
+
+.趨勢刻度 span {
+  align-self: flex-end;
+  border-radius: 999px;
+  padding: 2px 6px;
+  color: var(--次要文字);
+  background: color-mix(in srgb, var(--表面背景) 78%, transparent);
+  font-size: 0.68rem;
+  font-weight: 760;
+  font-variant-numeric: tabular-nums;
+}
+
+.個人成績概要 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 1px;
+  overflow: visible;
+  border: 1px solid var(--邊框色);
+  border-radius: 8px;
+  background: var(--邊框柔和色);
+}
+
+.概要項 {
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+  background: var(--表面背景);
+}
+
+.概要項 span {
+  color: var(--次要文字);
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+
+.說明標籤,
+.表頭說明標籤 {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  vertical-align: middle;
+}
+
+.表頭說明標籤 {
+  justify-content: flex-end;
+}
+
+.表頭排序按鈕 {
+  min-height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border: 0;
+  border-radius: 6px;
+  padding: 2px 4px;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  font-weight: inherit;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.表頭排序按鈕:hover:not(:disabled),
+.表頭排序按鈕:focus,
+.表頭排序按鈕.作用中 {
+  color: var(--重點文字);
+  background: var(--重點色);
+}
+
+.排序箭頭 {
+  flex: 0 0 auto;
+  color: currentColor;
+  font-size: 0.7rem;
+  line-height: 1;
+}
+
+.說明提示 {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  overflow: visible;
+}
+
+.說明提示按鈕 {
+  width: 18px;
+  min-width: 18px;
+  height: 18px;
+  min-height: 18px;
+  border-radius: 999px;
+  padding: 0;
+  color: var(--重點色);
+  background: var(--表面背景柔和);
+  border-color: var(--邊框柔和色);
+  font-size: 0.72rem;
+  font-weight: 850;
+  line-height: 1;
+}
+
+.說明提示按鈕:hover:not(:disabled),
+.說明提示按鈕:focus {
+  color: var(--重點文字);
+  background: var(--重點色);
+}
+
+.作者提示 {
+  margin-left: 10px;
+  vertical-align: text-bottom;
+}
+
+.作者提示 .說明提示內容 {
+  width: min(230px, calc(100vw - 40px));
+}
+
+.排行榜角色欄位 .作者提示 .說明提示內容,
+.手機排行身份列 .作者提示 .說明提示內容 {
+  top: calc(100% + 8px);
+  bottom: auto;
+}
+
+.作者勾勾按鈕 {
+  color: var(--作者文字);
+  background: var(--作者色);
+  border-color: var(--作者色深);
+  box-shadow: 0 0 0 2px var(--作者色柔和);
+  font-size: 0.68rem;
+}
+
+.作者勾勾按鈕:hover:not(:disabled),
+.作者勾勾按鈕:focus {
+  color: var(--作者文字);
+  background: var(--作者色深);
+}
+
+.說明提示內容 {
+  position: absolute;
+  z-index: 40;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  width: min(260px, calc(100vw - 40px));
+  transform: translateX(-50%);
+  border: 1px solid var(--邊框色);
+  border-radius: 8px;
+  padding: 9px 10px;
+  color: var(--主要文字);
+  background: var(--表面背景);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.28);
+  font-size: 0.78rem;
+  font-weight: 650;
+  line-height: 1.45;
+  text-align: left;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+}
+
+.gcd參考文字,
+.gcd參考文字 :is(span, strong, small, em, dt, dd) {
+  color: var(--靜音文字) !important;
+}
+
+.gcd參考文字 .說明提示內容,
+.gcd參考文字 .說明提示內容 :is(span, strong, small, em, dt, dd) {
+  color: var(--主要文字) !important;
+}
+
+.概要項 .說明提示,
+.統計面板標題 .說明提示,
+.成績列數值 .說明提示,
+th .說明提示,
+.概要項 .說明提示內容,
+.統計面板標題 .說明提示內容,
+.成績列數值 .說明提示內容,
+th .說明提示內容 {
+  color: var(--主要文字);
+  font-size: 0.78rem;
+  font-weight: 650;
+  line-height: 1.45;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+.表格區 th .說明提示內容,
+.歷史表格外框 th .說明提示內容,
+.成績列數值 .說明提示內容,
+.統計表格 th .說明提示內容 {
+  top: calc(100% + 8px);
+  bottom: auto;
+}
+
+.說明提示:hover .說明提示內容,
+.說明提示:focus-within .說明提示內容 {
+  opacity: 1;
+  visibility: visible;
+}
+
+.概要項 strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--主要文字);
+  font-size: 1.02rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.隊友關係區 {
+  position: relative;
+  z-index: 2;
+  overflow: hidden;
+  border: 1px solid var(--邊框色);
+  border-radius: 8px;
+  background: var(--表面背景);
+}
+
+.常見隊友區 {
+  overflow: hidden;
+  border: 1px solid var(--邊框色);
+  border-radius: 8px;
+  background: var(--表面背景);
+}
+
+.隊友關係標題 .說明提示內容,
+.隊友副本標題 .說明提示內容 {
+  top: calc(100% + 8px);
+  bottom: auto;
+  left: 0;
+  transform: none;
+  color: var(--主要文字);
+  font-size: 0.78rem;
+  font-weight: 650;
+  line-height: 1.45;
+}
+
+.隊友關係標題,
+.常見隊友標題 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px solid var(--邊框柔和色);
+  padding: 10px 14px;
+}
+
+.隊友關係標題 h2,
+.常見隊友標題 h2 {
+  margin: 0;
+  color: var(--主要文字);
+  font-size: 0.98rem;
+  font-weight: 820;
+}
+
+.隊友關係標題 span,
+.常見隊友標題 span {
+  color: var(--次要文字);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.隊友關係版面 {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 0.9fr);
+  gap: 1px;
+  background: var(--邊框柔和色);
+}
+
+.常同場隊友卡,
+.隊友洞察卡 {
+  display: grid;
+  align-content: start;
+  background: var(--表面背景);
+}
+
+.隊友子面板標題 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid var(--邊框柔和色);
+  padding: 13px 14px;
+}
+
+.隊友子面板標題 h3 {
+  margin: 0;
+  color: var(--主要文字);
+  font-size: 0.96rem;
+  font-weight: 830;
+}
+
+.隊友子面板標題 span {
+  color: var(--次要文字);
+  font-size: 0.8rem;
+  font-weight: 720;
+}
+
+.常同場隊友列表 {
+  display: grid;
+}
+
+.常同場隊友項 {
+  min-height: 68px;
+  display: grid;
+  gap: 7px;
+  border-width: 0 0 1px;
+  border-color: var(--邊框柔和色);
+  border-radius: 0;
+  padding: 10px 14px;
+  color: var(--主要文字);
+  background: transparent;
+  text-align: left;
+}
+
+.常同場隊友項:hover:not(:disabled) {
+  background: var(--表面背景柔和);
+}
+
+.常同場隊友主列 {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.常同場隊友主列 strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--主要文字);
+  font-size: 0.92rem;
+  font-weight: 820;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.常同場隊友主列 em {
+  flex: 0 0 auto;
+  color: var(--重點色);
+  font-size: 0.8rem;
+  font-style: normal;
+  font-weight: 840;
+  font-variant-numeric: tabular-nums;
+}
+
+.隊友強度條 {
+  height: 7px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--表面背景柔和);
+}
+
+.隊友強度條 span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--重點色);
+}
+
+.常同場隊友資訊 {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 10px;
+}
+
+.常同場隊友資訊 small {
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--次要文字);
+  font-size: 0.76rem;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.隊友摘要格 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  background: var(--邊框柔和色);
+}
+
+.隊友摘要項 {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+  background: var(--表面背景);
+}
+
+.隊友摘要項 small,
+.隊友摘要項 em {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--次要文字);
+  font-size: 0.74rem;
+  font-style: normal;
+  font-weight: 720;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.隊友摘要項 strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--主要文字);
+  font-size: 0.96rem;
+  font-weight: 830;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.隊友洞察文字 {
+  margin: 0;
+  border-bottom: 1px solid var(--邊框柔和色);
+  padding: 12px 14px;
+  color: var(--次要文字);
+  background: var(--表面背景柔和);
+  font-size: 0.82rem;
+  font-weight: 700;
+  line-height: 1.55;
+}
+
+.隊友職能分布 {
+  display: grid;
+}
+
+.隊友職能項 {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 7px 12px;
+  border-bottom: 1px solid var(--邊框柔和色);
+  padding: 10px 14px;
+}
+
+.隊友職能項 .分布條 {
+  grid-column: 1 / -1;
+}
+
+.隊友職能名稱 {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.隊友職能名稱 strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--主要文字);
+  font-size: 0.84rem;
+  font-weight: 790;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.隊友職能項 em {
+  flex: 0 0 auto;
+  color: var(--次要文字);
+  font-size: 0.76rem;
+  font-style: normal;
+  font-weight: 760;
+  font-variant-numeric: tabular-nums;
+}
+
+.隊友副本區 {
+  border-top: 1px solid var(--邊框柔和色);
+}
+
+.隊友副本標題 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+}
+
+.隊友副本標題 h3 {
+  margin: 0;
+  color: var(--主要文字);
+  font-size: 0.94rem;
+  font-weight: 820;
+}
+
+.隊友副本標題 > span {
+  color: var(--次要文字);
+  font-size: 0.8rem;
+  font-weight: 720;
+}
+
+.隊友副本交集 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  background: var(--邊框柔和色);
+}
+
+.隊友副本項 {
+  display: grid;
+  gap: 8px;
+  padding: 11px 14px;
+  background: var(--表面背景);
+}
+
+.常見隊友列表 {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  background: var(--邊框柔和色);
+}
+
+.隊友項 {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 3px 10px;
+  padding: 10px 12px;
+  background: var(--表面背景);
+}
+
+.隊友項 .隊友連結,
+.隊友項 span,
+.隊友項 small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.隊友項 .隊友連結 {
+  justify-self: start;
+  max-width: 100%;
+  font-size: 0.94rem;
+  line-height: 1.25;
+}
+
+.隊友項 span,
+.隊友項 small {
+  color: var(--次要文字);
+  font-size: 0.78rem;
+  font-weight: 680;
+}
+
+.隊友項 .隊友副本 {
+  grid-column: 1 / -1;
+}
+
+.隊友項 em {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: center;
+  border-radius: 999px;
+  padding: 4px 8px;
+  color: var(--重點文字);
+  background: var(--重點色);
+  font-size: 0.78rem;
+  font-style: normal;
+  font-weight: 820;
+  white-space: nowrap;
+}
+
+.個人成績列表 {
+  display: grid;
+  gap: 8px;
+  overflow: visible;
+}
+
+.個人成績列 {
+  --個人成績欄位: minmax(160px, 1.32fr) minmax(96px, 0.72fr) minmax(74px, 0.48fr)
+    minmax(86px, 0.56fr) minmax(68px, 0.42fr) minmax(68px, 0.42fr) minmax(76px, 0.48fr)
+    minmax(76px, 0.48fr) minmax(76px, 0.48fr) minmax(76px, 0.48fr);
+  --個人成績欄距: 10px;
+  overflow: visible;
+  border: 1px solid var(--邊框色);
+  border-radius: 8px;
+  background: var(--表面背景);
+}
+
+.個人成績列[open] {
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.1);
+}
+
+.成績列摘要 {
+  min-height: 64px;
+  display: grid;
+  grid-template-columns: var(--個人成績欄位);
+  align-items: center;
+  gap: var(--個人成績欄距);
+  padding: 9px 14px;
+  color: var(--次要文字);
+  cursor: pointer;
+  list-style: none;
+}
+
+.成績列摘要::-webkit-details-marker {
+  display: none;
+}
+
+.成績列摘要:hover {
+  background: var(--列hover背景);
+}
+
+.個人成績列[open] .成績列摘要 {
+  border-bottom: 1px solid var(--邊框柔和色);
+  background: var(--表面背景柔和);
+}
+
+.成績列副本,
+.成績列數值 {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.成績列數值 {
+  justify-items: end;
+  text-align: right;
+}
+
+.成績列副本 small,
+.成績列數值 small,
+.成績列數值 em {
+  color: var(--靜音文字);
+  font-size: 0.72rem;
+  font-weight: 760;
+}
+
+.成績列數值 em {
+  color: var(--重點色);
+  font-style: normal;
+}
+
+.成績列副本 strong,
+.成績列數值 strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--主要文字);
+  font-size: 0.92rem;
+  font-weight: 820;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.成績列副本 strong {
+  font-size: 0.98rem;
+}
+
+.成績列職業 {
+  justify-self: start;
+}
+
+.成績列展開 {
+  justify-self: end;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--邊框柔和色);
+  border-radius: 999px;
+  padding: 6px 10px;
+  color: var(--次要文字);
+  background: var(--表面背景柔和);
+  font-size: 0.82rem;
+  font-weight: 760;
+  white-space: nowrap;
+}
+
+.成績列展開::after {
+  content: "展開";
+  color: var(--重點色);
+}
+
+.個人成績列[open] .成績列展開::after {
+  content: "收合";
+}
+
+.歷史表格外框 {
+  overflow: visible;
+  border-top: 1px solid var(--邊框柔和色);
+  padding-top: 2px;
+}
+
+.歷史表格 {
+  width: 100%;
+  min-width: 0;
+  display: block;
+}
+
+.歷史表格 thead,
+.歷史表格 tbody {
+  display: block;
+}
+
+.歷史表格 tr {
+  width: 100%;
+  display: grid;
+  grid-template-columns: var(--個人成績欄位);
+  align-items: center;
+  column-gap: var(--個人成績欄距);
+  padding: 0 14px;
+}
+
+.歷史表格 thead tr {
+  background: var(--表頭背景);
+}
+
+.歷史表格 tbody tr {
+  border-bottom: 1px solid var(--邊框柔和色);
+}
+
+.歷史表格 tbody tr:last-child {
+  border-bottom: 0;
+}
+
+.歷史表格 th,
+.歷史表格 td {
+  min-width: 0;
+  border-bottom: 0;
+  padding: 11px 0;
+  background: transparent;
+}
+
+.歷史表格 td {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.歷史表格 .歷史報告欄位 {
+  text-align: right;
+}
+
+.分頁資訊列 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-width: 720px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--邊框柔和色);
+  color: var(--次要文字);
+}
+
+.分頁資訊列底部 {
+  border-top: 1px solid var(--邊框柔和色);
+  border-bottom: 0;
+}
+
+.分頁資訊列 p {
+  margin: 0;
+  font-size: 0.92rem;
+  font-weight: 650;
+}

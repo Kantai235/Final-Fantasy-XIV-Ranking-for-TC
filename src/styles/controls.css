@@ -1,0 +1,747 @@
+/* 共用工具列、輸入、按鈕、選單與搜尋歷程樣式。 */
+
+.工具列 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.工具列 > .欄位 {
+  flex: 1 1 118px;
+}
+
+.工具列 > .副本選單欄位 {
+  flex-basis: 200px;
+}
+
+.工具列 > .搜尋欄位 {
+  flex: 2 1 210px;
+}
+
+.欄位 {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+  color: var(--次要文字);
+  font-size: 0.9rem;
+  font-weight: 650;
+}
+
+select,
+input {
+  width: 100%;
+  min-width: 0;
+  min-height: 42px;
+  border: 1px solid var(--輸入邊框);
+  border-radius: 8px;
+  padding: 0 12px;
+  color: var(--主要文字);
+  background: var(--輸入背景);
+  font: inherit;
+}
+
+select:focus,
+input:focus {
+  border-color: var(--重點色);
+  outline: 3px solid var(--焦點陰影);
+}
+
+button {
+  min-height: 38px;
+  border: 1px solid var(--重點色);
+  border-radius: 8px;
+  padding: 0 14px;
+  color: var(--重點文字);
+  background: var(--重點色);
+  font: inherit;
+  font-weight: 720;
+  cursor: pointer;
+}
+
+button:hover:not(:disabled) {
+  background: var(--重點色深);
+}
+
+button:focus {
+  outline: 3px solid var(--焦點陰影);
+}
+
+button:disabled {
+  border-color: var(--邊框色);
+  color: var(--停用文字);
+  background: var(--停用背景);
+  cursor: not-allowed;
+}
+
+.副本選單欄位 {
+  position: relative;
+}
+
+.副本選單 {
+  min-width: 0;
+  position: relative;
+}
+
+.副本選單按鈕 {
+  width: 100%;
+  min-width: 0;
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border-color: var(--輸入邊框);
+  padding: 0 12px;
+  color: var(--主要文字);
+  background: var(--輸入背景);
+  font-weight: 650;
+  text-align: left;
+}
+
+.副本選單按鈕:hover:not(:disabled) {
+  border-color: var(--重點色);
+  background: var(--表面背景柔和);
+}
+
+.副本選單目前值 {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.副本選單面板 {
+  position: absolute;
+  z-index: 24;
+  top: calc(100% + 8px);
+  left: 0;
+  width: min(380px, calc(100vw - 32px));
+  max-height: min(560px, calc(100vh - 180px));
+  overflow-y: auto;
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--邊框色);
+  border-radius: 8px;
+  padding: 10px;
+  background: var(--表面背景);
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.28);
+}
+
+.副本分類群 {
+  display: grid;
+  gap: 6px;
+}
+
+.副本分類標題 {
+  margin: 0;
+  border-bottom: 1px solid var(--邊框柔和色);
+  padding: 2px 4px 7px;
+  color: var(--靜音文字);
+  font-size: 0.78rem;
+  font-weight: 780;
+}
+
+.副本選單項 {
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  border-color: transparent;
+  padding: 7px 10px;
+  color: var(--次要文字);
+  background: transparent;
+  font-weight: 680;
+  line-height: 1.35;
+  text-align: left;
+}
+
+.副本選單項:hover:not(:disabled) {
+  color: var(--主要文字);
+  background: var(--表面背景柔和);
+}
+
+.副本選單項.已選取,
+.副本選單項.已選取:hover:not(:disabled) {
+  color: var(--重點文字);
+  background: var(--重點色);
+}
+
+.職業選單欄位 {
+  position: relative;
+}
+
+.工具列 > .職業選單欄位 {
+  flex: 0 1 240px;
+  width: 240px;
+  min-width: 220px;
+}
+
+.統計工具列 > .職業選單欄位 {
+  flex: 0 1 300px;
+  width: 300px;
+  min-width: 260px;
+}
+
+.職業選單 {
+  min-width: 0;
+  position: relative;
+}
+
+.職業選單按鈕 {
+  width: 100%;
+  min-width: 0;
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border-color: var(--輸入邊框);
+  padding: 7px 12px;
+  color: var(--主要文字);
+  background: var(--輸入背景);
+  font-weight: 650;
+  line-height: 1.35;
+  text-align: left;
+}
+
+.職業選單按鈕:hover:not(:disabled) {
+  border-color: var(--重點色);
+  background: var(--表面背景柔和);
+}
+
+.職業選單目前值 {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.職業選單目前值 span {
+  min-width: 0;
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.選單箭頭 {
+  flex: 0 0 auto;
+  color: var(--次要文字);
+  font-size: 0.86rem;
+}
+
+.職業選單面板 {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 8px);
+  left: 0;
+  width: min(520px, calc(100vw - 32px));
+  display: grid;
+  grid-template-columns: minmax(150px, 0.9fr) minmax(170px, 1fr);
+  gap: 8px;
+  border: 1px solid var(--邊框色);
+  border-radius: 8px;
+  padding: 8px;
+  background: var(--表面背景);
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.28);
+}
+
+.職業選單分類欄,
+.職業選單職業欄 {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+}
+
+.職業選單職業欄 {
+  border-left: 1px solid var(--邊框柔和色);
+  padding-left: 8px;
+}
+
+.職業分析選單面板 {
+  max-height: min(560px, calc(100vh - 180px));
+  overflow-y: auto;
+}
+
+.職業選單項 {
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  border-color: transparent;
+  padding: 0 10px;
+  color: var(--次要文字);
+  background: transparent;
+  font-weight: 680;
+  text-align: left;
+}
+
+.職業圖示 {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  object-fit: contain;
+}
+
+.職業選單項:hover:not(:disabled) {
+  color: var(--主要文字);
+  background: var(--表面背景柔和);
+}
+
+.職業選單項.已展開 {
+  color: var(--主要文字);
+  background: var(--表面背景柔和);
+}
+
+.職業選單項.防護色 {
+  border-left: 3px solid var(--防護色);
+  color: var(--防護色);
+}
+
+.職業選單項.治療色 {
+  border-left: 3px solid var(--治療色);
+  color: var(--治療色);
+}
+
+.職業選單項.輸出色 {
+  border-left: 3px solid var(--輸出色);
+  color: var(--輸出色);
+}
+
+.職業選單項.防護色:hover:not(:disabled) {
+  background: var(--防護色柔和);
+}
+
+.職業選單項.治療色:hover:not(:disabled) {
+  background: var(--治療色柔和);
+}
+
+.職業選單項.輸出色:hover:not(:disabled) {
+  background: var(--輸出色柔和);
+}
+
+.職業選單項.防護色.已展開 {
+  background: var(--防護色柔和);
+}
+
+.職業選單項.治療色.已展開 {
+  background: var(--治療色柔和);
+}
+
+.職業選單項.輸出色.已展開 {
+  background: var(--輸出色柔和);
+}
+
+.職業選單項.已選取,
+.職業選單項.已選取:hover:not(:disabled) {
+  color: var(--重點文字);
+  background: var(--重點色);
+}
+
+.職業選單項.防護色.已選取,
+.職業選單項.防護色.已選取:hover:not(:disabled) {
+  color: var(--職業重點文字);
+  background: var(--防護色);
+}
+
+.職業選單項.治療色.已選取,
+.職業選單項.治療色.已選取:hover:not(:disabled) {
+  color: var(--職業重點文字);
+  background: var(--治療色);
+}
+
+.職業選單項.輸出色.已選取,
+.職業選單項.輸出色.已選取:hover:not(:disabled) {
+  color: var(--職業重點文字);
+  background: var(--輸出色);
+}
+
+.職業標籤 {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 26px;
+  border-radius: 999px;
+  padding: 0 10px;
+  font-size: 0.88rem;
+  font-weight: 760;
+}
+
+.職業標籤圖示 {
+  width: 18px;
+  height: 18px;
+}
+
+.職業標籤.防護色 {
+  color: var(--防護色);
+  background: var(--防護色柔和);
+}
+
+.職業標籤.治療色 {
+  color: var(--治療色);
+  background: var(--治療色柔和);
+}
+
+.職業標籤.輸出色 {
+  color: var(--輸出色);
+  background: var(--輸出色柔和);
+}
+
+.版本紀錄說明 {
+  max-width: 980px;
+  margin: -4px 0 18px;
+  color: var(--次要文字);
+  font-size: 0.9rem;
+  font-weight: 650;
+  line-height: 1.55;
+}
+
+.版本紀錄標籤 {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  border: 1px solid var(--邊框色);
+  border-radius: 999px;
+  padding: 2px 8px;
+  color: var(--靜音文字);
+  background: var(--表面背景柔和);
+  font-size: 0.72rem;
+  font-weight: 760;
+  line-height: 1.2;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.過版紀錄列,
+.過版紀錄列 td,
+.過版紀錄列 small,
+.過版紀錄列 em,
+.過版紀錄列 strong,
+.過版紀錄列 .文字連結,
+.過版紀錄列 .緊湊紀錄時間,
+.過版紀錄列 .緊湊紀錄時間 span,
+.過版紀錄列 .比較副本 small,
+.過版紀錄列 .比較副本 strong {
+  color: var(--靜音文字);
+}
+
+.過版紀錄列 .職業標籤 {
+  color: var(--靜音文字);
+  background: var(--表面背景柔和);
+}
+
+.表格區 {
+  overflow-x: auto;
+  border: 1px solid var(--邊框色);
+  border-radius: 8px;
+  padding-top: 2px;
+  background: var(--表面背景);
+}
+
+.使用者搜尋區 {
+  margin-bottom: 18px;
+}
+
+.使用者搜尋表單 {
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) auto;
+  align-items: end;
+  gap: 16px;
+}
+
+.個人成績搜尋表單 {
+  grid-template-columns: minmax(260px, 1.35fr) minmax(220px, 0.9fr) auto;
+}
+
+.比較搜尋表單 {
+  grid-template-columns: minmax(220px, 1.05fr) repeat(2, minmax(220px, 1fr)) auto;
+}
+
+.比較搜尋表單.比較搜尋表單含版本 {
+  grid-template-columns: minmax(220px, 1.05fr) minmax(170px, 0.65fr) repeat(2, minmax(220px, 1fr)) auto;
+}
+
+.比較職能選擇 {
+  grid-column: 1 / -1;
+  min-width: 0;
+  border: 0;
+  margin: 0;
+  padding: 0;
+}
+
+.比較職能選擇 legend {
+  margin-bottom: 8px;
+  color: var(--次要文字);
+  font-size: 0.9rem;
+  font-weight: 650;
+}
+
+.比較職能按鈕列 {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.比較職能按鈕 {
+  min-width: 0;
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border-color: var(--邊框色);
+  color: var(--次要文字);
+  background: var(--表面背景柔和);
+  white-space: nowrap;
+}
+
+.比較職能按鈕:hover:not(:disabled),
+.比較職能按鈕.作用中 {
+  color: var(--職業重點文字);
+}
+
+.比較職能按鈕.防護色:hover:not(:disabled),
+.比較職能按鈕.防護色.作用中 {
+  border-color: var(--防護色);
+  background: var(--防護色);
+}
+
+.比較職能按鈕.治療色:hover:not(:disabled),
+.比較職能按鈕.治療色.作用中 {
+  border-color: var(--治療色);
+  background: var(--治療色);
+}
+
+.比較職能按鈕.輸出色:hover:not(:disabled),
+.比較職能按鈕.輸出色.作用中 {
+  border-color: var(--輸出色);
+  background: var(--輸出色);
+}
+
+.使用者搜尋欄位 input,
+.使用者搜尋欄位 select {
+  min-width: 0;
+}
+
+.玩家搜尋輸入組 {
+  position: relative;
+  min-width: 0;
+}
+
+.玩家搜尋歷史面板 {
+  position: absolute;
+  z-index: 80;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  display: grid;
+  gap: 4px;
+  border: 1px solid var(--邊框色);
+  border-radius: 8px;
+  padding: 6px;
+  background: var(--表面背景);
+  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.28);
+}
+
+.玩家搜尋歷史標題列 {
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border-bottom: 1px solid var(--邊框柔和色);
+  padding: 2px 4px 6px;
+  color: var(--主要文字);
+  font-size: 0.82rem;
+  font-weight: 820;
+}
+
+.玩家搜尋歷史編輯按鈕 {
+  min-height: 30px;
+  border-color: var(--輸入邊框);
+  padding: 0 10px;
+  color: var(--次要文字);
+  background: var(--輸入背景);
+  font-size: 0.78rem;
+}
+
+.玩家搜尋歷史編輯按鈕:hover:not(:disabled),
+.玩家搜尋歷史編輯按鈕:focus-visible {
+  border-color: var(--重點色);
+  color: var(--重點文字);
+  background: var(--重點色);
+}
+
+.玩家搜尋歷史列表 {
+  display: grid;
+  gap: 4px;
+}
+
+.玩家搜尋歷史列 {
+  width: 100%;
+  min-height: 42px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  border-color: transparent;
+  padding: 8px 10px;
+  color: var(--主要文字);
+  background: transparent;
+  text-align: left;
+}
+
+.玩家搜尋歷史列:hover,
+.玩家搜尋歷史列:focus {
+  border-color: var(--重點色);
+  color: var(--重點文字);
+  background: var(--重點色);
+}
+
+.玩家搜尋歷史列 span,
+.玩家搜尋歷史列 small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.玩家搜尋歷史列 small {
+  color: inherit;
+  opacity: 0.78;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.搜尋歷程彈窗 {
+  width: min(680px, calc(100vw - 32px));
+}
+
+.搜尋歷程管理列 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 16px 0 12px;
+  color: var(--次要文字);
+  font-size: 0.88rem;
+  font-weight: 760;
+}
+
+.搜尋歷程全部刪除按鈕,
+.搜尋歷程刪除按鈕 {
+  min-height: 34px;
+  border-color: var(--輸出色);
+  color: var(--輸出色);
+  background: var(--輸出色柔和);
+  font-size: 0.82rem;
+}
+
+.搜尋歷程全部刪除按鈕:hover:not(:disabled),
+.搜尋歷程刪除按鈕:hover:not(:disabled),
+.搜尋歷程全部刪除按鈕:focus-visible,
+.搜尋歷程刪除按鈕:focus-visible {
+  border-color: var(--輸出色深);
+  color: var(--職業重點文字);
+  background: var(--輸出色);
+}
+
+.搜尋歷程空狀態 {
+  border: 1px dashed var(--邊框色);
+  border-radius: 8px;
+  padding: 24px;
+  color: var(--次要文字);
+  text-align: center;
+}
+
+.搜尋歷程清單 {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.搜尋歷程清單列 {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(96px, auto) auto;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid var(--邊框柔和色);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: var(--表面背景柔和);
+}
+
+.搜尋歷程角色 {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.搜尋歷程角色 strong,
+.搜尋歷程角色 small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.搜尋歷程角色 strong {
+  color: var(--主要文字);
+  font-size: 0.96rem;
+}
+
+.搜尋歷程角色 small,
+.搜尋歷程時間 {
+  color: var(--次要文字);
+  font-size: 0.8rem;
+}
+
+.搜尋歷程時間 {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  text-align: right;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+}
+
+.搜尋歷程時間 span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.統計工具列 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.統計工具列 > .欄位 {
+  flex: 1 1 150px;
+}
+
+.統計工具列 > .副本選單欄位 {
+  flex-basis: 220px;
+}
+
+.職業分析工具列 {
+  display: grid;
+  grid-template-columns: minmax(220px, 360px);
+  gap: 16px;
+  margin-bottom: 18px;
+}

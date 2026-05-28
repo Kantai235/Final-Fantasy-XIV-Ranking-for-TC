@@ -1,10 +1,156 @@
 <script>
+import { ref } from "vue";
+import JobIcon from "../components/JobIcon.vue";
+import PlayerSearchHistoryPanel from "../components/PlayerSearchHistoryPanel.vue";
+import ReportDetailDialog from "../components/ReportDetailDialog.vue";
 import { injectRankingApp } from "../composables/useRankingApp";
 
 export default {
   name: "RankingPage",
+  components: {
+    JobIcon,
+    PlayerSearchHistoryPanel,
+    ReportDetailDialog,
+  },
   setup() {
-    return injectRankingApp();
+    const app = injectRankingApp();
+    const 報告彈窗資料 = ref(null);
+    let 報告讀取序號 = 0;
+
+    function 取值(可能Ref) {
+      return 可能Ref && typeof 可能Ref === "object" && "value" in 可能Ref ? 可能Ref.value : 可能Ref;
+    }
+
+    function 建立排行報告詳細資料(列, 排名 = null) {
+      const 顯示Gcd = Boolean(取值(app.顯示Gcd覆蓋率));
+      const 實際排名 = 排名 ?? 列.原始排名 ?? null;
+      const 目前副本 = 取值(app.目前副本);
+      const 狀態項目 = [
+        {
+          key: "rank",
+          label: "排名",
+          value: app.格式化排名(實際排名),
+          className: "報告彈窗排名項",
+        },
+        {
+          key: "active",
+          label: "Active",
+          value: app.格式化Active(列.active),
+          tooltip: app.統計說明文字("Active"),
+          tooltipLabel: "Active 說明",
+        },
+        ...(顯示Gcd
+          ? [
+              {
+                key: "gcd",
+                label: "GCD",
+                value: app.格式化Gcd覆蓋率(列.gcd_coverage),
+                tooltip: app.統計說明文字("GCD 覆蓋率"),
+                tooltipLabel: "GCD 覆蓋率說明",
+                className: "gcd參考文字",
+              },
+            ]
+          : []),
+        {
+          key: "clearTime",
+          label: "通關時間",
+          value: app.格式化通關時間(列.通關秒數),
+          className: "報告彈窗時間項",
+        },
+      ];
+
+      return {
+        subtitle: 目前副本?.name || "排行榜成績",
+        title: 列.角色名稱,
+        identity: `${列.伺服器} · ${列.職業}`,
+        record: 列,
+        statusItems: 狀態項目,
+        damageItems: [
+          {
+            key: "dps",
+            label: "DPS",
+            value: app.格式化傷害數值(列.dps),
+            tooltip: app.統計說明文字("DPS"),
+            tooltipLabel: "DPS 說明",
+          },
+          {
+            key: "rdps",
+            label: "rDPS",
+            value: app.格式化傷害數值(列.rdps),
+            tooltip: app.統計說明文字("rDPS"),
+            tooltipLabel: "rDPS 說明",
+            className: "報告彈窗主要數值",
+          },
+          {
+            key: "adps",
+            label: "aDPS",
+            value: app.格式化傷害數值(列.adps),
+            tooltip: app.統計說明文字("aDPS"),
+            tooltipLabel: "aDPS 說明",
+          },
+        ],
+        traceItems: [
+          {
+            key: "reportFight",
+            label: "Report / Fight",
+            value: `${列.reportCode || "-"}${列.fightId ? ` · ${列.fightId}` : ""}`,
+          },
+          {
+            key: "recordedAt",
+            label: "紀錄時間",
+            value: app.格式化紀錄時間(列.紀錄時間),
+          },
+        ],
+      };
+    }
+
+    function 合併排行列詳細資料(列, 詳細條目) {
+      if (!詳細條目) {
+        return 列;
+      }
+
+      const 詳細列 = app.建立排行列(詳細條目, 取值(app.目前副本));
+      return {
+        ...列,
+        ...詳細列,
+        原始排名: 列.原始排名 ?? 詳細列.原始排名,
+        職業排名: 列.職業排名 ?? 詳細列.職業排名,
+        過版紀錄: 列.過版紀錄,
+        versionStatus: 列.versionStatus,
+        versionCutoffIso: 列.versionCutoffIso,
+        detailId: 列.detailId || 詳細列.detailId,
+        hasReportDetail: 列.hasReportDetail || 詳細列.hasReportDetail,
+      };
+    }
+
+    function 開啟排行報告彈窗(列, 排名 = null) {
+      const 本次序號 = ++報告讀取序號;
+      報告彈窗資料.value = 建立排行報告詳細資料(列, 排名);
+      if (!列.hasReportDetail || 列.reportCode || 列.reportUrl) {
+        return;
+      }
+
+      app.讀取排行列報告詳細資料(列)
+        .then((詳細條目) => {
+          if (本次序號 !== 報告讀取序號 || !詳細條目) {
+            return;
+          }
+          報告彈窗資料.value = 建立排行報告詳細資料(合併排行列詳細資料(列, 詳細條目), 排名);
+        })
+        .catch(() => {});
+    }
+
+    function 關閉排行報告彈窗() {
+      報告讀取序號 += 1;
+      報告彈窗資料.value = null;
+    }
+
+    return {
+      ...app,
+      報告彈窗資料,
+      開啟排行報告彈窗,
+      關閉排行報告彈窗,
+    };
   },
 };
 </script>
@@ -52,7 +198,7 @@ export default {
     </select>
   </label>
 
-  <label class="欄位">
+  <label class="欄位 排行榜伺服器欄位">
     <span>伺服器</span>
     <select v-model="伺服器篩選">
       <option value="">全部伺服器</option>
@@ -73,13 +219,9 @@ export default {
         @click="切換職業選單"
       >
         <span class="職業選單目前值">
-          <img
-            v-if="職業選單Icon路徑"
+          <JobIcon
             class="職業圖示"
             :src="職業選單Icon路徑"
-            alt=""
-            loading="lazy"
-            @error="隱藏載入失敗圖片"
           />
           <span>{{ 職業選單文字 }}</span>
         </span>
@@ -104,13 +246,10 @@ export default {
             :class="[職業色彩類別(類型.色彩), { 已選取: 職業類型篩選 === 類型.代碼 }]"
             @click="選擇職業類型(類型.代碼)"
           >
-            <img
-              v-if="職業類型Icon路徑(類型.代碼)"
+            <JobIcon
               class="職業圖示"
-              :src="職業類型Icon路徑(類型.代碼)"
-              alt=""
-              loading="lazy"
-              @error="隱藏載入失敗圖片"
+              kind="role"
+              :code="類型.代碼"
             />
             <span>{{ 類型.名稱 }}</span>
           </button>
@@ -126,13 +265,9 @@ export default {
               :class="[職業色彩類別(職業.色彩), { 已選取: 職業篩選 === 職業.代碼 }]"
               @click="選擇職業(職業.代碼)"
             >
-              <img
-                v-if="職業Icon路徑(職業.代碼)"
+              <JobIcon
                 class="職業圖示"
-                :src="職業Icon路徑(職業.代碼)"
-                alt=""
-                loading="lazy"
-                @error="隱藏載入失敗圖片"
+                :code="職業.代碼"
               />
               <span>{{ 職業.名稱 }}</span>
             </button>
@@ -142,10 +277,25 @@ export default {
     </div>
   </div>
 
-  <label class="欄位 搜尋欄位">
-    <span>玩家名稱</span>
-    <input v-model="搜尋關鍵字" type="search" placeholder="搜尋玩家名稱" />
-  </label>
+  <div class="欄位 搜尋欄位" @focusout="處理玩家搜尋歷史失焦($event, 'ranking')">
+    <label for="排行榜玩家搜尋">玩家名稱</label>
+    <div class="玩家搜尋輸入組">
+      <input
+        id="排行榜玩家搜尋"
+        v-model="搜尋關鍵字"
+        type="search"
+        placeholder="搜尋玩家名稱"
+        autocomplete="off"
+        @focus="開啟玩家搜尋歷史('ranking')"
+        @change="記錄排行榜搜尋歷史"
+      />
+      <PlayerSearchHistoryPanel
+        field="ranking"
+        :entries="排行榜最近搜尋玩家"
+        :visible="顯示排行榜最近搜尋玩家"
+      />
+    </div>
+  </div>
 </section>
 
 <p v-if="排行榜版本說明文字" class="版本紀錄說明">{{ 排行榜版本說明文字 }}</p>
@@ -158,20 +308,22 @@ export default {
   <template v-else>
     <div class="分頁資訊列">
       <p>顯示第 {{ 顯示起始排名 }}-{{ 顯示結束排名 }} 名，共 {{ 過濾後排行列.length }} 筆</p>
-      <div class="分頁控制" aria-label="排行榜分頁">
+      <div class="分頁控制 分頁控制頂部" aria-label="排行榜分頁">
         <button type="button" :disabled="!有上一頁" @click="前一頁">上一頁</button>
-        <label>
-          <span>頁碼</span>
-          <input
-            v-model.number="目前頁碼"
-            type="number"
-            min="1"
-            :max="總頁數"
-            inputmode="numeric"
-            @change="前往頁碼(目前頁碼)"
-          />
-        </label>
-        <span class="頁數文字">/ {{ 總頁數 }}</span>
+        <div class="頁碼群組">
+          <label>
+            <span>頁碼</span>
+            <input
+              v-model.number="目前頁碼"
+              type="number"
+              min="1"
+              :max="總頁數"
+              inputmode="numeric"
+              @change="前往頁碼(目前頁碼)"
+            />
+          </label>
+          <span class="頁數文字">/ {{ 總頁數 }}</span>
+        </div>
         <button type="button" :disabled="!有下一頁" @click="下一頁">下一頁</button>
       </div>
     </div>
@@ -183,6 +335,7 @@ export default {
         <col class="伺服器欄" />
         <col class="職業欄" />
         <col class="active欄" />
+        <col v-show="顯示Gcd覆蓋率" class="gcd欄" />
         <col class="傷害欄" />
         <col class="傷害欄" />
         <col class="傷害欄" />
@@ -221,6 +374,24 @@ export default {
               <span class="說明提示">
                 <button class="說明提示按鈕" type="button" aria-label="Active 說明">?</button>
                 <span class="說明提示內容" role="tooltip">{{ 統計說明文字("Active") }}</span>
+              </span>
+            </span>
+          </th>
+          <th v-show="顯示Gcd覆蓋率" scope="col" class="數字 gcd參考文字" :aria-sort="排序ARIA('gcdCoverage')">
+            <span class="表頭說明標籤">
+              <button
+                class="表頭排序按鈕"
+                type="button"
+                :class="{ 作用中: 是否目前排序('gcdCoverage') }"
+                :aria-label="排序按鈕標籤('gcdCoverage')"
+                @click="切換排序('gcdCoverage')"
+              >
+                <span>GCD</span>
+                <span v-if="是否目前排序('gcdCoverage')" class="排序箭頭" aria-hidden="true">{{ 排序方向圖示("gcdCoverage") }}</span>
+              </button>
+              <span class="說明提示">
+                <button class="說明提示按鈕" type="button" aria-label="GCD 覆蓋率說明">?</button>
+                <span class="說明提示內容" role="tooltip">{{ 統計說明文字("GCD 覆蓋率") }}</span>
               </span>
             </span>
           </th>
@@ -307,7 +478,16 @@ export default {
       <tbody>
         <tr v-for="(列, index) in 當頁排行列" :key="列.id" :class="{ 過版紀錄列: 列.過版紀錄 }">
           <td class="排名" :class="排名色彩類別(排行列顯示排名(index))">
-            {{ 格式化排名(排行列顯示排名(index)) }}
+            <span class="排名徽章" :aria-label="格式化排名(排行列顯示排名(index))">
+              <span
+                v-if="格式化排名(排行列顯示排名(index)).startsWith('#')"
+                class="排名井號"
+                aria-hidden="true"
+              >
+                #
+              </span>
+              <span class="排名數字">{{ 格式化排名(排行列顯示排名(index)).replace(/^#/, "") }}</span>
+            </span>
           </td>
           <td class="排行榜角色欄位">
             <button class="文字連結" type="button" @click="開啟個人成績單(列)">
@@ -318,17 +498,20 @@ export default {
               <button class="說明提示按鈕 作者勾勾按鈕" type="button" aria-label="網站作者說明">✓</button>
               <span class="說明提示內容" role="tooltip">{{ 作者說明文字 }}</span>
             </span>
-            <a v-if="列.reportUrl" class="次要連結" :href="列.reportUrl" target="_blank" rel="noreferrer">報告</a>
+            <button
+              v-if="列.hasReportDetail || 列.reportCode || 列.reportUrl"
+              class="次要連結 報告按鈕"
+              type="button"
+              @click="開啟排行報告彈窗(列, 排行列顯示排名(index))"
+            >
+              報告
+            </button>
             <div class="手機排行卡">
               <div class="手機排行主列">
                 <span class="手機排行職業" :title="列.職業">
-                  <img
-                    v-if="職業Icon路徑(列.職業代碼)"
+                  <JobIcon
                     class="職業圖示"
-                    :src="職業Icon路徑(列.職業代碼)"
-                    alt=""
-                    loading="lazy"
-                    @error="隱藏載入失敗圖片"
+                    :code="列.職業代碼"
                   />
                 </span>
                 <div class="手機排行身份列">
@@ -360,6 +543,10 @@ export default {
                 </span>
               </div>
               <div class="手機排行資訊列">
+                <span v-if="顯示Gcd覆蓋率" class="gcd參考文字">
+                  <em>GCD</em>
+                  <strong>{{ 格式化Gcd覆蓋率(列.gcd_coverage) }}</strong>
+                </span>
                 <span>
                   <em>通關</em>
                   <strong>{{ 格式化通關時間(列.通關秒數) }}</strong>
@@ -370,25 +557,29 @@ export default {
                     {{ 格式化紀錄日期(列.紀錄時間) }} {{ 格式化紀錄時刻(列.紀錄時間) }}
                   </time>
                 </span>
-                <a v-if="列.reportUrl" :href="列.reportUrl" target="_blank" rel="noreferrer">報告</a>
+                <button
+                  v-if="列.hasReportDetail || 列.reportCode || 列.reportUrl"
+                  class="報告按鈕"
+                  type="button"
+                  @click="開啟排行報告彈窗(列, 排行列顯示排名(index))"
+                >
+                  報告
+                </button>
               </div>
             </div>
           </td>
           <td>{{ 列.伺服器 }}</td>
           <td>
             <span class="職業標籤" :class="職業色彩類別(職業代碼色彩(列.職業代碼))">
-              <img
-                v-if="職業Icon路徑(列.職業代碼)"
+              <JobIcon
                 class="職業圖示 職業標籤圖示"
-                :src="職業Icon路徑(列.職業代碼)"
-                alt=""
-                loading="lazy"
-                @error="隱藏載入失敗圖片"
+                :code="列.職業代碼"
               />
               <span>{{ 列.職業 }}</span>
             </span>
           </td>
           <td class="數字">{{ 格式化Active(列.active) }}</td>
+          <td v-show="顯示Gcd覆蓋率" class="數字 gcd參考文字">{{ 格式化Gcd覆蓋率(列.gcd_coverage) }}</td>
           <td class="數字">{{ 格式化傷害數值(列.dps) }}</td>
           <td class="數字">{{ 格式化傷害數值(列.rdps) }}</td>
           <td class="數字">{{ 格式化傷害數值(列.adps) }}</td>
@@ -410,7 +601,7 @@ export default {
 
     <div class="分頁資訊列 分頁資訊列底部">
       <p>每頁 {{ 每頁筆數 }} 筆</p>
-      <div class="分頁控制" aria-label="排行榜底部分頁">
+      <div class="分頁控制 分頁控制底部" aria-label="排行榜底部分頁">
         <button type="button" :disabled="!有上一頁" @click="前一頁">上一頁</button>
         <span class="頁數文字">第 {{ 安全目前頁碼 }} / {{ 總頁數 }} 頁</span>
         <button type="button" :disabled="!有下一頁" @click="下一頁">下一頁</button>
@@ -418,4 +609,6 @@ export default {
     </div>
   </template>
 </section>
+
+<ReportDetailDialog :details="報告彈窗資料" @close="關閉排行報告彈窗" />
 </template>

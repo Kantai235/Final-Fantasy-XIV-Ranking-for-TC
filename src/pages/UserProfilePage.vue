@@ -1,10 +1,182 @@
 <script>
+import { ref } from "vue";
+import JobIcon from "../components/JobIcon.vue";
+import PlayerSearchHistoryPanel from "../components/PlayerSearchHistoryPanel.vue";
+import ReportDetailDialog from "../components/ReportDetailDialog.vue";
 import { injectRankingApp } from "../composables/useRankingApp";
 
 export default {
   name: "UserProfilePage",
+  components: {
+    JobIcon,
+    PlayerSearchHistoryPanel,
+    ReportDetailDialog,
+  },
   setup() {
-    return injectRankingApp();
+    const app = injectRankingApp();
+    const 報告彈窗資料 = ref(null);
+    let 報告讀取序號 = 0;
+
+    function 取值(可能Ref) {
+      return 可能Ref && typeof 可能Ref === "object" && "value" in 可能Ref ? 可能Ref.value : 可能Ref;
+    }
+
+    function 建立個人成績報告分頁標籤(來源, index) {
+      return {
+        key: 來源.key || `${來源.report_code || "report"}-${來源.fight_id || index}`,
+        label: `報告 ${index + 1}`,
+        caption: 來源.report_code || "",
+      };
+    }
+
+    function 建立個人成績報告單筆詳細資料(成績, 副本) {
+      const 顯示Gcd = Boolean(取值(app.顯示Gcd覆蓋率));
+      const 角色名稱 = 成績.character_name || 取值(app.使用者資料)?.character_name || "個人成績";
+      const 伺服器 = 成績.server || 取值(app.使用者伺服器篩選) || "";
+      const 職業名稱 = app.顯示職業名稱(成績.job);
+
+      return {
+        subtitle: 副本?.encounter_name || 成績.encounter_name || "個人成績歷史",
+        title: 角色名稱,
+        identity: [伺服器, 職業名稱].filter(Boolean).join(" · "),
+        record: 成績,
+        statusItems: [
+          {
+            key: "rank",
+            label: "排名",
+            value: app.格式化排名(成績.job_rank ?? 成績.rank),
+            className: "報告彈窗排名項",
+          },
+          {
+            key: "active",
+            label: "Active",
+            value: app.格式化Active(成績.active_percent),
+            tooltip: app.統計說明文字("Active"),
+            tooltipLabel: "Active 說明",
+          },
+          ...(顯示Gcd
+            ? [
+                {
+                  key: "gcd",
+                  label: "GCD",
+                  value: app.格式化Gcd覆蓋率(成績.gcd_coverage),
+                  tooltip: app.統計說明文字("GCD 覆蓋率"),
+                  tooltipLabel: "GCD 覆蓋率說明",
+                  className: "gcd參考文字",
+                },
+              ]
+            : []),
+          {
+            key: "clearTime",
+            label: "通關時間",
+            value: app.格式化通關時間(成績.clear_time_seconds),
+            className: "報告彈窗時間項",
+          },
+        ],
+        damageItems: [
+          {
+            key: "dps",
+            label: "DPS",
+            value: app.格式化傷害數值(成績.dps),
+            tooltip: app.統計說明文字("DPS"),
+            tooltipLabel: "DPS 說明",
+          },
+          {
+            key: "rdps",
+            label: "rDPS",
+            value: app.格式化傷害數值(成績.rdps),
+            tooltip: app.統計說明文字("rDPS"),
+            tooltipLabel: "rDPS 說明",
+            className: "報告彈窗主要數值",
+          },
+          {
+            key: "adps",
+            label: "aDPS",
+            value: app.格式化傷害數值(成績.adps),
+            tooltip: app.統計說明文字("aDPS"),
+            tooltipLabel: "aDPS 說明",
+          },
+        ],
+        traceItems: [
+          {
+            key: "reportFight",
+            label: "Report / Fight",
+            value: `${成績.report_code || "-"}${成績.fight_id ? ` · ${成績.fight_id}` : ""}`,
+          },
+          {
+            key: "recordedAt",
+            label: "紀錄時間",
+            value: app.格式化紀錄時間(成績.recorded_at_iso),
+          },
+        ],
+      };
+    }
+
+    function 建立個人成績報告詳細資料(成績, 副本) {
+      const details = 建立個人成績報告單筆詳細資料(成績, 副本);
+      const 來源清單 = Array.isArray(成績.report_variants) && 成績.report_variants.length > 1 ? 成績.report_variants : [];
+      if (來源清單.length === 0) {
+        return details;
+      }
+
+      return {
+        ...details,
+        tabs: 來源清單.map((來源, index) => {
+          const 分頁成績 = {
+            ...成績,
+            ...來源,
+            report_variants: 成績.report_variants,
+            duplicate_count: 成績.duplicate_count,
+            source_reports: 成績.source_reports,
+          };
+          return {
+            ...details,
+            ...建立個人成績報告分頁標籤(來源, index),
+            ...建立個人成績報告單筆詳細資料(分頁成績, 副本),
+          };
+        }),
+      };
+    }
+
+    function 合併個人成績報告詳細資料(成績, 詳細資料) {
+      if (!詳細資料) {
+        return 成績;
+      }
+
+      return {
+        ...成績,
+        ...詳細資料,
+      };
+    }
+
+    function 開啟個人成績報告彈窗(成績, 副本) {
+      const 本次序號 = ++報告讀取序號;
+      報告彈窗資料.value = 建立個人成績報告詳細資料(成績, 副本);
+      if ((Array.isArray(成績.report_variants) && 成績.report_variants.length > 1) || !成績.report_detail_path) {
+        return;
+      }
+
+      app.讀取個人成績報告詳細資料(成績)
+        .then((詳細資料) => {
+          if (本次序號 !== 報告讀取序號 || !詳細資料) {
+            return;
+          }
+          報告彈窗資料.value = 建立個人成績報告詳細資料(合併個人成績報告詳細資料(成績, 詳細資料), 副本);
+        })
+        .catch(() => {});
+    }
+
+    function 關閉個人成績報告彈窗() {
+      報告讀取序號 += 1;
+      報告彈窗資料.value = null;
+    }
+
+    return {
+      ...app,
+      報告彈窗資料,
+      開啟個人成績報告彈窗,
+      關閉個人成績報告彈窗,
+    };
   },
 };
 </script>
@@ -12,20 +184,30 @@ export default {
 <template>
   <section class="使用者搜尋區" aria-label="個人成績單查詢">
     <form class="使用者搜尋表單 個人成績搜尋表單" @submit.prevent="提交使用者搜尋">
-      <label class="欄位 使用者搜尋欄位">
-        <span>玩家 / 伺服器</span>
-        <input
-          v-model="使用者搜尋關鍵字"
-          type="search"
-          list="使用者搜尋建議"
-          placeholder="輸入玩家名稱，或選擇「玩家 @ 伺服器」"
-        />
+      <div class="欄位 使用者搜尋欄位" @focusout="處理玩家搜尋歷史失焦($event, 'user')">
+        <label for="個人成績玩家搜尋">玩家 / 伺服器</label>
+        <div class="玩家搜尋輸入組">
+          <input
+            id="個人成績玩家搜尋"
+            v-model="使用者搜尋關鍵字"
+            type="search"
+            list="使用者搜尋建議"
+            placeholder="輸入玩家名稱，或選擇「玩家 @ 伺服器」"
+            autocomplete="off"
+            @focus="開啟玩家搜尋歷史('user')"
+          />
+          <PlayerSearchHistoryPanel
+            field="user"
+            :entries="使用者最近搜尋玩家"
+            :visible="顯示使用者最近搜尋玩家"
+          />
+        </div>
         <datalist id="使用者搜尋建議">
           <option v-for="建議 in 使用者搜尋建議" :key="`${建議.character_name}@${建議.server}`" :value="建議.value">
             {{ 建議.label }}
           </option>
         </datalist>
-      </label>
+      </div>
 
       <div class="欄位 職業選單欄位" @focusout="處理使用者職業選單失焦">
         <span>職業</span>
@@ -39,13 +221,9 @@ export default {
             @click="切換使用者職業選單"
           >
             <span class="職業選單目前值">
-              <img
-                v-if="使用者職業選單Icon路徑"
+              <JobIcon
                 class="職業圖示"
                 :src="使用者職業選單Icon路徑"
-                alt=""
-                loading="lazy"
-                @error="隱藏載入失敗圖片"
               />
               <span>{{ 使用者職業選單文字 }}</span>
             </span>
@@ -70,13 +248,10 @@ export default {
                 :class="[職業色彩類別(類型.色彩), { 已選取: 使用者職業類型篩選 === 類型.代碼 }]"
                 @click="選擇使用者職業類型(類型.代碼)"
               >
-                <img
-                  v-if="職業類型Icon路徑(類型.代碼)"
+                <JobIcon
                   class="職業圖示"
-                  :src="職業類型Icon路徑(類型.代碼)"
-                  alt=""
-                  loading="lazy"
-                  @error="隱藏載入失敗圖片"
+                  kind="role"
+                  :code="類型.代碼"
                 />
                 <span>{{ 類型.名稱 }}</span>
               </button>
@@ -92,13 +267,9 @@ export default {
                   :class="[職業色彩類別(職業.色彩), { 已選取: 使用者職業篩選 === 職業.代碼 }]"
                   @click="選擇使用者職業(職業.代碼)"
                 >
-                  <img
-                    v-if="職業Icon路徑(職業.代碼)"
+                  <JobIcon
                     class="職業圖示"
-                    :src="職業Icon路徑(職業.代碼)"
-                    alt=""
-                    loading="lazy"
-                    @error="隱藏載入失敗圖片"
+                    :code="職業.代碼"
                   />
                   <span>{{ 職業.名稱 }}</span>
                 </button>
@@ -120,15 +291,15 @@ export default {
 
     <template v-else>
       <section class="個人成績概要" aria-label="個人成績概要">
-        <div class="概要項">
+        <div class="概要項 概要項計數">
           <span>副本數</span>
           <strong>{{ 使用者統計.副本數 }}</strong>
         </div>
-        <div class="概要項">
+        <div class="概要項 概要項計數">
           <span>公開成績</span>
           <strong>{{ 使用者統計.公開成績數 }}</strong>
         </div>
-        <div class="概要項">
+        <div class="概要項 概要項重點">
           <span class="說明標籤">
             <span>最佳 rDPS</span>
             <span class="說明提示">
@@ -138,7 +309,17 @@ export default {
           </span>
           <strong>{{ 格式化傷害數值(使用者統計.最佳成績?.rdps) }}</strong>
         </div>
-        <div class="概要項">
+        <div v-if="顯示Gcd覆蓋率" class="概要項 概要項重點 gcd參考文字">
+          <span class="說明標籤">
+            <span>最佳 GCD</span>
+            <span class="說明提示">
+              <button class="說明提示按鈕" type="button" aria-label="GCD 覆蓋率說明">?</button>
+              <span class="說明提示內容" role="tooltip">{{ 統計說明文字("GCD 覆蓋率") }}</span>
+            </span>
+          </span>
+          <strong>{{ 格式化Gcd覆蓋率(使用者統計.最高Gcd成績?.gcd_coverage) }}</strong>
+        </div>
+        <div class="概要項 概要項時間">
           <span>最後紀錄</span>
           <strong>{{ 格式化紀錄時間(使用者統計.最後紀錄時間) }}</strong>
         </div>
@@ -163,18 +344,18 @@ export default {
               <strong>{{ 成績.encounter_name }}</strong>
             </span>
             <span class="職業標籤" :class="職業色彩類別(職業代碼色彩(成績.job))">
-              <img
-                v-if="職業Icon路徑(成績.job)"
+              <JobIcon
                 class="職業圖示 職業標籤圖示"
-                :src="職業Icon路徑(成績.job)"
-                alt=""
-                loading="lazy"
-                @error="隱藏載入失敗圖片"
+                :code="成績.job"
               />
               <span>{{ 顯示職業名稱(成績.job) }}</span>
             </span>
             <strong>{{ 格式化前段百分位(成績.performance?.rank, 成績.performance?.sample_count) }}</strong>
-            <small>rDPS {{ 格式化傷害數值(成績.rdps) }}・高於中位 {{ 格式化帶號整數(成績.performance?.delta_to_median) }}</small>
+            <small>
+              rDPS {{ 格式化傷害數值(成績.rdps) }}
+              <span v-if="顯示Gcd覆蓋率" class="gcd參考文字">・GCD {{ 格式化Gcd覆蓋率(成績.gcd_coverage) }}</span>
+              ・高於中位 {{ 格式化帶號整數(成績.performance?.delta_to_median) }}
+            </small>
           </article>
         </div>
       </section>
@@ -191,13 +372,10 @@ export default {
                 <small>{{ 趨勢.encounter_category || "副本" }}</small>
                 <strong>{{ 趨勢.encounter_name }}</strong>
                 <span class="職業標籤 趨勢職能標籤" :class="職業色彩類別(趨勢.職能?.色彩)">
-                  <img
-                    v-if="職業類型Icon路徑(趨勢.職能?.代碼)"
+                  <JobIcon
                     class="職業圖示 職業標籤圖示"
-                    :src="職業類型Icon路徑(趨勢.職能?.代碼)"
-                    alt=""
-                    loading="lazy"
-                    @error="隱藏載入失敗圖片"
+                    kind="role"
+                    :code="趨勢.職能?.代碼"
                   />
                   <span>{{ 趨勢.職能?.名稱 || "職能" }}</span>
                 </span>
@@ -236,7 +414,7 @@ export default {
                   class="趨勢點"
                   :class="{ 過版: 點.過版紀錄 }"
                   :style="趨勢點樣式(點)"
-                  :title="`${格式化紀錄時間(點.recorded_at_iso)}・${顯示職業名稱(點.job)}・rDPS ${格式化傷害數值(點.rdps)}${點.過版紀錄 ? '・過版紀錄' : ''}`"
+                  :title="`${格式化紀錄時間(點.recorded_at_iso)}・${顯示職業名稱(點.job)}・rDPS ${格式化傷害數值(點.rdps)}${顯示Gcd覆蓋率 ? `・GCD ${格式化Gcd覆蓋率(點.gcd_coverage)}` : ''}${點.過版紀錄 ? '・過版紀錄' : ''}`"
                 ></span>
               </span>
               <div class="趨勢刻度" aria-hidden="true">
@@ -324,13 +502,11 @@ export default {
             <div v-if="隊友職能分布.length > 0" class="隊友職能分布">
               <div v-for="職能 in 隊友職能分布" :key="職能.代碼" class="隊友職能項">
                 <span class="隊友職能名稱">
-                  <img
-                    v-if="職業類型Icon路徑(職能.代碼)"
+                  <JobIcon
                     class="職業圖示"
-                    :src="職業類型Icon路徑(職能.代碼)"
+                    kind="role"
+                    :code="職能.代碼"
                     :alt="職能.名稱"
-                    loading="lazy"
-                    @error="隱藏載入失敗圖片"
                   />
                   <strong>{{ 職能.名稱 }}</strong>
                 </span>
@@ -380,28 +556,24 @@ export default {
               <strong>{{ 副本.encounter_name }}</strong>
             </span>
             <span v-if="副本.best_entry" class="職業標籤 成績列職業" :class="職業色彩類別(職業代碼色彩(副本.best_entry.job))">
-              <img
-                v-if="職業Icon路徑(副本.best_entry.job)"
+              <JobIcon
                 class="職業圖示 職業標籤圖示"
-                :src="職業Icon路徑(副本.best_entry.job)"
-                alt=""
-                loading="lazy"
-                @error="隱藏載入失敗圖片"
+                :code="副本.best_entry.job"
               />
               <span>{{ 顯示職業名稱(副本.best_entry.job) }}</span>
             </span>
             <span v-else class="版本紀錄標籤">無有效最佳紀錄</span>
-            <span class="成績列數值">
+            <span class="成績列數值 成績列數值次要">
               <small>職業 Rank</small>
               <strong>{{ 副本.best_entry ? 格式化排名(副本.best_entry.job_rank ?? 副本.best_entry.rank) : "無法參考" }}</strong>
               <em v-if="副本.best_entry">{{ 格式化前段百分位(副本.best_entry.job_rank ?? 副本.best_entry.rank, 取得成績職業總數(副本.best_entry)) }}</em>
             </span>
-            <span class="成績列數值">
+            <span class="成績列數值 成績列數值次要">
               <small>同職分位</small>
               <strong>{{ 副本.best_entry ? 格式化前段百分位(副本.best_entry.performance?.rank, 副本.best_entry.performance?.sample_count) : "過時紀錄" }}</strong>
               <em v-if="副本.best_entry">中位 {{ 格式化帶號整數(副本.best_entry.performance?.delta_to_median) }}</em>
             </span>
-            <span class="成績列數值">
+            <span class="成績列數值 成績列數值狀態">
               <small class="說明標籤">
                 <span>Active</span>
                 <span class="說明提示">
@@ -411,7 +583,17 @@ export default {
               </small>
               <strong>{{ 副本.best_entry ? 格式化Active(副本.best_entry.active_percent) : "-" }}</strong>
             </span>
-            <span class="成績列數值">
+            <span v-if="顯示Gcd覆蓋率" class="成績列數值 成績列數值狀態 gcd參考文字">
+              <small class="說明標籤">
+                <span>GCD</span>
+                <span class="說明提示">
+                  <button class="說明提示按鈕" type="button" aria-label="GCD 覆蓋率說明">?</button>
+                  <span class="說明提示內容" role="tooltip">{{ 統計說明文字("GCD 覆蓋率") }}</span>
+                </span>
+              </small>
+              <strong>{{ 副本.best_entry ? 格式化Gcd覆蓋率(副本.best_entry.gcd_coverage) : "-" }}</strong>
+            </span>
+            <span class="成績列數值 成績列數值輸出">
               <small class="說明標籤">
                 <span>DPS</span>
                 <span class="說明提示">
@@ -421,7 +603,7 @@ export default {
               </small>
               <strong>{{ 副本.best_entry ? 格式化傷害數值(副本.best_entry.dps) : "-" }}</strong>
             </span>
-            <span class="成績列數值">
+            <span class="成績列數值 成績列數值輸出 成績列數值主要">
               <small class="說明標籤">
                 <span>rDPS</span>
                 <span class="說明提示">
@@ -431,7 +613,7 @@ export default {
               </small>
               <strong>{{ 副本.best_entry ? 格式化傷害數值(副本.best_entry.rdps) : "-" }}</strong>
             </span>
-            <span class="成績列數值">
+            <span class="成績列數值 成績列數值輸出">
               <small class="說明標籤">
                 <span>aDPS</span>
                 <span class="說明提示">
@@ -458,6 +640,15 @@ export default {
                       <span class="說明提示">
                         <button class="說明提示按鈕" type="button" aria-label="Active 說明">?</button>
                         <span class="說明提示內容" role="tooltip">{{ 統計說明文字("Active") }}</span>
+                      </span>
+                    </span>
+                  </th>
+                  <th v-show="顯示Gcd覆蓋率" scope="col" class="數字 gcd參考文字">
+                    <span class="表頭說明標籤">
+                      <span>GCD</span>
+                      <span class="說明提示">
+                        <button class="說明提示按鈕" type="button" aria-label="GCD 覆蓋率說明">?</button>
+                        <span class="說明提示內容" role="tooltip">{{ 統計說明文字("GCD 覆蓋率") }}</span>
                       </span>
                     </span>
                   </th>
@@ -496,23 +687,27 @@ export default {
                   <td>{{ 格式化紀錄時間(成績.recorded_at_iso) }}</td>
                   <td>
                     <span class="職業標籤" :class="職業色彩類別(職業代碼色彩(成績.job))">
-                      <img
-                        v-if="職業Icon路徑(成績.job)"
+                      <JobIcon
                         class="職業圖示 職業標籤圖示"
-                        :src="職業Icon路徑(成績.job)"
-                        alt=""
-                        loading="lazy"
-                        @error="隱藏載入失敗圖片"
+                        :code="成績.job"
                       />
                       <span>{{ 顯示職業名稱(成績.job) }}</span>
                     </span>
                   </td>
                   <td class="歷史報告欄位">
-                    <a v-if="成績.report_url" :href="成績.report_url" target="_blank" rel="noreferrer">FFLogs</a>
+                    <button
+                      v-if="成績.report_code || 成績.report_url"
+                      class="報告按鈕"
+                      type="button"
+                      @click="開啟個人成績報告彈窗(成績, 副本)"
+                    >
+                      報告
+                    </button>
                     <span v-else>-</span>
                   </td>
                   <td class="數字">{{ 成績.is_obsolete_record ? "過時紀錄" : 格式化前段百分位(成績.performance?.rank, 成績.performance?.sample_count) }}</td>
                   <td class="數字">{{ 格式化Active(成績.active_percent) }}</td>
+                  <td v-show="顯示Gcd覆蓋率" class="數字 gcd參考文字">{{ 格式化Gcd覆蓋率(成績.gcd_coverage) }}</td>
                   <td class="數字">{{ 格式化傷害數值(成績.dps) }}</td>
                   <td class="數字">{{ 格式化傷害數值(成績.rdps) }}</td>
                   <td class="數字">{{ 格式化傷害數值(成績.adps) }}</td>
@@ -525,4 +720,6 @@ export default {
       </section>
     </template>
   </section>
+
+  <ReportDetailDialog :details="報告彈窗資料" @close="關閉個人成績報告彈窗" />
 </template>

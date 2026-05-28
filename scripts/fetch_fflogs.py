@@ -9,10 +9,21 @@ import time
 from collections import deque
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Iterable
 
 import requests
 from dotenv import load_dotenv
+
+from fflogs_pipeline.graphql_queries import (
+    深層過濾查詢,
+    報告狀態查詢,
+    戰鬥清單查詢,
+    戰鬥清單全部查詢,
+    淺層掃描查詢,
+    玩家成績查詢,
+    玩家成績全部查詢,
+)
+import gcd_coverage_core as gcd_core
 
 
 # 本檔是資料管線的 Data Fetching Layer。
@@ -20,6 +31,10 @@ from dotenv import load_dotenv
 # 前端顯示用的統計、個人成績單與職業分布，必須留給 scripts/build_user_data.mjs 聚合。
 API_URL = "https://www.fflogs.com/api/v2/client"
 TOKEN_URL = "https://www.fflogs.com/oauth/token"
+絕巴哈副本ID = 1073
+絕巴哈通關FightPercentage = 80
+絕巴哈最低通關毫秒 = 780_000
+絕本通關規則版本 = "ultimate_clear_rules_2026_05_28"
 
 專案根目錄 = Path(__file__).resolve().parents[1]
 load_dotenv(專案根目錄 / ".env")
@@ -28,21 +43,32 @@ load_dotenv(專案根目錄 / ".env")
 副本設定檔路徑 = 專案根目錄 / "config" / "encounters.json"
 FFLogs執行設定檔路徑 = 專案根目錄 / "config" / "fflogs.json"
 公開副本清單路徑 = 專案根目錄 / "public" / "data" / "encounters.json"
+含隱藏公開副本清單路徑 = 專案根目錄 / "public" / "data" / "all" / "encounters.json"
 淺層掃描快取目錄 = 專案根目錄 / "data" / "shallow_scan_cache"
 
 FFLogs執行設定預設值: dict[str, Any] = {
     "report_page_limit": 100,
     "report_max_pages": 25,
+    "report_region_scope": "all",
     "scan_window_hours": 24,
     "min_scan_window_seconds": 60,
     "initial_lookback_hours": 24,
-    "incremental_lookback_hours": 6,
+    "incremental_lookback_hours": 24,
+    "no_clear_retry_hours": 24,
+    "delayed_scan_enabled": False,
+    "delayed_scan_recent_gap_hours": 24,
+    "delayed_scan_lookback_hours": 72,
+    "delayed_max_deep_reports_per_run": 0,
     "history_scan_enabled": True,
     "history_scan_full_run": False,
     "history_scan_window_hours": 24,
     "history_scan_windows_per_run": 1,
     "history_scan_recent_gap_hours": 6,
-    "history_max_deep_reports_per_run": 25,
+    "history_max_deep_reports_per_run": 200,
+    "existing_report_status_check_enabled": False,
+    "existing_report_status_check_limit": 0,
+    "fetch_gcd_coverage_enabled": False,
+    "fetch_gcd_coverage_max_fights_per_run": 0,
     "report_status_cache_limit": 50000,
     "request_timeout": 30,
     "request_connect_timeout": None,
@@ -56,15 +82,78 @@ FFLogs執行設定預設值: dict[str, Any] = {
     "json_write_retries": 10,
     "json_write_retry_seconds": 0.5,
     "ranking_flush_reports": 25,
+    "state_checkpoint_flush_reports": 2000,
     "player_stats_batch_size": 10,
     "retry_report_codes": [],
     "only_report_codes": [],
 }
 
+浮點環境設定名稱 = {
+    "request_timeout",
+    "request_connect_timeout",
+    "request_read_timeout",
+    "rate_limit_padding_seconds",
+    "json_write_retry_seconds",
+}
+
+
+def 分割環境設定清單(值: str) -> list[str]:
+    return [項.strip() for 項 in 值.split(",") if 項.strip()]
+
+
+def 解析環境設定覆寫值(名稱: str, 原始值: str, 參考值: Any) -> Any:
+    文字值 = 原始值.strip()
+    if 文字值 == "":
+        return 參考值
+
+    # workflow 會用環境變數臨時開啟歷史補查；用既有設定值的型別解析，避免把數字或布林
+    # 以字串混入後續限流與掃描區間計算。這只處理非敏感執行參數，不讀取 OAuth 憑證。
+    if isinstance(參考值, bool):
+        標準值 = 文字值.lower()
+        if 標準值 in {"1", "true", "yes", "on"}:
+            return True
+        if 標準值 in {"0", "false", "no", "off"}:
+            return False
+        raise RuntimeError(f"環境變數 FFLOGS_{名稱.upper()} 必須是布林值。")
+
+    if 名稱 in 浮點環境設定名稱 or isinstance(參考值, float):
+        try:
+            return float(文字值)
+        except ValueError as 錯誤:
+            raise RuntimeError(f"環境變數 FFLOGS_{名稱.upper()} 必須是數字。") from 錯誤
+
+    if isinstance(參考值, int) and not isinstance(參考值, bool):
+        try:
+            return int(文字值)
+        except ValueError as 錯誤:
+            raise RuntimeError(f"環境變數 FFLOGS_{名稱.upper()} 必須是整數。") from 錯誤
+
+    if isinstance(參考值, list):
+        return 分割環境設定清單(文字值)
+
+    return 文字值
+
+
+def 套用環境變數覆寫設定(設定: dict[str, Any]) -> dict[str, Any]:
+    覆寫後設定 = dict(設定)
+    for 名稱, 目前值 in list(覆寫後設定.items()):
+        環境變數名稱 = f"FFLOGS_{名稱.upper()}"
+        if 環境變數名稱 not in os.environ:
+            continue
+
+        原始值 = os.environ[環境變數名稱]
+        if 原始值.strip() == "":
+            continue
+
+        參考值 = FFLogs執行設定預設值.get(名稱, 目前值)
+        覆寫後設定[名稱] = 解析環境設定覆寫值(名稱, 原始值, 參考值)
+
+    return 覆寫後設定
+
 
 def 讀取FFLogs執行設定() -> dict[str, Any]:
     if not FFLogs執行設定檔路徑.exists():
-        return dict(FFLogs執行設定預設值)
+        return 套用環境變數覆寫設定(dict(FFLogs執行設定預設值))
 
     try:
         with FFLogs執行設定檔路徑.open("r", encoding="utf-8") as 設定檔:
@@ -77,7 +166,7 @@ def 讀取FFLogs執行設定() -> dict[str, Any]:
 
     設定 = dict(FFLogs執行設定預設值)
     設定.update(原始設定)
-    return 設定
+    return 套用環境變數覆寫設定(設定)
 
 
 FFLogs執行設定 = 讀取FFLogs執行設定()
@@ -119,9 +208,19 @@ def 布林設定(名稱: str) -> bool:
             return False
     raise RuntimeError(f"FFLogs 執行設定 {名稱} 必須是布林值。")
 
+
+def 正規化報告地區範圍(值: Any) -> str:
+    範圍 = str(值 or "all").strip().lower()
+    if 範圍 in 報告地區範圍選項:
+        return 範圍
+    raise RuntimeError("FFLogs 執行設定 report_region_scope 必須是 china 或 all。")
+
+
 中國區域_ID = 4
-# FFLogs 的中國區域會同時包含中國服與繁中服；目前 API 的 reports 查詢不能直接以伺服器過濾。
-# 因此管線先以 region=China 的報告作為候選，再用 masterData.actors 的 server 欄位篩出繁中服玩家。
+報告地區範圍選項 = {"china", "all"}
+# FFLogs reports 查詢目前不能直接以伺服器過濾。過去只先看 region=China，但玩家可能把繁中服角色
+# 的 report 上傳到其他地區；因此 workflow 會用 all 掃全部地區候選，再用 masterData.actors 的 server
+# 欄位篩出真正的繁中服玩家。若短期維護需要降低掃描量，可暫時改用 china。
 繁中服伺服器名稱 = {"伊弗利特", "迦樓羅", "利維坦", "鳳凰", "奧汀", "巴哈姆特", "泰坦"}
 有效職業名稱 = {
     "Paladin",
@@ -176,7 +275,12 @@ def 布林設定(名稱: str) -> bool:
     "report_code",
     "report_url",
     "fight_id",
+    "fflogs_source_id",
     "duplicate_count",
+    "report_hidden",
+    "hidden_reason",
+    "hidden_detected_at_iso",
+    "hidden_source",
     "rank",
     "is_obsolete_record",
     "version_status",
@@ -185,15 +289,29 @@ def 布林設定(名稱: str) -> bool:
 
 版本紀錄範圍清單 = ("all", "valid", "obsolete")
 報告尚未完整匯出狀態 = "deferred_incomplete_export"
+無通關報告狀態 = "skipped_no_clear"
+報告無法存取隱藏原因 = "private_or_deleted"
+深層掃描階段名稱 = "深層過濾與成績整理"
 可重試報告處理狀態 = {報告尚未完整匯出狀態}
 暫時性HTTP狀態碼 = {500, 502, 503, 504}
 
 每頁報告數量 = 整數設定("report_page_limit")
 報告查詢最大頁數 = 整數設定("report_max_pages")
+報告地區範圍 = 正規化報告地區範圍(FFLogs執行設定.get("report_region_scope"))
+掃描全部地區報告 = 報告地區範圍 == "all"
 淺層掃描區間小時 = 整數設定("scan_window_hours")
 最小切分區間毫秒 = 整數設定("min_scan_window_seconds") * 1000
 初次掃描回溯小時 = 整數設定("initial_lookback_hours")
 增量掃描回溯小時 = max(0, 整數設定("incremental_lookback_hours"))
+無通關報告重試小時 = max(0, 整數設定("no_clear_retry_hours"))
+無通關報告重試毫秒 = 無通關報告重試小時 * 60 * 60 * 1000
+延遲掃描已啟用 = 布林設定("delayed_scan_enabled")
+延遲掃描最近避讓小時 = max(0, 整數設定("delayed_scan_recent_gap_hours"))
+延遲掃描回溯小時 = max(
+    延遲掃描最近避讓小時,
+    整數設定("delayed_scan_lookback_hours"),
+)
+延遲掃描深層報告上限 = max(0, 整數設定("delayed_max_deep_reports_per_run"))
 歷史補查已啟用 = 布林設定("history_scan_enabled")
 歷史補查完整執行 = 布林設定("history_scan_full_run")
 歷史補查區間小時 = max(1, 整數設定("history_scan_window_hours"))
@@ -203,6 +321,10 @@ def 布林設定(名稱: str) -> bool:
     整數設定("history_scan_recent_gap_hours"),
 )
 歷史補查深層報告上限 = 整數設定("history_max_deep_reports_per_run")
+既有報告狀態巡檢已啟用 = 布林設定("existing_report_status_check_enabled")
+既有報告狀態巡檢上限 = max(0, 整數設定("existing_report_status_check_limit"))
+即時GCD覆蓋率已啟用 = 布林設定("fetch_gcd_coverage_enabled")
+即時GCD覆蓋率戰鬥上限 = max(0, 整數設定("fetch_gcd_coverage_max_fights_per_run"))
 報告檢查快取上限 = max(0, 整數設定("report_status_cache_limit"))
 請求逾時秒數 = max(1.0, 浮點設定("request_timeout"))
 請求連線逾時秒數 = max(1.0, 可選浮點設定("request_connect_timeout", min(10.0, 請求逾時秒數)))
@@ -217,6 +339,8 @@ def 布林設定(名稱: str) -> bool:
 json寫入重試次數 = max(1, 整數設定("json_write_retries"))
 json寫入重試等待秒數 = max(0.1, 浮點設定("json_write_retry_seconds"))
 排行榜批次寫入報告數 = max(1, 整數設定("ranking_flush_reports"))
+狀態檢查點批次寫入報告數 = max(1, 整數設定("state_checkpoint_flush_reports"))
+深層掃描進度落地報告數 = 狀態檢查點批次寫入報告數
 玩家成績批次查詢戰鬥數 = max(1, 整數設定("player_stats_batch_size"))
 台灣時區 = timezone(timedelta(hours=8))
 
@@ -319,6 +443,10 @@ class FFLogs報告存取錯誤(FFLogsGraphQL錯誤):
     pass
 
 
+class FFLogs報告狀態不可存取錯誤(RuntimeError):
+    pass
+
+
 class FFLogs報告尚未完整匯出錯誤(RuntimeError):
     def __init__(
         self,
@@ -348,282 +476,15 @@ def GraphQL錯誤是否為報告存取錯誤(錯誤列表: list[Any]) -> bool:
         是報告路徑 = isinstance(路徑, list) and "report" in 路徑
         if 是報告路徑 and (
             "permission to view this report" in 訊息
+            or "permission to view the report" in 訊息
             or "report does not exist" in 訊息
             or "not found" in 訊息
+            or "private" in 訊息
+            or "deleted" in 訊息
         ):
             return True
 
     return False
-
-
-淺層掃描查詢 = """
-query RecentReports($startTime: Float!, $endTime: Float!, $page: Int!, $limit: Int!, $zoneID: Int!) {
-  reportData {
-    reports(startTime: $startTime, endTime: $endTime, page: $page, limit: $limit, zoneID: $zoneID) {
-      data {
-        code
-        title
-        startTime
-        endTime
-        region {
-          id
-          name
-        }
-      }
-      current_page
-      has_more_pages
-    }
-  }
-}
-"""
-
-
-# 查詢分成三階段是為了節省 API 配額：
-# 1. 淺層 reports 查詢只列出時間區間內的公開報告。
-# 2. masterData actors 先確認報告是否含繁中服玩家，避免對無關報告查完整戰鬥。
-# 3. 確認命中後才查 fight list 與 damage/playerDetails，整理可追溯的排行榜資料。
-深層過濾查詢 = """
-query ReportMasterData($code: String!) {
-  reportData {
-    report(code: $code) {
-      code
-      masterData {
-        actors(type: "Player") {
-          gameID
-          icon
-          id
-          name
-          petOwner
-          server
-          subType
-          type
-        }
-      }
-    }
-  }
-}
-"""
-
-
-戰鬥清單查詢 = """
-query ReportFightList($code: String!, $encounterID: Int!, $difficulty: Int!) {
-  reportData {
-    report(code: $code) {
-      code
-      title
-      startTime
-      endTime
-      exportedSegments
-      revision
-      segments
-      visibility
-      archiveStatus {
-        isArchived
-        isAccessible
-        archiveDate
-      }
-      region {
-        id
-        name
-        compactName
-        slug
-      }
-      zone {
-        id
-        name
-        frozen
-      }
-      guild {
-        id
-        name
-        type
-        competitionMode
-        stealthMode
-        server {
-          ...ServerFields
-        }
-      }
-      guildTag {
-        id
-        name
-      }
-      owner {
-        id
-        name
-      }
-      rankedCharacters {
-        id
-        canonicalID
-        lodestoneID
-        name
-        hidden
-        claimed
-        server {
-          ...ServerFields
-        }
-      }
-      phases {
-        encounterID
-        separatesWipes
-        phases {
-          id
-          name
-          isIntermission
-        }
-      }
-      fights(encounterID: $encounterID, difficulty: $difficulty, killType: Kills) {
-        id
-        encounterID
-        name
-        startTime
-        endTime
-        combatTime
-        originalEncounterID
-        fightPercentage
-        difficulty
-        kill
-        completeRaid
-        inProgress
-        hasEcho
-        lastPhase
-        lastPhaseAsAbsoluteIndex
-        lastPhaseIsIntermission
-        size
-        standardComposition
-        wipeCalledTime
-        friendlyPlayers
-        enemyPlayers
-        boundingBox {
-          minX
-          maxX
-          minY
-          maxY
-        }
-        dungeonPulls {
-          id
-          encounterID
-          name
-          startTime
-          endTime
-          kill
-          x
-          y
-          boundingBox {
-            minX
-            maxX
-            minY
-            maxY
-          }
-          maps {
-            id
-          }
-          enemyNPCs {
-            id
-            gameID
-            minimumInstanceID
-            maximumInstanceID
-            minimumInstanceGroupID
-            maximumInstanceGroupID
-          }
-        }
-        enemyNPCs {
-          gameID
-          id
-          instanceCount
-          groupCount
-          petOwner
-        }
-        enemyPets {
-          gameID
-          id
-          instanceCount
-          groupCount
-          petOwner
-        }
-        friendlyNPCs {
-          gameID
-          id
-          instanceCount
-          groupCount
-          petOwner
-        }
-        friendlyPets {
-          gameID
-          id
-          instanceCount
-          groupCount
-          petOwner
-        }
-        gameZone {
-          id
-          name
-        }
-        maps {
-          id
-        }
-        phaseTransitions {
-          id
-          startTime
-        }
-        averageItemLevel
-        bossPercentage
-      }
-    }
-  }
-}
-
-fragment ServerFields on Server {
-  id
-  name
-  normalizedName
-  slug
-  region {
-    id
-    name
-    compactName
-    slug
-  }
-  subregion {
-    id
-    name
-  }
-}
-"""
-
-
-玩家成績查詢 = """
-query FightPlayerStats($code: String!, $fightIDs: [Int], $encounterID: Int!, $difficulty: Int!) {
-  reportData {
-    report(code: $code) {
-      playerDetails(
-        fightIDs: $fightIDs,
-        encounterID: $encounterID,
-        difficulty: $difficulty,
-        killType: Kills,
-        translate: true,
-        includeCombatantInfo: false
-      )
-      damageDone: table(
-        dataType: DamageDone,
-        fightIDs: $fightIDs,
-        encounterID: $encounterID,
-        difficulty: $difficulty,
-        killType: Kills,
-        hostilityType: Friendlies,
-        viewBy: Source,
-        translate: true
-      )
-      rankings(
-        fightIDs: $fightIDs,
-        encounterID: $encounterID,
-        difficulty: $difficulty,
-        playerMetric: dps,
-        timeframe: Historical
-      )
-    }
-  }
-}
-"""
 
 
 def 現在毫秒() -> int:
@@ -837,7 +698,22 @@ def 轉_int_or_none(值: Any) -> int | None:
         return None
 
 
-淺層掃描快取版本 = 1
+def 是否中國區域報告(報告: dict[str, Any]) -> bool:
+    區域 = 報告.get("region") or {}
+    return 轉_int_or_none(區域.get("id")) == 中國區域_ID
+
+
+def 報告符合淺層地區範圍(報告: dict[str, Any]) -> bool:
+    if 掃描全部地區報告:
+        return True
+    return 是否中國區域報告(報告)
+
+
+def 淺層地區範圍說明() -> str:
+    return "全部地區" if 掃描全部地區報告 else "中國區域"
+
+
+淺層掃描快取版本 = 2
 
 
 def 建立淺層掃描快取路徑(副本設定: dict[str, Any], 起始時間戳記: int, 掃描區間小時: int) -> Path:
@@ -847,6 +723,7 @@ def 建立淺層掃描快取路徑(副本設定: dict[str, Any], 起始時間戳
         "zone_id": zone_id,
         "start_at": int(起始時間戳記),
         "scan_window_hours": int(掃描區間小時),
+        "report_region_scope": 報告地區範圍,
     }
     雜湊 = hashlib.sha256(json.dumps(快取識別, sort_keys=True).encode("utf-8")).hexdigest()[:16]
     return 淺層掃描快取目錄 / f"zone_{zone_id}_{起始時間戳記}_{掃描區間小時}_{雜湊}.json"
@@ -880,6 +757,8 @@ def 讀取淺層掃描快取(
         return 快取路徑, None, []
     if 轉_int_or_none(快取內容.get("scan_window_hours")) != int(掃描區間小時):
         return 快取路徑, None, []
+    if str(快取內容.get("report_region_scope") or "all") != 報告地區範圍:
+        return 快取路徑, None, []
 
     完成至 = 轉_int_or_none(快取內容.get("completed_until"))
     報告列表 = [
@@ -912,6 +791,7 @@ def 寫入淺層掃描快取(
         "target_end_at": int(結束時間戳記),
         "target_end_at_iso": 毫秒轉_iso(結束時間戳記),
         "scan_window_hours": int(掃描區間小時),
+        "report_region_scope": 報告地區範圍,
         "completed_until": int(完成至),
         "completed_until_iso": 毫秒轉_iso(完成至),
         "updated_at": 更新時間戳記,
@@ -933,7 +813,14 @@ def 可重用淺層快取完成時間(結束時間戳記: int, 快取完成至: 
     return min(快取完成至, 安全可用至, 結束時間戳記)
 
 
-def 排行榜檔案路徑(副本設定: dict[str, Any], public: bool = False) -> Path:
+def 排行榜檔案路徑(
+    副本設定: dict[str, Any],
+    public: bool = False,
+    *,
+    包含隱藏公開資料: bool = False,
+) -> Path:
+    if public and 包含隱藏公開資料:
+        return 專案根目錄 / "public" / "data" / "all" / "rankings" / f"{副本設定['key']}.json"
     根目錄 = 專案根目錄 / "public" if public else 專案根目錄
     return 根目錄 / "data" / "rankings" / f"{副本設定['key']}.json"
 
@@ -1060,6 +947,8 @@ def 寫入公開副本清單(副本清單: list[dict[str, Any]]) -> None:
         公開清單.append(公開副本)
 
     寫入_json(公開副本清單路徑, 公開清單)
+    # 副本清單本身不分資料視圖；鏡像檔必須存在，才能讓所有靜態 JSON 使用相同路徑結構。
+    寫入_json(含隱藏公開副本清單路徑, 公開清單)
 
 
 def 取得副本掃描起始時間戳記(副本設定: dict[str, Any], *欄位名稱列表: str) -> int | None:
@@ -1126,6 +1015,48 @@ def 讀取副本狀態整數欄位(狀態: dict[str, Any], 副本鍵值: str, �
     if isinstance(值, str) and 值.strip().isdigit():
         return int(值)
     return None
+
+
+def 建立延遲掃描區間(
+    副本設定: dict[str, Any],
+    掃描結束時間戳記: int,
+) -> tuple[dict[str, int] | None, dict[str, Any] | None]:
+    if not 延遲掃描已啟用:
+        return None, None
+
+    避讓毫秒 = 延遲掃描最近避讓小時 * 60 * 60 * 1000
+    回溯毫秒 = 延遲掃描回溯小時 * 60 * 60 * 1000
+    區間起點 = max(0, 掃描結束時間戳記 - 回溯毫秒)
+    區間終點 = max(0, 掃描結束時間戳記 - 避讓毫秒 - 1)
+    初次掃描起始時間戳記 = 取得副本掃描起始時間戳記(副本設定, "scan_start_date", "initial_scan_start_date")
+    if 初次掃描起始時間戳記 is not None:
+        區間起點 = max(區間起點, 初次掃描起始時間戳記)
+
+    狀態 = {
+        "enabled": True,
+        "recent_gap_hours": 延遲掃描最近避讓小時,
+        "lookback_hours": 延遲掃描回溯小時,
+        "range_start_at": 區間起點,
+        "range_start_at_iso": 毫秒轉_iso(區間起點),
+        "range_end_at": 區間終點,
+        "range_end_at_iso": 毫秒轉_iso(區間終點),
+        "reports_found": 0,
+        "reports_selected": 0,
+        "reports_skipped_known": 0,
+        "reports_deferred": 0,
+    }
+    if 區間終點 <= 區間起點:
+        狀態["window"] = None
+        return None, 狀態
+
+    區間 = {"start_at": 區間起點, "end_at": 區間終點}
+    狀態["window"] = {
+        "start_at": 區間起點,
+        "start_at_iso": 毫秒轉_iso(區間起點),
+        "end_at": 區間終點,
+        "end_at_iso": 毫秒轉_iso(區間終點),
+    }
+    return 區間, 狀態
 
 
 def 建立歷史補查區間(
@@ -1197,10 +1128,48 @@ def 建立歷史補查區間(
     return 區間列表, 歷史補查狀態
 
 
+def 套用歷史補查深查上限游標(
+    歷史補查狀態: dict[str, Any] | None,
+    候選列表: list[dict[str, Any]],
+    候選統計: dict[str, int],
+) -> None:
+    if not isinstance(歷史補查狀態, dict) or 候選統計.get("deferred", 0) <= 0:
+        return
+
+    視窗列表 = 歷史補查狀態.get("windows") if isinstance(歷史補查狀態.get("windows"), list) else []
+    第一視窗 = 視窗列表[0] if 視窗列表 and isinstance(視窗列表[0], dict) else {}
+    目前游標 = 轉_int_or_none(歷史補查狀態.get("current_cursor_at"))
+    接續游標 = 轉_int_or_none(第一視窗.get("start_at")) or 目前游標
+    接續來源 = "current_window_start"
+    接續報告代碼: str | None = None
+
+    for 報告 in reversed(候選列表):
+        報告時間戳記 = 轉_int_or_none(報告.get("startTime"))
+        if 報告時間戳記 is None:
+            continue
+        接續游標 = max(報告時間戳記, 目前游標 or 報告時間戳記)
+        接續來源 = "last_selected_report_start_time"
+        接續報告代碼 = str(報告.get("code") or "") or None
+        break
+
+    if 接續游標 is None:
+        return
+
+    # 歷史補查的 deep report 上限打滿時，代表本輪時間窗還有未知 report 沒有深查。
+    # 此時不可把 history_scan_cursor_at 推到下一週，否則 deferred report 要等整個歷史區間繞回才會再被看到。
+    # 游標刻意停在最後一筆 selected report 的 startTime，而不是 +1ms，避免同毫秒的其他 report 被跳過；
+    # 下一輪會先略過已保存/已檢查的同一筆，接著處理同一時間窗後續尚未更新的候選。
+    歷史補查狀態["next_cursor_at"] = 接續游標
+    歷史補查狀態["next_cursor_at_iso"] = 毫秒轉_iso(接續游標)
+    歷史補查狀態["cursor_limited_by_deep_report_limit"] = True
+    歷史補查狀態["cursor_resume_source"] = 接續來源
+    歷史補查狀態["cursor_resume_report_code"] = 接續報告代碼
+
+
 def 分割環境清單(值: str | None) -> list[str]:
     if not 值:
         return []
-    return [項.strip() for 項 in 值.split(",") if 項.strip()]
+    return 分割環境設定清單(值)
 
 
 def 清單設定(名稱: str) -> list[str]:
@@ -1270,6 +1239,119 @@ def 合併淺層報告列表(
         已加入代碼.add(代碼)
         合併後列表.append(報告)
     return 合併後列表
+
+
+def 同區報告已完成檢查(
+    報告代碼: str,
+    同區副本清單: list[dict[str, Any]],
+    已知報告代碼索引: dict[str, set[str]],
+    強制處理報告代碼: set[str],
+) -> bool:
+    if 報告代碼 in 強制處理報告代碼:
+        return False
+
+    for 同區副本 in 同區副本清單:
+        副本鍵值 = str(同區副本.get("key") or "")
+        if 報告代碼 not in 已知報告代碼索引.get(副本鍵值, set()):
+            return False
+    return True
+
+
+def 取得深層掃描恢復起始索引(
+    狀態: dict[str, Any],
+    副本設定: dict[str, Any],
+    報告列表: list[dict[str, Any]],
+    同區副本清單: list[dict[str, Any]],
+    已知報告代碼索引: dict[str, set[str]],
+    起始時間戳記: int,
+    *,
+    強制處理報告代碼: set[str] | None = None,
+    前次即時進度: dict[str, Any] | None = None,
+) -> tuple[int, str | None]:
+    if 前次即時進度 is None:
+        副本狀態 = (狀態.get("encounters") or {}).get(副本設定["key"]) or {}
+        即時進度 = 副本狀態.get("active_scan") if isinstance(副本狀態, dict) else None
+    else:
+        即時進度 = 前次即時進度
+    if not isinstance(即時進度, dict) or not 報告列表:
+        return 0, None
+    if 即時進度.get("stage") != 深層掃描階段名稱:
+        return 0, None
+
+    # active_scan 是可覆寫的即時進度，不是 append-only 權威資料；恢復前必須確認
+    # 本輪掃描起點相同，且每一筆被快轉的 report 都已由 checked_reports/rankings 記錄。
+    進度起點 = 轉_int_or_none(即時進度.get("scan_start_at"))
+    if 進度起點 != int(起始時間戳記):
+        return 0, None
+
+    報告代碼索引 = {
+        str(報告.get("code")): 索引
+        for 索引, 報告 in enumerate(報告列表)
+        if 報告.get("code")
+    }
+    目前報告代碼 = str(即時進度.get("current_report_code") or "")
+    目標索引 = 報告代碼索引.get(目前報告代碼)
+    定位說明 = f"報告 {目前報告代碼}" if 目標索引 is not None else None
+
+    if 目標索引 is None:
+        目前序號 = 轉_int_or_none(即時進度.get("current_report_index"))
+        前次總數 = 轉_int_or_none(即時進度.get("total_reports"))
+        if (
+            目前序號 is None
+            or 前次總數 != len(報告列表)
+            or 目前序號 < 1
+            or 目前序號 > len(報告列表)
+        ):
+            return 0, None
+        目標索引 = 目前序號 - 1
+        定位說明 = f"第 {目前序號} 筆"
+
+    強制處理 = 強制處理報告代碼 or set()
+    for 索引 in range(0, 目標索引 + 1):
+        報告代碼 = str(報告列表[索引].get("code") or "")
+        if not 報告代碼:
+            return 0, None
+        if not 同區報告已完成檢查(報告代碼, 同區副本清單, 已知報告代碼索引, 強制處理):
+            if 索引 == 0:
+                return 0, None
+            return (
+                索引,
+                f"偵測到前次深層掃描中斷於{定位說明}；"
+                f"第 {索引 + 1}/{len(報告列表)} 筆 {報告代碼} 尚未完成 checkpoint，將從該筆接續。",
+            )
+
+    恢復起始索引 = 目標索引 + 1
+    if 恢復起始索引 <= 0:
+        return 0, None
+
+    if 恢復起始索引 >= len(報告列表):
+        接續說明 = "候選清單結尾"
+    else:
+        接續報告代碼 = str(報告列表[恢復起始索引].get("code") or "")
+        接續說明 = f"第 {恢復起始索引 + 1}/{len(報告列表)} 筆 {接續報告代碼}"
+
+    return (
+        恢復起始索引,
+        f"偵測到前次深層掃描中斷於{定位說明}；"
+        f"已確認前 {恢復起始索引} 筆都有 state/ranking 紀錄，將從{接續說明}繼續。",
+    )
+
+
+def 取得已處理報告前綴快轉索引(
+    報告列表: list[dict[str, Any]],
+    同區副本清單: list[dict[str, Any]],
+    已處理報告代碼索引: dict[str, set[str]],
+    *,
+    強制處理報告代碼: set[str] | None = None,
+) -> int:
+    強制處理 = 強制處理報告代碼 or set()
+    for 索引, 報告 in enumerate(報告列表):
+        報告代碼 = str(報告.get("code") or "")
+        if not 報告代碼:
+            return 索引
+        if not 同區報告已完成檢查(報告代碼, 同區副本清單, 已處理報告代碼索引, 強制處理):
+            return 索引
+    return len(報告列表)
 
 
 def 讀取認證設定() -> list[dict[str, Any]]:
@@ -1585,12 +1667,11 @@ def 擷取時間區間報告(
 
         for 報告 in 分頁.get("data") or []:
             代碼 = 報告.get("code")
-            區域 = 報告.get("region") or {}
             if not 代碼 or 代碼 in 已看過代碼:
                 continue
 
-            # FFLogs 目前 reports 查詢沒有 regionID 參數，因此先抓指定時間與 zone，再以 report.region.id 過濾。
-            if int(區域.get("id") or -1) != 中國區域_ID:
+            # reports 查詢無法用繁中服伺服器過濾；地區只決定候選池大小，真正身分仍看 masterData server。
+            if not 報告符合淺層地區範圍(報告):
                 continue
 
             已看過代碼.add(代碼)
@@ -1727,19 +1808,139 @@ def 報告是否包含繁中服玩家(
     return bool(有效玩家), 有效玩家
 
 
+def 取得本輪報告繁中服檢查結果(
+    本輪快取: dict[str, dict[str, Any]],
+    session: requests.Session,
+    認證池: FFLogs認證池,
+    報告代碼: str,
+) -> tuple[bool, list[dict[str, Any]]]:
+    if 報告代碼 not in 本輪快取:
+        try:
+            # masterData.actors 是 report 層級資料，與 M1S/M2S 這類 encounter 無關；
+            # 同一輪 workflow 只需要查一次，後續同 code 來自其他副本或歷史補查來源時重用結果。
+            有繁中服玩家, 繁中服玩家 = 報告是否包含繁中服玩家(session, 認證池, 報告代碼)
+            本輪快取[報告代碼] = {
+                "ok": True,
+                "has_traditional_chinese_players": 有繁中服玩家,
+                "traditional_chinese_players": 繁中服玩家,
+            }
+        except Exception as 錯誤:
+            本輪快取[報告代碼] = {"ok": False, "error": 錯誤}
+
+    記錄 = 本輪快取[報告代碼]
+    if 記錄.get("ok"):
+        return bool(記錄.get("has_traditional_chinese_players")), list(記錄.get("traditional_chinese_players") or [])
+
+    錯誤 = 記錄.get("error")
+    if isinstance(錯誤, Exception):
+        raise 錯誤
+    raise RuntimeError(f"本輪 report 檢查快取缺少錯誤內容：{報告代碼}")
+
+
+def 查詢報告目前狀態(
+    session: requests.Session,
+    認證池: FFLogs認證池,
+    報告代碼: str,
+) -> dict[str, Any]:
+    # 既有 report 狀態巡檢只需要確認 report 是否還可讀，不重查戰鬥與玩家表格。
+    # 這讓 workflow 能用固定 request 預算輪巡舊紀錄，並在 report 轉為不可存取時套用同一套 hidden 標記。
+    資料 = 執行_graphql(session, 認證池, 報告狀態查詢, {"code": 報告代碼})
+    報告 = ((資料.get("reportData") or {}).get("report")) or None
+    if not isinstance(報告, dict):
+        raise FFLogs報告狀態不可存取錯誤(f"FFLogs report 無法讀取或不存在：{報告代碼}")
+
+    封存狀態 = 報告.get("archiveStatus")
+    if isinstance(封存狀態, dict) and 封存狀態.get("isAccessible") is False:
+        raise FFLogs報告狀態不可存取錯誤(
+            f"FFLogs report archiveStatus.isAccessible=false：{報告代碼}"
+        )
+
+    return 報告
+
+
+def 是絕巴哈副本(副本設定: dict[str, Any]) -> bool:
+    return 副本設定.get("encounter_id") == 絕巴哈副本ID
+
+
+def 是絕本副本(副本設定: dict[str, Any]) -> bool:
+    key = str(副本設定.get("key") or "")
+    return 副本設定.get("category") == "絕" or key.startswith("ultimate_")
+
+
+def 計算FFLogs戰鬥持續毫秒(戰鬥: dict[str, Any]) -> float | None:
+    戰鬥開始 = 轉_float(戰鬥.get("startTime"))
+    戰鬥結束 = 轉_float(戰鬥.get("endTime"))
+    if 戰鬥開始 is not None and 戰鬥結束 is not None and 戰鬥結束 >= 戰鬥開始:
+        return 戰鬥結束 - 戰鬥開始
+
+    return 轉_float(戰鬥.get("combatTime"))
+
+
+def 絕巴哈戰鬥名稱已進入巴哈本體(戰鬥: dict[str, Any]) -> bool:
+    名稱 = str(戰鬥.get("name") or "").strip().lower()
+    if "bahamut prime" in 名稱:
+        return True
+
+    # FFLogs 新格式可能以 P3/P4/P5 作為 fight.name 前綴；這些都已越過前段，
+    # 仍需再搭配 fightPercentage 與時長門檻，避免把 P4→P5 轉換點全滅誤認為通關。
+    return any(名稱.startswith(f"p{相位} ") or 名稱.startswith(f"p{相位}:") for 相位 in (3, 4, 5))
+
+
+def 是絕巴哈補判通關戰鬥(戰鬥: dict[str, Any]) -> bool:
+    fight_percentage = 轉_float(戰鬥.get("fightPercentage"))
+    戰鬥持續毫秒 = 計算FFLogs戰鬥持續毫秒(戰鬥)
+    return (
+        fight_percentage == 絕巴哈通關FightPercentage
+        and 絕巴哈戰鬥名稱已進入巴哈本體(戰鬥)
+        and 戰鬥持續毫秒 is not None
+        and 戰鬥持續毫秒 >= 絕巴哈最低通關毫秒
+    )
+
+
+def 是絕巴哈通關戰鬥(戰鬥: dict[str, Any]) -> bool:
+    return 戰鬥.get("kill") is True or 是絕巴哈補判通關戰鬥(戰鬥)
+
+
+def 套用絕巴哈通關戰鬥篩選(副本設定: dict[str, Any], 報告: dict[str, Any]) -> dict[str, Any]:
+    if not 是絕巴哈副本(副本設定):
+        return 報告
+
+    # UCoB（encounterID 1073）在不同年代的 FFLogs 回傳並不一致：部分通關會有 kill=true，
+    # 部分則只留下 fightPercentage=80。這裡保留 FFLogs 原生 kill=true 的紀錄，同時補上
+    # 「80%、已進 Bahamut Prime 後段、戰鬥至少 13 分鐘」三條件，排除 P4→P5 轉換點全滅。
+    戰鬥列表 = 報告.get("fights") or []
+    if not isinstance(戰鬥列表, list):
+        return {**報告, "fights": []}
+
+    通關戰鬥列表 = [
+        戰鬥
+        for 戰鬥 in 戰鬥列表
+        if isinstance(戰鬥, dict) and 是絕巴哈通關戰鬥(戰鬥)
+    ]
+    return {**報告, "fights": 通關戰鬥列表}
+
+
 def 查詢通關戰鬥(
     session: requests.Session,
     認證池: FFLogs認證池,
     副本設定: dict[str, Any],
     報告代碼: str,
 ) -> dict[str, Any] | None:
+    查詢字串 = 戰鬥清單全部查詢 if 是絕巴哈副本(副本設定) else 戰鬥清單查詢
     資料 = 執行_graphql(
         session,
         認證池,
-        戰鬥清單查詢,
+        查詢字串,
         {"code": 報告代碼, "encounterID": 副本設定["encounter_id"], "difficulty": 副本設定["difficulty"]},
     )
-    return ((資料.get("reportData") or {}).get("report")) or None
+    報告 = ((資料.get("reportData") or {}).get("report")) or None
+    if not isinstance(報告, dict):
+        return None
+    return 套用絕巴哈通關戰鬥篩選(副本設定, 報告)
+
+
+def 需要FFLogs原生通關篩選(副本設定: dict[str, Any]) -> bool:
+    return not 是絕巴哈副本(副本設定)
 
 
 def 查詢玩家成績(
@@ -1749,10 +1950,11 @@ def 查詢玩家成績(
     報告代碼: str,
     戰鬥_id: int,
 ) -> dict[str, Any]:
+    查詢字串 = 玩家成績查詢 if 需要FFLogs原生通關篩選(副本設定) else 玩家成績全部查詢
     資料 = 執行_graphql(
         session,
         認證池,
-        玩家成績查詢,
+        查詢字串,
         {
             "code": 報告代碼,
             "fightIDs": [戰鬥_id],
@@ -1771,11 +1973,13 @@ def 查詢玩家成績(
 def 建立玩家成績批次查詢(
     戰鬥_id清單: list[int],
     戰鬥時間範圍索引: dict[int, dict[str, int | float]] | None = None,
+    套用通關篩選: bool = True,
 ) -> str:
     # playerDetails 與 damageDone 必須維持「單一 fight」語意，否則多場通關會被 FFLogs 聚合成同一張表，
     # rDPS/aDPS 分母、停手時間與玩家列表都會失去逐場可追溯性。這裡用 GraphQL alias 把多個單 fight
     # 查詢包進同一個 HTTP request，降低 workflow 遇到多場戰鬥 report 時的 API request 數量。
     欄位片段: list[str] = []
+    通關篩選列 = "        killType: Kills,\n" if 套用通關篩選 else ""
     for 索引, 戰鬥_id in enumerate(戰鬥_id清單):
         時間範圍 = (戰鬥時間範圍索引 or {}).get(戰鬥_id) or {}
         起始時間 = 轉_float(時間範圍.get("start_time"))
@@ -1794,7 +1998,7 @@ def 建立玩家成績批次查詢(
 {時間範圍參數}
         encounterID: $encounterID,
         difficulty: $difficulty,
-        killType: Kills,
+{通關篩選列.rstrip()}
         translate: true,
         includeCombatantInfo: false
       )
@@ -1804,7 +2008,7 @@ def 建立玩家成績批次查詢(
 {時間範圍參數}
         encounterID: $encounterID,
         difficulty: $difficulty,
-        killType: Kills,
+{通關篩選列.rstrip()}
         hostilityType: Friendlies,
         viewBy: Source,
         translate: true
@@ -1838,11 +2042,13 @@ def 查詢多場玩家成績(
     戰鬥_id清單: list[int],
     戰鬥時間範圍索引: dict[int, dict[str, int | float]] | None = None,
 ) -> dict[int, dict[str, Any]]:
+    套用通關篩選 = 需要FFLogs原生通關篩選(副本設定)
+
     def 查詢批次(批次戰鬥_id清單: list[int]) -> dict[int, dict[str, Any]]:
         資料 = 執行_graphql(
             session,
             認證池,
-            建立玩家成績批次查詢(批次戰鬥_id清單, 戰鬥時間範圍索引),
+            建立玩家成績批次查詢(批次戰鬥_id清單, 戰鬥時間範圍索引, 套用通關篩選),
             {
                 "code": 報告代碼,
                 "encounterID": 副本設定["encounter_id"],
@@ -2105,6 +2311,354 @@ def 計算_active_percent(active_time_ms: Any, clear_time_ms: Any) -> float | No
     return round(active_time / clear_time * 100, 2)
 
 
+class 即時GCD覆蓋率計算器:
+    def __init__(self) -> None:
+        self.啟用 = 即時GCD覆蓋率已啟用
+        self.戰鬥上限 = 即時GCD覆蓋率戰鬥上限
+        self.已查詢戰鬥數 = 0
+        self.已更新玩家數 = 0
+        self.失敗戰鬥數 = 0
+        self._已提示達到上限 = False
+        self._已提示停用原因: str | None = None
+        self._metadata_store = gcd_core.ActionMetadataStore()
+        self._metadata_已載入 = False
+        self._status_store = gcd_core.StatusMetadataStore()
+        self._status_metadata_已載入 = False
+        self._graph_cache: dict[tuple[str, int, float, float], dict[str, Any]] = {}
+        self._damage_event_cache: dict[tuple[str, int, float, float], list[dict[str, Any]]] = {}
+        self._raw_event_cache: dict[tuple[str, int, float, float], list[dict[str, Any]]] = {}
+        self.checked_at_iso = 毫秒轉_iso(現在毫秒()) or ""
+
+    def 可查詢下一場(self) -> bool:
+        if not self.啟用 or self._已提示停用原因:
+            return False
+        if self.戰鬥上限 > 0 and self.已查詢戰鬥數 >= self.戰鬥上限:
+            if not self._已提示達到上限:
+                print(f"即時 GCD 覆蓋率已達本輪上限：{self.戰鬥上限} 場戰鬥。")
+                self._已提示達到上限 = True
+            return False
+        return True
+
+    def 載入技能資料(self) -> bool:
+        if self._metadata_已載入:
+            return True
+        try:
+            self._metadata_store.preload()
+        except RuntimeError as 錯誤:
+            self._已提示停用原因 = str(錯誤)
+            print(
+                f"無法載入 GCD 技能資料，本輪即時 GCD 覆蓋率暫停，資料仍可由手動 backfill 補齊：{錯誤}",
+                file=sys.stderr,
+            )
+            return False
+        self._metadata_已載入 = True
+        return True
+
+    def 載入狀態資料(self) -> bool:
+        if self._status_metadata_已載入:
+            return True
+        self._status_store.preload()
+        self._status_metadata_已載入 = True
+        return True
+
+    def 補齊戰鬥玩家GCD覆蓋率(
+        self,
+        session: requests.Session,
+        認證池: FFLogs認證池,
+        報告代碼: str,
+        副本設定: dict[str, Any],
+        戰鬥: dict[str, Any],
+        玩家列表: list[dict[str, Any]],
+    ) -> None:
+        if not 玩家列表 or not self.可查詢下一場():
+            return
+
+        fight_id = gcd_core.to_int(戰鬥.get("fight_id"))
+        start_time = gcd_core.first_number(戰鬥.get("start_time"), 戰鬥.get("startTime"))
+        end_time = gcd_core.first_number(戰鬥.get("end_time"), 戰鬥.get("endTime"))
+        if fight_id is None or start_time is None or end_time is None:
+            return
+        if not any(gcd_core.to_int(玩家.get("fflogs_id")) is not None for 玩家 in 玩家列表):
+            return
+        if not self.載入技能資料():
+            return
+
+        self.已查詢戰鬥數 += 1
+        graph_cache_key = (報告代碼, fight_id, start_time, end_time)
+        try:
+            base_graph = self._graph_cache.get(graph_cache_key)
+            if base_graph is None:
+                base_graph = gcd_core.query_fight_casts_graph(執行_graphql, session, 認證池, 報告代碼, 戰鬥)
+                self._graph_cache[graph_cache_key] = base_graph
+            graph = base_graph
+            if 副本設定.get("key") == "unreal_byakko":
+                events = self._damage_event_cache.get(graph_cache_key)
+                if events is None:
+                    events = gcd_core.query_fight_damage_done_events(執行_graphql, session, 認證池, 報告代碼, 戰鬥)
+                    self._damage_event_cache[graph_cache_key] = events
+                windows = gcd_core.infer_main_target_damage_downtime_windows(events)
+                if windows:
+                    graph = dict(graph)
+                    graph["encounter_downtime"] = windows
+        except Exception as 錯誤:  # noqa: BLE001
+            # GCD 是衍生欄位；Casts graph 暫時失敗不能阻擋排行榜主資料落地。
+            self.失敗戰鬥數 += 1
+            print(f"{報告代碼} fight={fight_id} 即時 GCD 覆蓋率計算失敗，保留缺 key 狀態：{錯誤}", file=sys.stderr)
+            return
+
+        本場更新數 = 0
+        for 玩家 in 玩家列表:
+            source_id = gcd_core.to_int(玩家.get("fflogs_id"))
+            if source_id is None:
+                continue
+
+            coverage = None
+            job = str(玩家.get("job") or "")
+            if (
+                gcd_core.should_use_raw_events_for_gcd(str(副本設定.get("key") or ""), job)
+                and self.載入狀態資料()
+            ):
+                raw_events = self._raw_event_cache.get(graph_cache_key)
+                if raw_events is None:
+                    raw_events = gcd_core.query_fight_raw_events(執行_graphql, session, 認證池, 報告代碼, 戰鬥)
+                    self._raw_event_cache[graph_cache_key] = raw_events
+                friendly_ids = {
+                    friendly_id
+                    for friendly_id in (gcd_core.to_int(隊友.get("fflogs_id")) for 隊友 in 玩家列表)
+                    if friendly_id is not None
+                }
+                if 副本設定.get("key") in gcd_core.RAW_EVENT_GCD_ENCOUNTERS:
+                    downtime_source = gcd_core.raw_event_downtime_source(
+                        base_graph,
+                        raw_events,
+                        source_id=source_id,
+                        friendly_ids=friendly_ids,
+                        fight_start_time=start_time,
+                        fight_end_time=end_time,
+                        unable_to_act_status_ids=self._status_store.unable_to_act_status_ids(),
+                        metadata_store=self._metadata_store,
+                        job=玩家.get("job"),
+                        include_graph_downtime=not gcd_core.raw_event_uses_targetability_only_downtime(
+                            str(副本設定.get("key") or ""),
+                            job,
+                        ),
+                    )
+                else:
+                    downtime_source = graph
+                coverage = gcd_core.calculate_gcd_coverage_from_raw_events(
+                    raw_events,
+                    self._metadata_store,
+                    encounter_key=str(副本設定.get("key") or ""),
+                    source_id=source_id,
+                    job=玩家.get("job"),
+                    fight_end_time=end_time,
+                    fallback_denominator_ms=gcd_core.first_number(
+                        戰鬥.get("clear_time_ms"),
+                        end_time - start_time,
+                        戰鬥.get("damage_time_ms"),
+                    ),
+                    downtime_source=downtime_source,
+                    cap_next_gcd_jobs=gcd_core.raw_next_gcd_capped_jobs_for_encounter(str(副本設定.get("key") or "")),
+                )
+                if coverage and 副本設定.get("key") == "unreal_byakko" and job in gcd_core.TANK_JOBS:
+                    main_gap_coverage = gcd_core.calculate_gcd_coverage_from_raw_events(
+                        raw_events,
+                        self._metadata_store,
+                        encounter_key=str(副本設定.get("key") or ""),
+                        source_id=source_id,
+                        job=玩家.get("job"),
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_core.first_number(
+                            戰鬥.get("clear_time_ms"),
+                            end_time - start_time,
+                            戰鬥.get("damage_time_ms"),
+                        ),
+                        downtime_source=gcd_core.raw_event_downtime_source(
+                            graph,
+                            raw_events,
+                            source_id=source_id,
+                            friendly_ids=friendly_ids,
+                            fight_start_time=start_time,
+                            fight_end_time=end_time,
+                            unable_to_act_status_ids=set(),
+                            metadata_store=self._metadata_store,
+                            job=玩家.get("job"),
+                        ),
+                        cap_next_gcd_jobs=gcd_core.raw_next_gcd_capped_jobs_for_encounter(str(副本設定.get("key") or "")),
+                    )
+                    coverage = gcd_core.select_tank_byakko_coverage(coverage, main_gap_coverage)
+                if coverage and 副本設定.get("key") == "unreal_byakko" and job == "Pictomancer":
+                    graph_downtime_coverage = gcd_core.calculate_gcd_coverage_from_raw_events(
+                        raw_events,
+                        self._metadata_store,
+                        encounter_key=str(副本設定.get("key") or ""),
+                        source_id=source_id,
+                        job=玩家.get("job"),
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_core.first_number(
+                            戰鬥.get("clear_time_ms"),
+                            end_time - start_time,
+                            戰鬥.get("damage_time_ms"),
+                        ),
+                        downtime_source=graph,
+                        cap_next_gcd_jobs=gcd_core.raw_next_gcd_capped_jobs_for_encounter(str(副本設定.get("key") or "")),
+                    )
+                    coverage = gcd_core.select_pct_byakko_downtime_coverage(coverage, graph_downtime_coverage)
+                if coverage and 副本設定.get("key") == "unreal_byakko" and job == "BlackMage":
+                    graph_coverage = gcd_core.calculate_gcd_coverage_from_graph(
+                        graph,
+                        self._metadata_store,
+                        source_id=source_id,
+                        job=玩家.get("job"),
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_core.first_number(
+                            戰鬥.get("clear_time_ms"),
+                            end_time - start_time,
+                            戰鬥.get("damage_time_ms"),
+                        ),
+                    )
+                    raw_downtime_graph_coverage = gcd_core.calculate_gcd_coverage_from_graph(
+                        downtime_source,
+                        self._metadata_store,
+                        source_id=source_id,
+                        job=玩家.get("job"),
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_core.first_number(
+                            戰鬥.get("clear_time_ms"),
+                            end_time - start_time,
+                            戰鬥.get("damage_time_ms"),
+                        ),
+                    )
+                    coverage = gcd_core.select_blm_byakko_coverage(
+                        coverage,
+                        graph_coverage,
+                        raw_downtime_graph_coverage,
+                    )
+                if coverage and str(副本設定.get("key") or "") == "extreme_queen_eternal" and job == "RedMage":
+                    graph_coverage = gcd_core.calculate_gcd_coverage_from_graph(
+                        graph,
+                        self._metadata_store,
+                        source_id=source_id,
+                        job=玩家.get("job"),
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_core.first_number(
+                            戰鬥.get("clear_time_ms"),
+                            end_time - start_time,
+                            戰鬥.get("damage_time_ms"),
+                        ),
+                    )
+                    coverage = gcd_core.select_queen_red_mage_coverage(
+                        coverage,
+                        graph_coverage,
+                        encounter_key=str(副本設定.get("key") or ""),
+                    )
+                if coverage and str(副本設定.get("key") or "") == "extreme_queen_eternal" and job == "Scholar":
+                    graph_coverage = gcd_core.calculate_gcd_coverage_from_graph(
+                        graph,
+                        self._metadata_store,
+                        source_id=source_id,
+                        job=玩家.get("job"),
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_core.first_number(
+                            戰鬥.get("clear_time_ms"),
+                            end_time - start_time,
+                            戰鬥.get("damage_time_ms"),
+                        ),
+                    )
+                    coverage = gcd_core.select_queen_scholar_coverage(
+                        coverage,
+                        graph_coverage,
+                        encounter_key=str(副本設定.get("key") or ""),
+                    )
+                if coverage and str(副本設定.get("key") or "") == "extreme_valigarmanda" and job == "RedMage":
+                    graph_coverage = gcd_core.calculate_gcd_coverage_from_graph(
+                        graph,
+                        self._metadata_store,
+                        source_id=source_id,
+                        job=玩家.get("job"),
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_core.first_number(
+                            戰鬥.get("clear_time_ms"),
+                            end_time - start_time,
+                            戰鬥.get("damage_time_ms"),
+                        ),
+                    )
+                    coverage = gcd_core.select_valigarmanda_red_mage_coverage(
+                        coverage,
+                        graph_coverage,
+                        encounter_key=str(副本設定.get("key") or ""),
+                    )
+                if coverage and str(副本設定.get("key") or "") == "extreme_valigarmanda" and job == "WhiteMage":
+                    graph_coverage = gcd_core.calculate_gcd_coverage_from_graph(
+                        graph,
+                        self._metadata_store,
+                        source_id=source_id,
+                        job=玩家.get("job"),
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_core.first_number(
+                            戰鬥.get("clear_time_ms"),
+                            end_time - start_time,
+                            戰鬥.get("damage_time_ms"),
+                        ),
+                    )
+                    coverage = gcd_core.select_valigarmanda_white_mage_coverage(
+                        coverage,
+                        graph_coverage,
+                        encounter_key=str(副本設定.get("key") or ""),
+                    )
+                if coverage and job == "Bard" and str(副本設定.get("key") or "") in gcd_core.BARD_GRAPH_FALLBACK_ENCOUNTERS:
+                    graph_coverage = gcd_core.calculate_gcd_coverage_from_graph(
+                        graph,
+                        self._metadata_store,
+                        source_id=source_id,
+                        job=玩家.get("job"),
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_core.first_number(
+                            戰鬥.get("clear_time_ms"),
+                            end_time - start_time,
+                            戰鬥.get("damage_time_ms"),
+                        ),
+                    )
+                    coverage = gcd_core.select_bard_raw_event_coverage(
+                        coverage,
+                        graph_coverage,
+                        encounter_key=str(副本設定.get("key") or ""),
+                    )
+            if not coverage:
+                coverage = gcd_core.calculate_gcd_coverage_from_graph(
+                    graph,
+                    self._metadata_store,
+                    source_id=source_id,
+                    job=玩家.get("job"),
+                    fight_end_time=end_time,
+                    fallback_denominator_ms=gcd_core.first_number(
+                        戰鬥.get("clear_time_ms"),
+                        end_time - start_time,
+                        戰鬥.get("damage_time_ms"),
+                    ),
+                )
+            if not coverage:
+                continue
+
+            玩家["gcd_coverage"] = coverage
+            玩家["gcd_coverage_status"] = gcd_core.build_gcd_coverage_status(checked_at_iso=self.checked_at_iso)
+            本場更新數 += 1
+
+        self.已更新玩家數 += 本場更新數
+        if 本場更新數:
+            print(f"{報告代碼} fight={fight_id} 已即時計算 GCD 覆蓋率：{本場更新數} 位玩家。")
+
+    def 建立統計(self) -> dict[str, Any]:
+        return {
+            "enabled": self.啟用,
+            "max_fights_per_run": self.戰鬥上限,
+            "fights_queried": self.已查詢戰鬥數,
+            "players_updated": self.已更新玩家數,
+            "fights_failed": self.失敗戰鬥數,
+            "disabled_reason": self._已提示停用原因,
+        }
+
+
 def 從原始成績整理玩家_dps(原始成績: dict[str, Any], 戰鬥時間毫秒: float | None) -> list[dict[str, Any]]:
     # playerDetails 提供身分，damageDone 提供輸出數值；兩者必須合併才有可信的「繁中服角色 + 職業 + DPS」。
     # 這裡不做全服統計或 UI 排序，只產出每場戰鬥可回溯的玩家列。
@@ -2267,6 +2821,7 @@ def 標準化排行榜條目(條目: dict[str, Any]) -> dict[str, Any] | None:
         return None
 
     成績 = dict(條目)
+    成績.pop("original_server", None)
     名稱 = 成績.get("character_name")
     伺服器 = 成績.get("server")
     職業 = 成績.get("job")
@@ -2274,7 +2829,9 @@ def 標準化排行榜條目(條目: dict[str, Any]) -> dict[str, Any] | None:
     if not 名稱 or 伺服器 not in 繁中服伺服器名稱 or 職業 not in 有效職業名稱 or dps is None:
         return None
 
-    角色鍵值 = 成績.get("character_key") or f"{名稱}@{伺服器}:{職業}"
+    # 遊戲允許不同伺服器使用相同角色名稱；fallback 讀舊扁平索引時也要依目前
+    # 條目的伺服器重算身分鍵，避免早期轉服合併留下的 character_key 再次把同名玩家合併。
+    角色鍵值 = f"{名稱}@{伺服器}:{職業}"
     成績["character_key"] = 角色鍵值
 
     if not 成績.get("id"):
@@ -2329,7 +2886,197 @@ def 登記排行榜條目(
         精確成績索引[精確成績鍵值] = 標準成績
 
 
-def 建立排行榜條目(排行榜: dict[str, Any], 版本範圍: str = "all") -> list[dict[str, Any]]:
+def 報告已標記隱藏(報告: Any) -> bool:
+    return isinstance(報告, dict) and bool(報告.get("report_hidden") or 報告.get("hidden_report"))
+
+
+def 標記排行榜報告隱藏(
+    排行榜: dict[str, Any],
+    報告代碼: str,
+    *,
+    原因: str = 報告無法存取隱藏原因,
+    來源: str = "fetch_fflogs",
+    詳細原因: str | None = None,
+) -> bool:
+    # 將 report 狀態集中標在來源節點，公開建置層即可用同一套規則排除一般公開資料。
+    報告索引 = 排行榜.get("reports") if isinstance(排行榜.get("reports"), dict) else {}
+    報告 = 報告索引.get(str(報告代碼))
+    if not isinstance(報告, dict):
+        return False
+
+    現在時間戳記 = 現在毫秒()
+    欄位更新 = {
+        "report_hidden": True,
+        "hidden_reason": 原因,
+        "hidden_source": 來源,
+        "hidden_detected_at": 現在時間戳記,
+        "hidden_detected_at_iso": 毫秒轉_iso(現在時間戳記),
+    }
+    if 詳細原因:
+        欄位更新["hidden_detail"] = 詳細原因
+
+    已變更 = any(報告.get(欄位) != 值 for 欄位, 值 in 欄位更新.items())
+    if 已變更:
+        報告.update(欄位更新)
+    return 已變更
+
+
+既有報告狀態巡檢狀態鍵 = "existing_report_status_check"
+
+
+def 取得既有報告排序時間(報告: dict[str, Any]) -> int:
+    # 巡檢順序以 report 本身的時間為主；舊資料若缺 report_start_time，才退回 fight 的實際紀錄時間。
+    # fight.start_time 是 report 內相對時間，不能直接拿來跨 report 排序。
+    候選時間: list[int] = []
+    for 欄位 in ("report_start_time", "startTime", "fetched_at"):
+        時間 = 轉_float(報告.get(欄位))
+        if 時間 is not None and 時間 >= 0:
+            候選時間.append(int(時間))
+
+    for 欄位 in ("report_start_time_iso", "startTimeISO", "fetched_at_iso"):
+        時間 = 解析_iso_時間毫秒(報告.get(欄位))
+        if 時間 is not None and 時間 >= 0:
+            候選時間.append(時間)
+
+    for 戰鬥 in 報告.get("fights") or []:
+        if not isinstance(戰鬥, dict):
+            continue
+        for 欄位 in ("recorded_at", "recordedAt"):
+            時間 = 轉_float(戰鬥.get(欄位))
+            if 時間 is not None and 時間 >= 0:
+                候選時間.append(int(時間))
+        for 欄位 in ("recorded_at_iso", "recordedAtISO"):
+            時間 = 解析_iso_時間毫秒(戰鬥.get(欄位))
+            if 時間 is not None and 時間 >= 0:
+                候選時間.append(時間)
+
+    return min(候選時間, default=0)
+
+
+def 建立既有報告狀態巡檢候選(
+    副本清單: list[dict[str, Any]],
+    排行榜索引: dict[str, dict[str, Any]],
+) -> list[dict[str, Any]]:
+    候選列表: list[dict[str, Any]] = []
+    for 副本設定 in 副本清單:
+        副本鍵值 = 副本設定["key"]
+        排行榜 = 排行榜索引.get(副本鍵值) or {}
+        報告索引 = 排行榜.get("reports") if isinstance(排行榜.get("reports"), dict) else {}
+        for 原始報告代碼, 報告 in 報告索引.items():
+            if not isinstance(報告, dict) or 報告已標記隱藏(報告):
+                continue
+
+            報告代碼 = str(原始報告代碼)
+            排序時間 = 取得既有報告排序時間(報告)
+            候選列表.append(
+                {
+                    "encounter_key": 副本鍵值,
+                    "encounter_name": 副本設定.get("name") or 副本鍵值,
+                    "report_code": 報告代碼,
+                    "report_start_at": 排序時間,
+                    "report_start_at_iso": 毫秒轉_iso(排序時間),
+                    "sort_key": [排序時間, 副本鍵值, 報告代碼],
+                }
+            )
+
+    return sorted(候選列表, key=lambda 候選: tuple(候選["sort_key"]))
+
+
+def 讀取既有報告狀態巡檢游標(狀態: dict[str, Any]) -> tuple[int, str, str] | None:
+    巡檢狀態 = 狀態.get(既有報告狀態巡檢狀態鍵)
+    if not isinstance(巡檢狀態, dict):
+        return None
+
+    原始游標 = 巡檢狀態.get("last_sort_key")
+    if not isinstance(原始游標, list) or len(原始游標) != 3:
+        return None
+
+    時間 = 轉_float(原始游標[0])
+    副本鍵值 = 原始游標[1]
+    報告代碼 = 原始游標[2]
+    if 時間 is None or not isinstance(副本鍵值, str) or not isinstance(報告代碼, str):
+        return None
+    return (int(時間), 副本鍵值, 報告代碼)
+
+
+def 選取既有報告狀態巡檢批次(
+    候選列表: list[dict[str, Any]],
+    狀態: dict[str, Any],
+    上限: int,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    if 上限 <= 0 or not 候選列表:
+        return [], {"candidate_reports": len(候選列表), "wrapped": False}
+
+    游標 = 讀取既有報告狀態巡檢游標(狀態)
+    起始索引 = 0
+    if 游標 is not None:
+        for 索引, 候選 in enumerate(候選列表):
+            if tuple(候選["sort_key"]) > 游標:
+                起始索引 = 索引
+                break
+        else:
+            起始索引 = 0
+
+    最大選取數 = min(上限, len(候選列表))
+    選取列表: list[dict[str, Any]] = []
+    for 偏移 in range(最大選取數):
+        選取列表.append(候選列表[(起始索引 + 偏移) % len(候選列表)])
+
+    最後索引 = (起始索引 + len(選取列表) - 1) % len(候選列表) if 選取列表 else None
+    已繞回 = bool(選取列表) and 起始索引 + len(選取列表) > len(候選列表)
+    return 選取列表, {
+        "candidate_reports": len(候選列表),
+        "start_index": 起始索引,
+        "last_index": 最後索引,
+        "wrapped": 已繞回,
+        "previous_cursor": list(游標) if 游標 is not None else None,
+    }
+
+
+def 更新既有報告狀態巡檢狀態(
+    狀態: dict[str, Any],
+    統計: dict[str, Any],
+    最後排序鍵: list[Any] | None,
+) -> None:
+    巡檢狀態 = 狀態.setdefault(既有報告狀態巡檢狀態鍵, {})
+    if not isinstance(巡檢狀態, dict):
+        巡檢狀態 = {}
+        狀態[既有報告狀態巡檢狀態鍵] = 巡檢狀態
+
+    現在時間戳記 = 現在毫秒()
+    巡檢狀態.update(
+        {
+            "enabled": 統計.get("enabled"),
+            "limit": 統計.get("limit"),
+            "candidate_reports": 統計.get("candidate_reports"),
+            "last_checked_at": 現在時間戳記,
+            "last_checked_at_iso": 毫秒轉_iso(現在時間戳記),
+            "last_selected_reports": 統計.get("selected_reports", 0),
+            "last_checked_reports": 統計.get("checked_reports", 0),
+            "last_unique_codes_checked": 統計.get("unique_codes_checked", 0),
+            "last_inaccessible_reports": 統計.get("inaccessible_reports", 0),
+            "last_unique_inaccessible_codes": 統計.get("unique_inaccessible_codes", 0),
+            "last_hidden_reports_changed": 統計.get("hidden_reports_changed", 0),
+            "last_failed_reports": 統計.get("failed_reports", 0),
+            "last_wrapped": 統計.get("wrapped", False),
+            "last_deferred": 統計.get("deferred", False),
+            "last_error": 統計.get("error"),
+        }
+    )
+    if 最後排序鍵 is not None:
+        巡檢狀態["last_sort_key"] = 最後排序鍵
+        巡檢狀態["last_sort_key_report_start_at"] = 最後排序鍵[0]
+        巡檢狀態["last_sort_key_report_start_at_iso"] = 毫秒轉_iso(最後排序鍵[0])
+        巡檢狀態["last_sort_key_encounter_key"] = 最後排序鍵[1]
+        巡檢狀態["last_sort_key_report_code"] = 最後排序鍵[2]
+
+
+def 建立排行榜條目(
+    排行榜: dict[str, Any],
+    版本範圍: str = "all",
+    *,
+    包含隱藏報告: bool = False,
+) -> list[dict[str, Any]]:
     # ranking_entries 是給前端快速讀取的扁平索引；reports/fights/players 才是可追溯歷史。
     # 重建時會同時讀兩種來源，確保舊資料、分片資料與新資料都能用同一套去重規則整理。
     精確成績索引: dict[str, dict[str, Any]] = {}
@@ -2339,12 +3086,18 @@ def 建立排行榜條目(排行榜: dict[str, Any], 版本範圍: str = "all") 
     報告索引 = 排行榜.get("reports") if isinstance(排行榜.get("reports"), dict) else {}
     if not 報告索引:
         for 條目 in 排行榜.get("ranking_entries") or []:
+            if not 包含隱藏報告 and isinstance(條目, dict) and 條目.get("report_hidden"):
+                continue
             if isinstance(條目, dict):
                 登記排行榜條目(條目, 精確成績索引)
 
     for 報告代碼, 報告 in 報告索引.items():
         if not isinstance(報告, dict):
             continue
+        if 報告已標記隱藏(報告) and not 包含隱藏報告:
+            continue
+
+        報告隱藏 = 報告已標記隱藏(報告)
 
         for 戰鬥 in 報告.get("fights") or []:
             if not isinstance(戰鬥, dict):
@@ -2408,10 +3161,18 @@ def 建立排行榜條目(排行榜: dict[str, Any], 版本範圍: str = "all") 
                     "report_url": 報告.get("url"),
                     "report_title": 報告.get("title"),
                     "fight_id": 戰鬥.get("fight_id"),
+                    # xivanalysis 的精準玩家頁需要 FFLogs 在該 report/fight 內的 sourceID。
+                    # 這個 ID 只用來組外部工具深連結，仍以角色名稱、伺服器與職業作為排行榜身分主鍵。
+                    "fflogs_source_id": 玩家.get("fflogs_id"),
                     "fight_hash": 戰鬥簽章,
                     "source_reports": [報告代碼],
                     "duplicate_count": 1,
                 }
+                if 報告隱藏:
+                    成績["report_hidden"] = True
+                    成績["hidden_reason"] = 報告.get("hidden_reason")
+                    成績["hidden_detected_at_iso"] = 報告.get("hidden_detected_at_iso")
+                    成績["hidden_source"] = 報告.get("hidden_source")
                 if "gcd_coverage" in 玩家:
                     # GCD 覆蓋率由 backfill_gcd_coverage.py 依 Casts graph 後補。
                     # key 不存在代表尚未嘗試；值為 null 代表已嘗試但 report 無法存取。
@@ -2443,7 +3204,11 @@ def 建立公開排行榜條目(條目: dict[str, Any]) -> dict[str, Any]:
     return {欄位: 條目.get(欄位) for 欄位 in 公開排行榜條目欄位 if 欄位 in 條目}
 
 
-def 建立版本排行榜條目(排行榜: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
+def 建立版本排行榜條目(
+    排行榜: dict[str, Any],
+    *,
+    包含隱藏報告: bool = False,
+) -> dict[str, list[dict[str, Any]]]:
     版本設定 = 取得副本版本截止設定(排行榜.get("encounter"))
     if not 版本設定:
         return {}
@@ -2451,21 +3216,33 @@ def 建立版本排行榜條目(排行榜: dict[str, Any]) -> dict[str, list[dic
     return {
         版本範圍: [
             建立公開排行榜條目(條目)
-            for 條目 in 建立排行榜條目(排行榜, 版本範圍)
+            for 條目 in 建立排行榜條目(
+                排行榜,
+                版本範圍,
+                包含隱藏報告=包含隱藏報告,
+            )
             if isinstance(條目, dict)
         ]
         for 版本範圍 in 版本紀錄範圍清單
     }
 
 
-def 建立公開排行榜(排行榜: dict[str, Any]) -> dict[str, Any]:
-    排行榜條目 = 建立排行榜條目(排行榜)
+def 建立公開排行榜(
+    排行榜: dict[str, Any],
+    *,
+    包含隱藏報告: bool = False,
+) -> dict[str, Any]:
+    排行榜條目 = 建立排行榜條目(
+        排行榜,
+        包含隱藏報告=包含隱藏報告,
+    )
     版本設定 = 取得副本版本截止設定(排行榜.get("encounter"))
     公開排行榜 = {
         "schema_version": 排行榜.get("schema_version", 1),
         "encounter": 排行榜.get("encounter"),
         "updated_at": 排行榜.get("updated_at"),
         "updated_at_iso": 排行榜.get("updated_at_iso"),
+        "hidden_reports_included": 包含隱藏報告,
         "ranking_entries": [
             建立公開排行榜條目(條目)
             for 條目 in 排行榜條目
@@ -2475,7 +3252,10 @@ def 建立公開排行榜(排行榜: dict[str, Any]) -> dict[str, Any]:
 
     if 版本設定:
         公開排行榜["version_cutoff"] = 版本設定
-        公開排行榜["version_ranking_entries"] = 建立版本排行榜條目(排行榜)
+        公開排行榜["version_ranking_entries"] = 建立版本排行榜條目(
+            排行榜,
+            包含隱藏報告=包含隱藏報告,
+        )
 
     return 公開排行榜
 
@@ -2657,6 +3437,7 @@ def 建立報告成績(
     副本設定: dict[str, Any],
     淺層報告: dict[str, Any],
     繁中服玩家: list[dict[str, Any]],
+    gcd計算器: 即時GCD覆蓋率計算器 | None = None,
 ) -> dict[str, Any] | None:
     # 一份 report 可能含同 zone 多個 encounter；這裡保存完成排名建置所需的 report/fight/player 脈絡。
     # GraphQL 原始表格可從 FFLogs 依 report code 重查，若全部落地會讓 repo 以 GB 級成長。
@@ -2669,6 +3450,10 @@ def 建立報告成績(
     戰鬥列表 = 報告.get("fights") or []
     if not 戰鬥列表:
         return None
+    if 是絕巴哈副本(副本設定):
+        戰鬥列表 = 套用絕巴哈通關戰鬥篩選(副本設定, {"fights": 戰鬥列表}).get("fights") or []
+        if not 戰鬥列表:
+            return None
 
     整理後戰鬥列表: list[dict[str, Any]] = []
     報告起始時間戳記 = 報告.get("startTime") or 淺層報告.get("startTime")
@@ -2698,48 +3483,50 @@ def 建立報告成績(
         if 傷害表格疑似未完整匯出(戰鬥時間毫秒, 傷害時間資訊, 玩家列表):
             raise 建立尚未完整匯出錯誤(報告代碼, 報告, 戰鬥)
 
-        整理後戰鬥列表.append(
-            {
-                "fight_id": 戰鬥_id,
-                "encounter_id": 戰鬥.get("encounterID"),
-                "original_encounter_id": 戰鬥.get("originalEncounterID"),
-                "name": 戰鬥.get("name"),
-                "difficulty": 戰鬥.get("difficulty"),
-                "kill": 戰鬥.get("kill"),
-                "complete_raid": 戰鬥.get("completeRaid"),
-                "in_progress": 戰鬥.get("inProgress"),
-                "has_echo": 戰鬥.get("hasEcho"),
-                "last_phase": 戰鬥.get("lastPhase"),
-                "last_phase_as_absolute_index": 戰鬥.get("lastPhaseAsAbsoluteIndex"),
-                "last_phase_is_intermission": 戰鬥.get("lastPhaseIsIntermission"),
-                "size": 戰鬥.get("size"),
-                "standard_composition": 戰鬥.get("standardComposition"),
-                "wipe_called_time": 戰鬥.get("wipeCalledTime"),
-                "friendly_players": 戰鬥.get("friendlyPlayers"),
-                "enemy_players": 戰鬥.get("enemyPlayers"),
-                "start_time": 戰鬥.get("startTime"),
-                "start_time_iso": 毫秒轉_iso(戰鬥.get("startTime")),
-                "end_time": 戰鬥.get("endTime"),
-                "end_time_iso": 毫秒轉_iso(戰鬥.get("endTime")),
-                "recorded_at": 紀錄時間戳記,
-                "recorded_at_iso": 毫秒轉_iso(紀錄時間戳記),
-                "clear_time_ms": int(戰鬥時間毫秒) if 戰鬥時間毫秒 is not None else None,
-                "clear_time_seconds": round(戰鬥時間毫秒 / 1000, 3) if 戰鬥時間毫秒 is not None else None,
-                "fflogs_total_time_ms": 傷害時間資訊.get("fflogs_total_time_ms"),
-                "fflogs_total_time_seconds": 毫秒轉秒數(傷害時間資訊.get("fflogs_total_time_ms")),
-                "fflogs_combat_time_ms": 傷害時間資訊.get("fflogs_combat_time_ms"),
-                "fflogs_combat_time_seconds": 毫秒轉秒數(傷害時間資訊.get("fflogs_combat_time_ms")),
-                "damage_downtime_ms": 傷害時間資訊.get("damage_downtime_ms"),
-                "damage_downtime_seconds": 毫秒轉秒數(傷害時間資訊.get("damage_downtime_ms")),
-                "damage_time_ms": 傷害時間資訊.get("damage_time_ms"),
-                "damage_time_seconds": 毫秒轉秒數(傷害時間資訊.get("damage_time_ms")),
-                "fight_percentage": 戰鬥.get("fightPercentage"),
-                "average_item_level": 戰鬥.get("averageItemLevel"),
-                "boss_percentage": 戰鬥.get("bossPercentage"),
-                "damage_done_summary": 建立傷害表格摘要(原始成績),
-                "players": 玩家列表,
-            }
-        )
+        整理後戰鬥 = {
+            "fight_id": 戰鬥_id,
+            "encounter_id": 戰鬥.get("encounterID"),
+            "original_encounter_id": 戰鬥.get("originalEncounterID"),
+            "name": 戰鬥.get("name"),
+            "difficulty": 戰鬥.get("difficulty"),
+            "kill": 戰鬥.get("kill"),
+            "complete_raid": 戰鬥.get("completeRaid"),
+            "in_progress": 戰鬥.get("inProgress"),
+            "has_echo": 戰鬥.get("hasEcho"),
+            "last_phase": 戰鬥.get("lastPhase"),
+            "last_phase_as_absolute_index": 戰鬥.get("lastPhaseAsAbsoluteIndex"),
+            "last_phase_is_intermission": 戰鬥.get("lastPhaseIsIntermission"),
+            "size": 戰鬥.get("size"),
+            "standard_composition": 戰鬥.get("standardComposition"),
+            "wipe_called_time": 戰鬥.get("wipeCalledTime"),
+            "friendly_players": 戰鬥.get("friendlyPlayers"),
+            "enemy_players": 戰鬥.get("enemyPlayers"),
+            "start_time": 戰鬥.get("startTime"),
+            "start_time_iso": 毫秒轉_iso(戰鬥.get("startTime")),
+            "end_time": 戰鬥.get("endTime"),
+            "end_time_iso": 毫秒轉_iso(戰鬥.get("endTime")),
+            "recorded_at": 紀錄時間戳記,
+            "recorded_at_iso": 毫秒轉_iso(紀錄時間戳記),
+            "clear_time_ms": int(戰鬥時間毫秒) if 戰鬥時間毫秒 is not None else None,
+            "clear_time_seconds": round(戰鬥時間毫秒 / 1000, 3) if 戰鬥時間毫秒 is not None else None,
+            "fflogs_total_time_ms": 傷害時間資訊.get("fflogs_total_time_ms"),
+            "fflogs_total_time_seconds": 毫秒轉秒數(傷害時間資訊.get("fflogs_total_time_ms")),
+            "fflogs_combat_time_ms": 傷害時間資訊.get("fflogs_combat_time_ms"),
+            "fflogs_combat_time_seconds": 毫秒轉秒數(傷害時間資訊.get("fflogs_combat_time_ms")),
+            "damage_downtime_ms": 傷害時間資訊.get("damage_downtime_ms"),
+            "damage_downtime_seconds": 毫秒轉秒數(傷害時間資訊.get("damage_downtime_ms")),
+            "damage_time_ms": 傷害時間資訊.get("damage_time_ms"),
+            "damage_time_seconds": 毫秒轉秒數(傷害時間資訊.get("damage_time_ms")),
+            "fight_percentage": 戰鬥.get("fightPercentage"),
+            "average_item_level": 戰鬥.get("averageItemLevel"),
+            "boss_percentage": 戰鬥.get("bossPercentage"),
+            "damage_done_summary": 建立傷害表格摘要(原始成績),
+            "players": 玩家列表,
+        }
+        if gcd計算器 is not None:
+            gcd計算器.補齊戰鬥玩家GCD覆蓋率(session, 認證池, 報告代碼, 副本設定, 整理後戰鬥, 玩家列表)
+
+        整理後戰鬥列表.append(整理後戰鬥)
 
     if not 整理後戰鬥列表:
         return None
@@ -2849,6 +3636,11 @@ def 寫入排行榜檔案(副本設定: dict[str, Any], 排行榜: dict[str, Any
 
     寫入_json(排行榜檔案路徑(副本設定), 儲存內容, 緊湊格式=True)
     寫入_json(排行榜檔案路徑(副本設定, public=True), 建立公開排行榜(排行榜), 緊湊格式=True)
+    寫入_json(
+        排行榜檔案路徑(副本設定, public=True, 包含隱藏公開資料=True),
+        建立公開排行榜(排行榜, 包含隱藏報告=True),
+        緊湊格式=True,
+    )
 
 
 def 重建公開排行榜檔案() -> None:
@@ -2859,6 +3651,7 @@ def 重建公開排行榜檔案() -> None:
     啟用副本清單 = [副本 for 副本 in 全部副本清單 if 副本.get("enabled")]
     啟用鍵值 = {副本["key"] for 副本 in 啟用副本清單}
     寫入公開副本清單(啟用副本清單)
+    排行榜索引: dict[str, dict[str, Any]] = {}
 
     for 副本設定 in 全部副本清單:
         已有排行榜檔案 = 排行榜檔案路徑(副本設定).exists() or 排行榜檔案路徑(副本設定, public=True).exists()
@@ -2868,7 +3661,26 @@ def 重建公開排行榜檔案() -> None:
         排行榜 = 讀取排行榜檔案(副本設定)
         排行榜.setdefault("schema_version", 1)
         排行榜.setdefault("encounter", 建立副本摘要(副本設定))
-        寫入_json(排行榜檔案路徑(副本設定, public=True), 建立公開排行榜(排行榜), 緊湊格式=True)
+        排行榜索引[副本設定["key"]] = 排行榜
+
+    for 副本設定 in 全部副本清單:
+        排行榜 = 排行榜索引.get(副本設定["key"])
+        if not 排行榜:
+            continue
+
+        寫入_json(
+            排行榜檔案路徑(副本設定, public=True),
+            建立公開排行榜(排行榜),
+            緊湊格式=True,
+        )
+        寫入_json(
+            排行榜檔案路徑(副本設定, public=True, 包含隱藏公開資料=True),
+            建立公開排行榜(
+                排行榜,
+                包含隱藏報告=True,
+            ),
+            緊湊格式=True,
+        )
         print(f"已重建公開排行榜：{副本設定['key']}")
 
 
@@ -2893,6 +3705,11 @@ def 分割排行榜儲存檔案() -> None:
             儲存內容["reports"] = {}
         寫入_json(路徑, 儲存內容, 緊湊格式=True)
         寫入_json(排行榜檔案路徑(副本設定, public=True), 建立公開排行榜(排行榜), 緊湊格式=True)
+        寫入_json(
+            排行榜檔案路徑(副本設定, public=True, 包含隱藏公開資料=True),
+            建立公開排行榜(排行榜, 包含隱藏報告=True),
+            緊湊格式=True,
+        )
         print(f"已分割完整排行榜儲存檔案：{副本設定['key']}")
 
 
@@ -2904,21 +3721,82 @@ def 合併寫入排行榜(副本設定: dict[str, Any], 新成績列表: list[di
 
 
 def 報告處理記錄可重試(記錄: Any) -> bool:
-    return isinstance(記錄, dict) and 記錄.get("status") in 可重試報告處理狀態
+    if not isinstance(記錄, dict):
+        return False
+
+    處理狀態 = 記錄.get("status")
+    if 處理狀態 in 可重試報告處理狀態:
+        return True
+
+    if 處理狀態 != 無通關報告狀態 or 無通關報告重試毫秒 <= 0:
+        return False
+
+    處理時間戳記 = 轉_int_or_none(記錄.get("processed_at"))
+    if 處理時間戳記 is None:
+        return False
+
+    # FFLogs report 可能在上傳過程中先出現在 reports 清單，實際通關 fight 則稍後才匯出完成。
+    # `skipped_no_clear` 因此不能立刻成為永久快取；只在近期重試窗內放行深層查詢，
+    # 讓 workflow 能補抓 HtgYr71cqz3K2LwC 這類「先被掃到、後來才有 kill」的紀錄。
+    return 處理時間戳記 + 無通關報告重試毫秒 >= 現在毫秒()
 
 
-def 讀取已處理報告代碼(狀態: dict[str, Any], 副本設定: dict[str, Any]) -> set[str]:
+def 報告處理記錄已套用絕本通關規則(記錄: Any) -> bool:
+    return isinstance(記錄, dict) and 記錄.get("clear_rule_revision") == 絕本通關規則版本
+
+
+def 建立報告處理額外內容(副本設定: dict[str, Any], 額外內容: dict[str, Any] | None = None) -> dict[str, Any]:
+    內容 = dict(額外內容 or {})
+    if 是絕本副本(副本設定):
+        內容["clear_rule_revision"] = 絕本通關規則版本
+    return 內容
+
+
+def 報告需要絕本通關規則重判(
+    副本設定: dict[str, Any],
+    報告代碼: str,
+    副本狀態: dict[str, Any],
+    已知報告代碼: set[str],
+) -> bool:
+    if not 是絕本副本(副本設定) or 報告代碼 not in 已知報告代碼:
+        return False
+
+    # 歷史補查原本只選未知 report；UCoB/TOP 等絕本通關與 Phase 判讀規則更新時，
+    # 已標成 no-clear 或已落地的舊 report 也要重新走一次 Data Fetching Layer。
+    # per-report revision 寫在 checked_reports / processed_reports，讓這個重判是可續跑的一次性遷移。
+    for 欄位 in ("processed_reports", "checked_reports"):
+        記錄 = (副本狀態.get(欄位) or {}).get(報告代碼)
+        if 報告處理記錄已套用絕本通關規則(記錄):
+            return False
+
+    return True
+
+
+def 讀取已處理報告代碼(
+    狀態: dict[str, Any],
+    副本設定: dict[str, Any],
+    *,
+    可重試報告視為未處理: bool = True,
+) -> set[str]:
     副本鍵值 = 副本設定["key"]
     已處理 = set()
 
     副本狀態 = (狀態.get("encounters") or {}).get(副本鍵值) or {}
     已處理報告 = 副本狀態.get("processed_reports") or {}
     if isinstance(已處理報告, dict):
-        已處理.update(str(代碼) for 代碼, 記錄 in 已處理報告.items() if not 報告處理記錄可重試(記錄))
+        已處理.update(
+            str(代碼)
+            for 代碼, 記錄 in 已處理報告.items()
+            if not (可重試報告視為未處理 and 報告處理記錄可重試(記錄))
+        )
 
     已檢查報告 = 副本狀態.get("checked_reports") or {}
     if isinstance(已檢查報告, dict):
-        已處理.update(str(代碼) for 代碼, 記錄 in 已檢查報告.items() if not 報告處理記錄可重試(記錄))
+        已處理.update(
+            str(代碼)
+            for 代碼, 記錄 in 已檢查報告.items()
+            if not (可重試報告視為未處理 and 報告處理記錄可重試(記錄))
+        )
 
     排行榜 = 讀取排行榜檔案(副本設定)
     報告索引 = 排行榜.get("reports") if isinstance(排行榜, dict) else {}
@@ -2942,6 +3820,39 @@ def 清理報告檢查快取(副本狀態: dict[str, Any]) -> None:
         reverse=True,
     )
     副本狀態["checked_reports"] = dict(排序後項目[:報告檢查快取上限])
+
+
+def 套用延遲掃描執行狀態(
+    狀態: dict[str, Any],
+    副本設定: dict[str, Any],
+    處理狀態: dict[str, Any],
+) -> None:
+    延遲掃描狀態 = 處理狀態.get("delayed_scan")
+    if not isinstance(延遲掃描狀態, dict):
+        return
+
+    副本狀態索引 = 狀態.setdefault("encounters", {})
+    副本狀態 = 副本狀態索引.setdefault(副本設定["key"], {})
+    現在時間戳記 = 現在毫秒()
+    視窗 = 延遲掃描狀態.get("window") if isinstance(延遲掃描狀態.get("window"), dict) else {}
+
+    副本狀態["delayed_scan_enabled"] = bool(延遲掃描狀態.get("enabled"))
+    副本狀態["delayed_scan_recent_gap_hours"] = 延遲掃描狀態.get("recent_gap_hours")
+    副本狀態["delayed_scan_lookback_hours"] = 延遲掃描狀態.get("lookback_hours")
+    副本狀態["delayed_scan_range_start_at"] = 延遲掃描狀態.get("range_start_at")
+    副本狀態["delayed_scan_range_start_at_iso"] = 延遲掃描狀態.get("range_start_at_iso")
+    副本狀態["delayed_scan_range_end_at"] = 延遲掃描狀態.get("range_end_at")
+    副本狀態["delayed_scan_range_end_at_iso"] = 延遲掃描狀態.get("range_end_at_iso")
+    副本狀態["delayed_last_checked_at"] = 現在時間戳記
+    副本狀態["delayed_last_checked_at_iso"] = 毫秒轉_iso(現在時間戳記)
+    副本狀態["delayed_last_window_start_at"] = 視窗.get("start_at")
+    副本狀態["delayed_last_window_start_at_iso"] = 視窗.get("start_at_iso")
+    副本狀態["delayed_last_window_end_at"] = 視窗.get("end_at")
+    副本狀態["delayed_last_window_end_at_iso"] = 視窗.get("end_at_iso")
+    副本狀態["delayed_last_reports_found"] = 延遲掃描狀態.get("reports_found", 0)
+    副本狀態["delayed_last_reports_selected"] = 延遲掃描狀態.get("reports_selected", 0)
+    副本狀態["delayed_last_reports_skipped_known"] = 延遲掃描狀態.get("reports_skipped_known", 0)
+    副本狀態["delayed_last_reports_deferred"] = 延遲掃描狀態.get("reports_deferred", 0)
 
 
 def 套用歷史補查執行狀態(
@@ -2976,6 +3887,7 @@ def 套用歷史補查執行狀態(
     副本狀態["history_last_reports_selected"] = 歷史補查狀態.get("reports_selected", 0)
     副本狀態["history_last_reports_skipped_known"] = 歷史補查狀態.get("reports_skipped_known", 0)
     副本狀態["history_last_reports_deferred"] = 歷史補查狀態.get("reports_deferred", 0)
+    副本狀態["history_last_reports_recheck_selected"] = 歷史補查狀態.get("reports_recheck_selected", 0)
 
 
 def 標記報告處理狀態(
@@ -3055,9 +3967,13 @@ def main() -> int:
 
     狀態 = 讀取_json(狀態檔案路徑, {})
     掃描結束時間戳記 = 現在毫秒()
+    gcd計算器 = 即時GCD覆蓋率計算器()
 
     print(f"啟用副本：{', '.join(副本['name'] for 副本 in 副本清單)}")
     print(f"可用 FFLogs 憑證組數：{len(認證池.認證清單)}")
+    if gcd計算器.啟用:
+        上限文字 = str(gcd計算器.戰鬥上限) if gcd計算器.戰鬥上限 > 0 else "無上限"
+        print(f"已啟用新 report 即時 GCD 覆蓋率計算，本輪 Casts graph 戰鬥上限：{上限文字}。")
     if 重抓報告代碼:
         print(f"指定重抓報告：{', '.join(sorted(重抓報告代碼))}")
     if 只處理報告代碼:
@@ -3068,18 +3984,28 @@ def main() -> int:
         副本處理狀態[副本設定["key"]] = {
             "副本設定": 副本設定,
             "已處理報告代碼": 讀取已處理報告代碼(狀態, 副本設定),
+            # 24-72 小時的延遲掃描只找「真正沒見過」的新 report。
+            # 因此這裡保留一份不放行 retryable 狀態的嚴格集合，避免該區段重查既有 no-clear 紀錄。
+            "已知報告代碼": 讀取已處理報告代碼(狀態, 副本設定, 可重試報告視為未處理=False),
             "本輪已嘗試報告代碼": set(),
             "排行榜": 讀取排行榜檔案(副本設定),
             "待寫入成績清單": [],
             "待標記已儲存報告": [],
             "scan_start_at": None,
             "scan_end_at": 掃描結束時間戳記,
+            "candidate_reports": 0,
             "china_region_reports": 0,
             "recent_reports": 0,
+            "delayed_reports_found": 0,
+            "delayed_reports_selected": 0,
+            "delayed_reports_skipped_known": 0,
+            "delayed_reports_deferred": 0,
+            "delayed_scan": None,
             "history_reports_found": 0,
             "history_reports_selected": 0,
             "history_reports_skipped_known": 0,
             "history_reports_deferred": 0,
+            "history_reports_recheck_selected": 0,
             "history_scan": None,
             "scan_failed": False,
             "scan_error": None,
@@ -3091,9 +4017,33 @@ def main() -> int:
         }
 
     淺層掃描快取: dict[tuple[int, int, int, int | None], list[dict[str, Any]]] = {}
+    本輪報告繁中服檢查快取: dict[str, dict[str, Any]] = {}
+    延遲掃描候選報告代碼: set[str] = set()
     歷史補查候選報告代碼: set[str] = set()
     已完成副本清單: list[dict[str, Any]] = []
     暫時失敗副本清單: list[dict[str, Any]] = []
+    待寫入狀態檢查點數 = 0
+
+    def 標記狀態已寫入() -> None:
+        nonlocal 待寫入狀態檢查點數
+        待寫入狀態檢查點數 = 0
+
+    def 登記狀態檢查點變更(數量: int = 1) -> None:
+        nonlocal 待寫入狀態檢查點數
+        待寫入狀態檢查點數 += max(1, 數量)
+
+    def 視需要寫入狀態檢查點(原因: str, *, 強制: bool = False) -> None:
+        # checked_reports 是跨輪去重依據；大量首輪回補時每份 report 都重寫 state.json 會讓
+        # 130MB 級別的狀態檔成為瓶頸。這裡只延後「略過/待重試」checkpoint 的落地，
+        # 中斷時最多重查最近一小批 report，不會刪除或覆寫既有歷史資料。
+        if 待寫入狀態檢查點數 <= 0:
+            return
+        if not 強制 and 待寫入狀態檢查點數 < 狀態檢查點批次寫入報告數:
+            return
+
+        寫入_json(狀態檔案路徑, 狀態)
+        print(f"已批次寫入 {待寫入狀態檢查點數} 筆 state checkpoint（{原因}）。")
+        標記狀態已寫入()
 
     def 取得同區同難度副本清單(基準副本: dict[str, Any]) -> list[dict[str, Any]]:
         # 同一份 FFLogs report 常同時包含同區同難度的多個副本。
@@ -3153,7 +4103,36 @@ def main() -> int:
             return True
         return 歷史補查深層報告上限 <= 0 or len(歷史補查候選報告代碼) < 歷史補查深層報告上限
 
-    def 篩選歷史補查候選(
+    def 延遲掃描仍可加入候選(報告代碼: str) -> bool:
+        if 報告代碼 in 延遲掃描候選報告代碼:
+            return True
+        return 延遲掃描深層報告上限 <= 0 or len(延遲掃描候選報告代碼) < 延遲掃描深層報告上限
+
+    def 是否為任何同區副本的未知報告(目前副本設定: dict[str, Any], 報告代碼: str) -> bool:
+        for 目標副本設定 in 取得同區同難度副本清單(目前副本設定):
+            目標處理狀態 = 副本處理狀態[目標副本設定["key"]]
+            if 報告代碼 in 目標處理狀態["本輪已嘗試報告代碼"]:
+                continue
+            if 報告代碼 not in 目標處理狀態["已知報告代碼"]:
+                return True
+        return False
+
+    def 是否需要絕本歷史通關重判(目前副本設定: dict[str, Any], 報告代碼: str) -> bool:
+        for 目標副本設定 in 取得同區同難度副本清單(目前副本設定):
+            目標處理狀態 = 副本處理狀態[目標副本設定["key"]]
+            if 報告代碼 in 目標處理狀態["本輪已嘗試報告代碼"]:
+                continue
+            副本狀態 = (狀態.get("encounters") or {}).get(目標副本設定["key"]) or {}
+            if 報告需要絕本通關規則重判(
+                目標副本設定,
+                報告代碼,
+                副本狀態,
+                目標處理狀態["已知報告代碼"],
+            ):
+                return True
+        return False
+
+    def 篩選延遲掃描候選(
         副本設定: dict[str, Any],
         報告列表: list[dict[str, Any]],
         最新報告代碼: set[str],
@@ -3168,7 +4147,36 @@ def main() -> int:
             if 報告代碼 in 最新報告代碼:
                 統計["skipped_known"] += 1
                 continue
-            if not 是否需要深層處理任何同區副本(副本設定, 報告代碼):
+            if not 是否為任何同區副本的未知報告(副本設定, 報告代碼):
+                統計["skipped_known"] += 1
+                continue
+            if not 延遲掃描仍可加入候選(報告代碼):
+                統計["deferred"] += 1
+                continue
+
+            延遲掃描候選報告代碼.add(報告代碼)
+            候選列表.append(報告)
+            統計["selected"] += 1
+
+        return 候選列表, 統計
+
+    def 篩選歷史補查候選(
+        副本設定: dict[str, Any],
+        報告列表: list[dict[str, Any]],
+        最新報告代碼: set[str],
+    ) -> tuple[list[dict[str, Any]], dict[str, int]]:
+        候選列表: list[dict[str, Any]] = []
+        統計 = {"selected": 0, "skipped_known": 0, "deferred": 0, "recheck_selected": 0}
+
+        for 報告 in 報告列表:
+            報告代碼 = str(報告.get("code") or "")
+            if not 報告代碼:
+                continue
+            if 報告代碼 in 最新報告代碼:
+                統計["skipped_known"] += 1
+                continue
+            需要重判 = 是否需要絕本歷史通關重判(副本設定, 報告代碼)
+            if not 需要重判 and not 是否需要深層處理任何同區副本(副本設定, 報告代碼):
                 統計["skipped_known"] += 1
                 continue
             if not 歷史補查仍可加入候選(報告代碼):
@@ -3176,7 +4184,11 @@ def main() -> int:
                 continue
 
             歷史補查候選報告代碼.add(報告代碼)
-            候選列表.append(報告)
+            候選 = dict(報告)
+            if 需要重判:
+                候選["_history_clear_rule_recheck"] = True
+                統計["recheck_selected"] += 1
+            候選列表.append(候選)
             統計["selected"] += 1
 
         return 候選列表, 統計
@@ -3198,11 +4210,13 @@ def main() -> int:
                 副本設定,
                 已儲存報告代碼,
                 "saved",
-                {"has_clear": True},
+                建立報告處理額外內容(副本設定, {"has_clear": True}),
                 立即寫入=False,
             )
             處理狀態["已處理報告代碼"].add(已儲存報告代碼)
+            處理狀態["已知報告代碼"].add(已儲存報告代碼)
         寫入_json(狀態檔案路徑, 狀態)
+        標記狀態已寫入()
 
         處理狀態["rankings_inserted_or_updated"] += 批次新增或更新數量
         處理狀態["reports_saved"] += 批次報告數量
@@ -3247,9 +4261,162 @@ def main() -> int:
         立即寫入: bool = True,
     ) -> None:
         副本設定 = 處理狀態["副本設定"]
-        標記報告處理狀態(狀態, 副本設定, 報告代碼, 處理狀態文字, 額外內容, 立即寫入=立即寫入)
+        標記報告處理狀態(
+            狀態,
+            副本設定,
+            報告代碼,
+            處理狀態文字,
+            建立報告處理額外內容(副本設定, 額外內容),
+            立即寫入=立即寫入,
+        )
         處理狀態["已處理報告代碼"].add(報告代碼)
+        處理狀態["已知報告代碼"].add(報告代碼)
         處理狀態["本輪已嘗試報告代碼"].add(報告代碼)
+
+    def 標記不可存取報告隱藏(目標副本設定: dict[str, Any], 報告代碼: str, 錯誤: Exception) -> None:
+        目標處理狀態 = 副本處理狀態[目標副本設定["key"]]
+        已變更 = 標記排行榜報告隱藏(
+            目標處理狀態["排行榜"],
+            報告代碼,
+            原因=報告無法存取隱藏原因,
+            來源="fetch_fflogs",
+            詳細原因=str(錯誤),
+        )
+        if not 已變更:
+            return
+
+        寫入排行榜檔案(目標副本設定, 目標處理狀態["排行榜"])
+        print(f"{目標副本設定['name']} 已將無法存取的既有 report 標記為隱藏：{報告代碼}")
+
+    def 標記所有排行榜不可存取報告隱藏(
+        報告代碼: str,
+        錯誤: Exception,
+        處理狀態索引: dict[str, dict[str, Any]] | None = None,
+    ) -> int:
+        變更數量 = 0
+        for 目標處理狀態 in (處理狀態索引 or 副本處理狀態).values():
+            目標副本設定 = 目標處理狀態["副本設定"]
+            排行榜 = 目標處理狀態["排行榜"]
+            報告索引 = 排行榜.get("reports") if isinstance(排行榜.get("reports"), dict) else {}
+            報告 = 報告索引.get(報告代碼)
+            if not isinstance(報告, dict) or 報告已標記隱藏(報告):
+                continue
+
+            if 標記排行榜報告隱藏(
+                排行榜,
+                報告代碼,
+                原因=報告無法存取隱藏原因,
+                來源="existing_report_status_check",
+                詳細原因=str(錯誤),
+            ):
+                寫入排行榜檔案(目標副本設定, 排行榜)
+                變更數量 += 1
+                print(f"{目標副本設定['name']} 巡檢發現 report 無法存取，已標記為隱藏：{報告代碼}")
+
+        return 變更數量
+
+    def 執行既有報告狀態巡檢() -> dict[str, Any]:
+        統計 = {
+            "enabled": 既有報告狀態巡檢已啟用,
+            "limit": 既有報告狀態巡檢上限,
+            "candidate_reports": 0,
+            "selected_reports": 0,
+            "checked_reports": 0,
+            "unique_codes_checked": 0,
+            "inaccessible_reports": 0,
+            "unique_inaccessible_codes": 0,
+            "hidden_reports_changed": 0,
+            "failed_reports": 0,
+            "wrapped": False,
+            "deferred": False,
+            "error": None,
+        }
+        if not 既有報告狀態巡檢已啟用 or 既有報告狀態巡檢上限 <= 0:
+            return 統計
+        if 只處理指定報告模式:
+            統計["enabled"] = False
+            統計["skipped_reason"] = "manual_report_mode"
+            return 統計
+
+        巡檢副本清單 = 讀取全部有效副本設定清單()
+        巡檢處理狀態索引 = {
+            副本鍵值: 處理狀態
+            for 副本鍵值, 處理狀態 in 副本處理狀態.items()
+        }
+        for 巡檢副本設定 in 巡檢副本清單:
+            巡檢副本鍵值 = 巡檢副本設定["key"]
+            if 巡檢副本鍵值 in 巡檢處理狀態索引:
+                continue
+            巡檢處理狀態索引[巡檢副本鍵值] = {
+                "副本設定": 巡檢副本設定,
+                "排行榜": 讀取排行榜檔案(巡檢副本設定),
+            }
+
+        排行榜索引 = {
+            副本鍵值: 處理狀態["排行榜"]
+            for 副本鍵值, 處理狀態 in 巡檢處理狀態索引.items()
+        }
+        候選列表 = 建立既有報告狀態巡檢候選(巡檢副本清單, 排行榜索引)
+        選取列表, 選取狀態 = 選取既有報告狀態巡檢批次(候選列表, 狀態, 既有報告狀態巡檢上限)
+        統計.update(選取狀態)
+        統計["selected_reports"] = len(選取列表)
+        統計["wrapped"] = 選取狀態.get("wrapped", False)
+        if not 選取列表:
+            更新既有報告狀態巡檢狀態(狀態, 統計, None)
+            return 統計
+
+        print(
+            f"既有 report 狀態巡檢：本輪選入 {len(選取列表)}/{len(候選列表)} 筆，"
+            f"由舊到新檢查，游標繞回={統計['wrapped']}。"
+        )
+
+        查詢結果快取: dict[str, Exception | None] = {}
+        已查詢代碼: set[str] = set()
+        不可存取代碼: set[str] = set()
+        最後排序鍵: list[Any] | None = None
+
+        for 候選 in 選取列表:
+            報告代碼 = 候選["report_code"]
+            if 報告代碼 not in 查詢結果快取:
+                try:
+                    查詢報告目前狀態(session, 認證池, 報告代碼)
+                    查詢結果快取[報告代碼] = None
+                except (FFLogs報告存取錯誤, FFLogs報告狀態不可存取錯誤) as 錯誤:
+                    查詢結果快取[報告代碼] = 錯誤
+                except FFLogs暫時性API錯誤 as 錯誤:
+                    統計["deferred"] = True
+                    統計["error"] = str(錯誤)
+                    print(f"既有 report 狀態巡檢因 FFLogs 暫時性錯誤暫停：{錯誤}", file=sys.stderr)
+                    break
+                except Exception as 錯誤:
+                    查詢結果快取[報告代碼] = None
+                    統計["failed_reports"] += 1
+                    print(f"既有 report 狀態巡檢檢查 {報告代碼} 時失敗：{錯誤}", file=sys.stderr)
+                已查詢代碼.add(報告代碼)
+
+            錯誤 = 查詢結果快取[報告代碼]
+            if 錯誤 is not None:
+                統計["inaccessible_reports"] += 1
+                不可存取代碼.add(報告代碼)
+                統計["hidden_reports_changed"] += 標記所有排行榜不可存取報告隱藏(
+                    報告代碼,
+                    錯誤,
+                    巡檢處理狀態索引,
+                )
+
+            統計["checked_reports"] += 1
+            最後排序鍵 = list(候選["sort_key"])
+
+        統計["unique_codes_checked"] = len(已查詢代碼)
+        統計["unique_inaccessible_codes"] = len(不可存取代碼)
+        更新既有報告狀態巡檢狀態(狀態, 統計, 最後排序鍵)
+        print(
+            f"既有 report 狀態巡檢完成：檢查 {統計['checked_reports']} 筆、"
+            f"{統計['unique_codes_checked']} 個 report code，"
+            f"不可存取 {統計['unique_inaccessible_codes']} 個，"
+            f"更新 hidden 標記 {統計['hidden_reports_changed']} 筆。"
+        )
+        return 統計
 
     def 延後副本掃描(
         副本設定: dict[str, Any],
@@ -3269,6 +4436,9 @@ def main() -> int:
 
     for 副本設定 in 副本清單:
         目前處理狀態 = 副本處理狀態[副本設定["key"]]
+        原始副本狀態 = (狀態.get("encounters") or {}).get(副本設定["key"]) or {}
+        原始即時進度 = 原始副本狀態.get("active_scan") if isinstance(原始副本狀態, dict) else None
+        前次即時進度 = dict(原始即時進度) if isinstance(原始即時進度, dict) else None
         顯示前次未完成掃描(狀態, 副本設定)
         狀態時間戳記 = 取得狀態時間戳記(狀態, 副本設定)
         起始時間戳記 = 取得增量掃描起點(狀態時間戳記, 副本設定)
@@ -3329,6 +4499,51 @@ def main() -> int:
             最新報告列表 = 加入掃描來源(最新報告列表, "recent")
             最新報告代碼 = {str(報告.get("code")) for 報告 in 最新報告列表 if 報告.get("code")}
 
+            延遲報告列表: list[dict[str, Any]] = []
+            延遲掃描區間, 延遲掃描狀態 = 建立延遲掃描區間(副本設定, 掃描結束時間戳記)
+            目前處理狀態["delayed_scan"] = 延遲掃描狀態
+            延遲掃描暫停 = False
+
+            if 延遲掃描區間:
+                def 記錄延遲掃描進度(進度: dict[str, Any]) -> None:
+                    更新副本掃描進度(
+                        狀態,
+                        副本設定,
+                        scan_start_at=起始時間戳記,
+                        scan_start_at_iso=毫秒轉_iso(起始時間戳記),
+                        scan_end_at=掃描結束時間戳記,
+                        scan_end_at_iso=毫秒轉_iso(掃描結束時間戳記),
+                        **進度,
+                    )
+
+                try:
+                    延遲報告列表 = 擷取並快取淺層報告(
+                        副本設定,
+                        延遲掃描區間["start_at"],
+                        延遲掃描區間["end_at"],
+                        記錄延遲掃描進度,
+                        階段名稱="延遲淺層掃描",
+                    )
+                except FFLogs暫時性API錯誤 as 錯誤:
+                    延後副本掃描(副本設定, 目前處理狀態, 錯誤)
+                    延遲掃描暫停 = True
+
+            if 延遲掃描暫停:
+                continue
+
+            延遲報告列表 = 加入掃描來源(延遲報告列表, "delayed")
+            延遲報告候選列表, 延遲候選統計 = 篩選延遲掃描候選(副本設定, 延遲報告列表, 最新報告代碼)
+            延遲報告代碼 = {str(報告.get("code")) for 報告 in 延遲報告列表 if 報告.get("code")}
+            目前處理狀態["delayed_reports_found"] = len(延遲報告代碼)
+            目前處理狀態["delayed_reports_selected"] = 延遲候選統計["selected"]
+            目前處理狀態["delayed_reports_skipped_known"] = 延遲候選統計["skipped_known"]
+            目前處理狀態["delayed_reports_deferred"] = 延遲候選統計["deferred"]
+            if 延遲掃描狀態 is not None:
+                延遲掃描狀態["reports_found"] = len(延遲報告代碼)
+                延遲掃描狀態["reports_selected"] = 延遲候選統計["selected"]
+                延遲掃描狀態["reports_skipped_known"] = 延遲候選統計["skipped_known"]
+                延遲掃描狀態["reports_deferred"] = 延遲候選統計["deferred"]
+
             歷史報告列表: list[dict[str, Any]] = []
             歷史區間列表, 歷史補查狀態 = 建立歷史補查區間(狀態, 副本設定, 狀態時間戳記)
             目前處理狀態["history_scan"] = 歷史補查狀態
@@ -3367,43 +4582,135 @@ def main() -> int:
                 continue
 
             歷史報告列表 = 加入掃描來源(歷史報告列表, "history")
-            歷史報告候選列表, 歷史候選統計 = 篩選歷史補查候選(副本設定, 歷史報告列表, 最新報告代碼)
+            近期已涵蓋報告代碼 = 最新報告代碼 | 延遲報告代碼
+            歷史報告候選列表, 歷史候選統計 = 篩選歷史補查候選(副本設定, 歷史報告列表, 近期已涵蓋報告代碼)
             歷史報告代碼 = {str(報告.get("code")) for 報告 in 歷史報告列表 if 報告.get("code")}
             目前處理狀態["history_reports_found"] = len(歷史報告代碼)
             目前處理狀態["history_reports_selected"] = 歷史候選統計["selected"]
             目前處理狀態["history_reports_skipped_known"] = 歷史候選統計["skipped_known"]
             目前處理狀態["history_reports_deferred"] = 歷史候選統計["deferred"]
+            目前處理狀態["history_reports_recheck_selected"] = 歷史候選統計["recheck_selected"]
             if 歷史補查狀態 is not None:
                 歷史補查狀態["reports_found"] = len(歷史報告代碼)
                 歷史補查狀態["reports_selected"] = 歷史候選統計["selected"]
                 歷史補查狀態["reports_skipped_known"] = 歷史候選統計["skipped_known"]
                 歷史補查狀態["reports_deferred"] = 歷史候選統計["deferred"]
+                歷史補查狀態["reports_recheck_selected"] = 歷史候選統計["recheck_selected"]
+                套用歷史補查深查上限游標(歷史補查狀態, 歷史報告候選列表, 歷史候選統計)
 
-            淺層報告列表 = 合併淺層報告列表(最新報告列表, 歷史報告候選列表)
+            淺層報告列表 = 合併淺層報告列表(最新報告列表, 延遲報告候選列表 + 歷史報告候選列表)
             目前處理狀態["recent_reports"] = len(最新報告列表)
+            最新中國區域候選數 = sum(1 for 報告 in 最新報告列表 if 是否中國區域報告(報告))
+            中國區域說明 = (
+                f"（其中中國區域 {最新中國區域候選數} 份）"
+                if 掃描全部地區報告
+                else ""
+            )
             print(
-                f"{副本設定['name']} 淺層掃描取得 {len(最新報告列表)} 份中國區域報告；"
+                f"{副本設定['name']} 淺層掃描取得 "
+                f"{len(最新報告列表)} 份{淺層地區範圍說明()}候選報告{中國區域說明}；"
+                f"延遲掃描找到 {len(延遲報告代碼)} 份，選入 {延遲候選統計['selected']} 份"
+                f"（已知略過 {延遲候選統計['skipped_known']}，延後 {延遲候選統計['deferred']}）；"
                 f"歷史補查找到 {len(歷史報告代碼)} 份，選入 {歷史候選統計['selected']} 份"
-                f"（已知略過 {歷史候選統計['skipped_known']}，延後 {歷史候選統計['deferred']}）。"
+                f"（重判 {歷史候選統計['recheck_selected']}，"
+                f"已知略過 {歷史候選統計['skipped_known']}，延後 {歷史候選統計['deferred']}）。"
             )
 
-        目前處理狀態["china_region_reports"] = len(淺層報告列表)
+        目前處理狀態["candidate_reports"] = len(淺層報告列表)
+        目前處理狀態["china_region_reports"] = sum(
+            1 for 報告 in 淺層報告列表 if 是否中國區域報告(報告)
+        )
         總報告數量 = len(淺層報告列表)
+        同區副本清單 = 取得同區同難度副本清單(副本設定)
+        已處理報告代碼索引 = {
+            副本鍵值: 處理狀態["已處理報告代碼"]
+            for 副本鍵值, 處理狀態 in 副本處理狀態.items()
+        }
+        歷史重判報告代碼 = {
+            str(報告.get("code") or "")
+            for 報告 in 淺層報告列表
+            if 報告.get("_history_clear_rule_recheck") and 報告.get("code")
+        }
+        強制處理報告代碼 = 重抓報告代碼 | 只處理報告代碼 | 歷史重判報告代碼
+        已處理前綴快轉索引 = 取得已處理報告前綴快轉索引(
+            淺層報告列表,
+            同區副本清單,
+            已處理報告代碼索引,
+            強制處理報告代碼=強制處理報告代碼,
+        )
+        if 已處理前綴快轉索引 > 0:
+            目前處理狀態["skipped_already_processed_reports"] += 已處理前綴快轉索引
+            if 已處理前綴快轉索引 >= 總報告數量:
+                print(f"{副本設定['name']} 已快轉略過全部 {總報告數量} 筆已處理候選報告。")
+            else:
+                下一筆報告代碼 = str(淺層報告列表[已處理前綴快轉索引].get("code") or "")
+                print(
+                    f"{副本設定['name']} 已快轉略過前 {已處理前綴快轉索引}/{總報告數量} 筆已處理候選報告，"
+                    f"從第 {已處理前綴快轉索引 + 1} 筆 {下一筆報告代碼} 接續。"
+                )
 
-        for 報告序號, 報告 in enumerate(淺層報告列表, start=1):
+        深層恢復起始索引, 深層恢復說明 = 取得深層掃描恢復起始索引(
+            狀態,
+            副本設定,
+            淺層報告列表,
+            同區副本清單,
+            已處理報告代碼索引,
+            起始時間戳記,
+            強制處理報告代碼=強制處理報告代碼,
+            前次即時進度=前次即時進度,
+        )
+        if 深層恢復說明:
+            print(f"{副本設定['name']} {深層恢復說明}")
+        深層處理起始索引 = max(已處理前綴快轉索引, 深層恢復起始索引)
+
+        已處理略過摘要數 = 0
+        已處理略過首序號: int | None = None
+        已處理略過末序號: int | None = None
+
+        def 輸出已處理略過摘要() -> None:
+            nonlocal 已處理略過摘要數, 已處理略過首序號, 已處理略過末序號
+            if 已處理略過摘要數 <= 0:
+                return
+            if 已處理略過摘要數 == 1:
+                print(f"{副本設定['name']} ({已處理略過首序號}/{總報告數量}) 略過 1 筆已處理報告。")
+            else:
+                print(
+                    f"{副本設定['name']} ({已處理略過首序號}-{已處理略過末序號}/{總報告數量}) "
+                    f"略過 {已處理略過摘要數} 筆已處理報告。"
+                )
+            已處理略過摘要數 = 0
+            已處理略過首序號 = None
+            已處理略過末序號 = None
+
+        for 報告序號, 報告 in enumerate(
+            淺層報告列表[深層處理起始索引:],
+            start=深層處理起始索引 + 1,
+        ):
             報告代碼 = 報告["code"]
             進度文字 = f"({報告序號}/{總報告數量})"
             強制重抓 = 報告代碼 in 重抓報告代碼 or 報告代碼 in 只處理報告代碼
+
+            待處理副本, 目前副本已處理 = 篩選待處理副本(副本設定, 報告代碼, 強制重抓)
+            if not 待處理副本:
+                if 目前副本已處理:
+                    已處理略過摘要數 += 1
+                    if 已處理略過首序號 is None:
+                        已處理略過首序號 = 報告序號
+                    已處理略過末序號 = 報告序號
+                continue
+
             if (
-                報告序號 == 1
-                or 報告序號 % 100 == 0
-                or 報告代碼 not in 目前處理狀態["已處理報告代碼"]
+                報告序號 == 深層處理起始索引 + 1
+                or 報告序號 % 深層掃描進度落地報告數 == 0
                 or 強制重抓
             ):
+                # active_scan 是可覆寫的即時進度，也作為人工中斷後的恢復切點。
+                # 為避免大型 state.json 每份 report 都重寫，落地頻率與 checked_reports 批次一致；
+                # 恢復時仍會逐筆確認被快轉的 report 已在 state/ranking 留下紀錄。
                 更新副本掃描進度(
                     狀態,
                     副本設定,
-                    stage="深層過濾與成績整理",
+                    stage=深層掃描階段名稱,
                     current_report_index=報告序號,
                     total_reports=總報告數量,
                     current_report_code=報告代碼,
@@ -3411,13 +4718,9 @@ def main() -> int:
                     current_report_start_at_iso=毫秒轉_iso(報告.get("startTime")),
                     processed_reports_in_checkpoint=len(目前處理狀態["已處理報告代碼"]),
                 )
+                標記狀態已寫入()
 
-            待處理副本, 目前副本已處理 = 篩選待處理副本(副本設定, 報告代碼, 強制重抓)
-            if not 待處理副本:
-                if 目前副本已處理:
-                    print(f"{副本設定['name']} {進度文字} 略過已處理報告：{報告代碼}")
-                continue
-
+            輸出已處理略過摘要()
             if 目前副本已處理:
                 print(f"{副本設定['name']} {進度文字} 略過已處理報告：{報告代碼}")
                 print(f"{副本設定['name']} {進度文字} 檢查同區其他副本：{報告代碼}")
@@ -3431,9 +4734,15 @@ def main() -> int:
                 print(f"{副本設定['name']} {進度文字} 處理報告：{報告代碼}{同步說明}")
 
             try:
-                有繁中服玩家, 繁中服玩家 = 報告是否包含繁中服玩家(session, 認證池, 報告代碼)
+                有繁中服玩家, 繁中服玩家 = 取得本輪報告繁中服檢查結果(
+                    本輪報告繁中服檢查快取,
+                    session,
+                    認證池,
+                    報告代碼,
+                )
             except FFLogs報告存取錯誤 as 錯誤:
                 for 目標副本 in 待處理副本:
+                    標記不可存取報告隱藏(目標副本, 報告代碼, 錯誤)
                     標記報告略過(
                         副本處理狀態[目標副本["key"]],
                         報告代碼,
@@ -3441,7 +4750,8 @@ def main() -> int:
                         {"reason": str(錯誤)},
                         立即寫入=False,
                     )
-                寫入_json(狀態檔案路徑, 狀態)
+                登記狀態檢查點變更(len(待處理副本))
+                視需要寫入狀態檢查點("報告無法存取")
                 print(f"{副本設定['name']} {進度文字} FFLogs 報告無法存取，已略過 {len(待處理副本)} 個副本：{報告代碼}")
                 continue
             except Exception as 錯誤:
@@ -3460,7 +4770,8 @@ def main() -> int:
                         "skipped_no_traditional_chinese_players",
                         立即寫入=False,
                     )
-                寫入_json(狀態檔案路徑, 狀態)
+                登記狀態檢查點變更(len(待處理副本))
+                視需要寫入狀態檢查點("沒有繁中服玩家")
                 print(f"{副本設定['name']} {進度文字} 沒有繁中服玩家，已略過 {len(待處理副本)} 個副本：{報告代碼}")
                 continue
 
@@ -3470,7 +4781,7 @@ def main() -> int:
                 目標處理狀態["本輪已嘗試報告代碼"].add(報告代碼)
 
                 try:
-                    成績 = 建立報告成績(session, 認證池, 目標副本, 報告, 繁中服玩家)
+                    成績 = 建立報告成績(session, 認證池, 目標副本, 報告, 繁中服玩家, gcd計算器)
                 except FFLogs報告尚未完整匯出錯誤 as 錯誤:
                     標記報告略過(
                         目標處理狀態,
@@ -3485,17 +4796,26 @@ def main() -> int:
                             "required_fight_end_at_iso": 毫秒轉_iso(錯誤.戰鬥結束時間戳記),
                             "fight_id": 錯誤.戰鬥_id,
                         },
+                        立即寫入=False,
                     )
-                    目標處理狀態["history_reports_deferred"] += 1
+                    登記狀態檢查點變更()
+                    掃描來源 = str(報告.get("_scan_source") or "")
+                    if 掃描來源 == "delayed":
+                        目標處理狀態["delayed_reports_deferred"] += 1
+                    elif 掃描來源 == "history":
+                        目標處理狀態["history_reports_deferred"] += 1
                     print(f"{目標副本['name']} {進度文字} FFLogs 尚未完整匯出，延後重抓：{報告代碼}")
                     continue
                 except FFLogs報告存取錯誤 as 錯誤:
+                    標記不可存取報告隱藏(目標副本, 報告代碼, 錯誤)
                     標記報告略過(
                         目標處理狀態,
                         報告代碼,
                         "skipped_inaccessible",
                         {"reason": str(錯誤)},
+                        立即寫入=False,
                     )
+                    登記狀態檢查點變更()
                     print(f"{目標副本['name']} {進度文字} FFLogs 報告無法存取，已略過：{報告代碼}")
                     continue
                 except Exception as 錯誤:
@@ -3508,6 +4828,7 @@ def main() -> int:
                     目標處理狀態["待寫入成績清單"].append(成績)
                     目標處理狀態["待標記已儲存報告"].append(報告代碼)
                     目標處理狀態["已處理報告代碼"].add(報告代碼)
+                    目標處理狀態["已知報告代碼"].add(報告代碼)
                     print(
                         f"{目標副本['name']} {進度文字} 已整理有效報告：{報告代碼}"
                         f"（待寫入 {len(目標處理狀態['待寫入成績清單'])}/{排行榜批次寫入報告數}）"
@@ -3515,9 +4836,14 @@ def main() -> int:
                     if len(目標處理狀態["待寫入成績清單"]) >= 排行榜批次寫入報告數:
                         批次寫入排行榜(目標處理狀態, "達到批次門檻")
                 else:
-                    標記報告略過(目標處理狀態, 報告代碼, "skipped_no_clear")
+                    標記報告略過(目標處理狀態, 報告代碼, 無通關報告狀態, 立即寫入=False)
+                    登記狀態檢查點變更()
                     print(f"{目標副本['name']} {進度文字} 未找到通關戰鬥，已略過：{報告代碼}")
 
+            視需要寫入狀態檢查點("深層處理批次")
+
+        輸出已處理略過摘要()
+        視需要寫入狀態檢查點(f"{副本設定['name']} 深層處理結尾", 強制=True)
         for 處理狀態 in 副本處理狀態.values():
             原因 = (
                 "副本掃描結尾"
@@ -3526,6 +4852,8 @@ def main() -> int:
             )
             批次寫入排行榜(處理狀態, 原因)
         已完成副本清單.append(副本設定)
+
+    既有報告狀態巡檢統計 = 執行既有報告狀態巡檢()
 
     副本統計: dict[str, Any] = {}
     for 副本設定 in 副本清單:
@@ -3538,12 +4866,20 @@ def main() -> int:
             "scan_start_at_iso": 毫秒轉_iso(掃描起始時間戳記),
             "scan_end_at": 掃描結束時間戳記_副本,
             "scan_end_at_iso": 毫秒轉_iso(掃描結束時間戳記_副本),
+            "report_region_scope": 報告地區範圍,
+            "candidate_reports": 處理狀態["candidate_reports"],
             "china_region_reports": 處理狀態["china_region_reports"],
             "recent_reports": 處理狀態["recent_reports"],
+            "delayed_reports_found": 處理狀態["delayed_reports_found"],
+            "delayed_reports_selected": 處理狀態["delayed_reports_selected"],
+            "delayed_reports_skipped_known": 處理狀態["delayed_reports_skipped_known"],
+            "delayed_reports_deferred": 處理狀態["delayed_reports_deferred"],
+            "delayed_scan": 處理狀態.get("delayed_scan"),
             "history_reports_found": 處理狀態["history_reports_found"],
             "history_reports_selected": 處理狀態["history_reports_selected"],
             "history_reports_skipped_known": 處理狀態["history_reports_skipped_known"],
             "history_reports_deferred": 處理狀態["history_reports_deferred"],
+            "history_reports_recheck_selected": 處理狀態["history_reports_recheck_selected"],
             "history_scan": 處理狀態.get("history_scan"),
             "scan_failed": 處理狀態["scan_failed"],
             "scan_error": 處理狀態["scan_error"],
@@ -3557,10 +4893,12 @@ def main() -> int:
     總新增或更新數量 = sum(處理狀態["rankings_inserted_or_updated"] for 處理狀態 in 副本處理狀態.values())
     總失敗報告數量 = sum(處理狀態["reports_failed"] for 處理狀態 in 副本處理狀態.values())
     暫時失敗副本鍵值 = [副本["key"] for 副本 in 暫時失敗副本清單]
+    即時GCD統計 = gcd計算器.建立統計()
 
     統計 = {
         "scan_end_at": 掃描結束時間戳記,
         "scan_end_at_iso": 毫秒轉_iso(掃描結束時間戳記),
+        "report_region_scope": 報告地區範圍,
         "enabled_encounters": [副本["key"] for 副本 in 副本清單],
         "completed_encounters": [副本["key"] for 副本 in 已完成副本清單],
         "deferred_encounters": 暫時失敗副本鍵值,
@@ -3569,6 +4907,8 @@ def main() -> int:
         "rankings_inserted_or_updated": 總新增或更新數量,
         "reports_failed": 總失敗報告數量,
         "scan_deferred_encounters": len(暫時失敗副本鍵值),
+        "fetch_gcd_coverage": 即時GCD統計,
+        "existing_report_status_check": 既有報告狀態巡檢統計,
     }
     if 只處理指定報告模式:
         if 總失敗報告數量 == 0:
@@ -3580,6 +4920,7 @@ def main() -> int:
         寫入_json(狀態檔案路徑, 狀態)
     else:
         for 副本設定 in 已完成副本清單:
+            套用延遲掃描執行狀態(狀態, 副本設定, 副本處理狀態[副本設定["key"]])
             套用歷史補查執行狀態(狀態, 副本設定, 副本處理狀態[副本設定["key"]])
         更新狀態(
             狀態,
@@ -3587,6 +4928,18 @@ def main() -> int:
             統計,
             已完成副本清單,
             完整成功=not 暫時失敗副本鍵值,
+        )
+
+    # 即使單次只更新部分副本，最後仍要以目前 data/rankings 全量重建 public/data，
+    # 讓公開排行榜、版本切片與衍生使用者資料維持同一批來源。
+    重建公開排行榜檔案()
+
+    if gcd計算器.啟用:
+        print(
+            "即時 GCD 覆蓋率計算："
+            f"查詢 {即時GCD統計['fights_queried']} 場戰鬥，"
+            f"更新 {即時GCD統計['players_updated']} 位玩家，"
+            f"失敗 {即時GCD統計['fights_failed']} 場。"
         )
 
     if 只處理指定報告模式 and 總失敗報告數量 > 0:

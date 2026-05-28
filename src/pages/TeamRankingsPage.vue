@@ -1,10 +1,91 @@
 <script>
+import { ref } from "vue";
+import JobIcon from "../components/JobIcon.vue";
+import ReportDetailDialog from "../components/ReportDetailDialog.vue";
 import { injectRankingApp } from "../composables/useRankingApp";
 
 export default {
   name: "TeamRankingsPage",
+  components: {
+    JobIcon,
+    ReportDetailDialog,
+  },
   setup() {
-    return injectRankingApp();
+    const app = injectRankingApp();
+    const 報告彈窗資料 = ref(null);
+
+    function 建立隊伍榜報告Record(紀錄) {
+      return {
+        report_code: 紀錄.report_code,
+        report_url: 紀錄.report_url,
+        fight_id: 紀錄.fight_id,
+      };
+    }
+
+    function 建立隊伍榜報告詳細資料(紀錄) {
+      return {
+        subtitle: "隊伍榜紀錄",
+        title: 紀錄.encounter_name || "隊伍榜",
+        identity: `${app.格式化排名(紀錄.顯示排名)} · ${紀錄.players?.length || 0} 人隊伍`,
+        record: 建立隊伍榜報告Record(紀錄),
+        statusItems: [
+          {
+            key: "rank",
+            label: "排名",
+            value: app.格式化排名(紀錄.顯示排名),
+            className: "報告彈窗排名項",
+          },
+          {
+            key: "players",
+            label: "隊伍成員",
+            value: `${紀錄.players?.length || 0} 人`,
+          },
+          {
+            key: "clearTime",
+            label: "通關時間",
+            value: app.格式化通關時間(紀錄.clear_time_seconds),
+            className: "報告彈窗時間項",
+          },
+        ],
+        damageItems: [
+          {
+            key: "teamRdps",
+            label: "隊伍 rDPS",
+            value: app.格式化傷害數值(紀錄.total_rdps),
+            tooltip: app.統計說明文字("rDPS"),
+            tooltipLabel: "rDPS 說明",
+            className: "報告彈窗主要數值 報告彈窗全寬項",
+          },
+        ],
+        traceItems: [
+          {
+            key: "reportFight",
+            label: "Report / Fight",
+            value: `${紀錄.report_code || "-"}${紀錄.fight_id ? ` · ${紀錄.fight_id}` : ""}`,
+          },
+          {
+            key: "recordedAt",
+            label: "紀錄時間",
+            value: app.格式化紀錄時間(紀錄.recorded_at_iso),
+          },
+        ],
+      };
+    }
+
+    function 開啟隊伍榜報告彈窗(紀錄) {
+      報告彈窗資料.value = 建立隊伍榜報告詳細資料(紀錄);
+    }
+
+    function 關閉隊伍榜報告彈窗() {
+      報告彈窗資料.value = null;
+    }
+
+    return {
+      ...app,
+      報告彈窗資料,
+      開啟隊伍榜報告彈窗,
+      關閉隊伍榜報告彈窗,
+    };
   },
 };
 </script>
@@ -89,7 +170,14 @@ export default {
             </thead>
             <tbody>
               <tr v-for="紀錄 in 隊伍榜列" :key="紀錄.id" :class="{ 過版紀錄列: 紀錄.is_obsolete_record }">
-                <td class="數字">{{ 格式化排名(紀錄.顯示排名) }}</td>
+                <td class="數字 排名 隊伍榜排名" :class="排名色彩類別(紀錄.顯示排名)">
+                  <span class="排名徽章" :aria-label="格式化排名(紀錄.顯示排名)">
+                    <span v-if="格式化排名(紀錄.顯示排名).startsWith('#')" class="排名井號" aria-hidden="true">
+                      #
+                    </span>
+                    <span class="排名數字">{{ 格式化排名(紀錄.顯示排名).replace(/^#/, "") }}</span>
+                  </span>
+                </td>
                 <td>
                   <span class="比較副本">
                     <small>{{ 紀錄.encounter_category || "副本" }}</small>
@@ -106,16 +194,13 @@ export default {
                       type="button"
                       @click="載入使用者成績(成員.character_name, 成員.server)"
                     >
-                      <img
-                        v-if="職業Icon路徑(成員.job)"
+                      <JobIcon
                         class="職業圖示"
-                        :src="職業Icon路徑(成員.job)"
-                        alt=""
-                        loading="lazy"
-                        @error="隱藏載入失敗圖片"
+                        :code="成員.job"
                       />
                       <span>{{ 成員.character_name }}</span>
                       <small>{{ 成員.server }}</small>
+                      <small v-if="顯示Gcd覆蓋率" class="gcd參考文字">GCD {{ 格式化Gcd覆蓋率(成員.gcd_coverage) }}</small>
                     </button>
                   </div>
                 </td>
@@ -127,7 +212,14 @@ export default {
                   </span>
                 </td>
                 <td>
-                  <a v-if="紀錄.report_url" :href="紀錄.report_url" target="_blank" rel="noreferrer">FFLogs</a>
+                  <button
+                    v-if="紀錄.report_code || 紀錄.report_url"
+                    class="報告按鈕"
+                    type="button"
+                    @click="開啟隊伍榜報告彈窗(紀錄)"
+                  >
+                    報告
+                  </button>
                   <span v-else>-</span>
                 </td>
               </tr>
@@ -137,4 +229,6 @@ export default {
       </section>
     </template>
   </section>
+
+  <ReportDetailDialog :details="報告彈窗資料" @close="關閉隊伍榜報告彈窗" />
 </template>

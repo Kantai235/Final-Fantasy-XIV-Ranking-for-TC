@@ -1,25 +1,36 @@
 <script setup>
-import { provide, proxyRefs } from "vue";
+import { defineAsyncComponent, onMounted, onUnmounted, provide, proxyRefs } from "vue";
 import AppFooter from "./components/AppFooter.vue";
 import AppHeader from "./components/AppHeader.vue";
-import PageNavigation from "./components/PageNavigation.vue";
-import ActivityPage from "./pages/ActivityPage.vue";
-import ComparePage from "./pages/ComparePage.vue";
-import GlobalStatsPage from "./pages/GlobalStatsPage.vue";
-import HoneyFansPage from "./pages/HoneyFansPage.vue";
-import JobAnalysisPage from "./pages/JobAnalysisPage.vue";
-import RankingPage from "./pages/RankingPage.vue";
-import ServerComparePage from "./pages/ServerComparePage.vue";
-import TeamRankingsPage from "./pages/TeamRankingsPage.vue";
-import UserProfilePage from "./pages/UserProfilePage.vue";
+import PlayerSearchHistoryDialog from "./components/PlayerSearchHistoryDialog.vue";
 import { rankingAppKey, useRankingApp } from "./composables/useRankingApp";
+import { 預熱職業Icon快取 } from "./domain/jobs";
 import { useShareMeta } from "./utils/shareMeta";
+
+const RankingPage = defineAsyncComponent(() => import("./pages/RankingPage.vue"));
+const GlobalStatsPage = defineAsyncComponent(() => import("./pages/GlobalStatsPage.vue"));
+const JobAnalysisPage = defineAsyncComponent(() => import("./pages/JobAnalysisPage.vue"));
+const ActivityPage = defineAsyncComponent(() => import("./pages/ActivityPage.vue"));
+const UserProfilePage = defineAsyncComponent(() => import("./pages/UserProfilePage.vue"));
+const ComparePage = defineAsyncComponent(() => import("./pages/ComparePage.vue"));
+const TeamRankingsPage = defineAsyncComponent(() => import("./pages/TeamRankingsPage.vue"));
+const ServerComparePage = defineAsyncComponent(() => import("./pages/ServerComparePage.vue"));
+const HoneyFansPage = defineAsyncComponent(() => import("./pages/HoneyFansPage.vue"));
 
 const rankingApp = useRankingApp();
 const view = proxyRefs(rankingApp);
+let 取消職業Icon預熱 = null;
 
 provide(rankingAppKey, rankingApp);
 useShareMeta(rankingApp.分享資訊);
+
+onMounted(() => {
+  取消職業Icon預熱 = 預熱職業Icon快取();
+});
+
+onUnmounted(() => {
+  取消職業Icon預熱?.();
+});
 </script>
 
 <template>
@@ -36,7 +47,6 @@ useShareMeta(rankingApp.分享資訊);
 
   <main class="頁面" :data-accent="view.主色模式">
     <AppHeader />
-    <PageNavigation />
 
     <RankingPage v-if="view.頁面模式 === 'ranking'" />
     <GlobalStatsPage v-else-if="view.頁面模式 === 'stats'" />
@@ -49,6 +59,7 @@ useShareMeta(rankingApp.分享資訊);
     <HoneyFansPage v-else-if="view.頁面模式 === 'honey-fans'" />
 
     <AppFooter />
+    <PlayerSearchHistoryDialog />
   </main>
 </template>
 

@@ -1,8 +1,12 @@
 <script>
+import JobIcon from "../components/JobIcon.vue";
 import { injectRankingApp } from "../composables/useRankingApp";
 
 export default {
   name: "ServerComparePage",
+  components: {
+    JobIcon,
+  },
   setup() {
     return injectRankingApp();
   },
@@ -74,7 +78,7 @@ export default {
               v-for="指標 in 伺服器對比概要"
               :key="指標.標籤"
               class="伺服器對比指標"
-              :class="{ 左領先: 指標.勝方 === 'left', 右領先: 指標.勝方 === 'right' }"
+              :class="{ 左領先: 指標.勝方 === 'left', 右領先: 指標.勝方 === 'right', gcd參考文字: 指標.是否Gcd參考值 }"
             >
               <span>{{ 指標.標籤 }}</span>
               <strong :data-server-label="伺服器對比左資料.server">{{ 指標.左文字 }}</strong>
@@ -91,13 +95,10 @@ export default {
           <div class="伺服器職能對比列表">
             <div v-for="職能 in 伺服器對比職能列" :key="職能.role" class="伺服器職能對比項">
               <span class="隊友職能名稱">
-                <img
-                  v-if="職業類型Icon路徑(職能.role)"
+                <JobIcon
                   class="職業圖示"
-                  :src="職業類型Icon路徑(職能.role)"
-                  alt=""
-                  loading="lazy"
-                  @error="隱藏載入失敗圖片"
+                  kind="role"
+                  :code="職能.role"
                 />
                 <strong>{{ 職能.名稱 }}</strong>
               </span>
@@ -124,13 +125,9 @@ export default {
             <div v-for="職業 in 伺服器對比職業亮點.left" :key="職業.job" class="分布項">
               <div class="分布列">
                 <span class="分布職業">
-                  <img
-                    v-if="職業Icon路徑(職業.job)"
+                  <JobIcon
                     class="職業圖示"
-                    :src="職業Icon路徑(職業.job)"
-                    alt=""
-                    loading="lazy"
-                    @error="隱藏載入失敗圖片"
+                    :code="職業.job"
                   />
                   <strong>{{ 職業.名稱 }}</strong>
                 </span>
@@ -152,13 +149,9 @@ export default {
             <div v-for="職業 in 伺服器對比職業亮點.right" :key="職業.job" class="分布項">
               <div class="分布列">
                 <span class="分布職業">
-                  <img
-                    v-if="職業Icon路徑(職業.job)"
+                  <JobIcon
                     class="職業圖示"
-                    :src="職業Icon路徑(職業.job)"
-                    alt=""
-                    loading="lazy"
-                    @error="隱藏載入失敗圖片"
+                    :code="職業.job"
                   />
                   <strong>{{ 職業.名稱 }}</strong>
                 </span>

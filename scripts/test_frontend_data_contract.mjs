@@ -2,7 +2,18 @@ import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { 建立職業佔比分組 } from "../src/utils/statsDisplay.js";
+import { 可快取職業Icon路徑清單, 職業Icon路徑, 職業類型Icon路徑 } from "../src/domain/jobs.js";
+import {
+  取得主動公告列表,
+  取得公告狀態,
+  正規化公告資料,
+  讀取已關閉公告,
+  寫入已關閉公告,
+  解析公告Markdown,
+} from "../src/utils/announcements.js";
+import { buildReportExternalLinks } from "../src/utils/reportLinks.js";
+import { publicDataContracts, validateSchemaContract } from "../schemas/public_data_contracts.mjs";
+import { 建立職業佔比分組, 取得統計範圍計數 } from "../src/utils/statsDisplay.js";
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const srcDir = path.join(rootDir, "src");
@@ -35,6 +46,76 @@ function assert(condition, message) {
   if (!condition) {
     reportIssue(message);
   }
+}
+
+function validateGcdCoverageDiagnosticFields() {
+  const rankingEntry = {
+    id: "sample-gcd-entry",
+    character_name: "測試角色",
+    server: "陸行鳥",
+    job: "Bard",
+    dps: 1000,
+    rdps: 1000,
+    adps: 1000,
+    active_time_ms: 600000,
+    active_percent: 99.5,
+    gcd_coverage: {
+      percent: 98.82,
+      covered_time_ms: 593000,
+      denominator_ms: 600000,
+      downtime_ms: 0,
+      gcd_cast_count: 240,
+      calculation_version: 5,
+      source: "raw_events",
+      speed_stat_source: "estimated",
+      estimated_speed_below_minimum: true,
+      fallback_selection: "bard_raw_events_with_casts_graph_lock_blend",
+      downtime_selection: "casts_graph_encounter_gap",
+      raw_events_percent: 98.49,
+      raw_events_denominator_ms: 282847,
+      casts_graph_percent: 100,
+      casts_graph_denominator_ms: 414286,
+      raw_targetability_percent: 95.04,
+      raw_targetability_denominator_ms: 482477,
+    },
+    clear_time_ms: 600000,
+    clear_time_seconds: 600,
+    damage_downtime_ms: null,
+    damage_downtime_seconds: null,
+    damage_time_ms: 600000,
+    damage_time_seconds: 600,
+    recorded_at_iso: "2026-01-01T00:00:00.000Z",
+    report_code: "sample",
+    report_url: "https://www.fflogs.com/reports/sample",
+    fight_id: 1,
+    duplicate_count: 1,
+    rank: 1,
+  };
+
+  const contractIssues = validateSchemaContract(
+    rankingEntry,
+    publicDataContracts.rankingEntry,
+    "GCD 覆蓋率診斷欄位範例",
+  );
+  assert(
+    contractIssues.length === 0,
+    `GCD 覆蓋率診斷欄位應符合公開資料契約：${contractIssues.join("；")}`,
+  );
+}
+
+function validateJobIconCacheKeys() {
+  const paladinIcon = 職業Icon路徑("Paladin");
+  const tankIcon = 職業類型Icon路徑("role:tank");
+  const uniqueIconCount = new Set(可快取職業Icon路徑清單).size;
+
+  assert(paladinIcon === "/icons/jobs/Paladin.png", "騎士職業圖示路徑應維持既有公開 URL，避免破壞舊快取。");
+  assert(tankIcon === "/icons/jobs/RoleTank.png", "防護職能圖示路徑應維持既有公開 URL，避免破壞舊快取。");
+  assert(職業Icon路徑("Paladin") === paladinIcon, "職業圖示路徑應從穩定索引重用同一個 cache key。");
+  assert(
+    可快取職業Icon路徑清單.includes(paladinIcon) && 可快取職業Icon路徑清單.includes(tankIcon),
+    "職業圖示預熱清單應包含職業與職能圖示，讓各頁面切換可重用瀏覽器快取。",
+  );
+  assert(uniqueIconCount === 可快取職業Icon路徑清單.length, "職業圖示預熱清單不應包含重複 URL。");
 }
 
 function addImportedBindings(source, bindings) {
@@ -174,7 +255,11 @@ async function validateFrontendFetchBoundary() {
     "analytics.js",
     "main.js",
     "composables/useRankingApp.js",
+    "composables/rankingApp/context.js",
+    "composables/rankingApp/defaults.js",
+    "composables/rankingApp/useRankingData.js",
     "domain/jobs.js",
+    "utils/announcements.js",
     "utils/fetchJson.js",
     "utils/publicData.js",
     "utils/shareMeta.js",
@@ -195,6 +280,25 @@ async function validateFrontendFetchBoundary() {
       reportIssue(`${relativePath} 看起來直接碰到 FFLogs API，前端不得繞過資料管線`);
     }
   }
+}
+
+async function validateSiteFeatureFlags() {
+  const source = await readText(path.join(srcDir, "utils", "siteFeatures.js"));
+  assert(
+    /export\s+const\s+顯示Gcd覆蓋率\s*=\s*true\s*;/.test(source),
+    "目前營運設定應透過 src/utils/siteFeatures.js 開啟 GCD 覆蓋率顯示",
+  );
+  assert(
+    source.includes("這些旗標只影響 UI 呈現"),
+    "siteFeatures.js 應保留旗標只影響 UI 呈現的註解，避免誤改資料管線",
+  );
+}
+
+async function validateStaticSeoBuildOptions() {
+  const source = await readText(path.join(rootDir, "scripts", "build_spa_fallback.mjs"));
+  assert(source.includes("resize(1200, 630"), "SEO/OG 靜態圖必須維持 1200x630 輸出。");
+  assert(source.includes("image/png"), "SEO/OG meta 必須維持 crawler-safe PNG。");
+  assert(source.includes("colors: 128"), "OG PNG 應限制 palette 色數，避免玩家分享圖讓 Pages payload 膨脹。");
 }
 
 function extractSourceSection(source, startText, endText, label) {
@@ -235,6 +339,7 @@ async function validateEncounterSwitchFilterPersistence() {
 
 async function validatePublicDataForFrontend() {
   const encounters = await readJson(path.join(publicDataDir, "encounters.json"), "public/data/encounters.json");
+  const announcements = await readJson(path.join(publicDataDir, "announcements.json"), "public/data/announcements.json");
   const globalStats = await readJson(path.join(publicDataDir, "global_stats.json"), "public/data/global_stats.json");
   const serverCompare = await readJson(path.join(publicDataDir, "server_compare.json"), "public/data/server_compare.json");
   const honeyFans = await readJson(path.join(publicDataDir, "fun", "honey_b_fans.json"), "public/data/fun/honey_b_fans.json");
@@ -242,6 +347,13 @@ async function validatePublicDataForFrontend() {
   const versionedEncounterKeys = new Set((encounters || []).filter((encounter) => encounter?.version_cutoff).map((encounter) => encounter.key));
 
   assert(Array.isArray(encounters) && encounters.length > 0, "public/data/encounters.json 必須提供前端副本清單");
+  assert(announcements?.schema_version === 1, "public/data/announcements.json schema_version 必須是 1");
+  assert(Array.isArray(announcements?.announcements), "public/data/announcements.json 必須包含 announcements");
+  for (const announcement of announcements?.announcements || []) {
+    assert(Boolean(announcement?.id), "每則公告必須有穩定 id，讓使用者關閉狀態可保存。");
+    assert(Boolean(announcement?.summary), `${announcement?.id || "未知公告"} 必須有右上角摘要。`);
+    assert(Boolean(announcement?.details_markdown), `${announcement?.id || "未知公告"} 必須有 Markdown 詳細內容。`);
+  }
   assert(globalStats?.schema_version === 1, "public/data/global_stats.json schema_version 必須是 1");
   assert(Array.isArray(globalStats?.server_stats), "public/data/global_stats.json 必須包含 server_stats");
   assert(Array.isArray(globalStats?.role_stats), "public/data/global_stats.json 必須包含 role_stats");
@@ -257,11 +369,14 @@ async function validatePublicDataForFrontend() {
   assert(Array.isArray(honeyFans?.latest_records), "public/data/fun/honey_b_fans.json 必須包含 latest_records");
   assert(Array.isArray(userIndex?.users) && userIndex.users.length > 0, "public/data/users/index.json 必須包含 users");
   assert(userIndex?.total_users === userIndex?.users?.length, "public/data/users/index.json total_users 必須等於 users 長度");
+  const userDetailCache = new Map();
 
   for (const encounter of encounters || []) {
     const key = encounter?.key;
     const dataPath = encounter?.data_path || `data/rankings/${key}.json`;
     const publicRankingPath = path.join(publicDataDir, dataPath.replace(/^data\//, ""));
+    const rankingTablePath = path.join(publicDataDir, "ranking-tables", `${key}.json`);
+    const rankingDetailPath = path.join(publicDataDir, "ranking-details", `${key}.json`);
     assert(Boolean(key), "public/data/encounters.json 的每筆副本都必須有 key");
     assert(existsSync(publicRankingPath), `${key} 的公開排行榜檔案不存在：${dataPath}`);
     const ranking = await readJson(publicRankingPath, `${key} 公開排行榜`);
@@ -281,6 +396,18 @@ async function validatePublicDataForFrontend() {
         `${key} 公開排行榜條目必須標記 is_obsolete_record`,
       );
     }
+
+    assert(existsSync(rankingTablePath), `${key} 必須提供排行榜薄索引`);
+    const table = await readJson(rankingTablePath, `${key} 排行榜薄索引`);
+    assert(table?.format === "ranking_table_index_v1", `${key} 排行榜薄索引 format 必須正確`);
+    assert(Array.isArray(table?.table_columns), `${key} 排行榜薄索引必須包含 table_columns`);
+    assert(Array.isArray(table?.table_rows), `${key} 排行榜薄索引必須包含 table_rows`);
+    assert(table.table_columns.includes("has_report_detail"), `${key} 排行榜薄索引必須標記可按需載入報告細節`);
+    assert(table.detail_path === `data/ranking-details/${key}.json`, `${key} 排行榜薄索引 detail_path 必須指向報告細節檔`);
+    assert(existsSync(rankingDetailPath), `${key} 必須提供排行榜報告細節檔`);
+    const details = await readJson(rankingDetailPath, `${key} 排行榜報告細節`);
+    assert(details?.format === "ranking_detail_entries_v1", `${key} 排行榜報告細節 format 必須正確`);
+    assert(details?.entries && typeof details.entries === "object", `${key} 排行榜報告細節必須包含 entries 索引`);
   }
 
   for (const encounter of globalStats?.encounters || []) {
@@ -314,6 +441,31 @@ async function validatePublicDataForFrontend() {
 
     const userData = await readJson(userPath, `使用者檔案 ${user.file_path}`);
     for (const encounter of userData?.encounters || []) {
+      const allEntries = [
+        encounter?.best_entry,
+        ...(encounter?.best_by_job || []),
+        ...(encounter?.public_entries || []),
+      ].filter(Boolean);
+      for (const entry of allEntries) {
+        const duplicateCount = Number(entry?.duplicate_count) || 0;
+        const inlineVariants = Array.isArray(entry?.report_variants) ? entry.report_variants : [];
+        if (duplicateCount <= 1 || inlineVariants.length > 1) {
+          continue;
+        }
+        assert(Boolean(entry?.report_detail_path && entry?.report_detail_id), `${user.file_path} 的多來源成績必須保留 report_detail_path/report_detail_id`);
+        if (!entry?.report_detail_path) {
+          continue;
+        }
+        const detailPath = path.join(rootDir, "public", entry.report_detail_path);
+        assert(existsSync(detailPath), `${user.file_path} 的個人成績報告細節檔不存在：${entry.report_detail_path}`);
+        if (!userDetailCache.has(entry.report_detail_path) && existsSync(detailPath)) {
+          userDetailCache.set(entry.report_detail_path, await readJson(detailPath, `個人成績報告細節 ${entry.report_detail_path}`));
+        }
+        const details = userDetailCache.get(entry.report_detail_path);
+        assert(details?.format === "user_entry_details_v1", `${entry.report_detail_path} format 必須是 user_entry_details_v1`);
+        assert(Boolean(details?.entries?.[entry.report_detail_id]), `${entry.report_detail_path} 必須包含 ${entry.report_detail_id}`);
+      }
+
       if (!versionedEncounterKeys.has(encounter?.encounter_key)) {
         continue;
       }
@@ -337,6 +489,54 @@ async function validatePublicDataForFrontend() {
         assert(encounter.best_entry === null, `${user.file_path} 只有過版紀錄時不可標示最佳紀錄`);
       }
     }
+  }
+}
+
+async function validateHiddenDeltaDataForFrontend() {
+  const allDataDir = path.join(publicDataDir, "all");
+  const allUserIndexPath = path.join(allDataDir, "users", "index.json");
+  if (!existsSync(allUserIndexPath)) {
+    return;
+  }
+
+  const useRankingAppSource = await readText(path.join(srcDir, "composables", "useRankingApp.js"));
+  const rankingDataSource = await readText(path.join(srcDir, "composables", "rankingApp", "useRankingData.js"));
+  const userDataSource = await readText(path.join(srcDir, "utils", "userData.js"));
+  assert(rankingDataSource.includes("ranking_table_hidden_delta_v1"), "前端排行榜讀取端必須支援 hidden delta 薄索引");
+  assert(rankingDataSource.includes("ranking_detail_hidden_delta_v1"), "前端排行榜讀取端必須支援 hidden delta 報告細節");
+  assert(useRankingAppSource.includes("讀取個人成績報告詳細資料"), "前端個人成績單必須支援按需載入報告細節");
+  assert(useRankingAppSource.includes("user_entry_details_v1"), "前端個人成績單必須辨識個人成績報告細節格式");
+  assert(userDataSource.includes("user_profile_hidden_delta_v1"), "前端個人成績單讀取端必須支援 hidden delta");
+
+  const allUserIndex = await readJson(allUserIndexPath, "public/data/all/users/index.json");
+  const deltaUser = (allUserIndex?.users || []).find((user) => String(user?.file_path || "").startsWith("data/all/users/"));
+  assert(deltaUser, "public/data/all/users/index.json 應至少包含一筆 hidden delta 使用者檔");
+  if (deltaUser?.file_path) {
+    const deltaPath = path.join(rootDir, "public", deltaUser.file_path);
+    assert(existsSync(deltaPath), `hidden delta 使用者檔不存在：${deltaUser.file_path}`);
+    const delta = await readJson(deltaPath, `hidden delta 使用者檔 ${deltaUser.file_path}`);
+    assert(delta?.format === "user_profile_hidden_delta_v1", `${deltaUser.file_path} format 必須是 user_profile_hidden_delta_v1`);
+    assert(delta?.base_path?.startsWith("data/users/"), `${deltaUser.file_path} 必須指回公開使用者底稿`);
+    assert(existsSync(path.join(rootDir, "public", delta.base_path || "")), `${deltaUser.file_path} 指向的公開底稿不存在`);
+  }
+
+  const encounters = await readJson(path.join(publicDataDir, "encounters.json"), "public/data/encounters.json");
+  for (const encounter of encounters || []) {
+    const key = encounter?.key;
+    if (!key) {
+      continue;
+    }
+    const allRanking = await readJson(path.join(allDataDir, "rankings", `${key}.json`), `${key} hidden ranking delta`);
+    const allTable = await readJson(path.join(allDataDir, "ranking-tables", `${key}.json`), `${key} hidden table delta`);
+    const allDetails = await readJson(path.join(allDataDir, "ranking-details", `${key}.json`), `${key} hidden details delta`);
+    assert(allRanking?.format === "ranking_hidden_delta_v1", `${key} hidden ranking delta format 必須正確`);
+    assert(allRanking?.base_path === `data/rankings/${key}.json`, `${key} hidden ranking delta 必須指回公開排行榜`);
+    assert(allTable?.format === "ranking_table_hidden_delta_v1", `${key} hidden table delta format 必須正確`);
+    assert(allTable?.base_path === `data/ranking-tables/${key}.json`, `${key} hidden table delta 必須指回公開薄索引`);
+    assert(allTable?.detail_path === `data/all/ranking-details/${key}.json`, `${key} hidden table delta 必須指向 hidden 報告細節`);
+    assert(Array.isArray(allTable?.table_row_order), `${key} hidden table delta 必須保留完整排序 ID`);
+    assert(allDetails?.format === "ranking_detail_hidden_delta_v1", `${key} hidden details delta format 必須正確`);
+    assert(allDetails?.base_path === `data/ranking-details/${key}.json`, `${key} hidden details delta 必須指回公開報告細節`);
   }
 }
 
@@ -380,6 +580,81 @@ function validateScopedJobShareRecalculation() {
   assert(paladinGroup?.jobs[0]?.percentage === 100, "單一職業範圍的職業佔比應顯示為 100%。");
 }
 
+function validateGlobalStatsOverviewDenominator() {
+  const globalStats = {
+    total_character_count: 10,
+    total_encounter_clear_count: 25,
+    role_stats: [{ role: "role:tank", role_name: "防護職業", clear_count: 6 }],
+    job_stats: [{ job: "Paladin", role: "role:tank", role_name: "防護職業", clear_count: 4 }],
+  };
+
+  assert(
+    取得統計範圍計數(globalStats, "all") === 10,
+    "副本通關概覽在全服全職業範圍下，分母應使用全服公開玩家數，避免範圍佔比變成 0%。",
+  );
+  assert(取得統計範圍計數(globalStats, "role:tank") === 6, "職能範圍分母應使用該職能通關紀錄數。");
+  assert(取得統計範圍計數(globalStats, "Paladin") === 4, "單一職業範圍分母應使用該職業通關紀錄數。");
+  assert(
+    取得統計範圍計數({ character_count: 3, clear_count: 2 }, "all") === 3,
+    "單一副本統計仍應優先使用 character_count 作為通關玩家分母。",
+  );
+}
+
+function validateAnnouncementRules() {
+  const payload = {
+    announcements: [
+      {
+        id: "always",
+        title: "永久公告",
+        summary: "沒有期限",
+        details_markdown: "支援 **Markdown** 與 [連結](https://ranking.init.engineer)。",
+        links: [{ label: "站台", url: "https://ranking.init.engineer" }],
+      },
+      {
+        id: "future",
+        title: "未來公告",
+        summary: "尚未開始",
+        details_markdown: "尚未開始前不可主動顯示。",
+        starts_at_iso: "2026-06-01T00:00:00.000Z",
+      },
+      {
+        id: "expired",
+        title: "過期公告",
+        summary: "已過期",
+        details_markdown: "超過有效期限後不可主動顯示。",
+        expires_at_iso: "2026-05-01T00:00:00.000Z",
+      },
+    ],
+  };
+
+  const announcements = 正規化公告資料(payload);
+  const now = new Date("2026-05-24T00:00:00.000Z").getTime();
+  assert(announcements.length === 3, "公告正規化應保留合法公告。");
+  assert(取得公告狀態(announcements.find((item) => item.id === "always"), now) === "active", "未設定期限的公告應立即主動顯示。");
+  assert(取得公告狀態(announcements.find((item) => item.id === "future"), now) === "scheduled", "未到 starts_at_iso 的公告不可主動顯示。");
+  assert(取得公告狀態(announcements.find((item) => item.id === "expired"), now) === "expired", "超過 expires_at_iso 的公告不可主動顯示。");
+
+  const activeIds = 取得主動公告列表(announcements, [], now).map((item) => item.id);
+  assert(activeIds.length === 1 && activeIds[0] === "always", "主動公告列表只應包含生效且未關閉的公告。");
+  assert(取得主動公告列表(announcements, ["always"], now).length === 0, "已關閉公告不應再次主動顯示。");
+
+  const storage = {
+    value: "",
+    getItem() {
+      return this.value;
+    },
+    setItem(_key, value) {
+      this.value = value;
+    },
+  };
+  寫入已關閉公告(new Set(["always"]), storage);
+  assert(讀取已關閉公告(storage).has("always"), "公告關閉狀態應可寫入並從 localStorage 還原。");
+
+  const blocks = 解析公告Markdown(payload.announcements[0].details_markdown);
+  assert(blocks.some((block) => block.parts?.some((part) => part.type === "strong")), "公告詳細內容應解析 Markdown 粗體。");
+  assert(blocks.some((block) => block.parts?.some((part) => part.type === "link")), "公告詳細內容應解析 Markdown 連結。");
+}
+
 async function loadUrlStateTestModule() {
   const filePath = path.join(srcDir, "utils", "urlState.js");
   let source = await readText(filePath);
@@ -418,13 +693,34 @@ const 建立使用者預設資料網址 = (角色名稱) => \`/mock/data/users/\
   return import(moduleUrl);
 }
 
+async function loadPublicDataTestModule(href, basePath = "./") {
+  globalThis.window = {
+    location: new URL(href),
+  };
+
+  const filePath = path.join(srcDir, "utils", "publicData.js");
+  const source = (await readText(filePath)).replace(/import\.meta\.env\?\.BASE_URL/g, JSON.stringify(basePath));
+  const cacheKey = Buffer.from(`${href}|${basePath}`, "utf8").toString("base64url");
+  const moduleUrl = `data:text/javascript;base64,${Buffer.from(source, "utf8").toString("base64")}#${cacheKey}`;
+  return import(moduleUrl);
+}
+
 async function validateUserSearchResolution() {
   const module = await loadUserDataTestModule();
   const users = [
     {
       character_name: "Shibe柴",
+      canonical_server: "利維坦",
       servers: ["利維坦"],
+      server_aliases: [],
       file_path: "data/users/Shibe柴.json",
+    },
+    {
+      character_name: "Shibe柴",
+      canonical_server: "巴哈姆特",
+      servers: ["巴哈姆特"],
+      server_aliases: [],
+      file_path: "data/users/Shibe柴-2.json",
     },
   ];
 
@@ -440,9 +736,126 @@ async function validateUserSearchResolution() {
   assert(formattedTarget.角色名稱 === "Shibe柴" && formattedTarget.伺服器 === "利維坦", "已含伺服器的搜尋文字仍應解析成功");
   const compactTarget = module.解析使用者搜尋目標("Shibe柴@利維坦", users);
   assert(compactTarget.角色名稱 === "Shibe柴" && compactTarget.伺服器 === "利維坦", "沒有空白的玩家伺服器格式仍應解析成功");
+  const sameNameTarget = module.解析使用者搜尋目標("Shibe柴 @ 巴哈姆特", users);
+  assert(
+    sameNameTarget.角色名稱 === "Shibe柴" && sameNameTarget.伺服器 === "巴哈姆特",
+    "同名跨服查詢應保留使用者指定的伺服器身分。",
+  );
+  assert(module.取得使用者主要伺服器(users[0]) === "利維坦", "使用者工具應優先回傳 canonical_server。");
+  const serverList = module.取得使用者伺服器列表(users[0]);
+  assert(
+    serverList.length === 1 && serverList[0] === "利維坦",
+    "使用者工具不應把另一個同名角色所在伺服器列為查詢 alias。",
+  );
 
   const indexEntry = module.尋找使用者索引條目(users, "shibe柴");
   assert(indexEntry?.file_path === "data/users/Shibe柴.json", "使用者索引查找應支援純玩家名稱大小寫差異");
+  const sameNameEntry = module.尋找使用者索引條目(users, "Shibe柴", "巴哈姆特");
+  assert(sameNameEntry?.file_path === "data/users/Shibe柴-2.json", "使用者索引查找應支援同名角色用伺服器拆分。");
+  const missingServerTarget = module.解析使用者搜尋目標("Shibe柴 @ 奧汀", users);
+  assert(
+    missingServerTarget.伺服器 === "奧汀" && !missingServerTarget.索引條目,
+    "指定伺服器沒有索引命中時，搜尋目標仍應保留使用者輸入的伺服器。",
+  );
+
+  const originalFetch = globalThis.fetch;
+  let fetchedUrl = "";
+  globalThis.fetch = async (url) => {
+    fetchedUrl = String(url);
+    return {
+      ok: true,
+      async json() {
+        return {};
+      },
+    };
+  };
+  try {
+    await module.讀取使用者資料檔("Shibe柴", users, "巴哈姆特");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+  assert(fetchedUrl === "/mock/data/users/Shibe柴-2.json", "讀取使用者資料檔應保留伺服器條件，避免同名角色讀到第一筆索引。");
+
+  let missingServerError = "";
+  let missingServerFetchCalled = false;
+  globalThis.fetch = async () => {
+    missingServerFetchCalled = true;
+    return {
+      ok: true,
+      async json() {
+        return {};
+      },
+    };
+  };
+  try {
+    await module.讀取使用者資料檔("Shibe柴", users, "奧汀");
+  } catch (error) {
+    missingServerError = error instanceof Error ? error.message : String(error);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+  assert(!missingServerFetchCalled, "指定伺服器沒有索引命中時，不應退回純玩家名稱檔案。");
+  assert(
+    missingServerError === "找不到「Shibe柴 @ 奧汀」的個人成績單",
+    "指定伺服器搜尋失敗時，錯誤訊息應保留完整「玩家 @ 伺服器」查詢。",
+  );
+
+  const storage = {
+    value: "",
+    getItem() {
+      return this.value;
+    },
+    setItem(_key, value) {
+      this.value = value;
+    },
+  };
+  let history = module.新增玩家搜尋歷史({ character_name: "乾太", server: "奧汀" }, storage, "2026-05-23T01:00:00.000Z");
+  history = module.新增玩家搜尋歷史("Shibe柴 @ 利維坦", storage, "2026-05-23T02:00:00.000Z");
+  history = module.新增玩家搜尋歷史({ character_name: "乾太", server: "奧汀" }, storage, "2026-05-23T03:00:00.000Z");
+
+  assert(history.length === 2, "玩家搜尋歷史應以玩家與伺服器去重。");
+  assert(history[0]?.value === "乾太 @ 奧汀", "重複搜尋的玩家應移到最近搜尋最前面。");
+  assert(history[0]?.searched_at_iso === "2026-05-23T03:00:00.000Z", "重複搜尋的玩家應更新搜尋時間。");
+  assert(module.讀取玩家搜尋歷史(storage)[1]?.value === "Shibe柴 @ 利維坦", "玩家搜尋歷史應可從 localStorage 格式還原。");
+
+  history = module.刪除玩家搜尋歷史({ character_name: "乾太", server: "奧汀" }, storage);
+  assert(history.length === 1 && history[0]?.value === "Shibe柴 @ 利維坦", "玩家搜尋歷史應支援單筆刪除。");
+  history = module.清除玩家搜尋歷史(storage);
+  assert(history.length === 0 && module.讀取玩家搜尋歷史(storage).length === 0, "玩家搜尋歷史應支援全部清除。");
+
+  assert(module.玩家搜尋歷史顯示上限 === 8, "玩家搜尋下拉清單應最多顯示 8 筆。");
+  assert(module.玩家搜尋歷史保存上限 === 100, "玩家搜尋歷程編輯清單應最多保存 100 筆。");
+  const manyUsers = Array.from({ length: 120 }, (_item, index) => ({ character_name: `玩家${index}`, server: "奧汀" }));
+  const limitedHistory = module.正規化玩家搜尋歷史列表(manyUsers);
+  assert(limitedHistory.length === 100, "玩家搜尋歷史最多只應保存 100 筆。");
+  assert(module.正規化玩家搜尋歷史列表(["", { server: "奧汀" }]).length === 0, "玩家搜尋歷史不應保存空白玩家名稱。");
+}
+
+async function validatePublicDataRouteBase() {
+  const directUserRoute = await loadPublicDataTestModule("https://ranking.init.engineer/user/");
+  assert(
+    directUserRoute.使用者索引網址 === "/data/users/index.json",
+    "直接開啟 /user/ 時，公開資料索引應讀取部署根目錄的 /data/users/index.json。",
+  );
+  assert(
+    directUserRoute.建立公開資料網址("data/users/篝之霧枝-2.json") ===
+      "/data/users/%E7%AF%9D%E4%B9%8B%E9%9C%A7%E6%9E%9D-2.json",
+    "直接開啟 /user/ 時，個人成績單檔案 URL 不應落到 /user/data 底下。",
+  );
+
+  const subpathRoute = await loadPublicDataTestModule("https://example.test/repo/user/Aa?server=%E5%A5%A7%E6%B1%80");
+  assert(
+    subpathRoute.使用者索引網址 === "/repo/data/users/index.json",
+    "子路徑部署直接開啟 /repo/user/{玩家} 時，公開資料 URL 應保留 /repo/ 部署基底。",
+  );
+
+  const configuredBase = await loadPublicDataTestModule("https://example.test/user/", "/custom/");
+  assert(
+    configuredBase.使用者索引網址 === "/custom/data/users/index.json",
+    "Vite base_path 已指定絕對路徑時，公開資料 URL 應優先使用設定值。",
+  );
+
+  delete globalThis.window;
 }
 
 function installUrlStateWindow(href, events) {
@@ -465,6 +878,42 @@ function installUrlStateWindow(href, events) {
       events.push(event.type);
     },
   };
+}
+
+function validateReportExternalLinks() {
+  const links = buildReportExternalLinks({
+    report_code: "BAgFha92HkfQ4vKP",
+    fight_id: 15,
+    fflogs_source_id: 26,
+  });
+  const linksByKey = new Map(links.map((link) => [link.key, link.url]));
+  const labelsByKey = new Map(links.map((link) => [link.key, link.label]));
+
+  assert(
+    linksByKey.get("fflogs") === "https://www.fflogs.com/reports/BAgFha92HkfQ4vKP?fight=15",
+    "報告工具連結應把 FFLogs 指到實際通關 fight。",
+  );
+  assert(
+    linksByKey.get("xivanalysis") === "https://xivanalysis.com/fflogs/BAgFha92HkfQ4vKP/15/26",
+    "報告工具連結應用 FFLogs sourceID 組出 xivanalysis 玩家深連結。",
+  );
+  assert(labelsByKey.get("xivanalysis") === "XIV Analysis", "報告工具連結應顯示 XIV Analysis。");
+  assert(
+    linksByKey.get("ffreplay") ===
+      "https://ffreplay.vjoi.cn/ffreplay.html?url=https%3A%2F%2Fwww.fflogs.com%2Freports%2FBAgFha92HkfQ4vKP%3Ffight%3D15",
+    "報告工具連結應把含 fight 的 FFLogs URL 編碼後交給 ffreplay。",
+  );
+  assert(labelsByKey.get("ffreplay") === "FF Repley", "報告工具連結應顯示 FF Repley。");
+
+  const teamLinks = buildReportExternalLinks({
+    report_code: "BAgFha92HkfQ4vKP",
+    fight_id: 15,
+  });
+  const teamLinksByKey = new Map(teamLinks.map((link) => [link.key, link.url]));
+  assert(
+    teamLinksByKey.get("xivanalysis") === "https://xivanalysis.com/fflogs/BAgFha92HkfQ4vKP/15",
+    "隊伍榜報告工具連結不帶 FFLogs sourceID 時，XIV Analysis 應只指到 fight 場次頁。",
+  );
 }
 
 async function validateShareUrlStateCompatibility() {
@@ -505,6 +954,11 @@ async function validateShareUrlStateCompatibility() {
       expected: { page: "jobs", job: "Paladin" },
     },
     {
+      label: "職業分析職能 query",
+      href: "https://ranking.init.engineer/jobs?jobScope=role%3Atank",
+      expected: { page: "jobs", jobScope: "role:tank" },
+    },
+    {
       label: "伺服器對比乾淨路徑",
       href: "https://ranking.init.engineer/servers/%E9%B3%B3%E5%87%B0/vs/%E4%BC%8A%E5%BC%97%E5%88%A9%E7%89%B9",
       expected: { page: "servers", left: "鳳凰", right: "伊弗利特" },
@@ -537,6 +991,13 @@ async function validateShareUrlStateCompatibility() {
     "子路徑部署下從 /stats/{副本} 寫入 /jobs/{職業} 時，必須保留部署基底路徑",
   );
   assert(events.includes("ffxivtc:urlchange"), "寫入分享網址後必須送出自訂事件，讓 SEO/OG meta 同步更新");
+
+  installUrlStateWindow("https://example.test/repo/jobs/Paladin", events);
+  module.writeState({ page: "jobs", jobScope: "role:tank" }, { replace: true });
+  assert(
+    globalThis.window.location.href === "https://example.test/repo/jobs?jobScope=role%3Atank",
+    "職業分析寫入職能範圍時，應保留 /jobs 路徑並以 jobScope query 表示職能",
+  );
 
   installUrlStateWindow("https://ranking.init.engineer/?encounter=savage_m1s&version=valid", events);
   module.writeState({ page: "ranking", encounter: "extreme_zoraal_ja", version: "obsolete" }, { replace: true });
@@ -587,10 +1048,19 @@ async function validateShareUrlStateCompatibility() {
 async function main() {
   await validateUseRankingAppReturnBindings();
   await validateFrontendFetchBoundary();
+  await validateStaticSeoBuildOptions();
+  await validateSiteFeatureFlags();
+  validateGcdCoverageDiagnosticFields();
+  validateJobIconCacheKeys();
   await validateEncounterSwitchFilterPersistence();
   await validatePublicDataForFrontend();
+  await validateHiddenDeltaDataForFrontend();
+  validateReportExternalLinks();
   validateScopedJobShareRecalculation();
+  validateGlobalStatsOverviewDenominator();
+  validateAnnouncementRules();
   await validateUserSearchResolution();
+  await validatePublicDataRouteBase();
   await validateShareUrlStateCompatibility();
 
   if (issues.length > 0) {

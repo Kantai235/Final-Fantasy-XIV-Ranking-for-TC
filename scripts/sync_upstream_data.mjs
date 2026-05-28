@@ -386,13 +386,8 @@ function checkProtectedRemovals(relPath, base, side, sideName, issues) {
         sideEncounter?.checked_reports,
         sideName,
       );
-      checkRemovedKeys(
-        issues,
-        `${relPath}:encounters.${encounterKey}.processed_reports`,
-        baseEncounter?.processed_reports,
-        sideEncounter?.processed_reports,
-        sideName,
-      );
+      // processed_reports 是單輪 checkpoint，fetch_fflogs.py 成功完成一輪後會清空；
+      // checked_reports 才是跨輪保留的已檢查快取，因此這裡只把 checked_reports 視為同步保護資料。
     }
     return;
   }
@@ -910,6 +905,15 @@ function mergeJsonValue(base, local, remote, pathParts, issues) {
     return cloneJson(remote);
   }
   if (remote === missing) {
+    return cloneJson(local);
+  }
+  if (sameJson(local, remote)) {
+    return cloneJson(local);
+  }
+  if (sameJson(base, local)) {
+    return cloneJson(remote);
+  }
+  if (sameJson(base, remote)) {
     return cloneJson(local);
   }
   if (isScalar(base) && isScalar(local) && isScalar(remote)) {

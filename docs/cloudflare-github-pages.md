@@ -1,6 +1,6 @@
 # Cloudflare CDN 與 GitHub Pages 流量保護
 
-本專案部署在 GitHub Pages，站台本身是純靜態 Vue/Vite 產物。Cloudflare 的角色是放在 GitHub Pages 前方做快取、壓縮、部署後清除快取與節流，目標是讓大量重複瀏覽命中 Cloudflare 邊緣節點，降低 GitHub Pages origin 流量，同時讓半小時一次的資料更新能在部署後快速生效。
+本專案部署在 GitHub Pages，站台本身是純靜態 Vue/Vite 產物。Cloudflare 的角色是放在 GitHub Pages 前方做快取、壓縮、部署後清除快取與節流，目標是讓大量重複瀏覽命中 Cloudflare 邊緣節點，降低 GitHub Pages origin 流量，同時讓每小時一次的資料更新能在部署後快速生效。
 
 查證日期：2026-05-13。
 
@@ -8,7 +8,7 @@
 
 - GitHub Pages 官方文件列出每月 100 GB 軟性頻寬上限；若超出，GitHub 可能無法服務站台或建議在前方放第三方 CDN。
 - Cloudflare 預設會依副檔名快取靜態資源，但不會預設快取 HTML 或 JSON。本專案最大的流量壓力正是 `public/data/**/*.json`，所以必須用 Cache Rules 明確設定。
-- Cloudflare Free 方案可設定 Edge Cache TTL，但最短 Edge TTL 是 2 小時；本專案每半小時更新資料，因此不能只靠 TTL 自然過期，必須在 GitHub Pages 部署成功後透過 Purge API 主動清除會變動的路徑。
+- Cloudflare Free 方案可設定 Edge Cache TTL，但最短 Edge TTL 是 2 小時；本專案每小時更新資料，因此不能只靠 TTL 自然過期，必須在 GitHub Pages 部署成功後透過 Purge API 主動清除會變動的路徑。
 - Cloudflare Rate Limiting Rules 可在邊緣節點對超量請求回應 429；Free 方案目前只有 1 條規則、10 秒計數週期，因此本專案採用保守的單條全站節流規則。
 - Facebook 分享偵錯工具若回 403，通常不是 GitHub Pages 靜態檔本身，而是 Cloudflare 的 Security Level、Under Attack mode、國家/ASN 自訂規則或節流擋到 Meta 爬蟲；Meta 常用 ASN 為 `AS32934` 與 `AS63293`。
 
@@ -36,7 +36,7 @@ GitHub Pages 自訂網域仍需在 repository Settings → Pages 設定。因本
 | --- | ---: | ---: | --- |
 | `/assets/*` | 365 天 | 365 天 | Vite 產物檔名含 hash，可長效快取。 |
 | `/icons/*`、favicon、`site.webmanifest`、`/og/*`、`/og-image.png` | 6 小時 | 1 小時 | 網站圖示、職業圖示與 OG 圖可快取，但 OG 圖會隨資料建置更新。 |
-| `/data/*` | 2 小時 | 5 分鐘 | 排行榜 JSON 每半小時排程更新；Edge TTL 撐高 HIT ratio，部署成功後由 workflow purge 變動路徑。 |
+| `/data/*` | 2 小時 | 5 分鐘 | 排行榜 JSON 每小時排程更新；Edge TTL 撐高 HIT ratio，部署成功後由 workflow purge 變動路徑。 |
 | SPA HTML、route fallback、`robots.txt`、`sitemap.xml` | 2 小時 | 5 分鐘 | HTML 是靜態產物；部署後 purge 讓 SEO/OG fallback 快速更新。 |
 
 4xx 與 5xx 不做長時間快取，避免 GitHub Pages 暫時錯誤被放大。
@@ -49,12 +49,13 @@ GitHub Pages 自訂網域仍需在 repository Settings → Pages 設定。因本
 npm run cloudflare:purge
 ```
 
-這支腳本會用兩個 Cloudflare Purge API 請求處理會隨半小時資料更新變動的內容：
+這支腳本會用兩個 Cloudflare Purge API 請求處理會隨每小時資料更新變動的內容：
 
 - Prefix purge：`/data`、`/stats`、`/user`、`/compare`、`/teams`、`/servers`、`/jobs`、`/activity`、`/og`
 - File purge：首頁、`index.html`、`404.html`、`sitemap.xml`、`robots.txt`、`og-image.png`、favicon、Apple touch icon 與 `site.webmanifest`
 
-這比每半小時 purge everything 更適合本專案，因為 Vite hashed assets 和職業圖示可以繼續長效命中 Cloudflare，不必每次資料更新都讓所有靜態資源重新冷啟動。
+這比每小時 purge everything 更適合本專案，因為 Vite hashed assets 和職業圖示可以繼續長效命中 Cloudflare，不必每次資料更新都讓所有靜態資源重新冷啟動。
+workflow 也會在部署前執行 `npm run cloudflare:purge -- --dry-run --summary`，把同一份 scoped purge 範圍寫進 GitHub Step Summary；如果未來 prefix 或 file 清單被擴大，Actions 頁面會直接看得到。
 
 ## 建議節流策略
 
@@ -82,6 +83,20 @@ npm run cloudflare:apply -- --dry-run
 CLOUDFLARE_ZONE_ID=你的 zone id
 CLOUDFLARE_RULES_API_TOKEN=你的規則管理 API token
 CLOUDFLARE_HOSTNAME=ranking.init.engineer
+# 可選：調整單一 IP 每 10 秒的全站請求門檻，預設 240。
+CLOUDFLARE_RATE_LIMIT_REQUESTS_PER_10S=240
+# 可選：調整 Rulesets API 暫時性錯誤的重試次數與基礎等待毫秒數。
+CLOUDFLARE_RULES_API_MAX_ATTEMPTS=3
+CLOUDFLARE_RULES_API_RETRY_BASE_MS=750
+# 可選：調整資料、HTML、媒體與 hashed 靜態資源的 Edge/Browser TTL。
+CLOUDFLARE_DATA_EDGE_TTL_SECONDS=7200
+CLOUDFLARE_DATA_BROWSER_TTL_SECONDS=300
+CLOUDFLARE_HTML_EDGE_TTL_SECONDS=7200
+CLOUDFLARE_HTML_BROWSER_TTL_SECONDS=300
+CLOUDFLARE_MEDIA_EDGE_TTL_SECONDS=21600
+CLOUDFLARE_MEDIA_BROWSER_TTL_SECONDS=3600
+CLOUDFLARE_STATIC_EDGE_TTL_SECONDS=31536000
+CLOUDFLARE_STATIC_BROWSER_TTL_SECONDS=31536000
 ```
 
 規則管理 token 最小權限：
@@ -111,7 +126,7 @@ CLOUDFLARE_RULES_API_TOKEN
 CLOUDFLARE_PURGE_API_TOKEN
 ```
 
-workflow 會在安裝依賴後先執行 `npm run cloudflare:apply`，確保 `/data/*`、HTML route、OG 圖、assets、Facebook 分享爬蟲例外與 Rate Limiting 規則存在；部署成功後再執行 `npm run cloudflare:purge`。如果不想讓 workflow 管理 Rate Limiting Rules，可在 repository variables 設定：
+workflow 會在安裝依賴後先執行 `npm run cloudflare:apply -- --allow-transient-failure`，確保 `/data/*`、HTML route、OG 圖、assets、Facebook 分享爬蟲例外與 Rate Limiting 規則存在。Cloudflare Rulesets API 回傳 5xx、429 或網路暫時錯誤時，腳本會先重試；若最後仍失敗，workflow 會把本次規則同步標成 warning 並繼續更新排行榜。這是為了避免 Cloudflare 外部 API 短暫異常阻斷 FFLogs 抓取；若是 4xx 權限不足、token 錯誤或 payload 不合法，仍會讓 workflow 失敗。部署成功後再執行 `npm run cloudflare:purge`。如果不想讓 workflow 管理 Rate Limiting Rules，可在 repository variables 設定：
 
 ```text
 CLOUDFLARE_MANAGE_RATE_LIMIT=false
@@ -142,6 +157,7 @@ npm run cloudflare:estimate
 ```
 
 `cloudflare:estimate` 會用目前 `dist/` 的 gzip / brotli 大小估算在不同 Cloudflare HIT ratio 下，GitHub Pages 100 GB/月 origin 流量約能承受多少次頁面載入。
+GitHub Actions 會在 payload 稽核與 history commit 後執行這個估算並寫入 Step Summary，和 `data/pages_payload_history.jsonl` 的 artifact 體積趨勢一起作為成本觀測資料。
 
 ## 流量估算公式
 
@@ -158,5 +174,5 @@ GitHub origin 流量 ~= 使用者流量 * (1 - Cloudflare HIT ratio)
 
 - Cloudflare 快取降低的是 GitHub Pages origin 流量；使用者到 Cloudflare 的邊緣流量仍會存在，需遵守 Cloudflare 方案的服務條款與合理使用。
 - 不要把 `CLOUDFLARE_API_TOKEN` 寫入文件、Log 或 commit。
-- 若排程剛完成但使用者仍看到舊資料，先確認 `/data/*` 的 Edge TTL 是否仍在 30 分鐘內；緊急時可在 Cloudflare Dashboard 對 hostname 或 `/data/` prefix purge cache。
+- 若排程剛完成但使用者仍看到舊資料，先確認部署後 purge 是否成功，以及瀏覽器端是否仍在 5 分鐘 Browser TTL 內；緊急時可在 Cloudflare Dashboard 對 hostname 或 `/data/` prefix purge cache。
 - 本設定不改變資料管線。FFLogs API 抓取仍只允許由 `scripts/fetch_fflogs.py` 執行，前端仍只讀 `public/data/` 靜態 JSON。

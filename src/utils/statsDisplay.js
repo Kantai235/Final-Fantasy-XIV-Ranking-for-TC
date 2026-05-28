@@ -16,6 +16,24 @@ function 正規化統計數量(數量) {
   return 轉為數字(數量) || 0;
 }
 
+export function 取得統計範圍計數(統計項目, 職業範圍 = "all") {
+  if (!統計項目) {
+    return 0;
+  }
+
+  const 範圍類型 = 職業範圍類型(職業範圍);
+  if (範圍類型 === "role") {
+    return 正規化統計數量((統計項目.role_stats || []).find((項目) => 項目.role === 職業範圍)?.clear_count);
+  }
+  if (範圍類型 === "job") {
+    return 正規化統計數量((統計項目.job_stats || []).find((項目) => 項目.job === 職業範圍)?.clear_count);
+  }
+
+  // global_stats 根層沒有 character_count / clear_count；全服副本通關概覽的全範圍佔比
+  // 要對齊「公開玩家覆蓋率」，所以分母是唯一玩家 total_character_count，而不是跨副本加總的人次。
+  return 正規化統計數量(統計項目.character_count ?? 統計項目.clear_count ?? 統計項目.total_character_count);
+}
+
 export function 建立職業佔比分組(來源, 職業範圍 = "all") {
   const 範圍類型 = 職業範圍類型(職業範圍);
   const 原始職業列表 = Array.isArray(來源?.job_stats) ? 來源.job_stats : [];
