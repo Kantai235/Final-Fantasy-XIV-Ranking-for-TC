@@ -1208,6 +1208,64 @@ class FetchFFLogsBatchTest(unittest.TestCase):
         self.assertIn("old-no-clear", 嚴格已知)
         self.assertIn("done", 嚴格已知)
 
+    def test_ultimate_known_report_without_clear_rule_revision_needs_history_recheck(self) -> None:
+        副本設定 = {"key": "ultimate_bahamut", "category": "絕"}
+        副本狀態 = {
+            "checked_reports": {
+                "old-no-clear": {"status": fflogs.無通關報告狀態},
+                "already-rechecked": {
+                    "status": fflogs.無通關報告狀態,
+                    "clear_rule_revision": fflogs.絕本通關規則版本,
+                },
+            }
+        }
+
+        self.assertTrue(
+            fflogs.報告需要絕本通關規則重判(
+                副本設定,
+                "old-no-clear",
+                副本狀態,
+                {"old-no-clear", "already-rechecked"},
+            )
+        )
+        self.assertFalse(
+            fflogs.報告需要絕本通關規則重判(
+                副本設定,
+                "already-rechecked",
+                副本狀態,
+                {"old-no-clear", "already-rechecked"},
+            )
+        )
+        self.assertFalse(
+            fflogs.報告需要絕本通關規則重判(
+                副本設定,
+                "unknown",
+                副本狀態,
+                {"old-no-clear", "already-rechecked"},
+            )
+        )
+
+    def test_non_ultimate_report_never_needs_ultimate_clear_rule_recheck(self) -> None:
+        副本設定 = {"key": "savage_m3s", "category": "零式"}
+        副本狀態 = {"checked_reports": {"known": {"status": fflogs.無通關報告狀態}}}
+
+        self.assertFalse(
+            fflogs.報告需要絕本通關規則重判(
+                副本設定,
+                "known",
+                副本狀態,
+                {"known"},
+            )
+        )
+        self.assertEqual(
+            fflogs.建立報告處理額外內容({"key": "ultimate_omega", "category": "絕"}, {"has_clear": True}),
+            {"has_clear": True, "clear_rule_revision": fflogs.絕本通關規則版本},
+        )
+        self.assertEqual(
+            fflogs.建立報告處理額外內容(副本設定, {"has_clear": True}),
+            {"has_clear": True},
+        )
+
     def test_ranking_rebuild_prefers_reports_over_stale_flat_entries(self) -> None:
         排行榜 = {
             "encounter": {"key": "savage_m2s", "name": "零式 M2S / 蜂蜂"},

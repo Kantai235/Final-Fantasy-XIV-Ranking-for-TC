@@ -70,7 +70,7 @@
 
 延遲掃描固定檢查 24-72 小時前的 reports，但使用嚴格已知 report 集合：凡是已在 state 或排行榜出現過的 report 都會略過。這段只補抓後來才出現在 reports 查詢中的新 report，不重查既有 no-clear 紀錄。
 
-歷史補查會從副本的 `history_scan_start_date`、`scan_start_date` 或 `initial_scan_start_date` 開始，依 `data/state.json` 內各副本的 `history_scan_cursor_at` 往後輪巡。它只會把尚未在 state 或排行榜中的 report 選入候選，適合抓回當時未公開、後來改成公開，或 FFLogs 延後完成匯出的更舊 logs。若 `FFLOGS_HISTORY_MAX_DEEP_REPORTS_PER_RUN` 使本輪候選出現 deferred，`fetch_fflogs.py` 會把 `history_scan_cursor_at` 停在最後一筆已選候選 report 的 `startTime`；若該副本本輪未分到深查額度，游標會停回本輪時間窗起點，避免尚未處理的 report 被推到下一輪全區間輪巡後才重試。
+歷史補查會從副本的 `history_scan_start_date`、`scan_start_date` 或 `initial_scan_start_date` 開始，依 `data/state.json` 內各副本的 `history_scan_cursor_at` 往後輪巡。一般副本只會把尚未在 state 或排行榜中的 report 選入候選，適合抓回當時未公開、後來改成公開，或 FFLogs 延後完成匯出的更舊 logs。絕本額外支援通關規則重判：當程式內的 `clear_rule_revision` 更新時，歷史補查會把尚未寫入目前版本的既有絕本 report 重新選入深查，重判完成後在 `checked_reports` / `processed_reports` 記錄版本，避免同一份 report 每輪都被重刷。若 `FFLOGS_HISTORY_MAX_DEEP_REPORTS_PER_RUN` 使本輪候選出現 deferred，`fetch_fflogs.py` 會把 `history_scan_cursor_at` 停在最後一筆已選候選 report 的 `startTime`；若該副本本輪未分到深查額度，游標會停回本輪時間窗起點，避免尚未處理的 report 被推到下一輪全區間輪巡後才重試。
 
 ## GCD 覆蓋率
 

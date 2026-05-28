@@ -34,6 +34,7 @@ TOKEN_URL = "https://www.fflogs.com/oauth/token"
 絕巴哈副本ID = 1073
 絕巴哈通關FightPercentage = 80
 絕巴哈最低通關毫秒 = 780_000
+絕本通關規則版本 = "ultimate_clear_rules_2026_05_28"
 
 專案根目錄 = Path(__file__).resolve().parents[1]
 load_dotenv(專案根目錄 / ".env")
@@ -1861,6 +1862,11 @@ def 是絕巴哈副本(副本設定: dict[str, Any]) -> bool:
     return 副本設定.get("encounter_id") == 絕巴哈副本ID
 
 
+def 是絕本副本(副本設定: dict[str, Any]) -> bool:
+    key = str(副本設定.get("key") or "")
+    return 副本設定.get("category") == "絕" or key.startswith("ultimate_")
+
+
 def 計算FFLogs戰鬥持續毫秒(戰鬥: dict[str, Any]) -> float | None:
     戰鬥開始 = 轉_float(戰鬥.get("startTime"))
     戰鬥結束 = 轉_float(戰鬥.get("endTime"))
@@ -3556,6 +3562,37 @@ def 報告處理記錄可重試(記錄: Any) -> bool:
     return 處理時間戳記 + 無通關報告重試毫秒 >= 現在毫秒()
 
 
+def 報告處理記錄已套用絕本通關規則(記錄: Any) -> bool:
+    return isinstance(記錄, dict) and 記錄.get("clear_rule_revision") == 絕本通關規則版本
+
+
+def 建立報告處理額外內容(副本設定: dict[str, Any], 額外內容: dict[str, Any] | None = None) -> dict[str, Any]:
+    內容 = dict(額外內容 or {})
+    if 是絕本副本(副本設定):
+        內容["clear_rule_revision"] = 絕本通關規則版本
+    return 內容
+
+
+def 報告需要絕本通關規則重判(
+    副本設定: dict[str, Any],
+    報告代碼: str,
+    副本狀態: dict[str, Any],
+    已知報告代碼: set[str],
+) -> bool:
+    if not 是絕本副本(副本設定) or 報告代碼 not in 已知報告代碼:
+        return False
+
+    # 歷史補查原本只選未知 report；UCoB/TOP 等絕本通關與 Phase 判讀規則更新時，
+    # 已標成 no-clear 或已落地的舊 report 也要重新走一次 Data Fetching Layer。
+    # per-report revision 寫在 checked_reports / processed_reports，讓這個重判是可續跑的一次性遷移。
+    for 欄位 in ("processed_reports", "checked_reports"):
+        記錄 = (副本狀態.get(欄位) or {}).get(報告代碼)
+        if 報告處理記錄已套用絕本通關規則(記錄):
+            return False
+
+    return True
+
+
 def 讀取已處理報告代碼(
     狀態: dict[str, Any],
     副本設定: dict[str, Any],
@@ -3671,6 +3708,7 @@ def 套用歷史補查執行狀態(
     副本狀態["history_last_reports_selected"] = 歷史補查狀態.get("reports_selected", 0)
     副本狀態["history_last_reports_skipped_known"] = 歷史補查狀態.get("reports_skipped_known", 0)
     副本狀態["history_last_reports_deferred"] = 歷史補查狀態.get("reports_deferred", 0)
+    副本狀態["history_last_reports_recheck_selected"] = 歷史補查狀態.get("reports_recheck_selected", 0)
 
 
 def 標記報告處理狀態(
@@ -3788,6 +3826,7 @@ def main() -> int:
             "history_reports_selected": 0,
             "history_reports_skipped_known": 0,
             "history_reports_deferred": 0,
+            "history_reports_recheck_selected": 0,
             "history_scan": None,
             "scan_failed": False,
             "scan_error": None,
@@ -3899,6 +3938,21 @@ def main() -> int:
                 return True
         return False
 
+    def 是否需要絕本歷史通關重判(目前副本設定: dict[str, Any], 報告代碼: str) -> bool:
+        for 目標副本設定 in 取得同區同難度副本清單(目前副本設定):
+            目標處理狀態 = 副本處理狀態[目標副本設定["key"]]
+            if 報告代碼 in 目標處理狀態["本輪已嘗試報告代碼"]:
+                continue
+            副本狀態 = (狀態.get("encounters") or {}).get(目標副本設定["key"]) or {}
+            if 報告需要絕本通關規則重判(
+                目標副本設定,
+                報告代碼,
+                副本狀態,
+                目標處理狀態["已知報告代碼"],
+            ):
+                return True
+        return False
+
     def 篩選延遲掃描候選(
         副本設定: dict[str, Any],
         報告列表: list[dict[str, Any]],
@@ -3933,7 +3987,7 @@ def main() -> int:
         最新報告代碼: set[str],
     ) -> tuple[list[dict[str, Any]], dict[str, int]]:
         候選列表: list[dict[str, Any]] = []
-        統計 = {"selected": 0, "skipped_known": 0, "deferred": 0}
+        統計 = {"selected": 0, "skipped_known": 0, "deferred": 0, "recheck_selected": 0}
 
         for 報告 in 報告列表:
             報告代碼 = str(報告.get("code") or "")
@@ -3942,7 +3996,8 @@ def main() -> int:
             if 報告代碼 in 最新報告代碼:
                 統計["skipped_known"] += 1
                 continue
-            if not 是否需要深層處理任何同區副本(副本設定, 報告代碼):
+            需要重判 = 是否需要絕本歷史通關重判(副本設定, 報告代碼)
+            if not 需要重判 and not 是否需要深層處理任何同區副本(副本設定, 報告代碼):
                 統計["skipped_known"] += 1
                 continue
             if not 歷史補查仍可加入候選(報告代碼):
@@ -3950,7 +4005,11 @@ def main() -> int:
                 continue
 
             歷史補查候選報告代碼.add(報告代碼)
-            候選列表.append(報告)
+            候選 = dict(報告)
+            if 需要重判:
+                候選["_history_clear_rule_recheck"] = True
+                統計["recheck_selected"] += 1
+            候選列表.append(候選)
             統計["selected"] += 1
 
         return 候選列表, 統計
@@ -3972,7 +4031,7 @@ def main() -> int:
                 副本設定,
                 已儲存報告代碼,
                 "saved",
-                {"has_clear": True},
+                建立報告處理額外內容(副本設定, {"has_clear": True}),
                 立即寫入=False,
             )
             處理狀態["已處理報告代碼"].add(已儲存報告代碼)
@@ -4023,7 +4082,14 @@ def main() -> int:
         立即寫入: bool = True,
     ) -> None:
         副本設定 = 處理狀態["副本設定"]
-        標記報告處理狀態(狀態, 副本設定, 報告代碼, 處理狀態文字, 額外內容, 立即寫入=立即寫入)
+        標記報告處理狀態(
+            狀態,
+            副本設定,
+            報告代碼,
+            處理狀態文字,
+            建立報告處理額外內容(副本設定, 額外內容),
+            立即寫入=立即寫入,
+        )
         處理狀態["已處理報告代碼"].add(報告代碼)
         處理狀態["已知報告代碼"].add(報告代碼)
         處理狀態["本輪已嘗試報告代碼"].add(報告代碼)
@@ -4344,11 +4410,13 @@ def main() -> int:
             目前處理狀態["history_reports_selected"] = 歷史候選統計["selected"]
             目前處理狀態["history_reports_skipped_known"] = 歷史候選統計["skipped_known"]
             目前處理狀態["history_reports_deferred"] = 歷史候選統計["deferred"]
+            目前處理狀態["history_reports_recheck_selected"] = 歷史候選統計["recheck_selected"]
             if 歷史補查狀態 is not None:
                 歷史補查狀態["reports_found"] = len(歷史報告代碼)
                 歷史補查狀態["reports_selected"] = 歷史候選統計["selected"]
                 歷史補查狀態["reports_skipped_known"] = 歷史候選統計["skipped_known"]
                 歷史補查狀態["reports_deferred"] = 歷史候選統計["deferred"]
+                歷史補查狀態["reports_recheck_selected"] = 歷史候選統計["recheck_selected"]
                 套用歷史補查深查上限游標(歷史補查狀態, 歷史報告候選列表, 歷史候選統計)
 
             淺層報告列表 = 合併淺層報告列表(最新報告列表, 延遲報告候選列表 + 歷史報告候選列表)
@@ -4365,7 +4433,8 @@ def main() -> int:
                 f"延遲掃描找到 {len(延遲報告代碼)} 份，選入 {延遲候選統計['selected']} 份"
                 f"（已知略過 {延遲候選統計['skipped_known']}，延後 {延遲候選統計['deferred']}）；"
                 f"歷史補查找到 {len(歷史報告代碼)} 份，選入 {歷史候選統計['selected']} 份"
-                f"（已知略過 {歷史候選統計['skipped_known']}，延後 {歷史候選統計['deferred']}）。"
+                f"（重判 {歷史候選統計['recheck_selected']}，"
+                f"已知略過 {歷史候選統計['skipped_known']}，延後 {歷史候選統計['deferred']}）。"
             )
 
         目前處理狀態["candidate_reports"] = len(淺層報告列表)
@@ -4378,7 +4447,12 @@ def main() -> int:
             副本鍵值: 處理狀態["已處理報告代碼"]
             for 副本鍵值, 處理狀態 in 副本處理狀態.items()
         }
-        強制處理報告代碼 = 重抓報告代碼 | 只處理報告代碼
+        歷史重判報告代碼 = {
+            str(報告.get("code") or "")
+            for 報告 in 淺層報告列表
+            if 報告.get("_history_clear_rule_recheck") and 報告.get("code")
+        }
+        強制處理報告代碼 = 重抓報告代碼 | 只處理報告代碼 | 歷史重判報告代碼
         已處理前綴快轉索引 = 取得已處理報告前綴快轉索引(
             淺層報告列表,
             同區副本清單,
@@ -4626,6 +4700,7 @@ def main() -> int:
             "history_reports_selected": 處理狀態["history_reports_selected"],
             "history_reports_skipped_known": 處理狀態["history_reports_skipped_known"],
             "history_reports_deferred": 處理狀態["history_reports_deferred"],
+            "history_reports_recheck_selected": 處理狀態["history_reports_recheck_selected"],
             "history_scan": 處理狀態.get("history_scan"),
             "scan_failed": 處理狀態["scan_failed"],
             "scan_error": 處理狀態["scan_error"],
