@@ -104,6 +104,15 @@ def is_terminal_xivanalysis_error(text: str) -> bool:
     return any(marker in lowered for marker in permanent_markers)
 
 
+def is_retryable_xivanalysis_page(text: str) -> bool:
+    lowered = text.lower()
+    retryable_markers = [
+        "modules not found",
+        "a new version has probably been deployed",
+    ]
+    return any(marker in lowered for marker in retryable_markers)
+
+
 def is_rate_limited_xivanalysis_page(text: str) -> bool:
     lowered = text.lower()
     rate_limit_markers = [
@@ -282,19 +291,35 @@ class XivanalysisPageClient:
 
         self._playwright = sync_playwright().start()
         self._browser = self._playwright.chromium.launch(headless=not self.headful)
+        self._open_context()
+        return self
+
+    def _open_context(self) -> None:
+        if self._browser is None:
+            raise XivanalysisLookupError("Playwright browser 尚未初始化。")
         self._context = self._browser.new_context(
             locale=self.locale,
             user_agent=f"ffxiv-tc-ranking-xivanalysis-gcd/1.0 worker/{self.worker_id or 1}",
         )
         self._context.route("**/*", self._route_request)
         self._page = self._context.new_page()
-        return self
 
-    def __exit__(self, exc_type: Any, exc: Any, traceback: Any) -> None:
+    def _close_context(self) -> None:
         if self._page is not None:
             self._page.close()
+            self._page = None
         if self._context is not None:
             self._context.close()
+            self._context = None
+
+    def _reset_context(self) -> None:
+        # xivanalysis 部署新前端 chunk 時，單一 browser context 可能卡在
+        # "Modules not found" 或 React 錯誤狀態；重建 context 能清掉該頁快取與執行狀態。
+        self._close_context()
+        self._open_context()
+
+    def __exit__(self, exc_type: Any, exc: Any, traceback: Any) -> None:
+        self._close_context()
         if self._browser is not None:
             self._browser.close()
         if self._playwright is not None:
@@ -303,7 +328,12 @@ class XivanalysisPageClient:
     def _route_request(self, route: Any) -> None:
         request = route.request
         url = request.url.lower()
-        if request.resource_type in {"image", "font", "media"} or "cloudflareinsights" in url:
+        if (
+            request.resource_type in {"image", "font", "media"}
+            or "cloudflareinsights" in url
+            or "cdn-cgi/rum" in url
+            or "sentry.io" in url
+        ):
             route.abort()
             return
         route.continue_()
@@ -316,9 +346,15 @@ class XivanalysisPageClient:
                 return self._fetch_gcd_percent_once(url)
             except XivanalysisPermanentError:
                 raise
+            except XivanalysisRateLimitError as error:
+                last_error = error
+                if attempt < self.retries:
+                    self._reset_context()
+                    time.sleep(60 * attempt)
             except Exception as error:  # noqa: BLE001
                 last_error = error
                 if attempt < self.retries:
+                    self._reset_context()
                     time.sleep(1.5 * attempt)
 
         raise XivanalysisLookupError(f"xivanalysis 頁面讀取失敗：{last_error}") from last_error
@@ -342,6 +378,9 @@ class XivanalysisPageClient:
             if is_rate_limited_xivanalysis_page(latest_text):
                 raise XivanalysisRateLimitError(f"xivanalysis 觸發站端限流：{normalize_page_text(latest_text)[:500]}")
 
+            if is_retryable_xivanalysis_page(latest_text):
+                raise XivanalysisLookupError(f"xivanalysis 暫時載入失敗：{normalize_page_text(latest_text)[:500]}")
+
             if is_terminal_xivanalysis_error(latest_text):
                 raise XivanalysisPermanentError(normalize_page_text(latest_text)[:500])
 
@@ -355,7 +394,10 @@ class LocalGcdFallback:
         self.session: Any = None
         self.auth_pool: Any = None
         self.metadata_store: local_gcd.ActionMetadataStore | None = None
+        self.status_store: local_gcd.StatusMetadataStore | None = None
+        self.unable_to_act_status_ids: set[int] = set()
         self.fight_graph_cache: dict[tuple[str, int, float, float], dict[str, Any]] = {}
+        self.fight_raw_event_cache: dict[tuple[str, int, float, float], list[dict[str, Any]]] = {}
         self.damage_event_cache: dict[tuple[str, int, float, float], list[dict[str, Any]]] = {}
 
     def calculate(self, candidate: local_gcd.GcdCandidate) -> dict[str, Any] | None:
@@ -372,18 +414,240 @@ class LocalGcdFallback:
             raise RuntimeError("缺少 fight_id 或 fight 時間窗，無法以本地 Casts graph 回退計算。")
 
         cache_key = (candidate.report_code, fight_id, start_time, end_time)
-        graph = self.fight_graph_cache.get(cache_key)
-        if graph is None:
-            graph = local_gcd.query_fight_casts_graph(self.session, self.auth_pool, candidate)
-            self.fight_graph_cache[cache_key] = graph
+        base_graph = self.fight_graph_cache.get(cache_key)
+        if base_graph is None:
+            base_graph = local_gcd.query_fight_casts_graph(self.session, self.auth_pool, candidate)
+            self.fight_graph_cache[cache_key] = base_graph
         graph = local_gcd.add_encounter_specific_downtime(
-            graph,
+            base_graph,
             session=self.session,
             auth_pool=self.auth_pool,
             candidate=candidate,
             damage_event_cache=self.damage_event_cache,
         )
         assert self.metadata_store is not None
+        job = str(candidate.player.get("job") or "")
+        if local_gcd.gcd_core.should_use_raw_events_for_gcd(candidate.encounter_key, job):
+            if self.status_store is None:
+                self.status_store = local_gcd.StatusMetadataStore()
+                self.status_store.preload()
+                self.unable_to_act_status_ids = self.status_store.unable_to_act_status_ids()
+            raw_events = self.fight_raw_event_cache.get(cache_key)
+            if raw_events is None:
+                raw_events = local_gcd.query_fight_raw_events(self.session, self.auth_pool, candidate)
+                self.fight_raw_event_cache[cache_key] = raw_events
+            friendly_ids = {
+                player_id
+                for player_id in (
+                    local_gcd.to_int(player.get("fflogs_id"))
+                    for player in candidate.fight.get("players") or []
+                    if isinstance(player, dict)
+                )
+                if player_id is not None
+            }
+            if candidate.encounter_key in local_gcd.RAW_EVENT_GCD_ENCOUNTERS:
+                downtime_source = local_gcd.gcd_core.raw_event_downtime_source(
+                    base_graph,
+                    raw_events,
+                    source_id=local_gcd.to_int(candidate.player.get("fflogs_id")),
+                    friendly_ids=friendly_ids,
+                    fight_start_time=start_time,
+                    fight_end_time=end_time,
+                    unable_to_act_status_ids=self.unable_to_act_status_ids,
+                    metadata_store=self.metadata_store,
+                    job=job,
+                    include_graph_downtime=not local_gcd.gcd_core.raw_event_uses_targetability_only_downtime(
+                        candidate.encounter_key,
+                        job,
+                    ),
+                )
+            else:
+                downtime_source = graph
+            coverage = local_gcd.calculate_gcd_coverage_from_raw_events(
+                raw_events,
+                self.metadata_store,
+                encounter_key=candidate.encounter_key,
+                source_id=local_gcd.to_int(candidate.player.get("fflogs_id")),
+                job=candidate.player.get("job"),
+                fight_end_time=end_time,
+                fallback_denominator_ms=local_gcd.first_number(
+                    candidate.fight.get("clear_time_ms"),
+                    end_time - start_time,
+                    candidate.fight.get("damage_time_ms"),
+                ),
+                downtime_source=downtime_source,
+                cap_next_gcd_jobs=local_gcd.gcd_core.raw_next_gcd_capped_jobs_for_encounter(candidate.encounter_key),
+            )
+            if coverage and candidate.encounter_key == "unreal_byakko" and job in local_gcd.gcd_core.TANK_JOBS:
+                main_gap_coverage = local_gcd.calculate_gcd_coverage_from_raw_events(
+                    raw_events,
+                    self.metadata_store,
+                    encounter_key=candidate.encounter_key,
+                    source_id=local_gcd.to_int(candidate.player.get("fflogs_id")),
+                    job=candidate.player.get("job"),
+                    fight_end_time=end_time,
+                    fallback_denominator_ms=local_gcd.first_number(
+                        candidate.fight.get("clear_time_ms"),
+                        end_time - start_time,
+                        candidate.fight.get("damage_time_ms"),
+                    ),
+                    downtime_source=local_gcd.gcd_core.raw_event_downtime_source(
+                        graph,
+                        raw_events,
+                        source_id=local_gcd.to_int(candidate.player.get("fflogs_id")),
+                        friendly_ids=friendly_ids,
+                        fight_start_time=start_time,
+                        fight_end_time=end_time,
+                        unable_to_act_status_ids=set(),
+                        metadata_store=self.metadata_store,
+                        job=job,
+                    ),
+                    cap_next_gcd_jobs=local_gcd.gcd_core.raw_next_gcd_capped_jobs_for_encounter(candidate.encounter_key),
+                )
+                coverage = local_gcd.gcd_core.select_tank_byakko_coverage(coverage, main_gap_coverage)
+            if coverage and candidate.encounter_key == "unreal_byakko" and job == "Pictomancer":
+                graph_downtime_coverage = local_gcd.calculate_gcd_coverage_from_raw_events(
+                    raw_events,
+                    self.metadata_store,
+                    encounter_key=candidate.encounter_key,
+                    source_id=local_gcd.to_int(candidate.player.get("fflogs_id")),
+                    job=candidate.player.get("job"),
+                    fight_end_time=end_time,
+                    fallback_denominator_ms=local_gcd.first_number(
+                        candidate.fight.get("clear_time_ms"),
+                        end_time - start_time,
+                        candidate.fight.get("damage_time_ms"),
+                    ),
+                    downtime_source=graph,
+                    cap_next_gcd_jobs=local_gcd.gcd_core.raw_next_gcd_capped_jobs_for_encounter(candidate.encounter_key),
+                )
+                coverage = local_gcd.gcd_core.select_pct_byakko_downtime_coverage(
+                    coverage,
+                    graph_downtime_coverage,
+                )
+            if coverage and candidate.encounter_key == "unreal_byakko" and job == "BlackMage":
+                graph_coverage = local_gcd.calculate_gcd_coverage_from_graph(
+                    graph,
+                    self.metadata_store,
+                    source_id=local_gcd.to_int(candidate.player.get("fflogs_id")),
+                    job=candidate.player.get("job"),
+                    fight_end_time=end_time,
+                    fallback_denominator_ms=local_gcd.first_number(
+                        candidate.fight.get("clear_time_ms"),
+                        end_time - start_time,
+                        candidate.fight.get("damage_time_ms"),
+                    ),
+                )
+                raw_downtime_graph_coverage = local_gcd.calculate_gcd_coverage_from_graph(
+                    downtime_source,
+                    self.metadata_store,
+                    source_id=local_gcd.to_int(candidate.player.get("fflogs_id")),
+                    job=candidate.player.get("job"),
+                    fight_end_time=end_time,
+                    fallback_denominator_ms=local_gcd.first_number(
+                        candidate.fight.get("clear_time_ms"),
+                        end_time - start_time,
+                        candidate.fight.get("damage_time_ms"),
+                    ),
+                )
+                coverage = local_gcd.gcd_core.select_blm_byakko_coverage(
+                    coverage,
+                    graph_coverage,
+                    raw_downtime_graph_coverage,
+                )
+            if coverage and candidate.encounter_key == "extreme_queen_eternal" and job == "RedMage":
+                graph_coverage = local_gcd.calculate_gcd_coverage_from_graph(
+                    graph,
+                    self.metadata_store,
+                    source_id=local_gcd.to_int(candidate.player.get("fflogs_id")),
+                    job=candidate.player.get("job"),
+                    fight_end_time=end_time,
+                    fallback_denominator_ms=local_gcd.first_number(
+                        candidate.fight.get("clear_time_ms"),
+                        end_time - start_time,
+                        candidate.fight.get("damage_time_ms"),
+                    ),
+                )
+                coverage = local_gcd.gcd_core.select_queen_red_mage_coverage(
+                    coverage,
+                    graph_coverage,
+                    encounter_key=candidate.encounter_key,
+                )
+            if coverage and candidate.encounter_key == "extreme_queen_eternal" and job == "Scholar":
+                graph_coverage = local_gcd.calculate_gcd_coverage_from_graph(
+                    graph,
+                    self.metadata_store,
+                    source_id=local_gcd.to_int(candidate.player.get("fflogs_id")),
+                    job=candidate.player.get("job"),
+                    fight_end_time=end_time,
+                    fallback_denominator_ms=local_gcd.first_number(
+                        candidate.fight.get("clear_time_ms"),
+                        end_time - start_time,
+                        candidate.fight.get("damage_time_ms"),
+                    ),
+                )
+                coverage = local_gcd.gcd_core.select_queen_scholar_coverage(
+                    coverage,
+                    graph_coverage,
+                    encounter_key=candidate.encounter_key,
+                )
+            if coverage and candidate.encounter_key == "extreme_valigarmanda" and job == "RedMage":
+                graph_coverage = local_gcd.calculate_gcd_coverage_from_graph(
+                    graph,
+                    self.metadata_store,
+                    source_id=local_gcd.to_int(candidate.player.get("fflogs_id")),
+                    job=candidate.player.get("job"),
+                    fight_end_time=end_time,
+                    fallback_denominator_ms=local_gcd.first_number(
+                        candidate.fight.get("clear_time_ms"),
+                        end_time - start_time,
+                        candidate.fight.get("damage_time_ms"),
+                    ),
+                )
+                coverage = local_gcd.gcd_core.select_valigarmanda_red_mage_coverage(
+                    coverage,
+                    graph_coverage,
+                    encounter_key=candidate.encounter_key,
+                )
+            if coverage and candidate.encounter_key == "extreme_valigarmanda" and job == "WhiteMage":
+                graph_coverage = local_gcd.calculate_gcd_coverage_from_graph(
+                    graph,
+                    self.metadata_store,
+                    source_id=local_gcd.to_int(candidate.player.get("fflogs_id")),
+                    job=candidate.player.get("job"),
+                    fight_end_time=end_time,
+                    fallback_denominator_ms=local_gcd.first_number(
+                        candidate.fight.get("clear_time_ms"),
+                        end_time - start_time,
+                        candidate.fight.get("damage_time_ms"),
+                    ),
+                )
+                coverage = local_gcd.gcd_core.select_valigarmanda_white_mage_coverage(
+                    coverage,
+                    graph_coverage,
+                    encounter_key=candidate.encounter_key,
+                )
+            if coverage and job == "Bard" and candidate.encounter_key in local_gcd.gcd_core.BARD_GRAPH_FALLBACK_ENCOUNTERS:
+                graph_coverage = local_gcd.calculate_gcd_coverage_from_graph(
+                    graph,
+                    self.metadata_store,
+                    source_id=local_gcd.to_int(candidate.player.get("fflogs_id")),
+                    job=candidate.player.get("job"),
+                    fight_end_time=end_time,
+                    fallback_denominator_ms=local_gcd.first_number(
+                        candidate.fight.get("clear_time_ms"),
+                        end_time - start_time,
+                        candidate.fight.get("damage_time_ms"),
+                    ),
+                )
+                coverage = local_gcd.gcd_core.select_bard_raw_event_coverage(
+                    coverage,
+                    graph_coverage,
+                    encounter_key=candidate.encounter_key,
+                )
+            if coverage:
+                return coverage
+
         return local_gcd.calculate_gcd_coverage_from_graph(
             graph,
             self.metadata_store,

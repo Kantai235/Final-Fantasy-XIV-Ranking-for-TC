@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import csv
 import io
+import math
 import statistics
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from typing import Any, Callable
+
+from xivanalysis_gcd_rules import XIVANALYSIS_GCD_ACTION_RULES
 
 
 # GCD 覆蓋率只保存衍生結果，不能把 FFLogs Casts raw events 寫入 repo。
@@ -14,13 +17,14 @@ from typing import Any, Callable
 ACTION_CSV_URL = "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/master/csv/en/Action.csv"
 STATUS_CSV_URL = "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/master/csv/en/Status.csv"
 GCD_ACTION_CATEGORY_IDS = {2, 3}  # 2=Spell, 3=Weaponskill
-GCD_CALCULATION_VERSION = 10
+GCD_CALCULATION_VERSION = 19
 GCD_SOURCE_CASTS_GRAPH = "fflogs_casts_graph"
 GCD_SOURCE_RAW_EVENTS = "fflogs_raw_events"
 GCD_SOURCE = GCD_SOURCE_CASTS_GRAPH
 FFLOGS_STATUS_ID_OFFSET = 1_000_000
 SUB_ATTRIBUTE_MINIMUM = 420
 STAT_DIVISOR = 2780
+BASE_GCD_MS = 2500
 MIN_RECAST_TIME_MS = 1500
 RECAST_TIGHT_DELTA_MIN_RATIO = 0.8
 RECAST_TIGHT_DELTA_MAX_RATIO = 1.05
@@ -31,13 +35,197 @@ MAIN_TARGET_DAMAGE_DOWNTIME_MIN_EVENT_SHARE = 0.50
 # 武士的居合／返技在 FFLogs 會回傳偏短的 cast duration packet；xivanalysis 仍用
 # 技速後的完整 GCD lock 判斷 Always Be Casting，因此不可用 cast_ms 比例回推 recast。
 CAST_RATIO_RECAST_EXCLUDED_JOBS = {"Samurai"}
-RAW_NEXT_GCD_CAPPED_JOBS = {"Viper"}
+# raw events 能提供精準 targetability / unable-to-act，但不同職業的 timestamp 語意仍有差異。
+# 這些 job 用下一個 GCD 夾住 raw 覆蓋區間，避免轉化或加速 GCD 被重疊加分。
+# 忍者的 mudra/ninjutsu 在 xivanalysis 會以各自固定 lock 累加；若用下一個 timestamp 裁切，
+# 會系統性低估高密度結印窗口的 Always Be Casting。
+RAW_NEXT_GCD_CAPPED_JOBS = {"Monk", "Viper"}
+RAW_EVENT_GCD_ENCOUNTERS = {
+    "unreal_byakko",
+    "extreme_queen_eternal",
+    # 極瓦利加爾曼達的 Casts graph 不穩定回傳短暫 targetability /
+    # UnableToAct downtime；固定 seed 抽樣中，DNC/WHM/RPR/SAM/VPR/DRG/SGE/Tank
+    # 的差異都會在 raw events 分母下回到 xivanalysis 顯示值。
+    "extreme_valigarmanda",
+    # 極佐拉加與 AAC 零式的 Casts graph 會把部分 instant/長鎖 GCD 累加得比
+    # xivanalysis legacy FFLogs 事件路徑更寬，特別容易讓 SAM/PCT/VPR 高估。
+    # 抽樣案例改用 All raw events 後，分子與站端顯示值對齊。
+    "extreme_zoraal_ja",
+    "savage_m1s",
+    "savage_m2s",
+    "savage_m3s",
+    "savage_m4s",
+}
+RAW_TARGETABILITY_ONLY_DOWNTIME_JOBS_BY_ENCOUNTER = {
+    # 極永恆女王的 FFLogs Casts graph 會把部分短暫 boss downtime 放進
+    # damageDowntime；xivanalysis raw-events 路徑對黑魔、舞者、繪靈法師、學者、
+    # Paladin 與少數 Gunbreaker 樣本更接近只看 targetability / 玩家 UnableToAct 的分母。
+    # 舞者若吃 graph downtime，部分 Technical / Standard 流程會因分母過短而高估
+    # ABC；PCT/SCH 則先走 targetability-only，再由 SCH selector 處理少數 graph
+    # lock 較貼近 xivanalysis 的 intermission-adjacent 樣本。
+    "extreme_queen_eternal": {"BlackMage", "Dancer", "Gunbreaker", "Paladin", "Pictomancer", "Scholar"},
+}
+RAW_NEXT_GCD_CAPPED_JOBS_BY_ENCOUNTER = {
+    # 極瓦利加爾曼達的 Monk/Viper raw packet 已與 xivanalysis 的 lock 語意一致；
+    # 若沿用幻白虎的下一個 GCD 裁切會少算 Perfect Balance 或 Viper 轉化後的覆蓋。
+    "extreme_valigarmanda": set(),
+    # 極佐拉加與 AAC 零式的 Monk/Viper raw events 需要保留站端累加語意；
+    # 裁到下一個 timestamp 會讓 Perfect Balance 或 Viper 轉化窗口低估約一個 GCD。
+    "extreme_zoraal_ja": set(),
+    "savage_m1s": set(),
+    "savage_m2s": set(),
+    "savage_m3s": set(),
+    "savage_m4s": set(),
+    # 極永恆女王的 raw event timestamp 對武僧較接近 xivanalysis 的
+    # CastTime lock 累加語意；若沿用幻白虎的 Monk 下一個 GCD 裁切，會把
+    # 高速連段窗口少算約一個半 GCD。Gunbreaker 的 raw combo packet 會在
+    # downtime-adjacent 間隔重疊加分，需裁到下一個 GCD 才貼近 xivanalysis。
+    "extreme_queen_eternal": (RAW_NEXT_GCD_CAPPED_JOBS - {"Monk"}) | {"Gunbreaker"},
+}
+# 幻白虎需要 raw events 推 downtime；少數 job 的 raw packet 語意仍已知會高估 ABC，
+# 因此保留在 Casts graph 路徑。
+RAW_EVENT_GCD_EXCLUDED_JOBS: set[str] = set()
+RAW_EVENT_GCD_EXCLUDED_JOBS_BY_ENCOUNTER = {
+    # 極瓦利加爾曼達大多數 job 需要 raw downtime。占星在低覆蓋率樣本的 raw
+    # targetability/UTA 分母會偏高；Casts graph 反而更貼近 xivanalysis 顯示值。
+    "extreme_valigarmanda": {"Astrologian"},
+    # M2S 的 WhiteMage raw events 在高 GCD 覆蓋率樣本會把部份 instant/詠唱鎖
+    # 累得比 xivanalysis 顯示值更滿；Casts graph 對本層 WHM 更穩定。
+    "savage_m2s": {"WhiteMage"},
+}
+RAW_EVENT_GCD_REQUIRED_JOBS = {"Bard"}
+# xivanalysis 的 legacy FFLogs raw-events 路徑在黑魔死亡事件落在 downtime 內的案例中，
+# GCD uptime 會落在未套 source combatantinfo 詠速的 lock 長度；死亡不在 downtime 內的
+# logging actor 仍會正常使用 combatantinfo。這個例外只影響幻白虎 raw-events 診斷/補算路徑。
+RAW_EVENT_UNADJUSTED_SOURCE_SPEED_JOBS = {"BlackMage"}
 TANK_JOBS = {"DarkKnight", "Gunbreaker", "Paladin", "Warrior"}
+PCT_BYAKKO_GRAPH_DOWNTIME_DELTA_MIN = 0.75
+PCT_BYAKKO_GRAPH_DOWNTIME_DELTA_MAX = 1.25
+BLM_BYAKKO_GRAPH_FALLBACK_DELTA_MIN = 8.0
+BLM_BYAKKO_RAW_DOWNTIME_GRAPH_OVERCOUNT_MIN = 1.0
+BLM_BYAKKO_RAW_DOWNTIME_GRAPH_OVERCOUNT_MAX = 2.0
+TANK_BYAKKO_MAIN_GAP_FALLBACK_DELTA_MIN = 1.25
+TANK_BYAKKO_MAIN_GAP_RAW_PERCENT_MIN = 90.0
+TANK_BYAKKO_UNCLAMPED_HIGH_UPTIME_RAW_MIN = 95.0
+BARD_ARMY_STATUS_IDS = {1932, 2218}  # Army's Muse / Army's Paeon
+BARD_GRAPH_FALLBACK_ENCOUNTERS = {
+    "extreme_queen_eternal",
+    "extreme_valigarmanda",
+    "extreme_zoraal_ja",
+    "savage_m1s",
+    "savage_m2s",
+    "savage_m3s",
+    "savage_m4s",
+}
+BARD_RAW_GRAPH_BLEND_RATIO = 0.22
+BARD_RAW_GRAPH_BLEND_RATIO_BY_ENCOUNTER = {
+    "savage_m1s": 0.30,
+}
+BARD_QUEEN_GRAPH_FALLBACK_RAW_PERCENT_MIN = 98.0
+BARD_QUEEN_GRAPH_FALLBACK_GRAPH_PERCENT_MIN = 99.95
+BARD_VALIGARMANDA_LOW_RAW_ADJUSTMENT_PERCENT_MIN = 80.0
+BARD_VALIGARMANDA_LOW_RAW_ADJUSTMENT_PERCENT_MAX = 83.0
+BARD_VALIGARMANDA_LOW_RAW_ADJUSTMENT = 0.75
+BARD_VALIGARMANDA_GRAPH_FALLBACK_DELTA_MAX = 1.0
+BARD_GRAPH_FALLBACK_RAW_PERCENT_MIN = 98.0
+BARD_GRAPH_FALLBACK_GRAPH_PERCENT_MIN = 99.95
+VALIGARMANDA_RDM_GRAPH_FALLBACK_RAW_PERCENT_MAX = 75.0
+VALIGARMANDA_RDM_GRAPH_FALLBACK_DELTA_MIN = 1.0
+VALIGARMANDA_RDM_GRAPH_FALLBACK_DELTA_MAX = 2.0
+VALIGARMANDA_WHM_GRAPH_FALLBACK_RAW_PERCENT_MAX = 60.0
+VALIGARMANDA_WHM_GRAPH_FALLBACK_DELTA_MIN = 1.0
+VALIGARMANDA_WHM_GRAPH_FALLBACK_DELTA_MAX = 2.0
+QUEEN_RDM_RAW_FALLBACK_GRAPH_PERCENT_MAX = 89.0
+QUEEN_RDM_RAW_FALLBACK_DELTA_MIN = 1.0
+QUEEN_RDM_RAW_FALLBACK_DELTA_MAX = 2.5
+QUEEN_SCH_GRAPH_FALLBACK_RAW_PERCENT_MAX = 90.0
+QUEEN_SCH_GRAPH_FALLBACK_DELTA_MIN = 1.5
+QUEEN_SCH_GRAPH_FALLBACK_DELTA_MAX = 3.0
+PCT_INSPIRATION_STATUS_ID = 3689
+PCT_RAINBOW_BRIGHT_STATUS_ID = 3679
+PCT_RAINBOW_DRIP_ACTION_ID = 34688
+PCT_HYPERPHANTASIA_ACTION_IDS = {
+    34650,  # Fire in Red
+    34651,  # Aero in Green
+    34652,  # Water in Blue
+    34653,  # Blizzard in Cyan
+    34654,  # Stone in Yellow
+    34655,  # Thunder in Magenta
+    34656,  # Fire II in Red
+    34657,  # Aero II in Green
+    34658,  # Water II in Blue
+    34659,  # Blizzard II in Cyan
+    34660,  # Stone II in Yellow
+    34661,  # Thunder II in Magenta
+    34662,  # Holy in White
+    34663,  # Comet in Black
+    34681,  # Star Prism
+}
+DRAGOON_DRAGONSONG_DIVE_ACTION_ID = 4242
+DRAGOON_COMBO_STARTER_ACTION_IDS = {
+    75,     # True Thrust
+    16479,  # Raiden Thrust
+    86,     # Doom Spike
+    25770,  # Draconian Fury
+}
 
 JOB_SPEED_MODIFIERS = {
     "Monk": 0.80,
     "Ninja": 0.85,
 }
+
+
+def raw_event_uses_targetability_only_downtime(encounter_key: str | None, job: str | None) -> bool:
+    jobs = RAW_TARGETABILITY_ONLY_DOWNTIME_JOBS_BY_ENCOUNTER.get(str(encounter_key or ""))
+    return bool(jobs and str(job or "") in jobs)
+
+
+def raw_next_gcd_capped_jobs_for_encounter(encounter_key: str | None) -> set[str]:
+    return set(RAW_NEXT_GCD_CAPPED_JOBS_BY_ENCOUNTER.get(str(encounter_key or ""), RAW_NEXT_GCD_CAPPED_JOBS))
+
+
+def raw_event_excludes_job(encounter_key: str | None, job: str | None) -> bool:
+    job_name = str(job or "")
+    if job_name in RAW_EVENT_GCD_EXCLUDED_JOBS:
+        return True
+    encounter_jobs = RAW_EVENT_GCD_EXCLUDED_JOBS_BY_ENCOUNTER.get(str(encounter_key or ""))
+    return bool(encounter_jobs and job_name in encounter_jobs)
+
+
+def should_use_raw_events_for_gcd(encounter_key: str | None, job: str | None, *, force_raw_events: bool = False) -> bool:
+    if force_raw_events:
+        return True
+    job_name = str(job or "")
+    return job_name in RAW_EVENT_GCD_REQUIRED_JOBS or (
+        str(encounter_key or "") in RAW_EVENT_GCD_ENCOUNTERS
+        and not raw_event_excludes_job(encounter_key, job_name)
+    )
+
+
+def should_skip_raw_gcd_uptime(
+    encounter_key: str | None,
+    job: str | None,
+    attempt: dict[str, Any],
+    next_attempt: dict[str, Any] | None,
+) -> bool:
+    metadata = attempt.get("metadata")
+    next_metadata = next_attempt.get("metadata") if next_attempt else None
+    if not isinstance(metadata, ActionMetadata) or not isinstance(next_metadata, ActionMetadata):
+        return False
+
+    if (
+        str(encounter_key or "") == "extreme_queen_eternal"
+        and str(job or "") == "Dragoon"
+        and metadata.action_id == DRAGOON_DRAGONSONG_DIVE_ACTION_ID
+        and next_metadata.action_id in DRAGOON_COMBO_STARTER_ACTION_IDS
+    ):
+        # 極永恆女王的 CN7.5 龍騎樣本顯示，xivanalysis legacy FFLogs 轉接層在
+        # `Drakesbane -> Dragonsong Dive -> Raiden/True Thrust` 這類連段循環邊界，
+        # 等同沒有把 LB 這次長 recast 納入 ABC 分子；但 `Fang/Wheeling -> LB -> Drakesbane`
+        # 的連段內 LB 仍會完整計入。這裡只把已驗證的邊界型態排除，避免回頭破壞
+        # Queen 7.4 樣本中已對齊的龍騎 LB 覆蓋率。
+        return True
+    return False
 
 
 @dataclass(frozen=True)
@@ -70,10 +258,10 @@ SPEED_STATUS_RULES = [
 ]
 
 RAW_SPEED_STATUS_MODIFIERS_BY_STATUS_ID = {
+    738: 0.85,   # Black Mage Circle of Power
     1299: 0.87,  # Samurai Fuka
     3669: 0.85,  # Viper Swiftscaled
     157: 0.80,   # White Mage Presence of Mind
-    3689: 0.75,  # Pictomancer Inspiration
 }
 
 RAW_STATUS_APPLY_EVENT_TYPES = {"applybuff", "refreshbuff", "applydebuff", "refreshdebuff"}
@@ -95,6 +283,7 @@ RECAST_SUBSTAT_EXCLUDED_ACTION_IDS = {
 class GcdActionOverride:
     gcd_recast_ms: int
     speed_adjusted: bool
+    status_speed_adjusted: bool = True
 
 
 @dataclass(frozen=True)
@@ -224,6 +413,17 @@ GCD_ACTION_OVERRIDES: dict[int, GcdActionOverride] = {
     36968: GcdActionOverride(gcd_recast_ms=3200, speed_adjusted=True),  # Tendo Kaeshi Setsugekka
 }
 
+GCD_ACTION_OVERRIDES.update(
+    {
+        action_id: GcdActionOverride(
+            gcd_recast_ms=rule.gcd_recast_ms,
+            speed_adjusted=rule.substat_adjusted,
+            status_speed_adjusted=rule.status_speed_adjusted,
+        )
+        for action_id, rule in XIVANALYSIS_GCD_ACTION_RULES.items()
+    }
+)
+
 
 @dataclass(frozen=True)
 class ActionMetadata:
@@ -235,6 +435,7 @@ class ActionMetadata:
     gcd_recast_ms: int | None = None
     is_gcd_override: bool | None = None
     recast_speed_adjusted: bool = True
+    recast_status_adjusted: bool = True
 
     @property
     def is_gcd(self) -> bool:
@@ -289,6 +490,7 @@ class ActionMetadataStore:
                 gcd_recast_ms=override.gcd_recast_ms if override else None,
                 is_gcd_override=True if override else None,
                 recast_speed_adjusted=override.speed_adjusted if override else True,
+                recast_status_adjusted=override.status_speed_adjusted if override else True,
             )
 
         if not metadata_by_id:
@@ -563,10 +765,12 @@ def extract_attempt_from_event_group(
         timestamp = to_number(begin_event.get("timestamp"))
         duration = to_number(begin_event.get("duration")) or 0
         action_id = event_action_id(begin_event, fallback_action_id)
+        cast_start = timestamp
     elif cast_event:
         timestamp = to_number(cast_event.get("timestamp"))
         duration = 0
         action_id = event_action_id(cast_event, fallback_action_id)
+        cast_start = timestamp
     else:
         return None
 
@@ -576,6 +780,7 @@ def extract_attempt_from_event_group(
     return {
         "action_id": action_id,
         "timestamp": timestamp,
+        "cast_start_timestamp": cast_start if cast_start is not None else timestamp,
         "cast_duration_ms": duration,
         "source_id": source_id if source_id is not None else event_source_id(begin_event or cast_event or {}),
     }
@@ -675,16 +880,479 @@ def combatant_speed_stats(raw_events: list[dict[str, Any]], *, source_id: int | 
     return {}
 
 
+def source_death_in_windows(
+    raw_events: list[dict[str, Any]],
+    *,
+    source_id: int | None,
+    windows: list[tuple[float, float]],
+) -> bool:
+    if source_id is None:
+        return False
+    return any(
+        str(event.get("type") or "") == "death"
+        and to_int(event.get("targetID")) == source_id
+        and timestamp_in_windows(to_number(event.get("timestamp")), windows)
+        for event in raw_events
+    )
+
+
+def speed_stat_from_estimated_gcd_ms(estimated_gcd_ms: float) -> int:
+    return math.floor(
+        (STAT_DIVISOR * (1000 - (1000 * estimated_gcd_ms) / BASE_GCD_MS) / 130)
+        + SUB_ATTRIBUTE_MINIMUM
+    )
+
+
+def select_pct_byakko_downtime_coverage(
+    raw_targetability_coverage: dict[str, Any] | None,
+    graph_downtime_coverage: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    if not raw_targetability_coverage or not graph_downtime_coverage:
+        return raw_targetability_coverage or graph_downtime_coverage
+
+    raw_percent = to_number(raw_targetability_coverage.get("percent"))
+    graph_percent = to_number(graph_downtime_coverage.get("percent"))
+    if raw_percent is None or graph_percent is None:
+        return raw_targetability_coverage
+
+    delta = graph_percent - raw_percent
+    if PCT_BYAKKO_GRAPH_DOWNTIME_DELTA_MIN <= delta <= PCT_BYAKKO_GRAPH_DOWNTIME_DELTA_MAX:
+        selected = dict(graph_downtime_coverage)
+        selected["downtime_selection"] = "casts_graph_encounter_gap"
+        selected["raw_targetability_percent"] = raw_targetability_coverage.get("percent")
+        selected["raw_targetability_denominator_ms"] = raw_targetability_coverage.get("denominator_ms")
+        # 幻白虎的 raw targetability 偶爾會比 xivanalysis 判定晚約 28 秒，
+        # 主要出現在 PCT 可於 Boss 不可選取時持續使用自我 GCD 的 Starry Muse 窗。
+        # 若改用 Casts graph 的 encounter gap 只移動約一個顯示百分點，實測會更貼近
+        # xivanalysis；更大的差距通常代表 graph gap 過寬，仍以 raw targetability 為準。
+        return selected
+
+    return raw_targetability_coverage
+
+
+def select_blm_byakko_coverage(
+    raw_events_coverage: dict[str, Any] | None,
+    casts_graph_coverage: dict[str, Any] | None,
+    raw_downtime_casts_graph_coverage: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
+    if not raw_events_coverage or not casts_graph_coverage:
+        return raw_events_coverage or raw_downtime_casts_graph_coverage or casts_graph_coverage
+
+    raw_percent = to_number(raw_events_coverage.get("percent"))
+    graph_percent = to_number(casts_graph_coverage.get("percent"))
+    if raw_percent is None or graph_percent is None:
+        return raw_events_coverage
+
+    raw_downtime_graph_percent = (
+        to_number(raw_downtime_casts_graph_coverage.get("percent"))
+        if raw_downtime_casts_graph_coverage
+        else None
+    )
+    if (
+        raw_downtime_casts_graph_coverage
+        and raw_downtime_graph_percent is not None
+        and BLM_BYAKKO_RAW_DOWNTIME_GRAPH_OVERCOUNT_MIN
+        <= raw_percent - raw_downtime_graph_percent
+        <= BLM_BYAKKO_RAW_DOWNTIME_GRAPH_OVERCOUNT_MAX
+    ):
+        selected = dict(raw_downtime_casts_graph_coverage)
+        selected["fallback_selection"] = "black_mage_casts_graph_raw_downtime_moderate_raw_overcount"
+        selected["raw_events_percent"] = raw_events_coverage.get("percent")
+        selected["raw_events_denominator_ms"] = raw_events_coverage.get("denominator_ms")
+        selected["casts_graph_percent"] = casts_graph_coverage.get("percent")
+        selected["casts_graph_denominator_ms"] = casts_graph_coverage.get("denominator_ms")
+        # 幻白虎少數黑魔 log 會因 source combatantinfo / raw packet 邊界讓 raw action
+        # lock 比 xivanalysis 顯示值高約一到兩個百分點。此時 Casts graph 的 GCD 嘗試
+        # 搭配 raw targetability / UTA downtime 會更接近站端，同時避開前面已驗證的
+        # 大幅低估 fallback 條件。
+        return selected
+
+    if (
+        raw_downtime_casts_graph_coverage
+        and raw_downtime_graph_percent is not None
+        and raw_downtime_graph_percent - raw_percent >= BLM_BYAKKO_GRAPH_FALLBACK_DELTA_MIN
+    ):
+        selected = dict(raw_downtime_casts_graph_coverage)
+        selected["fallback_selection"] = "black_mage_casts_graph_raw_downtime_large_raw_gap"
+        selected["raw_events_percent"] = raw_events_coverage.get("percent")
+        selected["raw_events_denominator_ms"] = raw_events_coverage.get("denominator_ms")
+        selected["casts_graph_percent"] = casts_graph_coverage.get("percent")
+        selected["casts_graph_denominator_ms"] = casts_graph_coverage.get("denominator_ms")
+        # 幻白虎黑魔 raw action packet 可能低估 GCD lock，但 xivanalysis 仍會把
+        # raw targetability 與玩家 UnableToAct 視為分母修正來源。這種案例用 Casts
+        # graph 的 GCD 嘗試搭配 raw downtime，會比單純 main-target damage gap 更貼近站端。
+        return selected
+
+    if graph_percent - raw_percent >= BLM_BYAKKO_GRAPH_FALLBACK_DELTA_MIN:
+        selected = dict(casts_graph_coverage)
+        selected["fallback_selection"] = "black_mage_casts_graph_large_raw_gap"
+        selected["raw_events_percent"] = raw_events_coverage.get("percent")
+        selected["raw_events_denominator_ms"] = raw_events_coverage.get("denominator_ms")
+        # 幻白虎的 raw action events 對 BLM Ley Lines / Circle of Power 期間的 GCD
+        # 會偶發把 recast 壓得遠低於 xivanalysis 的 ABC 判定，導致高 uptime 玩家被
+        # 低估十幾個百分點。只有當 Casts graph 與 raw events 的差距大到足以判定
+        # raw packet 語意失真時才回退，避免影響前面已驗證正常的 BLM 樣本。
+        return selected
+
+    return raw_events_coverage
+
+
+def select_tank_byakko_coverage(
+    raw_targetability_coverage: dict[str, Any] | None,
+    main_target_gap_coverage: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    if not raw_targetability_coverage or not main_target_gap_coverage:
+        return raw_targetability_coverage or main_target_gap_coverage
+
+    raw_percent = to_number(raw_targetability_coverage.get("percent"))
+    main_gap_percent = to_number(main_target_gap_coverage.get("percent"))
+    if raw_percent is None or main_gap_percent is None:
+        return raw_targetability_coverage
+
+    if (
+        raw_targetability_coverage.get("estimated_speed_below_minimum")
+        and raw_percent >= TANK_BYAKKO_UNCLAMPED_HIGH_UPTIME_RAW_MIN
+    ):
+        # xivanalysis 會保留低於 420 的反推副屬性；這會自然拉長 GCD lock。高覆蓋率坦克
+        # 若再套 main-target damage gap，等於同時放大分子與縮小分母，會比站端高估。
+        return raw_targetability_coverage
+
+    if (
+        raw_percent >= TANK_BYAKKO_MAIN_GAP_RAW_PERCENT_MIN
+        and main_gap_percent - raw_percent >= TANK_BYAKKO_MAIN_GAP_FALLBACK_DELTA_MIN
+    ):
+        selected = dict(main_target_gap_coverage)
+        selected["fallback_selection"] = "tank_main_target_damage_gap"
+        selected["raw_targetability_percent"] = raw_targetability_coverage.get("percent")
+        selected["raw_targetability_denominator_ms"] = raw_targetability_coverage.get("denominator_ms")
+        # 幻白虎少數坦克 log 的 raw targetability 會晚於 xivanalysis 的主目標不可攻擊窗；
+        # 只在高覆蓋率且主目標傷害空窗版本明顯較高時回退，避免低/中覆蓋率坦克被
+        # Casts graph 的 encounter gap 誤判成更接近站端。
+        return selected
+
+    return raw_targetability_coverage
+
+
+def select_bard_raw_event_coverage(
+    raw_events_coverage: dict[str, Any] | None,
+    casts_graph_coverage: dict[str, Any] | None,
+    *,
+    encounter_key: str | None,
+) -> dict[str, Any] | None:
+    if not raw_events_coverage or not casts_graph_coverage:
+        return raw_events_coverage or casts_graph_coverage
+    if str(encounter_key or "") not in BARD_GRAPH_FALLBACK_ENCOUNTERS:
+        return raw_events_coverage
+
+    raw_percent = to_number(raw_events_coverage.get("percent"))
+    graph_percent = to_number(casts_graph_coverage.get("percent"))
+    if raw_percent is None or graph_percent is None:
+        return raw_events_coverage
+
+    if (
+        raw_events_coverage.get("estimated_speed_below_minimum")
+        and raw_percent >= BARD_GRAPH_FALLBACK_RAW_PERCENT_MIN
+        and graph_percent >= BARD_GRAPH_FALLBACK_GRAPH_PERCENT_MIN
+    ):
+        selected = dict(casts_graph_coverage)
+        selected["fallback_selection"] = "bard_casts_graph_high_uptime_estimated_speed"
+        selected["raw_events_percent"] = raw_events_coverage.get("percent")
+        selected["raw_events_denominator_ms"] = raw_events_coverage.get("denominator_ms")
+        # 少數 AAC / Zoraal Bard 缺 combatantinfo 時，raw interval 會反推到低於遊戲
+        # 實際下限的副屬性；xivanalysis 頁面在接近滿覆蓋的樣本更接近 Casts graph 的
+        # 100% 顯示值。只對 estimated_speed_below_minimum 且 graph 幾乎滿覆蓋時回退。
+        return selected
+
+    if str(encounter_key or "") == "extreme_queen_eternal":
+        if (
+            raw_percent >= BARD_QUEEN_GRAPH_FALLBACK_RAW_PERCENT_MIN
+            and graph_percent >= BARD_QUEEN_GRAPH_FALLBACK_GRAPH_PERCENT_MIN
+        ):
+            selected = dict(casts_graph_coverage)
+            selected["fallback_selection"] = "bard_casts_graph_queen_high_uptime"
+            selected["raw_events_percent"] = raw_events_coverage.get("percent")
+            selected["raw_events_denominator_ms"] = raw_events_coverage.get("denominator_ms")
+            # Queen 高覆蓋率 Bard 樣本中，xivanalysis legacy 頁面與 Casts graph /
+            # no-Army raw path 同樣顯示 100%。只有 raw 已接近滿覆蓋且 graph 幾乎滿
+            # 時才回退，避免一般 Army 排除窗樣本被 graph 高估。
+            return selected
+        return raw_events_coverage
+
+    if str(encounter_key or "") == "extreme_valigarmanda":
+        graph_delta = graph_percent - raw_percent
+        if 0 < graph_delta <= BARD_VALIGARMANDA_GRAPH_FALLBACK_DELTA_MAX:
+            if (
+                BARD_VALIGARMANDA_LOW_RAW_ADJUSTMENT_PERCENT_MIN
+                <= raw_percent
+                <= BARD_VALIGARMANDA_LOW_RAW_ADJUSTMENT_PERCENT_MAX
+            ):
+                selected = dict(raw_events_coverage)
+                adjusted_percent = max(0.0, raw_percent - BARD_VALIGARMANDA_LOW_RAW_ADJUSTMENT)
+                selected["percent"] = round(adjusted_percent, 2)
+                denominator_ms = to_number(raw_events_coverage.get("denominator_ms"))
+                if denominator_ms is not None:
+                    selected["covered_time_ms"] = round(denominator_ms * selected["percent"] / 100)
+                selected["fallback_selection"] = "bard_raw_events_valigarmanda_low_uptime_army_adjustment"
+                selected["casts_graph_percent"] = casts_graph_coverage.get("percent")
+                selected["casts_graph_denominator_ms"] = casts_graph_coverage.get("denominator_ms")
+                # 低覆蓋率 Valigarmanda Bard 的 Army 窗口結束點在 raw events 與
+                # xivanalysis 顯示間會有約一個顯示百分點的差距。只在 raw 約 80-83%
+                # 且 graph 只略高於 raw 時修正，避免高覆蓋率樣本被低估。
+                return selected
+            selected = dict(casts_graph_coverage)
+            selected["fallback_selection"] = "bard_casts_graph_valigarmanda_small_raw_gap"
+            selected["raw_events_percent"] = raw_events_coverage.get("percent")
+            selected["raw_events_denominator_ms"] = raw_events_coverage.get("denominator_ms")
+            # 極瓦利加爾曼達 Bard 有兩種型態：Army 排除窗造成 graph 比 raw 高很多時，
+            # xivanalysis 仍貼近 raw；但若 graph 只高約半個百分點，站端顯示會更接近
+            # Casts graph 的 GCD lock。此分支只處理小差距，避免破壞低覆蓋率詩人樣本。
+            return selected
+        return raw_events_coverage
+
+    if graph_percent > raw_percent:
+        selected = dict(raw_events_coverage)
+        blend_ratio = BARD_RAW_GRAPH_BLEND_RATIO_BY_ENCOUNTER.get(
+            str(encounter_key or ""),
+            BARD_RAW_GRAPH_BLEND_RATIO,
+        )
+        adjusted_percent = min(100.0, raw_percent + (graph_percent - raw_percent) * blend_ratio)
+        selected["percent"] = round(adjusted_percent, 2)
+        denominator_ms = to_number(raw_events_coverage.get("denominator_ms"))
+        if denominator_ms is not None:
+            selected["covered_time_ms"] = round(denominator_ms * selected["percent"] / 100)
+        selected["fallback_selection"] = "bard_raw_events_with_casts_graph_lock_blend"
+        selected["raw_events_percent"] = raw_events_coverage.get("percent")
+        selected["casts_graph_percent"] = casts_graph_coverage.get("percent")
+        selected["casts_graph_denominator_ms"] = casts_graph_coverage.get("denominator_ms")
+        # AAC / Zoraal 的 Bard 在 Army 排除窗內仍會受 FFLogs raw packet 與 Casts graph
+        # lock 語意差異影響。xivanalysis 顯示值落在兩者之間；固定 seed 樣本顯示以 raw
+        # 分母為主、只混入少量 graph lock，可同時對齊 89%、94% 與接近 100% 的 Bard。
+        return selected
+
+    return raw_events_coverage
+
+
+def select_valigarmanda_white_mage_coverage(
+    raw_events_coverage: dict[str, Any] | None,
+    casts_graph_coverage: dict[str, Any] | None,
+    *,
+    encounter_key: str | None,
+) -> dict[str, Any] | None:
+    if not raw_events_coverage or not casts_graph_coverage:
+        return raw_events_coverage or casts_graph_coverage
+    if str(encounter_key or "") != "extreme_valigarmanda":
+        return raw_events_coverage
+
+    raw_percent = to_number(raw_events_coverage.get("percent"))
+    graph_percent = to_number(casts_graph_coverage.get("percent"))
+    if raw_percent is None or graph_percent is None:
+        return raw_events_coverage
+
+    delta = raw_percent - graph_percent
+    if (
+        raw_percent <= VALIGARMANDA_WHM_GRAPH_FALLBACK_RAW_PERCENT_MAX
+        and VALIGARMANDA_WHM_GRAPH_FALLBACK_DELTA_MIN <= delta <= VALIGARMANDA_WHM_GRAPH_FALLBACK_DELTA_MAX
+    ):
+        selected = dict(casts_graph_coverage)
+        selected["fallback_selection"] = "valigarmanda_white_mage_casts_graph_low_uptime"
+        selected["raw_events_percent"] = raw_events_coverage.get("percent")
+        selected["raw_events_denominator_ms"] = raw_events_coverage.get("denominator_ms")
+        # 極瓦利加爾曼達 WHM 多數樣本需要 raw downtime；但低 ABC 且 raw 只比 graph
+        # 高約一到兩個百分點時，raw targetability/UTA 會把 Presence of Mind 附近
+        # 的 lock 吃得略滿。此時回 Casts graph 會更貼近 xivanalysis 顯示值。
+        return selected
+
+    return raw_events_coverage
+
+
+def select_valigarmanda_red_mage_coverage(
+    raw_events_coverage: dict[str, Any] | None,
+    casts_graph_coverage: dict[str, Any] | None,
+    *,
+    encounter_key: str | None,
+) -> dict[str, Any] | None:
+    if not raw_events_coverage or not casts_graph_coverage:
+        return raw_events_coverage or casts_graph_coverage
+    if str(encounter_key or "") != "extreme_valigarmanda":
+        return raw_events_coverage
+
+    raw_percent = to_number(raw_events_coverage.get("percent"))
+    graph_percent = to_number(casts_graph_coverage.get("percent"))
+    if raw_percent is None or graph_percent is None:
+        return raw_events_coverage
+
+    delta = raw_percent - graph_percent
+    if (
+        raw_percent <= VALIGARMANDA_RDM_GRAPH_FALLBACK_RAW_PERCENT_MAX
+        and VALIGARMANDA_RDM_GRAPH_FALLBACK_DELTA_MIN <= delta <= VALIGARMANDA_RDM_GRAPH_FALLBACK_DELTA_MAX
+    ):
+        selected = dict(casts_graph_coverage)
+        selected["fallback_selection"] = "valigarmanda_red_mage_casts_graph_low_uptime"
+        selected["raw_events_percent"] = raw_events_coverage.get("percent")
+        selected["raw_events_denominator_ms"] = raw_events_coverage.get("denominator_ms")
+        # 極瓦利加爾曼達赤魔在低 ABC 樣本中，raw events 會把 Dualcast/instant GCD
+        # 視窗吃得比 xivanalysis 頁面更滿；但高覆蓋率樣本仍需保留 raw lock。
+        # 因此只在 raw 與 graph 相差約一個半百分點、且 raw 本身低於 75% 時回退。
+        return selected
+
+    return raw_events_coverage
+
+
+def select_queen_scholar_coverage(
+    raw_events_coverage: dict[str, Any] | None,
+    casts_graph_coverage: dict[str, Any] | None,
+    *,
+    encounter_key: str | None,
+) -> dict[str, Any] | None:
+    if not raw_events_coverage or not casts_graph_coverage:
+        return raw_events_coverage or casts_graph_coverage
+    if str(encounter_key or "") != "extreme_queen_eternal":
+        return raw_events_coverage
+
+    raw_percent = to_number(raw_events_coverage.get("percent"))
+    graph_percent = to_number(casts_graph_coverage.get("percent"))
+    if raw_percent is None or graph_percent is None:
+        return raw_events_coverage
+
+    delta = graph_percent - raw_percent
+    if (
+        raw_percent <= QUEEN_SCH_GRAPH_FALLBACK_RAW_PERCENT_MAX
+        and QUEEN_SCH_GRAPH_FALLBACK_DELTA_MIN <= delta <= QUEEN_SCH_GRAPH_FALLBACK_DELTA_MAX
+    ):
+        selected = dict(casts_graph_coverage)
+        selected["fallback_selection"] = "queen_scholar_casts_graph_intermission_gap"
+        selected["raw_events_percent"] = raw_events_coverage.get("percent")
+        selected["raw_events_denominator_ms"] = raw_events_coverage.get("denominator_ms")
+        # Queen SCH 預設仍走 targetability-only raw downtime，避免短 intermission
+        # 讓分母過度縮短；但固定 seed 新樣本顯示，若 raw 比 Casts graph 低約兩個
+        # 百分點，xivanalysis legacy 頁面會貼近 graph 的 GCD lock 與 downtime 組合。
+        return selected
+
+    return raw_events_coverage
+
+
+def select_queen_red_mage_coverage(
+    raw_events_coverage: dict[str, Any] | None,
+    casts_graph_coverage: dict[str, Any] | None,
+    *,
+    encounter_key: str | None,
+) -> dict[str, Any] | None:
+    if not raw_events_coverage or not casts_graph_coverage:
+        return casts_graph_coverage or raw_events_coverage
+    if str(encounter_key or "") != "extreme_queen_eternal":
+        return raw_events_coverage
+
+    raw_percent = to_number(raw_events_coverage.get("percent"))
+    graph_percent = to_number(casts_graph_coverage.get("percent"))
+    if raw_percent is None or graph_percent is None:
+        return casts_graph_coverage
+
+    delta = raw_percent - graph_percent
+    if (
+        graph_percent <= QUEEN_RDM_RAW_FALLBACK_GRAPH_PERCENT_MAX
+        and QUEEN_RDM_RAW_FALLBACK_DELTA_MIN <= delta <= QUEEN_RDM_RAW_FALLBACK_DELTA_MAX
+    ):
+        selected = dict(raw_events_coverage)
+        selected["fallback_selection"] = "queen_red_mage_raw_events_low_graph_uptime"
+        selected["casts_graph_percent"] = casts_graph_coverage.get("percent")
+        selected["casts_graph_denominator_ms"] = casts_graph_coverage.get("denominator_ms")
+        # Queen RDM 預設仍保守採 Casts graph，避免 Dualcast / instant GCD 在 raw events
+        # 中被吃得過滿；但固定 seed 新樣本顯示，低覆蓋率且 raw 只比 graph 高約一到
+        # 兩個百分點時，xivanalysis legacy 頁面會貼近 raw targetability/UTA 分母。
+        return selected
+
+    return casts_graph_coverage
+
+
+def estimate_speed_stats_from_attempts(
+    attempts: list[dict[str, Any]],
+    *,
+    job: str | None,
+    speed_windows: list[SpeedModifierWindow],
+) -> dict[str, int]:
+    # xivanalysis 在 FFLogs 沒有 combatantinfo 副屬性時，會由 GCD 事件間隔反推
+    # tooltip GCD，再轉回技速/詠速。這段對齊該流程，而不是直接把 3.3s / 6s
+    # 長 GCD 的 raw interval 當成該 base recast 的實際倍率，避免 PCT 等職業被估歪。
+    intervals_by_attribute: dict[str, list[float]] = {
+        "skill_speed": [],
+        "spell_speed": [],
+    }
+    for index, current in enumerate(attempts[1:], start=1):
+        previous = attempts[index - 1]
+        if previous.get("interrupted"):
+            continue
+        metadata = previous.get("metadata")
+        if (
+            not isinstance(metadata, ActionMetadata)
+            or not metadata.recast_speed_adjusted
+            or metadata.action_id in RECAST_SUBSTAT_EXCLUDED_ACTION_IDS
+        ):
+            continue
+
+        attribute_key: str | None = None
+        if metadata.action_category_id == 2:
+            attribute_key = "spell_speed"
+        elif metadata.action_category_id == 3:
+            attribute_key = "skill_speed"
+        if attribute_key is None:
+            continue
+
+        previous_start = first_number(previous.get("cast_start_timestamp"), previous.get("timestamp"))
+        current_start = first_number(current.get("cast_start_timestamp"), current.get("timestamp"))
+        if previous_start is None or current_start is None:
+            continue
+
+        raw_interval = current_start - previous_start
+        if raw_interval <= 0:
+            continue
+
+        recast_for_scale = metadata.effective_recast_ms or BASE_GCD_MS
+        has_animation_lock = False
+        if to_number(previous.get("cast_duration_ms")) and metadata.cast_ms >= BASE_GCD_MS:
+            has_animation_lock = True
+            recast_for_scale = metadata.cast_ms
+
+        speed_modifier = speed_modifier_at_timestamp(previous_start, job=job, speed_windows=speed_windows)
+        if speed_modifier <= 0:
+            continue
+
+        adjusted_interval = (
+            (raw_interval - (100 if has_animation_lock else 0))
+            / (recast_for_scale / BASE_GCD_MS)
+            / speed_modifier
+        )
+        if adjusted_interval > 0:
+            intervals_by_attribute[attribute_key].append(adjusted_interval)
+
+    estimated_stats: dict[str, int] = {}
+    for attribute_key, intervals in intervals_by_attribute.items():
+        if not intervals:
+            continue
+        estimated_gcd = estimate_recast_from_xivanalysis_batches(intervals)
+        if estimated_gcd > 0:
+            # xivanalysis 的 SpeedStatsAdapterStep 會把反推副屬性原樣寫入 actorUpdate；
+            # 即使 FFLogs 間隔讓結果低於遊戲實際下限 420，後續 CastTime 仍會使用該值。
+            # 本地必須保留這個站端語意，否則少量遠距魔法 GCD 會被壓回 2.50s 而低估 ABC。
+            estimated_stats[attribute_key] = speed_stat_from_estimated_gcd_ms(estimated_gcd)
+    return estimated_stats
+
+
 def raw_speed_modifier_windows(
     raw_events: list[dict[str, Any]],
     *,
     source_id: int | None,
     fight_end_time: float | None,
+    extra_status_modifiers_by_status_id: dict[int, float] | None = None,
 ) -> list[SpeedModifierWindow]:
     if source_id is None:
         return []
 
+    status_modifiers_by_status_id = {
+        **RAW_SPEED_STATUS_MODIFIERS_BY_STATUS_ID,
+        **(extra_status_modifiers_by_status_id or {}),
+    }
     windows: list[SpeedModifierWindow] = []
+    active_status_windows: dict[int, tuple[float, float | None, float, str]] = {}
     for event in raw_events:
         timestamp = to_number(event.get("timestamp"))
         if timestamp is None:
@@ -698,47 +1366,241 @@ def raw_speed_modifier_windows(
                 if raw_status_id is None:
                     continue
                 status_id = raw_status_id - FFLOGS_STATUS_ID_OFFSET if raw_status_id >= FFLOGS_STATUS_ID_OFFSET else raw_status_id
-                modifier = RAW_SPEED_STATUS_MODIFIERS_BY_STATUS_ID.get(status_id)
+                modifier = status_modifiers_by_status_id.get(status_id)
                 if modifier is None:
                     continue
                 duration = to_number(aura.get("duration"))
-                end_ms = timestamp + duration if duration else fight_end_time
-                if end_ms is None:
-                    continue
-                windows.append(
-                    SpeedModifierWindow(
-                        start_ms=timestamp,
-                        end_ms=min(end_ms, fight_end_time) if fight_end_time is not None else end_ms,
-                        modifier=modifier,
-                        label=f"initial status {status_id}",
-                    )
+                fallback_end = timestamp + duration if duration else fight_end_time
+                active_status_windows.setdefault(
+                    status_id,
+                    (
+                        timestamp,
+                        fallback_end,
+                        modifier,
+                        f"initial status {status_id}",
+                    ),
                 )
             continue
 
-        if event.get("type") not in {"applybuff", "refreshbuff"}:
+        event_type = str(event.get("type") or "")
+        if event_type not in RAW_STATUS_APPLY_EVENT_TYPES and event_type not in RAW_STATUS_REMOVE_EVENT_TYPES:
             continue
         if to_int(event.get("targetID")) != source_id:
             continue
         status_id = event_status_id(event)
         if status_id is None:
             continue
-        modifier = RAW_SPEED_STATUS_MODIFIERS_BY_STATUS_ID.get(status_id)
+        modifier = status_modifiers_by_status_id.get(status_id)
         if modifier is None:
             continue
-        duration = to_number(event.get("duration"))
-        end_ms = timestamp + duration if duration else fight_end_time
+
+        if event_type in RAW_STATUS_APPLY_EVENT_TYPES:
+            duration = to_number(event.get("duration"))
+            fallback_end = timestamp + duration if duration else fight_end_time
+            if status_id in active_status_windows:
+                start, existing_fallback_end, active_modifier, label = active_status_windows[status_id]
+                # xivanalysis 的 CastTime 調整由 apply/remove 驅動；refresh 只在缺少
+                # remove 時當成 fallback，避免 Circle of Power 這類地板 buff 在離開後
+                # 仍因 FFLogs refresh duration 被誤延長。
+                if fallback_end is not None:
+                    fallback_end = max(existing_fallback_end or fallback_end, fallback_end)
+                else:
+                    fallback_end = existing_fallback_end
+                active_status_windows[status_id] = (start, fallback_end, active_modifier, label)
+            else:
+                active_status_windows[status_id] = (
+                    timestamp,
+                    fallback_end,
+                    modifier,
+                    f"status {status_id}",
+                )
+            continue
+
+        active_window = active_status_windows.pop(status_id, None)
+        if active_window is None:
+            continue
+        start, _fallback_end, active_modifier, label = active_window
+        if timestamp > start:
+            windows.append(
+                SpeedModifierWindow(
+                    start_ms=start,
+                    end_ms=min(timestamp, fight_end_time) if fight_end_time is not None else timestamp,
+                    modifier=active_modifier,
+                    label=label,
+                )
+            )
+
+    for start, fallback_end, modifier, label in active_status_windows.values():
+        end_ms = fallback_end if fallback_end is not None else fight_end_time
         if end_ms is None:
             continue
         windows.append(
             SpeedModifierWindow(
-                start_ms=timestamp,
+                start_ms=start,
                 end_ms=min(end_ms, fight_end_time) if fight_end_time is not None else end_ms,
                 modifier=modifier,
-                label=f"status {status_id}",
+                label=label,
             )
         )
 
     return merge_speed_modifier_windows([window for window in windows if window.end_ms > window.start_ms])
+
+
+def raw_status_windows(
+    raw_events: list[dict[str, Any]],
+    *,
+    source_id: int | None,
+    status_ids: set[int],
+    fight_end_time: float | None,
+) -> list[tuple[float, float]]:
+    if source_id is None or not status_ids:
+        return []
+
+    windows: list[tuple[float, float]] = []
+    active_start: float | None = None
+
+    def event_order_key(event: dict[str, Any]) -> tuple[float, int]:
+        timestamp = to_number(event.get("timestamp"))
+        event_type = str(event.get("type") or "")
+        priority = 1
+        if event_type in RAW_STATUS_REMOVE_EVENT_TYPES:
+            priority = 0
+        # FFLogs All raw events can place Army's Muse apply before Army's Paeon remove at
+        # the exact same timestamp. xivanalysis' final ABC result behaves as if the old
+        # Army window closes before the next one opens, so normalize same-timestamp status
+        # transitions here while keeping original order for all other ties.
+        return (timestamp if timestamp is not None else 0, priority)
+
+    for event in sorted(raw_events, key=event_order_key):
+        timestamp = to_number(event.get("timestamp"))
+        if timestamp is None:
+            continue
+
+        if event.get("type") == "combatantinfo":
+            for aura in event.get("auras") or []:
+                if not isinstance(aura, dict):
+                    continue
+                raw_status_id = to_int(aura.get("ability"))
+                if raw_status_id is None:
+                    continue
+                status_id = raw_status_id - FFLOGS_STATUS_ID_OFFSET if raw_status_id >= FFLOGS_STATUS_ID_OFFSET else raw_status_id
+                if status_id not in status_ids:
+                    continue
+                # xivanalysis legacy adapter maps combatantinfo aura source from aura.source,
+                # not from the actor receiving combatantinfo. Bard Army windows filter by
+                # source only, so a party member's combatantinfo can open the Bard's
+                # exclusion window when that aura came from this Bard.
+                if to_int(aura.get("source")) != source_id:
+                    continue
+                if active_start is None:
+                    active_start = timestamp
+            continue
+
+        event_type = str(event.get("type") or "")
+        if event_type not in RAW_STATUS_APPLY_EVENT_TYPES and event_type not in RAW_STATUS_REMOVE_EVENT_TYPES:
+            continue
+        if event_source_id(event) != source_id:
+            continue
+        status_id = event_status_id(event)
+        if status_id is None or status_id not in status_ids:
+            continue
+
+        if event_type in RAW_STATUS_APPLY_EVENT_TYPES:
+            # xivanalysis 的 BRD Army 排除是 source-only filter，沒有綁 target。
+            # 因此隊友身上的 refresh/apply 會在目前沒有開窗時重新開窗，任一 remove
+            # 也會先關掉 currentArmy。這看起來反直覺，但正是站端模組的事件語意。
+            if active_start is None:
+                active_start = timestamp
+            continue
+
+        if active_start is not None and timestamp > active_start:
+            windows.append((active_start, timestamp))
+        active_start = None
+
+    if active_start is not None and fight_end_time is not None and fight_end_time > active_start:
+        windows.append((active_start, fight_end_time))
+
+    return merge_time_windows(windows)
+
+
+def raw_target_status_windows(
+    raw_events: list[dict[str, Any]],
+    *,
+    source_id: int | None,
+    status_ids: set[int],
+    fight_end_time: float | None,
+) -> dict[int, list[tuple[float, float]]]:
+    if source_id is None or not status_ids:
+        return {}
+
+    windows_by_status: dict[int, list[tuple[float, float]]] = {status_id: [] for status_id in status_ids}
+    active_by_status: dict[int, float] = {}
+    for event in raw_events:
+        timestamp = to_number(event.get("timestamp"))
+        if timestamp is None:
+            continue
+
+        if event.get("type") == "combatantinfo" and event_source_id(event) == source_id:
+            for aura in event.get("auras") or []:
+                if not isinstance(aura, dict):
+                    continue
+                raw_status_id = to_int(aura.get("ability"))
+                if raw_status_id is None:
+                    continue
+                status_id = raw_status_id - FFLOGS_STATUS_ID_OFFSET if raw_status_id >= FFLOGS_STATUS_ID_OFFSET else raw_status_id
+                if status_id not in status_ids or status_id in active_by_status:
+                    continue
+                active_by_status[status_id] = timestamp
+            continue
+
+        event_type = str(event.get("type") or "")
+        if event_type not in RAW_STATUS_APPLY_EVENT_TYPES and event_type not in RAW_STATUS_REMOVE_EVENT_TYPES:
+            continue
+        if to_int(event.get("targetID")) != source_id:
+            continue
+        status_id = event_status_id(event)
+        if status_id is None or status_id not in status_ids:
+            continue
+
+        if event_type in RAW_STATUS_APPLY_EVENT_TYPES:
+            if status_id not in active_by_status:
+                active_by_status[status_id] = timestamp
+            continue
+
+        start = active_by_status.pop(status_id, None)
+        if start is not None and timestamp >= start:
+            windows_by_status[status_id].append((start, timestamp))
+
+    if fight_end_time is not None:
+        for status_id, start in active_by_status.items():
+            if fight_end_time >= start:
+                windows_by_status[status_id].append((start, fight_end_time))
+
+    return {
+        status_id: merge_time_windows(windows)
+        for status_id, windows in windows_by_status.items()
+        if windows
+    }
+
+
+def job_gcd_exclusion_windows(
+    raw_events: list[dict[str, Any]],
+    *,
+    source_id: int | None,
+    job: str | None,
+    fight_end_time: float | None,
+) -> list[tuple[float, float]]:
+    if str(job) == "Bard":
+        # xivanalysis 的 BRD AlwaysBeCasting 會排除 Army's Paeon / Army's Muse：
+        # 這兩個狀態的 GCD 加速層數無法可靠合成，因此 buff 期間的 GCD 不進分子，
+        # buff 時間也會從 ABC 分母扣除。
+        return raw_status_windows(
+            raw_events,
+            source_id=source_id,
+            status_ids=BARD_ARMY_STATUS_IDS,
+            fight_end_time=fight_end_time,
+        )
+    return []
 
 
 def extract_gcd_attempts_from_raw_events(
@@ -793,6 +1655,81 @@ def extract_gcd_attempts_from_raw_events(
         )
 
     attempts.sort(key=lambda attempt: (attempt["timestamp"], attempt["action_id"]))
+    return attempts
+
+
+def extract_gcd_speed_estimation_attempts_from_raw_events(
+    raw_events: list[dict[str, Any]],
+    metadata_store: ActionMetadataStore,
+    *,
+    source_id: int | None = None,
+) -> list[dict[str, Any]]:
+    # xivanalysis 的 SpeedStatsAdapterStep 會把 interrupted prepare 留在 GCD 序列中；
+    # 速度反推時只跳過「前一個 GCD 被中斷」的區間。若本地只看完成的 cast，會把
+    # 中斷讀條前後兩段間隔合併成一段過長 GCD，進而反推出低於實際值的技速/詠速。
+    attempts: list[dict[str, Any]] = []
+    pending_index_by_source: dict[int, int] = {}
+
+    for event in sorted(raw_events, key=lambda item: (to_number(item.get("timestamp")) or 0, to_int(item.get("packetID")) or 0, str(item.get("type") or ""))):
+        event_type = event.get("type")
+        if event_type not in {"begincast", "cast"}:
+            continue
+
+        event_source = event_source_id(event)
+        if source_id is not None and event_source != source_id:
+            continue
+
+        action_id = event_action_id(event, None)
+        if action_id is None:
+            continue
+        metadata = metadata_store.get(action_id)
+        if not metadata or not metadata.is_gcd:
+            continue
+
+        timestamp = to_number(event.get("timestamp"))
+        if timestamp is None:
+            continue
+
+        if event_type == "begincast":
+            attempts.append(
+                {
+                    "action_id": action_id,
+                    "timestamp": timestamp,
+                    "cast_start_timestamp": timestamp,
+                    "cast_duration_ms": to_number(event.get("duration")) or 0,
+                    "source_id": event_source,
+                    "metadata": metadata,
+                    "interrupted": True,
+                }
+            )
+            if event_source is not None:
+                pending_index_by_source[event_source] = len(attempts) - 1
+            continue
+
+        pending_index = pending_index_by_source.pop(event_source, None) if event_source is not None else None
+        if pending_index is not None and attempts[pending_index].get("action_id") == action_id:
+            attempts[pending_index]["timestamp"] = timestamp
+            attempts[pending_index]["interrupted"] = False
+            continue
+
+        attempts.append(
+            {
+                "action_id": action_id,
+                "timestamp": timestamp,
+                "cast_start_timestamp": timestamp,
+                "cast_duration_ms": 0,
+                "source_id": event_source,
+                "metadata": metadata,
+                "interrupted": False,
+            }
+        )
+
+    attempts.sort(
+        key=lambda attempt: (
+            first_number(attempt.get("cast_start_timestamp"), attempt.get("timestamp")) or 0,
+            attempt["action_id"],
+        )
+    )
     return attempts
 
 
@@ -861,26 +1798,75 @@ def speed_modifier_at_timestamp(
     return modifier
 
 
+def status_speed_modifier_at_timestamp(
+    timestamp: float,
+    *,
+    speed_windows: list[SpeedModifierWindow],
+) -> float:
+    modifier = 1.0
+    for window in speed_windows:
+        if window.start_ms <= timestamp <= window.end_ms:
+            modifier *= window.modifier
+    return modifier
+
+
 def raw_recast_ms(
     attempt: dict[str, Any],
     *,
     speed_stats: dict[str, int],
     job: str | None,
     speed_windows: list[SpeedModifierWindow],
+    status_windows_by_status_id: dict[int, list[tuple[float, float]]] | None = None,
+    first_gcd_timestamp: float | None = None,
 ) -> float:
     metadata = attempt["metadata"]
     base_recast = metadata.effective_recast_ms
-    if not metadata.recast_speed_adjusted:
-        return float(base_recast)
-
-    if metadata.action_id in RECAST_SUBSTAT_EXCLUDED_ACTION_IDS:
+    timestamp = to_number(attempt.get("timestamp"))
+    cast_duration = to_number(attempt.get("cast_duration_ms")) or 0
+    recast_flat_adjustment = 0.0
+    if (
+        str(job) == "Pictomancer"
+        and metadata.action_id == PCT_RAINBOW_DRIP_ACTION_ID
+        and timestamp is not None
+        and (
+            timestamp_in_windows_inclusive(
+                timestamp,
+                (status_windows_by_status_id or {}).get(PCT_RAINBOW_BRIGHT_STATUS_ID, []),
+            )
+            or (cast_duration <= 0 and first_gcd_timestamp is not None and timestamp == first_gcd_timestamp)
+        )
+    ):
+        # xivanalysis 的 PCT Procs 模組在 Rainbow Bright 被 Rainbow Drip 消耗的當下，
+        # 先讓 6 秒 recast 吃詠速，再套 -3500ms flat adjustment；不是直接改成
+        # 2500ms。Casts graph 會把 proc 後的 Rainbow Drip 呈現為 0ms cast，因此
+        # raw events 診斷路徑也用 cast_duration 作為 status 事件缺漏時的 fallback。
+        recast_flat_adjustment = -3500.0
+    if not metadata.recast_speed_adjusted or metadata.action_id in RECAST_SUBSTAT_EXCLUDED_ACTION_IDS:
         recast = float(base_recast)
     else:
         attribute_key = "spell_speed" if metadata.action_category_id == 2 else "skill_speed"
         recast = speed_stat_adjusted_duration_ms(speed_stats.get(attribute_key), base_recast)
-    timestamp = to_number(attempt.get("timestamp"))
-    if timestamp is not None:
-        recast *= speed_modifier_at_timestamp(timestamp, job=job, speed_windows=speed_windows)
+    if recast_flat_adjustment:
+        recast = max(float(MIN_RECAST_TIME_MS), recast + recast_flat_adjustment)
+    if timestamp is not None and metadata.recast_status_adjusted:
+        if metadata.recast_speed_adjusted and metadata.action_id not in RECAST_SUBSTAT_EXCLUDED_ACTION_IDS:
+            recast *= speed_modifier_at_timestamp(timestamp, job=job, speed_windows=speed_windows)
+        else:
+            # xivanalysis 的 Monk/Ninja 被動加速在 SpeedAdjustments 層，只會套到有
+            # speedAttribute 的 action。固定 recast action 仍可吃 Fuka、Swiftscaled
+            # 這類 CastTime percentage status，但不吃職業被動速度。
+            recast *= status_speed_modifier_at_timestamp(timestamp, speed_windows=speed_windows)
+        if (
+            str(job) == "Pictomancer"
+            and metadata.action_id in PCT_HYPERPHANTASIA_ACTION_IDS
+            and timestamp_in_windows_inclusive(
+                timestamp,
+                (status_windows_by_status_id or {}).get(PCT_INSPIRATION_STATUS_ID, []),
+            )
+        ):
+            # Inspiration 並不是全域施法加速；xivanalysis 只把它掛到
+            # HYPERPHANTASIA_SPELLS，避免 Motif / Hammer 等其他 GCD 被誤縮短。
+            recast *= 0.75
     if base_recast > MIN_RECAST_TIME_MS:
         recast = max(float(MIN_RECAST_TIME_MS), recast)
     return floor_to_10_ms(recast)
@@ -897,14 +1883,18 @@ def raw_speed_stats_cover_attempt(attempt: dict[str, Any], speed_stats: dict[str
 
 
 def timestamp_in_windows(timestamp: float, windows: list[tuple[float, float]]) -> bool:
-    return any(start <= timestamp <= end for start, end in windows)
+    return any(start <= timestamp < end for start, end in windows)
 
 
 def first_window_containing(timestamp: float, windows: list[tuple[float, float]]) -> tuple[float, float] | None:
     for start, end in windows:
-        if start <= timestamp <= end:
+        if start <= timestamp < end:
             return start, end
     return None
+
+
+def timestamp_in_windows_inclusive(timestamp: float, windows: list[tuple[float, float]]) -> bool:
+    return any(start <= timestamp <= end for start, end in windows)
 
 
 def windows_from_graph_items(items: Any) -> list[tuple[float, float]]:
@@ -1144,8 +2134,13 @@ def raw_event_downtime_source(
     fight_start_time: float | None,
     fight_end_time: float | None,
     unable_to_act_status_ids: set[int],
+    metadata_store: ActionMetadataStore | None = None,
+    job: str | None = None,
+    include_graph_downtime: bool = True,
 ) -> dict[str, Any]:
     downtime_source = dict(graph)
+    if not include_graph_downtime:
+        downtime_source["downtime"] = []
     encounter_windows = infer_all_foes_untargetable_windows(
         raw_events,
         friendly_ids=friendly_ids,
@@ -1153,7 +2148,11 @@ def raw_event_downtime_source(
         fight_end_time=fight_end_time,
     )
     if encounter_windows:
-        downtime_source["encounter_downtime"] = encounter_windows
+        existing_encounter_windows = downtime_source.get("encounter_downtime") or []
+        if str(job) in TANK_JOBS and isinstance(existing_encounter_windows, list):
+            downtime_source["encounter_downtime"] = list(existing_encounter_windows) + encounter_windows
+        else:
+            downtime_source["encounter_downtime"] = encounter_windows
 
     player_windows = infer_unable_to_act_windows(
         raw_events,
@@ -1237,15 +2236,17 @@ def infer_recast_timing_by_base(
     *,
     job: str | None = None,
     speed_windows: list[SpeedModifierWindow] | None = None,
+    status_windows_by_status_id: dict[int, list[tuple[float, float]]] | None = None,
 ) -> RecastTimingEstimate:
     speed_windows = speed_windows or []
+    status_windows_by_status_id = status_windows_by_status_id or {}
     intervals_by_recast: dict[int, list[float]] = {}
     speed_modifier_counts_by_recast: dict[int, dict[float, int]] = {}
     for index, attempt in enumerate(attempts[:-1]):
         metadata = attempt.get("metadata")
         if (
             not isinstance(metadata, ActionMetadata)
-            or not metadata.recast_speed_adjusted
+            or not (metadata.recast_speed_adjusted or (metadata.recast_status_adjusted and speed_windows))
             or metadata.effective_recast_ms <= 0
         ):
             continue
@@ -1253,6 +2254,18 @@ def infer_recast_timing_by_base(
         timestamp = to_number(attempt.get("timestamp"))
         next_timestamp = to_number(attempts[index + 1].get("timestamp"))
         if timestamp is None or next_timestamp is None:
+            continue
+
+        if (
+            str(job) == "Pictomancer"
+            and metadata.action_id in PCT_HYPERPHANTASIA_ACTION_IDS
+            and timestamp_in_windows_inclusive(
+                timestamp,
+                status_windows_by_status_id.get(PCT_INSPIRATION_STATUS_ID, []),
+            )
+        ):
+            # xivanalysis 的 PCT Inspiration 是 Hyperphantasia 法術專屬調整，
+            # 不應被當成整場基礎詠速推估樣本；否則會把 3.3 秒系 GCD 全場誤縮短。
             continue
 
         delta = next_timestamp - timestamp
@@ -1296,6 +2309,8 @@ def adjusted_recast_ms(
     *,
     job: str | None = None,
     speed_windows: list[SpeedModifierWindow] | None = None,
+    status_windows_by_status_id: dict[int, list[tuple[float, float]]] | None = None,
+    first_gcd_timestamp: float | None = None,
 ) -> float:
     metadata = attempt["metadata"]
     cast_duration = to_number(attempt.get("cast_duration_ms")) or 0
@@ -1308,17 +2323,47 @@ def adjusted_recast_ms(
     )
     recast = float(base_recast) * recast_multiplier
     speed_windows = speed_windows or []
+    pct_rainbow_bright = (
+        timestamp is not None
+        and timestamp_in_windows_inclusive(
+            timestamp,
+            (status_windows_by_status_id or {}).get(PCT_RAINBOW_BRIGHT_STATUS_ID, []),
+        )
+    )
+    pct_prepull_rainbow = (
+        timestamp is not None
+        and first_gcd_timestamp is not None
+        and timestamp == first_gcd_timestamp
+    )
+    pct_rainbow_adjusted = (
+        cast_duration <= 0
+        and (
+            pct_rainbow_bright
+            or pct_prepull_rainbow
+            or status_windows_by_status_id is None
+        )
+    )
+    if str(job) == "Pictomancer" and metadata.action_id == PCT_RAINBOW_DRIP_ACTION_ID and pct_rainbow_adjusted:
+        # xivanalysis 的 Rainbow Bright 特例是 CastTime 的 flat recast adjustment：
+        # speed-adjusted 6 秒 recast 先算完，再於消耗 Rainbow Drip 的同一 timestamp
+        # 扣 3500ms，這會比「直接改成 2500ms 再吃詠速」略短。
+        recast = max(float(MIN_RECAST_TIME_MS), recast - 3500.0)
 
-    if metadata.recast_speed_adjusted and timestamp is not None:
+    if metadata.recast_status_adjusted and timestamp is not None:
         actual_speed_modifier = speed_modifier_at_timestamp(
             timestamp,
             job=job,
             speed_windows=speed_windows,
         )
-        dominant_speed_modifier = recast_timing.dominant_speed_modifier_by_base.get(base_recast, actual_speed_modifier)
-        if dominant_speed_modifier > 0 and abs(actual_speed_modifier - dominant_speed_modifier) > 0.00001:
-            unmodified_recast = round_to_nearest_10_ms(recast / dominant_speed_modifier)
-            recast = floor_to_10_ms(unmodified_recast * actual_speed_modifier)
+        if metadata.recast_speed_adjusted and metadata.action_id not in RECAST_SUBSTAT_EXCLUDED_ACTION_IDS:
+            dominant_speed_modifier = recast_timing.dominant_speed_modifier_by_base.get(base_recast)
+            if dominant_speed_modifier is None:
+                recast = floor_to_10_ms(recast * actual_speed_modifier)
+            elif dominant_speed_modifier > 0 and abs(actual_speed_modifier - dominant_speed_modifier) > 0.00001:
+                unmodified_recast = round_to_nearest_10_ms(recast / dominant_speed_modifier)
+                recast = floor_to_10_ms(unmodified_recast * actual_speed_modifier)
+        elif speed_windows:
+            recast = floor_to_10_ms(recast * status_speed_modifier_at_timestamp(timestamp, speed_windows=speed_windows))
 
     if str(job) not in CAST_RATIO_RECAST_EXCLUDED_JOBS and metadata.cast_ms > 0 and cast_duration > 0:
         cast_ratio = cast_duration / metadata.cast_ms
@@ -1375,6 +2420,10 @@ def calculate_gcd_coverage_from_graph(
         if timestamp is None:
             continue
 
+        cast_start = to_number(attempt.get("cast_start_timestamp"))
+        if cast_start is not None and timestamp_in_windows(cast_start, coverage_windows):
+            continue
+
         cast_duration = to_number(attempt.get("cast_duration_ms")) or 0
         recast = adjusted_recast_ms(
             attempt,
@@ -1387,18 +2436,30 @@ def calculate_gcd_coverage_from_graph(
         if cast_duration > 0 and cast_duration >= recast:
             uptime += 100
 
-        next_attempt = attempts[index + 1] if index + 1 < len(attempts) else None
-        if next_attempt:
-            next_timestamp = to_number(next_attempt.get("timestamp"))
-            if next_timestamp is not None:
-                uptime = min(uptime, max(0.0, next_timestamp - timestamp))
+        cap_at_next_gcd = cast_duration > 0 or str(job) in {"BlackMage", "Monk"}
+        if cap_at_next_gcd:
+            next_attempt = attempts[index + 1] if index + 1 < len(attempts) else None
+            if next_attempt:
+                next_timestamp = to_number(next_attempt.get("timestamp"))
+                if next_timestamp is not None:
+                    uptime = min(uptime, max(0.0, next_timestamp - timestamp))
 
-        # FFLogs Casts graph 是聚合後的事件來源；用下一個 GCD timestamp 夾住覆蓋區間，
-        # 避免高密度或讀條職業在同一段時間被重複加分。
+        # xivanalysis 的事件流會把每個 instant GCD action 的覆蓋時間獨立相加，最後才把
+        # percent 壓在 100。Casts graph 沒有完整 action event 語意；讀條與已知會高估的
+        # job 在上方先用下一個 GCD 裁切，其餘短鎖/instant 技能保留站端較寬鬆的累加語意。
         if end_time is not None:
             uptime = min(uptime, max(0.0, end_time - timestamp))
+        if uptime <= 0:
+            continue
 
-        covered_ms += max(0.0, uptime - overlap_ms(timestamp, timestamp + uptime, coverage_windows))
+        # xivanalysis 的 Always Be Casting 只在「GCD 覆蓋結束點落在 downtime 內」
+        # 時裁到 downtime 起點；若一個 GCD 橫跨短 downtime 但結束後已回到可行動時間，
+        # 站端百分比不會再把中間重疊段扣一次。這裡刻意對齊該語意，避免本地值偏低。
+        ending_window = first_window_containing(timestamp + uptime, coverage_windows)
+        if ending_window is not None:
+            uptime = max(0.0, ending_window[0] - timestamp)
+
+        covered_ms += max(0.0, uptime)
 
     covered_ms = max(0, round(covered_ms))
     denominator_ms = max(1, round(denominator_ms))
@@ -1421,16 +2482,19 @@ def calculate_gcd_coverage_from_raw_events(
     raw_events: list[dict[str, Any]],
     metadata_store: ActionMetadataStore,
     *,
+    encounter_key: str | None = None,
     source_id: int | None = None,
     job: str | None = None,
     fight_end_time: float | None = None,
     fallback_denominator_ms: float | None = None,
     downtime_source: dict[str, Any] | None = None,
+    cap_next_gcd_jobs: set[str] | frozenset[str] | None = None,
 ) -> dict[str, Any] | None:
     attempts = extract_gcd_attempts_from_raw_events(raw_events, metadata_store, source_id=source_id)
     if not attempts:
         return None
 
+    capped_jobs = RAW_NEXT_GCD_CAPPED_JOBS if cap_next_gcd_jobs is None else cap_next_gcd_jobs
     downtime_source = downtime_source or {}
     base_downtime_windows = downtime_windows(downtime_source)
     inferred_encounter_windows = encounter_downtime_windows(downtime_source)
@@ -1451,14 +2515,69 @@ def calculate_gcd_coverage_from_raw_events(
     if denominator_ms is None or denominator_ms <= 0:
         return None
 
-    speed_stats = combatant_speed_stats(raw_events, source_id=source_id)
+    source_provided_speed_stats = combatant_speed_stats(raw_events, source_id=source_id)
+    use_unadjusted_source_speed = (
+        bool(source_provided_speed_stats)
+        and str(job) in RAW_EVENT_UNADJUSTED_SOURCE_SPEED_JOBS
+        and source_death_in_windows(raw_events, source_id=source_id, windows=coverage_windows)
+    )
+    if use_unadjusted_source_speed:
+        speed_stats = {
+            "skill_speed": SUB_ATTRIBUTE_MINIMUM,
+            "spell_speed": SUB_ATTRIBUTE_MINIMUM,
+        }
+    else:
+        speed_stats = dict(source_provided_speed_stats)
     speed_windows = raw_speed_modifier_windows(raw_events, source_id=source_id, fight_end_time=fight_end_time)
+    status_windows_by_status_id = raw_target_status_windows(
+        raw_events,
+        source_id=source_id,
+        status_ids={PCT_INSPIRATION_STATUS_ID, PCT_RAINBOW_BRIGHT_STATUS_ID} if str(job) == "Pictomancer" else set(),
+        fight_end_time=fight_end_time,
+    )
+    estimated_speed_stats: dict[str, int] = {}
+    if not speed_stats:
+        speed_estimation_attempts = extract_gcd_speed_estimation_attempts_from_raw_events(
+            raw_events,
+            metadata_store,
+            source_id=source_id,
+        )
+        speed_stat_estimation_windows = raw_speed_modifier_windows(
+            raw_events,
+            source_id=source_id,
+            fight_end_time=fight_end_time,
+            extra_status_modifiers_by_status_id=(
+                {PCT_INSPIRATION_STATUS_ID: 0.75} if str(job) == "Pictomancer" else None
+            ),
+        )
+        estimated_speed_stats = estimate_speed_stats_from_attempts(
+            speed_estimation_attempts or attempts,
+            job=job,
+            speed_windows=speed_stat_estimation_windows,
+        )
+        speed_stats.update(estimated_speed_stats)
+    gcd_exclusion_windows = job_gcd_exclusion_windows(
+        raw_events,
+        source_id=source_id,
+        job=job,
+        fight_end_time=fight_end_time,
+    )
+    if gcd_exclusion_windows:
+        denominator_ms -= sum(
+            max(0.0, end - start - overlap_ms(start, end, denominator_windows))
+            for start, end in gcd_exclusion_windows
+        )
+        if denominator_ms <= 0:
+            return None
+
     default_speed_multiplier = median_default_speed_multiplier(attempts)
     recast_timing = infer_recast_timing_by_base(
         attempts,
         job=job,
         speed_windows=speed_windows,
+        status_windows_by_status_id=status_windows_by_status_id,
     )
+    first_gcd_timestamp = to_number(attempts[0].get("timestamp")) if attempts else None
     covered_ms = 0.0
 
     for index, attempt in enumerate(attempts):
@@ -1469,6 +2588,12 @@ def calculate_gcd_coverage_from_raw_events(
         cast_start = to_number(attempt.get("cast_start_timestamp"))
         if cast_start is not None and timestamp_in_windows(cast_start, coverage_windows):
             continue
+        if cast_start is not None and timestamp_in_windows(cast_start, gcd_exclusion_windows):
+            continue
+
+        next_attempt = attempts[index + 1] if index + 1 < len(attempts) else None
+        if should_skip_raw_gcd_uptime(encounter_key, job, attempt, next_attempt):
+            continue
 
         cast_duration = to_number(attempt.get("cast_duration_ms")) or 0
         if raw_speed_stats_cover_attempt(attempt, speed_stats):
@@ -1477,6 +2602,8 @@ def calculate_gcd_coverage_from_raw_events(
                 speed_stats=speed_stats,
                 job=job,
                 speed_windows=speed_windows,
+                status_windows_by_status_id=status_windows_by_status_id,
+                first_gcd_timestamp=first_gcd_timestamp,
             )
         else:
             # FFLogs combatantinfo 有時不提供副屬性；此時改以同場 GCD timestamp 分桶推估
@@ -1487,14 +2614,15 @@ def calculate_gcd_coverage_from_raw_events(
                 recast_timing,
                 job=job,
                 speed_windows=speed_windows,
+                status_windows_by_status_id=status_windows_by_status_id,
+                first_gcd_timestamp=first_gcd_timestamp,
             )
         uptime = max(cast_duration, recast)
         if cast_duration > 0 and cast_duration >= recast:
             uptime += 100
         if fight_end_time is not None:
             uptime = min(uptime, max(0.0, fight_end_time - timestamp))
-        if str(job) in RAW_NEXT_GCD_CAPPED_JOBS:
-            next_attempt = attempts[index + 1] if index + 1 < len(attempts) else None
+        if str(job) in capped_jobs:
             if next_attempt:
                 next_timestamp = to_number(next_attempt.get("timestamp"))
                 if next_timestamp is not None:
@@ -1523,8 +2651,16 @@ def calculate_gcd_coverage_from_raw_events(
     if round(coverage_downtime_ms) != round(denominator_downtime_ms):
         coverage["coverage_downtime_ms"] = round(coverage_downtime_ms)
         coverage["denominator_downtime_ms"] = round(denominator_downtime_ms)
-    if speed_stats:
+    if use_unadjusted_source_speed:
+        coverage["speed_stat_source"] = "combatantinfo_unadjusted_xivanalysis_raw_lock"
+    elif source_provided_speed_stats and estimated_speed_stats:
+        coverage["speed_stat_source"] = "combatantinfo+estimated"
+    elif source_provided_speed_stats:
         coverage["speed_stat_source"] = "combatantinfo"
+    elif estimated_speed_stats:
+        coverage["speed_stat_source"] = "estimated"
+        if any(value < SUB_ATTRIBUTE_MINIMUM for value in estimated_speed_stats.values()):
+            coverage["estimated_speed_below_minimum"] = True
     return coverage
 
 

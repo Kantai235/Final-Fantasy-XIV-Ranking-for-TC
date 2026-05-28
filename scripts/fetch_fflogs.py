@@ -2413,7 +2413,11 @@ class 即時GCD覆蓋率計算器:
                 continue
 
             coverage = None
-            if 副本設定.get("key") == "unreal_byakko" and self.載入狀態資料():
+            job = str(玩家.get("job") or "")
+            if (
+                gcd_core.should_use_raw_events_for_gcd(str(副本設定.get("key") or ""), job)
+                and self.載入狀態資料()
+            ):
                 raw_events = self._raw_event_cache.get(graph_cache_key)
                 if raw_events is None:
                     raw_events = gcd_core.query_fight_raw_events(執行_graphql, session, 認證池, 報告代碼, 戰鬥)
@@ -2423,18 +2427,28 @@ class 即時GCD覆蓋率計算器:
                     for friendly_id in (gcd_core.to_int(隊友.get("fflogs_id")) for 隊友 in 玩家列表)
                     if friendly_id is not None
                 }
-                downtime_source = gcd_core.raw_event_downtime_source(
-                    base_graph,
-                    raw_events,
-                    source_id=source_id,
-                    friendly_ids=friendly_ids,
-                    fight_start_time=start_time,
-                    fight_end_time=end_time,
-                    unable_to_act_status_ids=self._status_store.unable_to_act_status_ids(),
-                )
+                if 副本設定.get("key") in gcd_core.RAW_EVENT_GCD_ENCOUNTERS:
+                    downtime_source = gcd_core.raw_event_downtime_source(
+                        base_graph,
+                        raw_events,
+                        source_id=source_id,
+                        friendly_ids=friendly_ids,
+                        fight_start_time=start_time,
+                        fight_end_time=end_time,
+                        unable_to_act_status_ids=self._status_store.unable_to_act_status_ids(),
+                        metadata_store=self._metadata_store,
+                        job=玩家.get("job"),
+                        include_graph_downtime=not gcd_core.raw_event_uses_targetability_only_downtime(
+                            str(副本設定.get("key") or ""),
+                            job,
+                        ),
+                    )
+                else:
+                    downtime_source = graph
                 coverage = gcd_core.calculate_gcd_coverage_from_raw_events(
                     raw_events,
                     self._metadata_store,
+                    encounter_key=str(副本設定.get("key") or ""),
                     source_id=source_id,
                     job=玩家.get("job"),
                     fight_end_time=end_time,
@@ -2444,7 +2458,172 @@ class 即時GCD覆蓋率計算器:
                         戰鬥.get("damage_time_ms"),
                     ),
                     downtime_source=downtime_source,
+                    cap_next_gcd_jobs=gcd_core.raw_next_gcd_capped_jobs_for_encounter(str(副本設定.get("key") or "")),
                 )
+                if coverage and 副本設定.get("key") == "unreal_byakko" and job in gcd_core.TANK_JOBS:
+                    main_gap_coverage = gcd_core.calculate_gcd_coverage_from_raw_events(
+                        raw_events,
+                        self._metadata_store,
+                        encounter_key=str(副本設定.get("key") or ""),
+                        source_id=source_id,
+                        job=玩家.get("job"),
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_core.first_number(
+                            戰鬥.get("clear_time_ms"),
+                            end_time - start_time,
+                            戰鬥.get("damage_time_ms"),
+                        ),
+                        downtime_source=gcd_core.raw_event_downtime_source(
+                            graph,
+                            raw_events,
+                            source_id=source_id,
+                            friendly_ids=friendly_ids,
+                            fight_start_time=start_time,
+                            fight_end_time=end_time,
+                            unable_to_act_status_ids=set(),
+                            metadata_store=self._metadata_store,
+                            job=玩家.get("job"),
+                        ),
+                        cap_next_gcd_jobs=gcd_core.raw_next_gcd_capped_jobs_for_encounter(str(副本設定.get("key") or "")),
+                    )
+                    coverage = gcd_core.select_tank_byakko_coverage(coverage, main_gap_coverage)
+                if coverage and 副本設定.get("key") == "unreal_byakko" and job == "Pictomancer":
+                    graph_downtime_coverage = gcd_core.calculate_gcd_coverage_from_raw_events(
+                        raw_events,
+                        self._metadata_store,
+                        encounter_key=str(副本設定.get("key") or ""),
+                        source_id=source_id,
+                        job=玩家.get("job"),
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_core.first_number(
+                            戰鬥.get("clear_time_ms"),
+                            end_time - start_time,
+                            戰鬥.get("damage_time_ms"),
+                        ),
+                        downtime_source=graph,
+                        cap_next_gcd_jobs=gcd_core.raw_next_gcd_capped_jobs_for_encounter(str(副本設定.get("key") or "")),
+                    )
+                    coverage = gcd_core.select_pct_byakko_downtime_coverage(coverage, graph_downtime_coverage)
+                if coverage and 副本設定.get("key") == "unreal_byakko" and job == "BlackMage":
+                    graph_coverage = gcd_core.calculate_gcd_coverage_from_graph(
+                        graph,
+                        self._metadata_store,
+                        source_id=source_id,
+                        job=玩家.get("job"),
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_core.first_number(
+                            戰鬥.get("clear_time_ms"),
+                            end_time - start_time,
+                            戰鬥.get("damage_time_ms"),
+                        ),
+                    )
+                    raw_downtime_graph_coverage = gcd_core.calculate_gcd_coverage_from_graph(
+                        downtime_source,
+                        self._metadata_store,
+                        source_id=source_id,
+                        job=玩家.get("job"),
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_core.first_number(
+                            戰鬥.get("clear_time_ms"),
+                            end_time - start_time,
+                            戰鬥.get("damage_time_ms"),
+                        ),
+                    )
+                    coverage = gcd_core.select_blm_byakko_coverage(
+                        coverage,
+                        graph_coverage,
+                        raw_downtime_graph_coverage,
+                    )
+                if coverage and str(副本設定.get("key") or "") == "extreme_queen_eternal" and job == "RedMage":
+                    graph_coverage = gcd_core.calculate_gcd_coverage_from_graph(
+                        graph,
+                        self._metadata_store,
+                        source_id=source_id,
+                        job=玩家.get("job"),
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_core.first_number(
+                            戰鬥.get("clear_time_ms"),
+                            end_time - start_time,
+                            戰鬥.get("damage_time_ms"),
+                        ),
+                    )
+                    coverage = gcd_core.select_queen_red_mage_coverage(
+                        coverage,
+                        graph_coverage,
+                        encounter_key=str(副本設定.get("key") or ""),
+                    )
+                if coverage and str(副本設定.get("key") or "") == "extreme_queen_eternal" and job == "Scholar":
+                    graph_coverage = gcd_core.calculate_gcd_coverage_from_graph(
+                        graph,
+                        self._metadata_store,
+                        source_id=source_id,
+                        job=玩家.get("job"),
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_core.first_number(
+                            戰鬥.get("clear_time_ms"),
+                            end_time - start_time,
+                            戰鬥.get("damage_time_ms"),
+                        ),
+                    )
+                    coverage = gcd_core.select_queen_scholar_coverage(
+                        coverage,
+                        graph_coverage,
+                        encounter_key=str(副本設定.get("key") or ""),
+                    )
+                if coverage and str(副本設定.get("key") or "") == "extreme_valigarmanda" and job == "RedMage":
+                    graph_coverage = gcd_core.calculate_gcd_coverage_from_graph(
+                        graph,
+                        self._metadata_store,
+                        source_id=source_id,
+                        job=玩家.get("job"),
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_core.first_number(
+                            戰鬥.get("clear_time_ms"),
+                            end_time - start_time,
+                            戰鬥.get("damage_time_ms"),
+                        ),
+                    )
+                    coverage = gcd_core.select_valigarmanda_red_mage_coverage(
+                        coverage,
+                        graph_coverage,
+                        encounter_key=str(副本設定.get("key") or ""),
+                    )
+                if coverage and str(副本設定.get("key") or "") == "extreme_valigarmanda" and job == "WhiteMage":
+                    graph_coverage = gcd_core.calculate_gcd_coverage_from_graph(
+                        graph,
+                        self._metadata_store,
+                        source_id=source_id,
+                        job=玩家.get("job"),
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_core.first_number(
+                            戰鬥.get("clear_time_ms"),
+                            end_time - start_time,
+                            戰鬥.get("damage_time_ms"),
+                        ),
+                    )
+                    coverage = gcd_core.select_valigarmanda_white_mage_coverage(
+                        coverage,
+                        graph_coverage,
+                        encounter_key=str(副本設定.get("key") or ""),
+                    )
+                if coverage and job == "Bard" and str(副本設定.get("key") or "") in gcd_core.BARD_GRAPH_FALLBACK_ENCOUNTERS:
+                    graph_coverage = gcd_core.calculate_gcd_coverage_from_graph(
+                        graph,
+                        self._metadata_store,
+                        source_id=source_id,
+                        job=玩家.get("job"),
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_core.first_number(
+                            戰鬥.get("clear_time_ms"),
+                            end_time - start_time,
+                            戰鬥.get("damage_time_ms"),
+                        ),
+                    )
+                    coverage = gcd_core.select_bard_raw_event_coverage(
+                        coverage,
+                        graph_coverage,
+                        encounter_key=str(副本設定.get("key") or ""),
+                    )
             if not coverage:
                 coverage = gcd_core.calculate_gcd_coverage_from_graph(
                     graph,

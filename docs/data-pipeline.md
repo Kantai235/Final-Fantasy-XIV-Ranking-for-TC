@@ -74,16 +74,23 @@
 
 ## GCD 覆蓋率
 
-新 report 抓取時，workflow 會在每場 fight 的玩家成績整理完成後，查同一場 FFLogs `Casts` graph，並用 `scripts/gcd_coverage_core.py` 的本地 xivanalysis-like 演算法計算 GCD 覆蓋率。幻白虎 `unreal_byakko` 會改查同場 FFLogs `All` raw events，因為 xivanalysis 的 Always Be Casting 需要玩家無法行動狀態與 Boss/add targetability 才能精準扣 downtime。
+新 report 抓取時，workflow 會在每場 fight 的玩家成績整理完成後，查同一場 FFLogs `Casts` graph，並用 `scripts/gcd_coverage_core.py` 的本地 xivanalysis-like 演算法計算 GCD 覆蓋率。幻白虎 `unreal_byakko`、極永恆女王 `extreme_queen_eternal`、極瓦利加爾曼達 `extreme_valigarmanda`、極佐拉加 `extreme_zoraal_ja` 與 AAC 零式 `savage_m1s` 至 `savage_m4s` 會改查同場 FFLogs `All` raw events，因為 xivanalysis 的 Always Be Casting 需要玩家無法行動狀態、Boss/add targetability 或 raw packet 時序才能精準扣 downtime 與計算 GCD lock。
 
 設計重點：
 
 - 只保存 `gcd_coverage` 與 `gcd_coverage_status` 衍生結果，不保存 Casts graph 或 raw events。
 - 同一個 report/fight 優先只查一次整場 `Casts` graph 或 raw events，再於本地依玩家 `sourceID` 切分。
 - GraphQL 查詢必須帶 `fightIDs` 與該 fight 的相對 `startTime` / `endTime`。
-- 計算會使用 graph downtime 視窗同時扣除分母與分子。
-- 少數副本的 FFLogs `Casts` graph 不會回傳 downtime 視窗；`unreal_byakko` 會從 raw `targetabilityupdate` 推出所有敵人都不可選取的窗口，並用 `Status.csv` 的 `LockActions/LockControl` 狀態補上玩家 UnableToAct。
-- 技能的 GCD 分類與基礎 cast/recast 以 XIVAPI datamining `Action.csv` 為底，腳本只在執行時讀入記憶體，並用小型 allow-list 補上 xivanalysis 也視為 GCD 的例外技能。
+- 計算會使用 graph downtime 視窗扣除分母；分子則對齊 xivanalysis 的 Always Be Casting 語意，只在 GCD 覆蓋結束點落入 downtime 時裁到 downtime 起點。
+- 少數副本的 FFLogs `Casts` graph 不會回傳 downtime 視窗；raw-events 副本會從 raw `targetabilityupdate` 推出所有敵人都不可選取的窗口，並用 `Status.csv` 的 `LockActions/LockControl` 狀態補上玩家 UnableToAct。
+- 技能的 GCD 分類與基礎 cast/recast 以 XIVAPI datamining `Action.csv` 為底，腳本只在執行時讀入記憶體，並用 `scripts/xivanalysis_gcd_rules.py` 補上 xivanalysis 也視為 GCD、或 Action.csv 容易把長冷卻誤判成 GCD lock 的例外技能；例如機工士 `Flamethrower` 在 ABC 只給一次 2.5 秒 GCD lock，不能使用 60 秒技能冷卻。
+- raw `combatantinfo` 缺少技速/詠速時，會依 xivanalysis `SpeedStatsAdapterStep` 用 GCD 起點間隔、45ms timestamp 分桶、職業/狀態速度修正與 2.50 秒 tooltip GCD 反推副屬性；反推結果即使低於遊戲實際副屬性下限 420，也保留 xivanalysis actorUpdate 的原樣數值。PCT `Inspiration` 與 `Rainbow Bright` 依 xivanalysis PCT 模組套用在指定技能，不當成全域詠速。
+- raw events 路徑的下一個 GCD timestamp 裁切預設只套用在武僧與毒蛇；忍者 mudra/ninjutsu 需依 xivanalysis 以固定 lock 累加，不能用下一個 timestamp 裁掉密集結印窗口。副本專屬例外會覆寫這個預設：極永恆女王武僧不裁切、Gunbreaker 需要裁切；極瓦利加爾曼達、極佐拉加與 AAC 零式 MNK/VPR 不裁切。龍騎不做整職業裁切，但 `Dragonsong Dive` 若落在連段循環邊界、下一個 GCD 是 `Raiden Thrust` 等連段起手，會排除該次 LB uptime，以對齊 xivanalysis legacy FFLogs 頁面值。
+- `unreal_byakko` 的 PCT 少數 Starry Muse 窗若 raw targetability 比 Casts graph encounter gap 晚且只影響約一個顯示百分點，會標記 `downtime_selection=casts_graph_encounter_gap` 並使用 graph encounter gap，避免自我 GCD 讓 Boss 不可選取時間被晚扣。
+- `unreal_byakko` 的黑魔若 raw events 因 Ley Lines / packet 邊界低估 Always Be Casting，且與 Casts graph 差距達 8 個百分點以上，會標記 `fallback_selection=black_mage_casts_graph_large_raw_gap` 並回退到 Casts graph；若 raw action lock 比 Casts graph GCD 嘗試加 raw downtime 高約一到兩個百分點，會標記 `fallback_selection=black_mage_casts_graph_raw_downtime_moderate_raw_overcount`，避免 source combatantinfo / packet 邊界小幅高估；若 raw `combatantinfo` 提供 logging actor 詠速且玩家死亡事件落在 downtime 內，ABC raw lock 會標記 `speed_stat_source=combatantinfo_unadjusted_xivanalysis_raw_lock` 並改用未套副屬性的 lock 長度，對齊 xivanalysis legacy raw-events 頁面值。這些規則只處理已驗證的幻白虎黑魔邊界差，不替代一般 raw targetability 規則。
+- `extreme_queen_eternal` 的 Casts graph downtime 會讓黑魔、舞者、騎士、繪靈法師、學者與少數 Gunbreaker 樣本的分母比 xivanalysis raw-events 路徑更短；這些職業使用 targetability-only 分母。Gunbreaker 另因 raw combo packet 會在 downtime-adjacent 間隔重疊加分，需把 GCD lock 裁到下一個 GCD timestamp。RedMage 會先計算 raw events 再由 selector 保守回 graph；只有低覆蓋率且 raw 只比 graph 高約一到兩個百分點時，才標記 `fallback_selection=queen_red_mage_raw_events_low_graph_uptime` 並使用 raw events，避免 Queen raw events 在其他 Dualcast/instant GCD 視窗高估 ABC。
+- `extreme_valigarmanda` 的 Casts graph 會漏掉多段短暫 targetability / 玩家 UnableToAct downtime；固定 seed 稽核的大多數職業在 raw events 分母下對齊 xivanalysis。AST 例外保留 Casts graph，因為低覆蓋率樣本 raw targetability/UTA 分母會偏高；MNK/VPR 走 raw events 但不裁到下一個 GCD，避免少算 Perfect Balance 與轉化後 GCD lock；低覆蓋率 RDM 若 raw events 比 Casts graph 高約一到兩個百分點，會標記 `fallback_selection=valigarmanda_red_mage_casts_graph_low_uptime` 回退 graph。
+- `extreme_zoraal_ja` 與 `savage_m1s` 至 `savage_m4s` 的 Casts graph 會讓部分 SAM/PCT/VPR 的 instant 或長鎖 GCD 累加過寬；固定 seed 稽核的差異樣本改用 All raw events 後會回到 xivanalysis 顯示值，因此這些副本預設使用 raw events。這些副本的 MNK/VPR raw events 不裁到下一個 GCD，保留 Perfect Balance 與毒蛇轉化窗口的站端累加語意。
 
 逐批補齊既有歷史資料：
 
@@ -114,6 +121,14 @@ npm run backfill:gcd -- --report-code A4cf9kg7Xbmt6vDh --fight-id 3
 若要針對單場差異追查 raw events 與 Casts graph 的差別，可在單場指令後加上 `--raw-events`。這會即時讀取 FFLogs `All` events、使用 `combatantinfo` 的技速/詠速、狀態視窗與 raw targetability 重算；raw events 仍只在記憶體中使用，不會寫入 repo。
 
 `scripts/backfill_gcd_coverage_xivanalysis.py` 只保留為人工抽樣診斷工具，用來比對 xivanalysis 頁面顯示值；它不是 GitHub Actions 預設流程。
+
+若要抽樣驗證本地計算與 xivanalysis 畫面值，可執行：
+
+```bash
+npm run audit:gcd:xivanalysis
+```
+
+`audit:gcd:xivanalysis` 預設會以固定 seed 對零式、極、幻的每個副本各抽樣 10 場戰鬥，並檢查戰鬥內所有玩家的 Always be casting 百分比。若某個副本的 10 場樣本沒有涵蓋全職業，腳本會再從同副本補抽能覆蓋缺漏職業的戰鬥；若資料內完全找不到某職業，則在 JSON 報告的 `job_coverage_by_encounter[].unavailable_jobs` 留下交接線索。這個流程會開啟 Playwright 並存取 xivanalysis 與 FFLogs，遇到 `Modules not found` 會重建 browser context 並於主巡檢後集中重試 error 玩家；遇到站端 `Slow down / Too many requests` 限流時應降低抽樣數或拉長 `--delay-ms`，且不得放入 GitHub Actions 預設流程。
 
 ## 手動補抓 report
 
