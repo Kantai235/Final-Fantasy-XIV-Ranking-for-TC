@@ -1,7 +1,13 @@
 // 前端只讀取 Vite 打包後位於 public/data 的靜態 JSON。
 // 這裡集中處理公開資料 URL，避免頁面或 composable 各自拼接路徑時漏掉 base path。
 const Vite公開基底路徑 = import.meta.env?.BASE_URL ?? "/";
-const 乾淨路由片段 = new Set(["stats", "user", "compare", "jobs", "activity", "teams", "servers", "honey-fans"]);
+import { 顯示Honey粉絲榜 } from "./siteFeatures";
+
+const 乾淨路由片段清單 = ["stats", "user", "compare", "jobs", "activity", "teams", "servers"];
+if (顯示Honey粉絲榜) {
+  乾淨路由片段清單.push("honey-fans");
+}
+const 乾淨路由片段 = new Set(乾淨路由片段清單);
 
 function 補結尾斜線(路徑) {
   const 文字 = String(路徑 || "/").trim();

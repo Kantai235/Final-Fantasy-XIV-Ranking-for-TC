@@ -1,6 +1,12 @@
 import { 分享網址變更事件 } from "./shareMeta";
+import { 顯示Honey粉絲榜 } from "./siteFeatures";
 
-export const 可分享頁面模式 = new Set(["ranking", "stats", "user", "compare", "jobs", "activity", "teams", "servers", "honey-fans"]);
+const 可分享頁面清單 = ["ranking", "stats", "user", "compare", "jobs", "activity", "teams", "servers"];
+if (顯示Honey粉絲榜) {
+  可分享頁面清單.push("honey-fans");
+}
+
+export const 可分享頁面模式 = new Set(可分享頁面清單);
 
 const 頁面路徑片段 = {
   ranking: "",
@@ -11,8 +17,10 @@ const 頁面路徑片段 = {
   activity: "activity",
   teams: "teams",
   servers: "servers",
-  "honey-fans": "honey-fans",
 };
+if (顯示Honey粉絲榜) {
+  頁面路徑片段["honey-fans"] = "honey-fans";
+}
 
 const 路徑片段頁面 = new Map(
   Object.entries(頁面路徑片段)

@@ -62,7 +62,7 @@ import {
   讀取使用者資料檔,
 } from "../utils/userData";
 import { 建立職業佔比分組, 取得統計範圍計數, 職業範圍類型 } from "../utils/statsDisplay";
-import { 顯示Gcd覆蓋率, 顯示作者相關標示 } from "../utils/siteFeatures";
+import { 顯示Honey粉絲榜, 顯示Gcd覆蓋率, 顯示作者相關標示 } from "../utils/siteFeatures";
 import { 寫入網址狀態, 讀取目前網址狀態 } from "../utils/urlState";
 import { 排名色彩類別, 比例條樣式, 熱力格樣式, 趨勢點樣式, 隱藏載入失敗圖片 } from "../utils/viewHelpers";
 import {
@@ -128,7 +128,8 @@ const {
   切換主題: 切換使用者主題,
 } = useTheme();
 const 頁面模式 = ref("ranking");
-const 停用主題切換 = computed(() => 頁面模式.value === "honey-fans");
+const 停用主題切換 = computed(() => 顯示Honey粉絲榜 && 頁面模式.value === "honey-fans");
+const 啟用Honey粉絲榜 = computed(() => 顯示Honey粉絲榜);
 const 蜂蜂背景音樂啟用 = ref(false);
 const 蜂蜂背景音樂偏好已設定 = ref(false);
 const 顯示蜂蜂背景音樂詢問 = ref(false);
@@ -3836,6 +3837,10 @@ function 更新網址為伺服器對比(選項 = {}) {
 }
 
 function 更新網址為蜂蜂粉絲榜(選項 = {}) {
+  if (!啟用Honey粉絲榜.value) {
+    更新網址為排行榜(選項);
+    return;
+  }
   更新分享網址("honey-fans", {}, 選項);
 }
 
@@ -4083,6 +4088,10 @@ function 切換到伺服器對比() {
 }
 
 function 切換到蜂蜂粉絲榜() {
+  if (!啟用Honey粉絲榜.value) {
+    切換到排行榜();
+    return;
+  }
   頁面模式.value = "honey-fans";
   更新網址為蜂蜂粉絲榜();
   蜂蜂粉絲榜錯誤訊息.value = "";
@@ -4230,6 +4239,10 @@ async function 套用伺服器對比網址狀態(網址狀態) {
 }
 
 async function 套用蜂蜂粉絲榜網址狀態() {
+  if (!啟用Honey粉絲榜.value) {
+    切換到排行榜();
+    return;
+  }
   頁面模式.value = "honey-fans";
   蜂蜂粉絲榜錯誤訊息.value = "";
   準備蜂蜂背景音樂偏好();
@@ -4255,8 +4268,10 @@ async function 套用網址狀態(網址狀態 = 讀取目前網址狀態()) {
       await 套用隊伍榜網址狀態(網址狀態);
     } else if (網址狀態.page === "servers") {
       await 套用伺服器對比網址狀態(網址狀態);
-    } else if (網址狀態.page === "honey-fans") {
+    } else if (網址狀態.page === "honey-fans" && 啟用Honey粉絲榜.value) {
       await 套用蜂蜂粉絲榜網址狀態();
+    } else if (網址狀態.page === "honey-fans") {
+      切換到排行榜();
     } else {
       套用排行榜網址狀態(網址狀態);
     }
@@ -4422,6 +4437,10 @@ watch([伺服器對比左伺服器, 伺服器對比右伺服器], () => {
 });
 
 watch(頁面模式, (目前頁面模式) => {
+  if (目前頁面模式 === "honey-fans" && !啟用Honey粉絲榜.value) {
+    切換到排行榜();
+    return;
+  }
   if (目前頁面模式 === "honey-fans") {
     準備蜂蜂背景音樂偏好();
     return;

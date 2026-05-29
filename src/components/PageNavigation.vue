@@ -1,7 +1,7 @@
 <script>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { injectRankingApp } from "../composables/useRankingApp";
-import { 顯示Telegram連結 } from "../utils/siteFeatures";
+import { 顯示Honey粉絲榜, 顯示Telegram連結 } from "../utils/siteFeatures";
 
 const Telegram連結 = "https://t.me/ffxiv_tc";
 
@@ -16,9 +16,16 @@ const 頁面切換項目 = [
   { 模式: "activity", 名稱: "近期動態", 動作: "切換到近期動態" },
 ];
 
+if (顯示Honey粉絲榜) {
+  頁面切換項目.push({
+    模式: "honey-fans",
+    名稱: "粉絲榜",
+    動作: "切換到蜂蜂粉絲榜",
+  });
+}
+
 const 頁面名稱對照 = Object.freeze({
   ...Object.fromEntries(頁面切換項目.map((項目) => [項目.模式, 項目.名稱])),
-  "honey-fans": "粉絲榜",
 });
 
 export default {

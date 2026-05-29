@@ -4,3 +4,4 @@ export const 顯示作者相關標示 = false;
 export const 顯示社群連結 = false;
 export const 顯示Telegram連結 = true;
 export const 顯示Gcd覆蓋率 = true;
+export const 顯示Honey粉絲榜 = false;
