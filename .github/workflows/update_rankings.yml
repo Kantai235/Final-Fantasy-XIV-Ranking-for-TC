@@ -162,15 +162,15 @@ jobs:
 
       - name: Sync user leaderboard data to dedicated repository
         env:
-          GITHUB_PAT: ${{ secrets.GITHUB_PAT }}
+          GIT_PAT: ${{ secrets.GIT_PAT }}
         run: |
           set -euo pipefail
-          if [ -z "${GITHUB_PAT:-}" ]; then
-            echo "GITHUB_PAT is missing. Define it in repository secrets."
+          if [ -z "${GIT_PAT:-}" ]; then
+            echo "GIT_PAT is missing. Define it in repository secrets."
             exit 1
           fi
 
-          USER_REPO_URL="https://x-access-token:${GITHUB_PAT}@github.com/Kantai235/Final-Fantasy-XIV-Ranking-for-TC-Users.git"
+          USER_REPO_URL="https://x-access-token:${GIT_PAT}@github.com/Kantai235/Final-Fantasy-XIV-Ranking-for-TC-Users.git"
           USER_REPO_DIR="${RUNNER_TEMP}/Final-Fantasy-XIV-Ranking-for-TC-Users"
           rm -rf "$USER_REPO_DIR"
           git clone "$USER_REPO_URL" "$USER_REPO_DIR"
