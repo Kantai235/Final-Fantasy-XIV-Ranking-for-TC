@@ -692,7 +692,7 @@ async function loadUserDataTestModule() {
   source = source.replace(
     /import\s*\{[\s\S]*?\}\s*from\s*["']\.\/publicData(?:\.js)?["'];/,
     `
-const 建立公開資料網址 = (相對路徑) => \`/mock/\${String(相對路徑)}\`;
+const 建立使用者資料網址 = (相對路徑) => \`/mock/\${String(相對路徑)}\`;
 const 建立使用者預設資料網址 = (角色名稱) => \`/mock/data/users/\${String(角色名稱)}.json\`;
 `,
   );
@@ -707,7 +707,12 @@ async function loadPublicDataTestModule(href, basePath = "./") {
   };
 
   const filePath = path.join(srcDir, "utils", "publicData.js");
-  const source = (await readText(filePath)).replace(/import\.meta\.env\?\.BASE_URL/g, JSON.stringify(basePath));
+  const source = (await readText(filePath))
+    .replace(/import\.meta\.env\?\.BASE_URL/g, JSON.stringify(basePath))
+    .replace(
+      /import\s*\{[\s\S]*?\}\s*from\s*["']\.\/siteFeatures(?:\.js)?["'];?/,
+      "const 顯示Honey粉絲榜 = true;\n",
+    );
   const cacheKey = Buffer.from(`${href}|${basePath}`, "utf8").toString("base64url");
   const moduleUrl = `data:text/javascript;base64,${Buffer.from(source, "utf8").toString("base64")}#${cacheKey}`;
   return import(moduleUrl);

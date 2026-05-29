@@ -1,4 +1,4 @@
-import { 建立公開資料網址, 建立使用者預設資料網址 } from "./publicData";
+import { 建立使用者資料網址, 建立使用者預設資料網址 } from "./publicData";
 
 export const 玩家搜尋歷史儲存鍵 = "ffxiv-tc-rankings-player-search-history";
 export const 玩家搜尋歷史顯示上限 = 8;
@@ -347,7 +347,7 @@ async function 解析使用者隱藏差量(差量資料) {
   }
 
   const 公開底稿 = 差量資料.base_path
-    ? await 讀取使用者Json(建立公開資料網址(差量資料.base_path), "找不到公開個人成績單底稿").catch(() => null)
+    ? await 讀取使用者Json(建立使用者資料網址(差量資料.base_path), "找不到公開個人成績單底稿").catch(() => null)
     : null;
   const 合併後 = {
     ...複製資料(公開底稿),
@@ -407,7 +407,7 @@ export async function 讀取使用者資料檔(角色名稱, 使用者索引列�
     throw new Error(`找不到「${查詢顯示名稱}」的個人成績單`);
   }
 
-  const 資料網址 = 索引條目?.file_path ? 建立公開資料網址(索引條目.file_path) : 建立使用者預設資料網址(查詢名稱);
+  const 資料網址 = 索引條目?.file_path ? 建立使用者資料網址(索引條目.file_path) : 建立使用者預設資料網址(查詢名稱);
   const 資料 = await 讀取使用者Json(資料網址, `找不到「${查詢顯示名稱 || 查詢名稱}」的個人成績單`);
   return 解析使用者隱藏差量(資料);
 }
