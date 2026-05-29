@@ -160,6 +160,133 @@ jobs:
       - name: 重建 Honey B. Lovely 粉絲榜公開資料
         run: npm run build:honey-fans
 
+      - name: Sync user leaderboard data to dedicated repository
+        env:
+          GITHUB_PAT: ${{ secrets.GITHUB_PAT }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GITHUB_PAT:-}" ]; then
+            echo "GITHUB_PAT is missing. Define it in repository secrets."
+            exit 1
+          fi
+
+          USER_REPO_URL="https://x-access-token:${GITHUB_PAT}@github.com/Kantai235/Final-Fantasy-XIV-Ranking-for-TC-Users.git"
+          USER_REPO_DIR="${RUNNER_TEMP}/Final-Fantasy-XIV-Ranking-for-TC-Users"
+          rm -rf "$USER_REPO_DIR"
+          git clone "$USER_REPO_URL" "$USER_REPO_DIR"
+
+          rm -rf \
+            "$USER_REPO_DIR/data/users" \
+            "$USER_REPO_DIR/data/user-entry-details" \
+            "$USER_REPO_DIR/data/all/users" \
+            "$USER_REPO_DIR/data/all/user-entry-details"
+          mkdir -p \
+            "$USER_REPO_DIR/data/users" \
+            "$USER_REPO_DIR/data/user-entry-details" \
+            "$USER_REPO_DIR/data/all/users" \
+            "$USER_REPO_DIR/data/all/user-entry-details"
+
+          cp -R public/data/users/. "$USER_REPO_DIR/data/users/" || true
+          cp -R public/data/user-entry-details/. "$USER_REPO_DIR/data/user-entry-details/" || true
+          cp -R public/data/all/users/. "$USER_REPO_DIR/data/all/users/" || true
+          cp -R public/data/all/user-entry-details/. "$USER_REPO_DIR/data/all/user-entry-details/" || true
+
+          USER_SYNC_MANIFEST="$USER_REPO_DIR/data/sync-manifest.json"
+          node <<'NODE'
+          const fs = require("node:fs");
+          const path = require("node:path");
+          const crypto = require("node:crypto");
+
+          const workspaceRoot = process.cwd();
+          const manifestPath = process.env.USER_SYNC_MANIFEST;
+          if (!manifestPath) {
+            throw new Error("USER_SYNC_MANIFEST is not set");
+          }
+
+          function readJson(filePath, fallback = null) {
+            try {
+              return JSON.parse(fs.readFileSync(filePath, "utf8"));
+            } catch (error) {
+              return fallback;
+            }
+          }
+
+          function countFiles(dir) {
+            if (!fs.existsSync(dir)) return 0;
+            let total = 0;
+            for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+              const next = path.join(dir, entry.name);
+              if (entry.isDirectory()) {
+                total += countFiles(next);
+              } else if (entry.isFile()) {
+                total += 1;
+              }
+            }
+            return total;
+          }
+
+          const globalStats = readJson(path.join(workspaceRoot, "public/data/global_stats.json"), null);
+          const manifest = {
+            schema_version: 1,
+            source: {
+              repository: process.env.GITHUB_REPOSITORY || null,
+              branch: process.env.GITHUB_REF_NAME || null,
+              head_sha: process.env.GITHUB_SHA || null,
+              event: process.env.GITHUB_EVENT_NAME || null,
+            },
+            source_snapshot: {
+              generated_at_iso: globalStats?.generated_at_iso || null,
+              rankings_updated_at_iso: globalStats?.rankings_updated_at_iso || null,
+              total_character_count: globalStats?.total_character_count ?? null,
+              total_entry_count: globalStats?.total_entry_count ?? null,
+            },
+            users_data_counts: {
+              users: countFiles(path.join(workspaceRoot, "public/data/users")),
+              user_entry_details: countFiles(path.join(workspaceRoot, "public/data/user-entry-details")),
+              all_users: countFiles(path.join(workspaceRoot, "public/data/all/users")),
+              all_user_entry_details: countFiles(path.join(workspaceRoot, "public/data/all/user-entry-details")),
+            },
+          };
+          manifest.source_snapshot.checksum = crypto
+            .createHash("sha256")
+            .update(JSON.stringify(manifest.source_snapshot) + JSON.stringify(manifest.users_data_counts))
+            .digest("hex");
+
+          fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+          NODE
+
+          cd "$USER_REPO_DIR"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add --all data/users data/user-entry-details data/all/users data/all/user-entry-details data/sync-manifest.json
+
+          if [ -n "$(git status --porcelain -- data/users data/user-entry-details data/all/users data/all/user-entry-details data/sync-manifest.json)" ]; then
+            git commit \
+              -m "chore(data): 同步個人成績單資料到專用資料庫" \
+              -m "將最新生成的使用者排行榜資料同步到外部 users Repo，主站僅保留公開資料。" \
+              -m "資料同步來源：public/data/users、public/data/user-entry-details、public/data/all/users、public/data/all/user-entry-details。"
+            pushed=false
+            for attempt in 1 2 3; do
+              git fetch origin main
+              git rebase "origin/main"
+              if git push origin "HEAD:main"; then
+                pushed=true
+                break
+              fi
+              sleep $((attempt * 5))
+            done
+            if [ "$pushed" != true ]; then
+              echo "Push user data changes failed after retries."
+              exit 1
+            fi
+          else
+            echo "No user-data changes to sync."
+          fi
+
+      - name: Remove user data from public data before page build
+        run: |
+          rm -rf public/data/users public/data/user-entry-details public/data/all/users public/data/all/user-entry-details
+
       - name: 寫入更新執行戳記
         run: |
           node <<'NODE'
@@ -206,7 +333,8 @@ jobs:
           VITE_GA_MEASUREMENT_ID: ${{ vars.VITE_GA_MEASUREMENT_ID || secrets.VITE_GA_MEASUREMENT_ID }}
         run: |
           START_SECONDS=$SECONDS
-          npm run build
+          npx vite build
+          npm run postbuild
           BUILD_SECONDS=$((SECONDS - START_SECONDS))
           echo "PAGES_BUILD_SECONDS=${BUILD_SECONDS}" >> "$GITHUB_ENV"
           echo "build_seconds=${BUILD_SECONDS}" >> "$GITHUB_OUTPUT"
@@ -216,7 +344,7 @@ jobs:
         run: |
           # build:user-data 與 build:honey-fans 會產生多個公開資料 JSON。這裡與下方 git add 必須使用同一批路徑，
           # 否則 commit 後仍可能留下未暫存變更，導致後續 rebase 被 Git 拒絕。
-          DATA_PATHS=(data public/data/*.json public/data/fun/*.json)
+          DATA_PATHS=(data public/data public/data/fun)
           if [ -n "$(git status --porcelain -- "${DATA_PATHS[@]}")" ]; then
             echo "changed=true" >> "$GITHUB_OUTPUT"
           else
@@ -228,8 +356,8 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          DATA_PATHS=(data public/data/*.json public/data/fun/*.json)
-          git add -- "${DATA_PATHS[@]}"
+          DATA_PATHS=(data public/data public/data/fun)
+          git add --all -- "${DATA_PATHS[@]}"
           git commit \
             -m "chore(data): 自動更新排行榜資料" \
             -m "原因：GitHub Actions 定時同步 FFLogs 公開報告，讓靜態網站資料保持最新。" \
