@@ -1,5 +1,6 @@
 <script>
 import { computed, nextTick, onUnmounted, ref, watch } from "vue";
+import JobIcon from "../components/JobIcon.vue";
 import { injectRankingApp } from "../composables/useRankingApp";
 
 function 台詞段落(角色, 位置, 台詞) {
@@ -232,6 +233,9 @@ function 載入蜂蜂YouTubeIframeApi() {
 
 export default {
   name: "HoneyFansPage",
+  components: {
+    JobIcon,
+  },
   setup() {
     const rankingApp = injectRankingApp();
     rankingApp.準備蜂蜂背景音樂偏好();
@@ -240,6 +244,7 @@ export default {
     const 蜂蜂背景音樂播放器容器 = ref(null);
     const 蜂蜂背景音樂播放警告 = ref("");
     const 蜂蜂背景音樂播放器已就緒 = ref(false);
+    const 蜂蜂超高難度啟用 = ref(false);
     const 粉絲榜歷史紀錄彈窗粉絲 = ref(null);
     let 蜂蜂對話計時器 = null;
     let 蜂蜂背景音樂Player = null;
@@ -296,6 +301,29 @@ export default {
         ? 粉絲榜歷史紀錄彈窗粉絲.value.records
         : []
     ));
+    const 蜂蜂團隊榜列表 = computed(() => (
+      Array.isArray(rankingApp.蜂蜂粉絲榜資料.value?.team_rankings)
+        ? rankingApp.蜂蜂粉絲榜資料.value.team_rankings.slice(0, 50)
+        : []
+    ));
+    const 蜂蜂團隊榜第一名 = computed(() => 蜂蜂團隊榜列表.value[0] || null);
+    const 蜂蜂顯示概要 = computed(() => {
+      if (!蜂蜂超高難度啟用.value) {
+        return rankingApp.蜂蜂粉絲榜概要.value;
+      }
+
+      const summary = rankingApp.蜂蜂粉絲榜資料.value?.summary || {};
+      return [
+        { 標籤: "活動通關場次", 數值: rankingApp.格式化整數(summary.team_ranking_record_count ?? summary.historical_team_record_count) },
+        { 標籤: "最高團隊吃心心", 數值: rankingApp.格式化整數(summary.top_team_event_count) },
+        { 標籤: "活動通關事件", 數值: rankingApp.格式化整數(summary.team_ranking_event_count ?? summary.historical_kill_event_count) },
+      ];
+    });
+    const 蜂蜂模式標籤列表 = computed(() => (
+      蜂蜂超高難度啟用.value
+        ? ["2026/05/30 起", "僅通關場次", "同場上傳去重", "全隊奴役總次數", "超高難度 ON"]
+        : ["近 7 天榜單", "M2S 公開戰鬥紀錄", "第 4 顆愛心", "心醉魂迷：奴役", "ブリリアント☆"]
+    ));
 
     function 粉絲榜紀錄預覽粉絲(紀錄) {
       return Array.isArray(紀錄?.fans) ? 紀錄.fans.slice(0, 2) : [];
@@ -303,6 +331,10 @@ export default {
 
     function 粉絲榜紀錄剩餘粉絲數(紀錄) {
       return Math.max(0, (Array.isArray(紀錄?.fans) ? 紀錄.fans.length : 0) - 2);
+    }
+
+    function 團隊榜成員預覽(紀錄) {
+      return Array.isArray(紀錄?.members) ? 紀錄.members.slice(0, 8) : [];
     }
 
     function 格式化粉絲榜短時間(iso時間) {
@@ -659,8 +691,14 @@ export default {
       蜂蜂轉場燈光列表,
       粉絲榜歷史紀錄彈窗粉絲,
       粉絲榜歷史紀錄列表,
+      蜂蜂超高難度啟用,
+      蜂蜂團隊榜列表,
+      蜂蜂團隊榜第一名,
+      蜂蜂顯示概要,
+      蜂蜂模式標籤列表,
       粉絲榜紀錄預覽粉絲,
       粉絲榜紀錄剩餘粉絲數,
+      團隊榜成員預覽,
       格式化粉絲榜短時間,
       格式化粉絲榜戰鬥時間,
       格式化粉絲榜連續入榜,
@@ -821,23 +859,65 @@ export default {
       <section class="粉絲榜舞台" aria-label="Honey B. Lovely 粉絲榜舞台">
         <div class="粉絲榜舞台內容">
           <span class="粉絲榜眉標">Honey B. Lovely Fan Stage</span>
-          <h2>さあ、「ハニー・B・ラブリー」の登場です！</h2>
-          <p>近一週吃到「心醉魂迷：奴役」，才算進本期粉絲名冊。本榜單屬於娛樂性質，不會列入正式排行榜。</p>
+          <h2>{{ 蜂蜂超高難度啟用 ? "Honey B. Lovely 超高難度團隊榜" : "さあ、「ハニー・B・ラブリー」の登場です！" }}</h2>
+          <p>
+            {{ 蜂蜂超高難度啟用
+              ? "只計 2026/05/30 00:00:00（台灣時間）之後的通關場次，依全隊進入「心醉魂迷：奴役」總次數排序。同一場多份 FFLogs 上傳會合併計算。"
+              : "近一週吃到「心醉魂迷：奴役」，才算進本期粉絲名冊。本榜單屬於娛樂性質，不會列入正式排行榜。"
+            }}
+          </p>
+          <form class="粉絲榜模式切換表單" aria-label="Honey B. Lovely 粉絲榜模式切換" @submit.prevent>
+            <label class="粉絲榜超高難度開關">
+              <input
+                v-model="蜂蜂超高難度啟用"
+                type="checkbox"
+                role="switch"
+                :aria-checked="蜂蜂超高難度啟用 ? 'true' : 'false'"
+                :aria-label="蜂蜂超高難度啟用 ? '關閉超高難度團隊榜' : '開啟超高難度團隊榜'"
+              />
+              <span class="粉絲榜超高難度開關軌道" aria-hidden="true">
+                <span class="粉絲榜超高難度滑塊"></span>
+                <span class="粉絲榜超高難度選項 粉絲榜超高難度一般">一般</span>
+                <span class="粉絲榜超高難度選項 粉絲榜超高難度挑戰">超高難度</span>
+              </span>
+              <strong class="粉絲榜超高難度狀態">{{ 蜂蜂超高難度啟用 ? "ON" : "OFF" }}</strong>
+            </label>
+          </form>
           <div class="粉絲榜舞台數據列" aria-label="Honey B. Lovely 粉絲榜概要">
-            <div v-for="項目 in 蜂蜂粉絲榜概要" :key="項目.標籤" class="粉絲榜舞台數字卡">
+            <div v-for="項目 in 蜂蜂顯示概要" :key="項目.標籤" class="粉絲榜舞台數字卡">
               <span>{{ 項目.標籤 }}</span>
               <strong>{{ 項目.數值 }}</strong>
             </div>
           </div>
           <div class="粉絲榜應援標籤列" aria-label="粉絲榜資料範圍">
-            <span>近 7 天榜單</span>
-            <span>M2S 公開戰鬥紀錄</span>
-            <span>第 4 顆愛心</span>
-            <span>心醉魂迷：奴役</span>
-            <span>ブリリアント☆</span>
+            <span v-for="標籤 in 蜂蜂模式標籤列表" :key="標籤">{{ 標籤 }}</span>
           </div>
         </div>
-        <aside v-if="頭號粉絲列表.length" class="粉絲榜頭號票券" aria-label="目前頭號粉絲">
+        <aside v-if="蜂蜂超高難度啟用 && 蜂蜂團隊榜第一名" class="粉絲榜頭號票券 粉絲榜團隊票券" aria-label="超高難度冠軍隊伍">
+          <span>超高難度冠軍隊伍</span>
+          <strong>{{ 格式化整數(蜂蜂團隊榜第一名.total_event_count) }} 次</strong>
+          <small>{{ 格式化粉絲榜戰鬥時間(蜂蜂團隊榜第一名) }}・{{ 格式化整數(蜂蜂團隊榜第一名.unique_fan_count) }} 人中招</small>
+          <small>{{ 格式化紀錄時間(蜂蜂團隊榜第一名.fight_completed_at_iso) }}</small>
+          <div v-if="團隊榜成員預覽(蜂蜂團隊榜第一名).length" class="粉絲榜票券隊員列 粉絲榜團隊成員列" aria-label="超高難度冠軍隊伍成員">
+            <button
+              v-for="成員 in 團隊榜成員預覽(蜂蜂團隊榜第一名)"
+              :key="`champion:${成員.character_name}@${成員.server}:${成員.job}`"
+              class="粉絲榜票券隊員 粉絲榜團隊成員"
+              type="button"
+              :title="`${成員.character_name}@${成員.server}｜${顯示職業名稱(成員.job) || 成員.job || '-'}｜${格式化整數(成員.event_count)} 次`"
+              :aria-label="`${成員.character_name}@${成員.server}，${顯示職業名稱(成員.job) || 成員.job || '-'}，${格式化整數(成員.event_count)} 次`"
+              @click="載入使用者成績(成員.character_name, 成員.server)"
+            >
+              <JobIcon class="職業圖示" :code="成員.job" />
+              <span>{{ 成員.character_name }}</span>
+              <small>{{ 成員.server }}</small>
+            </button>
+          </div>
+          <a v-if="蜂蜂團隊榜第一名.report_url" class="粉絲榜頭號紀錄按鈕" :href="蜂蜂團隊榜第一名.report_url" target="_blank" rel="noreferrer">
+            查看 FFLogs
+          </a>
+        </aside>
+        <aside v-else-if="頭號粉絲列表.length" class="粉絲榜頭號票券" aria-label="目前頭號粉絲">
           <span>本期頭號粉絲</span>
           <button class="粉絲榜頭號名字按鈕" type="button" @click="載入使用者成績(頭號粉絲列表[0].character_name, 頭號粉絲列表[0].server)">
             {{ 頭號粉絲列表[0].character_name }}
@@ -853,94 +933,168 @@ export default {
 
       <section class="統計面板 統計面板寬" aria-label="頭號粉絲">
         <header class="統計面板標題">
-          <h2>頭號粉絲</h2>
-          <span>依近一週進入「心醉魂迷：奴役」次數排序</span>
+          <h2>{{ 蜂蜂超高難度啟用 ? "超高難度團隊榜" : "頭號粉絲" }}</h2>
+          <span>{{ 蜂蜂超高難度啟用 ? "依 2026/05/30 00:00:00 後通關場次的全隊奴役總次數排序" : "依近一週進入「心醉魂迷：奴役」次數排序" }}</span>
         </header>
-        <div v-if="頭號粉絲列表.length === 0" class="狀態列">目前尚未收錄粉絲紀錄</div>
-        <div v-else class="統計表格外框">
-          <table class="統計表格 粉絲榜表格">
-            <thead>
-              <tr>
-                <th scope="col" class="數字">排名</th>
-                <th scope="col">粉絲</th>
-                <th scope="col">主要職業</th>
-                <th scope="col" class="數字">吃心心數</th>
-                <th scope="col" class="數字">戰鬥次數</th>
-                <th scope="col">最近紀錄</th>
-                <th scope="col">報告</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="(粉絲, index) in 頭號粉絲列表" :key="粉絲.id" :class="{ 粉絲榜冠軍列: index === 0, 粉絲榜上位列: index < 3 }">
-                <td class="數字 粉絲榜排名格">
-                  <span class="粉絲榜排名徽章">
-                    <span class="粉絲榜排名符號" aria-hidden="true">#</span>
-                    <span class="粉絲榜排名數字">{{ 格式化整數(index + 1) }}</span>
-                  </span>
-                </td>
-                <td>
-                  <span class="粉絲榜玩家身分">
-                    <button class="文字連結 粉絲榜玩家名稱" type="button" @click="載入使用者成績(粉絲.character_name, 粉絲.server)">
-                      {{ 粉絲.character_name }}
+        <template v-if="蜂蜂超高難度啟用">
+          <div v-if="蜂蜂團隊榜列表.length === 0" class="狀態列">目前尚未收錄通關團隊紀錄</div>
+          <div v-else class="統計表格外框">
+            <table class="統計表格 粉絲榜表格 粉絲榜團隊表格">
+              <thead>
+                <tr>
+                  <th scope="col" class="數字">排名</th>
+                  <th scope="col">團隊中招名單</th>
+                  <th scope="col" class="數字">總心心數</th>
+                  <th scope="col" class="數字">粉絲數量</th>
+                  <th scope="col" class="粉絲榜合併時間表頭">
+                    <span>紀錄時間</span>
+                    <small>通關時間</small>
+                  </th>
+                  <th scope="col">報告</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(紀錄, index) in 蜂蜂團隊榜列表" :key="紀錄.id" :class="{ 粉絲榜冠軍列: index === 0, 粉絲榜上位列: index < 3 }">
+                  <td class="數字 粉絲榜排名格">
+                    <span class="粉絲榜排名徽章">
+                      <span class="粉絲榜排名符號" aria-hidden="true">#</span>
+                      <span class="粉絲榜排名數字">{{ 格式化整數(紀錄.rank || index + 1) }}</span>
+                    </span>
+                  </td>
+                  <td>
+                    <span class="粉絲榜團隊成員列">
+                      <button
+                        v-for="成員 in 團隊榜成員預覽(紀錄)"
+                        :key="`${紀錄.id}:${成員.character_name}@${成員.server}:${成員.job}`"
+                        class="粉絲榜團隊成員"
+                        type="button"
+                        :title="`${成員.character_name}@${成員.server}｜${顯示職業名稱(成員.job) || 成員.job || '-'}｜${格式化整數(成員.event_count)} 次`"
+                        :aria-label="`${成員.character_name}@${成員.server}，${顯示職業名稱(成員.job) || 成員.job || '-'}，${格式化整數(成員.event_count)} 次`"
+                        @click="載入使用者成績(成員.character_name, 成員.server)"
+                      >
+                        <JobIcon class="職業圖示" :code="成員.job" />
+                        <span>{{ 成員.character_name }}</span>
+                        <small>{{ 成員.server }}</small>
+                      </button>
+                    </span>
+                  </td>
+                  <td class="數字 粉絲榜吃心心數格">
+                    <span class="粉絲榜數值標籤">總心心數</span>
+                    <span class="粉絲榜數值文字">
+                      <strong>{{ 格式化整數(紀錄.total_event_count) }}</strong>
+                      <span class="粉絲榜數值單位">次</span>
+                    </span>
+                  </td>
+                  <td class="數字 粉絲榜戰鬥次數格">
+                    <span class="粉絲榜數值標籤">粉絲數量</span>
+                    <span class="粉絲榜數值文字">
+                      <strong>{{ 格式化整數(紀錄.unique_fan_count) }}</strong>
+                      <span class="粉絲榜數值單位">人</span>
+                    </span>
+                  </td>
+                  <td class="粉絲榜合併時間格">
+                    <span class="粉絲榜合併時間">
+                      <span>{{ 格式化紀錄日期(紀錄.fight_completed_at_iso) }}</span>
+                      <span>{{ 格式化紀錄時刻(紀錄.fight_completed_at_iso) }}</span>
+                      <small>{{ 格式化通關時間(紀錄.clear_time_seconds) }}</small>
+                    </span>
+                  </td>
+                  <td>
+                    <a v-if="紀錄.report_url" :href="紀錄.report_url" target="_blank" rel="noreferrer">FFLogs</a>
+                    <span v-else>-</span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </template>
+        <template v-else>
+          <div v-if="頭號粉絲列表.length === 0" class="狀態列">目前尚未收錄粉絲紀錄</div>
+          <div v-else class="統計表格外框">
+            <table class="統計表格 粉絲榜表格">
+              <thead>
+                <tr>
+                  <th scope="col" class="數字">排名</th>
+                  <th scope="col">粉絲</th>
+                  <th scope="col">主要職業</th>
+                  <th scope="col" class="數字">吃心心數</th>
+                  <th scope="col" class="數字">戰鬥次數</th>
+                  <th scope="col">最近紀錄</th>
+                  <th scope="col">報告</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(粉絲, index) in 頭號粉絲列表" :key="粉絲.id" :class="{ 粉絲榜冠軍列: index === 0, 粉絲榜上位列: index < 3 }">
+                  <td class="數字 粉絲榜排名格">
+                    <span class="粉絲榜排名徽章">
+                      <span class="粉絲榜排名符號" aria-hidden="true">#</span>
+                      <span class="粉絲榜排名數字">{{ 格式化整數(index + 1) }}</span>
+                    </span>
+                  </td>
+                  <td>
+                    <span class="粉絲榜玩家身分">
+                      <button class="文字連結 粉絲榜玩家名稱" type="button" @click="載入使用者成績(粉絲.character_name, 粉絲.server)">
+                        {{ 粉絲.character_name }}
+                      </button>
+                      <span class="粉絲榜玩家分隔" aria-hidden="true">@</span>
+                      <small class="表格補充文字 粉絲榜玩家伺服器">{{ 粉絲.server }}</small>
+                    </span>
+                    <span v-if="格式化粉絲榜連續入榜(粉絲)" class="粉絲榜連續徽章">{{ 格式化粉絲榜連續入榜(粉絲) }}</span>
+                  </td>
+                  <td>
+                    <span v-if="粉絲.main_job" class="職業標籤 近期動態職業標籤" :class="職業色彩類別(職業代碼色彩(粉絲.main_job))">
+                      <img
+                        v-if="職業Icon路徑(粉絲.main_job)"
+                        class="職業圖示 職業標籤圖示"
+                        :src="職業Icon路徑(粉絲.main_job)"
+                        alt=""
+                        loading="lazy"
+                        @error="隱藏載入失敗圖片"
+                      />
+                      <span>{{ 顯示職業名稱(粉絲.main_job) }}</span>
+                    </span>
+                    <span v-else>-</span>
+                  </td>
+                  <td class="數字 粉絲榜吃心心數格">
+                    <span class="粉絲榜數值標籤">吃心心數</span>
+                    <span class="粉絲榜數值文字">
+                      <strong>{{ 格式化整數(粉絲.total_event_count) }}</strong>
+                      <span class="粉絲榜數值單位">次</span>
+                    </span>
+                  </td>
+                  <td class="數字 粉絲榜戰鬥次數格">
+                    <span class="粉絲榜數值標籤">戰鬥次數</span>
+                    <span class="粉絲榜數值文字">
+                      <strong>{{ 格式化整數(粉絲.fight_count) }}</strong>
+                      <span class="粉絲榜數值單位">場</span>
+                    </span>
+                  </td>
+                  <td>
+                    <span class="緊湊紀錄時間">
+                      <span>{{ 格式化紀錄日期(粉絲.latest_recorded_at_iso) }}</span>
+                      <span>{{ 格式化紀錄時刻(粉絲.latest_recorded_at_iso) }}</span>
+                    </span>
+                  </td>
+                  <td>
+                    <button
+                      v-if="粉絲.records?.length"
+                      class="粉絲榜報告按鈕"
+                      type="button"
+                      @click="開啟粉絲榜歷史紀錄(粉絲)"
+                    >
+                      {{ 格式化整數(粉絲.records.length) }} 份紀錄
                     </button>
-                    <span class="粉絲榜玩家分隔" aria-hidden="true">@</span>
-                    <small class="表格補充文字 粉絲榜玩家伺服器">{{ 粉絲.server }}</small>
-                  </span>
-                  <span v-if="格式化粉絲榜連續入榜(粉絲)" class="粉絲榜連續徽章">{{ 格式化粉絲榜連續入榜(粉絲) }}</span>
-                </td>
-                <td>
-                  <span v-if="粉絲.main_job" class="職業標籤 近期動態職業標籤" :class="職業色彩類別(職業代碼色彩(粉絲.main_job))">
-                    <img
-                      v-if="職業Icon路徑(粉絲.main_job)"
-                      class="職業圖示 職業標籤圖示"
-                      :src="職業Icon路徑(粉絲.main_job)"
-                      alt=""
-                      loading="lazy"
-                      @error="隱藏載入失敗圖片"
-                    />
-                    <span>{{ 顯示職業名稱(粉絲.main_job) }}</span>
-                  </span>
-                  <span v-else>-</span>
-                </td>
-                <td class="數字 粉絲榜吃心心數格">
-                  <span class="粉絲榜數值標籤">吃心心數</span>
-                  <span class="粉絲榜數值文字">
-                    <strong>{{ 格式化整數(粉絲.total_event_count) }}</strong>
-                    <span class="粉絲榜數值單位">次</span>
-                  </span>
-                </td>
-                <td class="數字 粉絲榜戰鬥次數格">
-                  <span class="粉絲榜數值標籤">戰鬥次數</span>
-                  <span class="粉絲榜數值文字">
-                    <strong>{{ 格式化整數(粉絲.fight_count) }}</strong>
-                    <span class="粉絲榜數值單位">場</span>
-                  </span>
-                </td>
-                <td>
-                  <span class="緊湊紀錄時間">
-                    <span>{{ 格式化紀錄日期(粉絲.latest_recorded_at_iso) }}</span>
-                    <span>{{ 格式化紀錄時刻(粉絲.latest_recorded_at_iso) }}</span>
-                  </span>
-                </td>
-                <td>
-                  <button
-                    v-if="粉絲.records?.length"
-                    class="粉絲榜報告按鈕"
-                    type="button"
-                    @click="開啟粉絲榜歷史紀錄(粉絲)"
-                  >
-                    {{ 格式化整數(粉絲.records.length) }} 份紀錄
-                  </button>
-                  <a v-else-if="粉絲.latest_report_url" :href="粉絲.latest_report_url" target="_blank" rel="noreferrer">FFLogs</a>
-                  <span v-else>-</span>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+                    <a v-else-if="粉絲.latest_report_url" :href="粉絲.latest_report_url" target="_blank" rel="noreferrer">FFLogs</a>
+                    <span v-else>-</span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </template>
       </section>
 
-      <section class="近期洞察版面 粉絲榜雙欄" aria-label="Honey B. Lovely 粉絲榜近期資料">
+      <section v-if="!蜂蜂超高難度啟用" class="近期洞察版面 粉絲榜雙欄" aria-label="Honey B. Lovely 粉絲榜近期資料">
         <article class="統計面板">
           <header class="統計面板標題">
             <h2>最新收錄紀錄</h2>

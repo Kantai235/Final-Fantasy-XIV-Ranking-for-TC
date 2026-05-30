@@ -282,6 +282,161 @@ class HoneyBFansPublicDataTest(unittest.TestCase):
             ["R1", "R2"],
         )
 
+    def test_public_payload_builds_activity_kill_team_rankings_from_cutoff(self) -> None:
+        source = honey.建立空來源()
+        source["updated_at_iso"] = "2026-06-01T00:00:00+00:00"
+        source["records"] = [
+            {
+                "id": "R_BEFORE:1:1:1000",
+                "fight_key": "R_BEFORE:1",
+                "report_code": "R_BEFORE",
+                "report_title": "活動切點前通關",
+                "report_url": "https://www.fflogs.com/reports/R_BEFORE",
+                "fight_id": 1,
+                "fight_name": "Honey B. Lovely",
+                "fight_start_at_iso": "2026-05-29T15:49:59+00:00",
+                "fight_completed_at_iso": "2026-05-29T15:59:59+00:00",
+                "is_kill": True,
+                "fight_status": "kill",
+                "clear_time_seconds": 600.0,
+                "event_at_iso": "2026-05-29T15:55:00+00:00",
+                "seconds_from_pull": 300.0,
+                "character_name": "岳白",
+                "server": "鳳凰",
+                "job": "Sage",
+            },
+            {
+                "id": "R_BEFORE:1:2:1100",
+                "fight_key": "R_BEFORE:1",
+                "report_code": "R_BEFORE",
+                "report_title": "活動切點前通關",
+                "report_url": "https://www.fflogs.com/reports/R_BEFORE",
+                "fight_id": 1,
+                "fight_name": "Honey B. Lovely",
+                "fight_start_at_iso": "2026-05-29T15:49:59+00:00",
+                "fight_completed_at_iso": "2026-05-29T15:59:59+00:00",
+                "is_kill": True,
+                "fight_status": "kill",
+                "clear_time_seconds": 600.0,
+                "event_at_iso": "2026-05-29T15:56:00+00:00",
+                "seconds_from_pull": 360.0,
+                "character_name": "里區欠",
+                "server": "鳳凰",
+                "job": "Gunbreaker",
+            },
+            {
+                "id": "R_START:2:3:1000",
+                "fight_key": "R_START:2",
+                "report_code": "R_START",
+                "report_title": "活動切點通關",
+                "report_url": "https://www.fflogs.com/reports/R_START",
+                "fight_id": 2,
+                "fight_name": "Honey B. Lovely",
+                "fight_start_at_iso": "2026-05-29T15:50:00+00:00",
+                "fight_completed_at_iso": "2026-05-29T16:00:00+00:00",
+                "is_kill": True,
+                "fight_status": "kill",
+                "clear_time_seconds": 600.0,
+                "event_at_iso": "2026-05-29T15:55:00+00:00",
+                "seconds_from_pull": 300.0,
+                "character_name": "切點粉絲",
+                "server": "鳳凰",
+                "job": "Sage",
+            },
+            {
+                "id": "R_AFTER:3:4:1000",
+                "fight_key": "R_AFTER:3",
+                "report_code": "R_AFTER",
+                "report_title": "活動通關",
+                "report_url": "https://www.fflogs.com/reports/R_AFTER",
+                "fight_id": 3,
+                "fight_name": "Honey B. Lovely",
+                "fight_start_at_iso": "2026-05-30T11:50:00+00:00",
+                "fight_completed_at_iso": "2026-05-30T12:00:00+00:00",
+                "is_kill": True,
+                "fight_status": "kill",
+                "clear_time_seconds": 590.0,
+                "event_at_iso": "2026-05-30T11:55:00+00:00",
+                "seconds_from_pull": 300.0,
+                "character_name": "最近粉絲",
+                "server": "鳳凰",
+                "job": "Dancer",
+            },
+            {
+                "id": "R_AFTER:3:5:1100",
+                "fight_key": "R_AFTER:3",
+                "report_code": "R_AFTER",
+                "report_title": "活動通關",
+                "report_url": "https://www.fflogs.com/reports/R_AFTER",
+                "fight_id": 3,
+                "fight_name": "Honey B. Lovely",
+                "fight_start_at_iso": "2026-05-30T11:50:00+00:00",
+                "fight_completed_at_iso": "2026-05-30T12:00:00+00:00",
+                "is_kill": True,
+                "fight_status": "kill",
+                "clear_time_seconds": 590.0,
+                "event_at_iso": "2026-05-30T11:56:00+00:00",
+                "seconds_from_pull": 360.0,
+                "character_name": "另一位粉絲",
+                "server": "鳳凰",
+                "job": "Warrior",
+            },
+            {
+                "id": "R_DUP:4:4:1000",
+                "fight_key": "R_DUP:4",
+                "report_code": "R_DUP",
+                "report_title": "同場另一份上傳",
+                "report_url": "https://www.fflogs.com/reports/R_DUP",
+                "fight_id": 4,
+                "fight_name": "蜂蜂小甜心",
+                "fight_start_at_iso": "2026-05-30T11:50:00+00:00",
+                "fight_completed_at_iso": "2026-05-30T12:00:00+00:00",
+                "is_kill": True,
+                "fight_status": "kill",
+                "clear_time_seconds": 590.0,
+                "event_at_iso": "2026-05-30T11:55:00+00:00",
+                "seconds_from_pull": 300.0,
+                "character_name": "最近粉絲",
+                "server": "鳳凰",
+                "job": "Dancer",
+            },
+            {
+                "id": "R_WIPE:4:4:1000",
+                "fight_key": "R_WIPE:4",
+                "report_code": "R_WIPE",
+                "report_title": "滅團場",
+                "report_url": "https://www.fflogs.com/reports/R_WIPE",
+                "fight_id": 4,
+                "fight_name": "Honey B. Lovely",
+                "fight_start_at_iso": "2026-05-30T12:20:00+00:00",
+                "fight_completed_at_iso": "2026-05-30T12:24:00+00:00",
+                "is_kill": False,
+                "fight_status": "wipe",
+                "clear_time_seconds": None,
+                "fight_duration_seconds": 240.0,
+                "event_at_iso": "2026-05-30T12:23:00+00:00",
+                "seconds_from_pull": 180.0,
+                "character_name": "滅團粉絲",
+                "server": "鳳凰",
+                "job": "BlackMage",
+            },
+        ]
+
+        payload = honey.建立公開資料(source)
+
+        self.assertEqual(payload["team_ranking_window"]["start_at_iso"], "2026-05-29T16:00:00+00:00")
+        self.assertEqual(payload["summary"]["historical_team_record_count"], 3)
+        self.assertEqual(payload["summary"]["team_ranking_record_count"], 2)
+        self.assertEqual(payload["summary"]["team_ranking_event_count"], 3)
+        self.assertEqual(payload["summary"]["top_team_event_count"], 2)
+        self.assertEqual(payload["team_rankings"][0]["id"], "R_AFTER:3")
+        self.assertEqual(payload["team_rankings"][0]["total_event_count"], 2)
+        self.assertEqual(payload["team_rankings"][0]["unique_fan_count"], 2)
+        self.assertEqual(payload["team_rankings"][0]["duplicate_report_count"], 1)
+        self.assertEqual([member["event_count"] for member in payload["team_rankings"][0]["members"]], [1, 1])
+        self.assertNotIn("R_BEFORE:1", [record["id"] for record in payload["team_rankings"]])
+        self.assertEqual([record["id"] for record in payload["latest_records"][:2]], ["R_WIPE:4", "R_AFTER:3"])
+
     def test_report_detail_query_includes_wipe_fights(self) -> None:
         self.assertIn("fights(encounterID: $encounterID, difficulty: $difficulty)", honey.REPORT_DETAIL_QUERY)
         self.assertNotIn("killType: Kills", honey.REPORT_DETAIL_QUERY)

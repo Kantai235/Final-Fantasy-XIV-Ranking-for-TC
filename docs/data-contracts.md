@@ -62,7 +62,7 @@ npm run sync:data -- --dry-run
 
 `gcd_coverage` 是公開資料中可顯示的衍生結果；除了 `percent`、分母與計算版本，也允許保留小型診斷欄位，例如 `estimated_speed_below_minimum`、`fallback_selection`、`downtime_selection`，以及 raw events、Casts graph、raw targetability fallback 的比較百分比與分母。這些欄位只說明本地演算法為什麼選用某個覆蓋率結果，不保存 FFLogs raw events 或 Casts graph payload，因此符合公開 JSON 的瘦身邊界。
 
-Honey B. Lovely 粉絲榜來源在 `data/fun/honey_b_fans.json`，公開檔在 `public/data/fun/honey_b_fans.json`。它是與正式排行榜分離的趣味資料，只記錄 M2S `心醉魂迷：奴役` 衍生結果與掃描快取，不參與個人成績單、全服統計或 `data/rankings/` 去重規則。公開檔的 `top_fans`、粉絲列 `records`、`latest_records`、公開 `records` 與本期摘要只納入近 7 天；`latest_records` 最多 5 筆，`latest_fans` 最多 16 筆。歷史紀錄留在來源檔，公開檔以 `summary.historical_*` 與粉絲列的 `historical_*` / `current_streak_weeks` 保留歷史追溯與連續入榜語意。
+Honey B. Lovely 粉絲榜來源在 `data/fun/honey_b_fans.json`，公開檔在 `public/data/fun/honey_b_fans.json`。它是與正式排行榜分離的趣味資料，只記錄 M2S `心醉魂迷：奴役` 衍生結果與掃描快取，不參與個人成績單、全服統計或 `data/rankings/` 去重規則。公開檔的 `top_fans`、粉絲列 `records`、`latest_records`、公開 `records` 與本期摘要只納入近 7 天；`latest_records` 最多 5 筆，`latest_fans` 最多 16 筆。歷史紀錄留在來源檔，公開檔以 `summary.historical_*` 與粉絲列的 `historical_*` / `current_streak_weeks` 保留歷史追溯與連續入榜語意；`team_rankings` 則使用自台灣時間 2026-05-30 00:00:00 起的通關場次，依同一場戰鬥全隊 `心醉魂迷：奴役` 總次數排序，並沿用戰鬥時間軸去重以合併多份上傳。
 
 ## 資料守恆與 payload 預算
 

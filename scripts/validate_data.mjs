@@ -792,7 +792,17 @@ async function validateHoneyFans() {
   if (!isFiniteNumber(honeyFans?.summary?.historical_total_event_count)) {
     reportIssue("public/data/fun/honey_b_fans.json summary.historical_total_event_count 必須是數字");
   }
-  for (const listName of ["top_fans", "latest_records", "latest_fans", "records"]) {
+  if (!isFiniteNumber(honeyFans?.summary?.team_ranking_record_count)) {
+    reportIssue("public/data/fun/honey_b_fans.json summary.team_ranking_record_count 必須是數字");
+  }
+  if (!isFiniteNumber(honeyFans?.summary?.team_ranking_event_count)) {
+    reportIssue("public/data/fun/honey_b_fans.json summary.team_ranking_event_count 必須是數字");
+  }
+  const teamRankingStartAt = new Date(honeyFans?.summary?.team_ranking_window_start_at_iso).getTime();
+  if (!Number.isFinite(teamRankingStartAt)) {
+    reportIssue("public/data/fun/honey_b_fans.json summary.team_ranking_window_start_at_iso 必須是有效 ISO 時間");
+  }
+  for (const listName of ["top_fans", "latest_records", "latest_fans", "team_rankings", "records"]) {
     if (!Array.isArray(honeyFans?.[listName])) {
       reportIssue(`public/data/fun/honey_b_fans.json 的 ${listName} 必須是陣列`);
     }
@@ -812,6 +822,24 @@ async function validateHoneyFans() {
     }
     if (!isFiniteNumber(fan?.historical_total_event_count) || !isFiniteNumber(fan?.current_streak_weeks)) {
       reportIssue("Honey B. Lovely 粉絲榜 top_fans 有粉絲缺少歷史總數或連續入榜週數");
+      break;
+    }
+  }
+  for (const teamRecord of honeyFans?.team_rankings || []) {
+    if (!isFiniteNumber(teamRecord?.total_event_count) || !isFiniteNumber(teamRecord?.unique_fan_count)) {
+      reportIssue("Honey B. Lovely 團隊榜 team_rankings 有紀錄缺少 total_event_count 或 unique_fan_count");
+      break;
+    }
+    if (teamRecord?.fight_status !== "kill" || teamRecord?.is_kill !== true) {
+      reportIssue("Honey B. Lovely 團隊榜 team_rankings 只能包含通關場次");
+      break;
+    }
+    if (!Array.isArray(teamRecord?.members) || !Array.isArray(teamRecord?.source_reports)) {
+      reportIssue("Honey B. Lovely 團隊榜 team_rankings 有紀錄缺少 members 或 source_reports");
+      break;
+    }
+    if (Number.isFinite(teamRankingStartAt) && new Date(teamRecord?.fight_completed_at_iso).getTime() < teamRankingStartAt) {
+      reportIssue("Honey B. Lovely 團隊榜 team_rankings 有紀錄早於活動起始時間");
       break;
     }
   }

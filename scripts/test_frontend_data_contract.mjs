@@ -367,13 +367,28 @@ async function validatePublicDataForFrontend() {
   assert(honeyFans?.feature === "honey_b_lovely_fans", "public/data/fun/honey_b_fans.json feature 必須是 honey_b_lovely_fans");
   assert(Array.isArray(honeyFans?.top_fans), "public/data/fun/honey_b_fans.json 必須包含 top_fans");
   assert(Array.isArray(honeyFans?.latest_records), "public/data/fun/honey_b_fans.json 必須包含 latest_records");
+  assert(Array.isArray(honeyFans?.team_rankings), "public/data/fun/honey_b_fans.json 必須包含 team_rankings");
   assert((honeyFans?.latest_records || []).length <= 5, "public/data/fun/honey_b_fans.json latest_records 最多顯示 5 筆");
   assert((honeyFans?.latest_fans || []).length <= 16, "public/data/fun/honey_b_fans.json latest_fans 最多顯示 16 筆");
   assert(Number.isFinite(honeyFans?.summary?.leaderboard_window_days), "public/data/fun/honey_b_fans.json 必須標示粉絲榜榜單天數");
   assert(Number.isFinite(honeyFans?.summary?.historical_total_event_count), "public/data/fun/honey_b_fans.json 必須保留歷史粉絲紀錄總數");
+  assert(Number.isFinite(honeyFans?.summary?.historical_team_record_count), "public/data/fun/honey_b_fans.json 必須保留歷史團隊榜場次");
+  assert(Number.isFinite(honeyFans?.summary?.team_ranking_record_count), "public/data/fun/honey_b_fans.json 必須標示活動團隊榜場次");
+  assert(Number.isFinite(honeyFans?.summary?.team_ranking_event_count), "public/data/fun/honey_b_fans.json 必須標示活動團隊榜事件數");
+  assert(Number.isFinite(new Date(honeyFans?.summary?.team_ranking_window_start_at_iso).getTime()), "public/data/fun/honey_b_fans.json 必須標示活動團隊榜起始時間");
   for (const fan of honeyFans?.top_fans || []) {
     assert(Number.isFinite(fan?.current_streak_weeks), `${fan?.id || "未知粉絲"} 必須包含 current_streak_weeks`);
     assert(Number.isFinite(fan?.historical_total_event_count), `${fan?.id || "未知粉絲"} 必須包含 historical_total_event_count`);
+  }
+  const teamRankingStartAt = new Date(honeyFans?.summary?.team_ranking_window_start_at_iso).getTime();
+  for (const teamRecord of honeyFans?.team_rankings || []) {
+    assert(teamRecord?.fight_status === "kill", `${teamRecord?.id || "未知團隊紀錄"} 必須是通關場次`);
+    assert(Number.isFinite(teamRecord?.total_event_count), `${teamRecord?.id || "未知團隊紀錄"} 必須包含 total_event_count`);
+    assert(Array.isArray(teamRecord?.members), `${teamRecord?.id || "未知團隊紀錄"} 必須包含 members`);
+    assert(
+      new Date(teamRecord?.fight_completed_at_iso).getTime() >= teamRankingStartAt,
+      `${teamRecord?.id || "未知團隊紀錄"} 必須落在活動團隊榜起始時間之後`,
+    );
   }
   assert(Array.isArray(userIndex?.users) && userIndex.users.length > 0, "public/data/users/index.json 必須包含 users");
   assert(userIndex?.total_users === userIndex?.users?.length, "public/data/users/index.json total_users 必須等於 users 長度");
@@ -850,8 +865,8 @@ async function validateUserSearchResolution() {
 async function validatePublicDataRouteBase() {
   const directUserRoute = await loadPublicDataTestModule("https://ranking.init.engineer/user/");
   assert(
-    directUserRoute.使用者索引網址 === "/data/users/index.json",
-    "直接開啟 /user/ 時，公開資料索引應讀取部署根目錄的 /data/users/index.json。",
+    directUserRoute.副本清單網址 === "/data/encounters.json",
+    "直接開啟 /user/ 時，公開資料應讀取部署根目錄的 /data/encounters.json。",
   );
   assert(
     directUserRoute.建立公開資料網址("data/users/篝之霧枝-2.json") ===
@@ -861,13 +876,13 @@ async function validatePublicDataRouteBase() {
 
   const subpathRoute = await loadPublicDataTestModule("https://example.test/repo/user/Aa?server=%E5%A5%A7%E6%B1%80");
   assert(
-    subpathRoute.使用者索引網址 === "/repo/data/users/index.json",
+    subpathRoute.副本清單網址 === "/repo/data/encounters.json",
     "子路徑部署直接開啟 /repo/user/{玩家} 時，公開資料 URL 應保留 /repo/ 部署基底。",
   );
 
   const configuredBase = await loadPublicDataTestModule("https://example.test/user/", "/custom/");
   assert(
-    configuredBase.使用者索引網址 === "/custom/data/users/index.json",
+    configuredBase.副本清單網址 === "/custom/data/encounters.json",
     "Vite base_path 已指定絕對路徑時，公開資料 URL 應優先使用設定值。",
   );
 

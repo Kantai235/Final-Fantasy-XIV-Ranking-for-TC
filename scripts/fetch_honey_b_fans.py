@@ -32,10 +32,15 @@ PUBLIC_LEADERBOARD_WINDOW_DAYS = 7
 PUBLIC_LATEST_RECORD_LIMIT = 5
 PUBLIC_LATEST_FAN_LIMIT = 16
 PUBLIC_RECORD_LIMIT = 500
+PUBLIC_TEAM_RANKING_LIMIT = 100
+PUBLIC_TEAM_RANKING_START_LOCAL = "2026-05-30 00:00:00"
+PUBLIC_TEAM_RANKING_TIMEZONE = "Asia/Taipei"
 MILLISECONDS_PER_DAY = 24 * 60 * 60 * 1000
 CHINA_REGION_ID = 4
 COMPLETED_FIGHT_STATUSES = {"checked", "skipped_no_tc_players"}
 COMPLETED_REPORT_STATUSES = {"checked", "skipped_no_m2s_fights", "skipped_no_m2s_kills"}
+PUBLIC_TEAM_RANKING_START_AT = int(fflogs.解析日期時間為毫秒(PUBLIC_TEAM_RANKING_START_LOCAL) or 0)
+PUBLIC_TEAM_RANKING_START_AT_ISO = fflogs.毫秒轉_iso(PUBLIC_TEAM_RANKING_START_AT)
 
 RECENT_REPORTS_QUERY = """
 query HoneyRecentReports($startTime: Float!, $endTime: Float!, $page: Int!, $limit: Int!, $zoneID: Int!) {
@@ -942,6 +947,26 @@ def 解析紀錄時間毫秒(record: dict[str, Any]) -> int | None:
     return None
 
 
+def 解析團隊榜活動時間毫秒(record: dict[str, Any]) -> int | None:
+    # 超高難度團隊榜是從活動切點重新起算的通關榜，時間口徑以「戰鬥完成時間」
+    # 為主。少數舊紀錄若缺少 fight_completed_at_iso，才退回事件時間避免資料完全
+    # 掉失；不使用 collected_at_iso，避免很晚才補抓的舊戰鬥被誤算進活動榜。
+    for 欄位 in ("fight_completed_at_iso", "event_at_iso"):
+        value = record.get(欄位)
+        if not value:
+            continue
+        try:
+            return fflogs.解析日期時間為毫秒(str(value))
+        except RuntimeError:
+            continue
+    return None
+
+
+def 屬於團隊榜活動期間(record: dict[str, Any]) -> bool:
+    record_time = 解析團隊榜活動時間毫秒(record)
+    return record_time is not None and record_time >= PUBLIC_TEAM_RANKING_START_AT
+
+
 def 建立公開榜單時間窗(records: list[dict[str, Any]], generated_at_iso: str) -> dict[str, Any]:
     window_ms = PUBLIC_LEADERBOARD_WINDOW_DAYS * MILLISECONDS_PER_DAY
     try:
@@ -1118,6 +1143,81 @@ def 建立戰鬥公開紀錄(records: list[dict[str, Any]]) -> list[dict[str, An
     )
 
 
+def 建立團隊公開排行(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    # 團隊榜是「超高難度」模式的活動通關排行。來源仍保留全歷史扁平奴役事件，
+    # 但呼叫端會先套用活動切點；這裡再把粒度回到單場戰鬥，避免同一場被
+    # 多份 FFLogs report 重複計分。
+    team_records: list[dict[str, Any]] = []
+    for fight in 建立戰鬥公開紀錄(records):
+        if fight.get("fight_status") != "kill":
+            continue
+
+        member_index: dict[str, dict[str, Any]] = {}
+        for fan in fight.get("fans") or []:
+            if not isinstance(fan, dict) or not fan.get("character_name") or not fan.get("server"):
+                continue
+            member_key = "|".join(
+                str(part or "")
+                for part in (
+                    fan.get("character_name"),
+                    fan.get("server"),
+                    fan.get("job"),
+                )
+            )
+            member = member_index.setdefault(
+                member_key,
+                {
+                    "character_name": fan.get("character_name"),
+                    "server": fan.get("server"),
+                    "job": fan.get("job"),
+                    "event_count": 0,
+                    "first_event_at_iso": fan.get("event_at_iso"),
+                    "latest_event_at_iso": fan.get("event_at_iso"),
+                    "seconds_from_pull": fan.get("seconds_from_pull"),
+                },
+            )
+            member["event_count"] += 1
+            if (fan.get("event_at_iso") or "") < (member.get("first_event_at_iso") or "9999"):
+                member["first_event_at_iso"] = fan.get("event_at_iso")
+            if (fan.get("event_at_iso") or "") > (member.get("latest_event_at_iso") or ""):
+                member["latest_event_at_iso"] = fan.get("event_at_iso")
+                member["seconds_from_pull"] = fan.get("seconds_from_pull")
+
+        members = sorted(
+            member_index.values(),
+            key=lambda member: (
+                member.get("event_count") or 0,
+                member.get("latest_event_at_iso") or "",
+                member.get("character_name") or "",
+                member.get("server") or "",
+            ),
+            reverse=True,
+        )
+        team_records.append(
+            {
+                **fight,
+                "total_event_count": fight.get("fan_event_count", 0),
+                "unique_fan_count": len(members),
+                "members": members,
+            },
+        )
+
+    team_records.sort(
+        key=lambda fight: (
+            fight.get("total_event_count") or 0,
+            fight.get("unique_fan_count") or 0,
+            -1 * (float(fight.get("clear_time_seconds")) if fight.get("clear_time_seconds") is not None else 999999),
+            fight.get("fight_completed_at_iso") or "",
+        ),
+        reverse=True,
+    )
+
+    for index, fight in enumerate(team_records, start=1):
+        fight["rank"] = index
+
+    return team_records
+
+
 def 建立粉絲公開排行(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
     fan_index: dict[str, dict[str, Any]] = {}
     for record in records:
@@ -1262,6 +1362,10 @@ def 建立公開資料(source: dict[str, Any]) -> dict[str, Any]:
     )
     latest_records = 建立戰鬥公開紀錄(leaderboard_records)
     historical_latest_records = 建立戰鬥公開紀錄(records)
+    historical_team_rankings = 建立團隊公開排行(records)
+    team_ranking_records = [record for record in records if 屬於團隊榜活動期間(record)]
+    team_rankings = 建立團隊公開排行(team_ranking_records)
+    team_ranking_event_count = sum(record.get("total_event_count") or 0 for record in team_rankings)
     kill_event_count = sum(1 for record in leaderboard_records if 紀錄戰鬥狀態(record) == "kill")
     wipe_event_count = len(leaderboard_records) - kill_event_count
     historical_kill_event_count = sum(1 for record in records if 紀錄戰鬥狀態(record) == "kill")
@@ -1286,6 +1390,11 @@ def 建立公開資料(source: dict[str, Any]) -> dict[str, Any]:
         "source_updated_at_iso": source.get("updated_at_iso"),
         "source_encounter": source.get("source_encounter") or {},
         "target_debuff": source.get("target_debuff") or {},
+        "team_ranking_window": {
+            "start_at_iso": PUBLIC_TEAM_RANKING_START_AT_ISO,
+            "start_at_local": PUBLIC_TEAM_RANKING_START_LOCAL,
+            "timezone": PUBLIC_TEAM_RANKING_TIMEZONE,
+        },
         "leaderboard_window": {
             "days": leaderboard_window["days"],
             "start_at_iso": leaderboard_window["start_at_iso"],
@@ -1309,6 +1418,16 @@ def 建立公開資料(source: dict[str, Any]) -> dict[str, Any]:
             "historical_fight_count": len(historical_latest_records),
             "historical_kill_fight_count": historical_kill_fight_count,
             "historical_wipe_fight_count": historical_wipe_fight_count,
+            "historical_team_record_count": len(historical_team_rankings),
+            "team_ranking_record_count": len(team_rankings),
+            "team_ranking_event_count": team_ranking_event_count,
+            "team_ranking_window_start_at_iso": PUBLIC_TEAM_RANKING_START_AT_ISO,
+            "team_ranking_window_start_at_local": PUBLIC_TEAM_RANKING_START_LOCAL,
+            "team_ranking_window_timezone": PUBLIC_TEAM_RANKING_TIMEZONE,
+            "top_team_event_count": team_rankings[0]["total_event_count"] if team_rankings else 0,
+            "top_team_unique_fan_count": team_rankings[0]["unique_fan_count"] if team_rankings else 0,
+            "top_team_clear_time_seconds": team_rankings[0].get("clear_time_seconds") if team_rankings else None,
+            "top_team_report_url": team_rankings[0].get("report_url") if team_rankings else None,
             "top_fan_name": top_fans[0]["character_name"] if top_fans else None,
             "top_fan_server": top_fans[0]["server"] if top_fans else None,
             "top_fan_event_count": top_fans[0]["total_event_count"] if top_fans else 0,
@@ -1319,6 +1438,7 @@ def 建立公開資料(source: dict[str, Any]) -> dict[str, Any]:
         "top_fans": top_fans[:100],
         "latest_records": latest_records[:PUBLIC_LATEST_RECORD_LIMIT],
         "latest_fans": latest_fans[:PUBLIC_LATEST_FAN_LIMIT],
+        "team_rankings": team_rankings[:PUBLIC_TEAM_RANKING_LIMIT],
         "records": leaderboard_records[:PUBLIC_RECORD_LIMIT],
     }
 

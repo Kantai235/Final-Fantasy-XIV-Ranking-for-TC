@@ -141,3 +141,4 @@
 5. `.github/workflows/update_rankings.yml` 會在正式排行榜抓取後執行 `npm run fetch:honey-fans`，預設 `--recent-days 3 --history-limit 200`，並可用 `HONEY_FANS_RECENT_DAYS`、`HONEY_FANS_HISTORY_LIMIT`、`HONEY_FANS_RECENT_WINDOW_HOURS`、`HONEY_FANS_HISTORY_WINDOW_HOURS` 調整排程掃描範圍。
 6. `npm run build:honey-fans` 只由既有來源檔重建公開 JSON，不呼叫 FFLogs API；正式 workflow 會在資料建置階段執行它，並把 `public/data/fun/*.json` 納入資料 commit 路徑。`npm run validate:data` 與 `npm run test:frontend-data` 會檢查公開粉絲榜資料契約。
 7. 公開粉絲榜 `top_fans`、粉絲列 `records`、`latest_records`、公開 `records` 與本期摘要只納入以 `source.updated_at_iso` 為基準的近 7 天紀錄；`latest_records` 最多輸出 5 筆，`latest_fans` 最多輸出 16 筆。來源檔仍保留歷史紀錄，建置層會用同樣 7 天切片回推 `current_streak_weeks`，並以 `summary.historical_*` 與粉絲列 `historical_*` 保留歷史統計，供前端顯示「連續 N 週入榜」。
+8. 公開 `team_rankings` 使用來源檔中自台灣時間 2026-05-30 00:00:00 起的通關場次，依單場全隊 `心醉魂迷：奴役` 總次數排序，並沿用戰鬥時間軸去重合併同一場的多份 FFLogs 上傳；來源檔仍保留全歷史紀錄與 `summary.historical_*` 追溯欄位。前端 Honey 頁面的「超高難度」開關開啟時，顯示此活動團隊榜而非近 7 天粉絲榜。
