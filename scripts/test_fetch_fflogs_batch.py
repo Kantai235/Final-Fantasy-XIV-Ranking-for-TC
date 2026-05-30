@@ -175,7 +175,7 @@ class FetchFFLogsBatchTest(unittest.TestCase):
         )
         self.assertTrue(all("original_server" not in 條目 for 條目 in 公開排行榜["ranking_entries"]))
 
-    def test_history_scan_deep_report_default_limit_matches_workflow_budget(self) -> None:
+    def test_history_scan_deep_report_code_default_keeps_local_runs_conservative(self) -> None:
         self.assertEqual(fflogs.FFLogs執行設定預設值["history_max_deep_reports_per_run"], 200)
 
     def test_state_checkpoint_default_avoids_frequent_large_state_writes(self) -> None:

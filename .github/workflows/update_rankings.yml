@@ -93,7 +93,7 @@ jobs:
           FFLOGS_DELAYED_SCAN_RECENT_GAP_HOURS: ${{ vars.FFLOGS_DELAYED_SCAN_RECENT_GAP_HOURS || '24' }}
           FFLOGS_DELAYED_SCAN_LOOKBACK_HOURS: ${{ vars.FFLOGS_DELAYED_SCAN_LOOKBACK_HOURS || '72' }}
           FFLOGS_DELAYED_MAX_DEEP_REPORTS_PER_RUN: ${{ vars.FFLOGS_DELAYED_MAX_DEEP_REPORTS_PER_RUN || '0' }}
-          # config/fflogs.json 預設關閉歷史補查；workflow 以低量輪巡方式檢查舊時間窗是否新增公開 logs。
+          # config/fflogs.json 預設關閉歷史補查；workflow 每輪掃 1 個 168 小時視窗，最多選入 2000 份深層候選。
           FFLOGS_HISTORY_SCAN_ENABLED: ${{ vars.FFLOGS_HISTORY_SCAN_ENABLED || 'true' }}
           FFLOGS_HISTORY_SCAN_FULL_RUN: ${{ vars.FFLOGS_HISTORY_SCAN_FULL_RUN || 'false' }}
           FFLOGS_HISTORY_SCAN_WINDOW_HOURS: ${{ vars.FFLOGS_HISTORY_SCAN_WINDOW_HOURS || '168' }}

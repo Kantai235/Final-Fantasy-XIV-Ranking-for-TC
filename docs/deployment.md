@@ -37,7 +37,7 @@ npm run build
 2. 設定 Python 3.11 與 Node.js 20。
 3. 安裝 Python 與 Node.js 依賴。
 4. 若有 Cloudflare secrets，先同步 Cloudflare Cache Rules、Facebook 分享爬蟲例外與 Rate Limiting Rules。
-5. 使用 GitHub Secrets 中的 FFLogs 憑證執行 `python scripts/fetch_fflogs.py`，掃描全部地區候選 report，近期 24 小時完整重查、24-72 小時只選未知 report，並以低量歷史補查檢查更舊時間窗是否有新的公開 logs 可抓取，同時對新落地 fight 即時計算 GCD 覆蓋率。
+5. 使用 GitHub Secrets 中的 FFLogs 憑證執行 `python scripts/fetch_fflogs.py`，掃描全部地區候選 report，近期 24 小時完整重查、24-72 小時只選未知 report，並以每輪 1 個 168 小時視窗、最多 2000 份深層候選的歷史補查檢查更舊時間窗是否有新的公開 logs 可抓取，同時對新落地 fight 即時計算 GCD 覆蓋率。
 6. 執行 `npm run fetch:honey-fans`，以同一組 FFLogs 憑證抓取 Honey B. Lovely 粉絲榜趣味資料；workflow 預設掃近 3 天，並從歷史游標最多檢查 200 場未記錄戰鬥。
 7. 執行 `python scripts/backfill_gcd_coverage.py --stateful-report-backfill --report-limit 200`，從固定切點往更舊 report 逐輪追平既有 GCD。
 8. 執行 `python scripts/fetch_fflogs.py --split-rankings`，將完整排行榜資料拆分成適合 Git 追蹤的檔案。
@@ -114,7 +114,7 @@ npm run build
 - `CLOUDFLARE_MANAGE_RATE_LIMIT`
 - `VITE_GA_MEASUREMENT_ID`
 
-workflow 預設掃全部地區候選 report，近期 24 小時完整重查，24-72 小時只選未知 report，並以低量歷史補查檢查更舊時間窗是否有新的公開 logs 可抓取，同時對新落地 fight 即時計算 GCD 覆蓋率。Honey B. Lovely 粉絲榜另以 `HONEY_FANS_*` variables 控制近期掃描天數、每輪歷史檢查上限與查詢切窗，預設為近 3 天、每輪 200 場、24 小時切窗。
+workflow 預設掃全部地區候選 report，近期 24 小時完整重查，24-72 小時只選未知 report，並以每輪 1 個 168 小時視窗、最多 2000 份深層候選的歷史補查檢查更舊時間窗是否有新的公開 logs 可抓取，同時對新落地 fight 即時計算 GCD 覆蓋率。Honey B. Lovely 粉絲榜另以 `HONEY_FANS_*` variables 控制近期掃描天數、每輪歷史檢查上限與查詢切窗，預設為近 3 天、每輪 200 場、24 小時切窗。
 
 ## 暫停的維護步驟
 

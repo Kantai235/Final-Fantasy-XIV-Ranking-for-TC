@@ -72,7 +72,7 @@ npm run fetch:honey-fans
 | --- | --- |
 | 近期掃描 | `incremental_lookback_hours=24`，讓最近一天的 no-clear / incomplete report 重新深查。 |
 | 延遲掃描 | workflow 預設掃 24-72 小時前的 reports，只選 state 與排行榜都沒見過的新 report。 |
-| 歷史補查 | workflow 預設低量輪巡較舊時間窗，抓回後來才公開或延後匯出的 logs。 |
+| 歷史補查 | workflow 預設每輪掃 1 個 168 小時視窗，最多選入 2000 份深層候選，抓回後來才公開或延後匯出的 logs。 |
 | 既有 report 狀態巡檢 | workflow 預設每輪由舊到新檢查固定數量，將不可存取 report 標記 hidden。 |
 | 新 report GCD 即時計算 | workflow 預設查同一場 FFLogs `Casts` graph，只保存 GCD 衍生結果。 |
 
@@ -82,7 +82,7 @@ npm run fetch:honey-fans
 - `FFLOGS_INCREMENTAL_LOOKBACK_HOURS`：近期完整重查回溯時數，workflow 預設 `24`。
 - `FFLOGS_NO_CLEAR_RETRY_HOURS`：`skipped_no_clear` 的近期重試時數，workflow 預設 `24`。
 - `FFLOGS_DELAYED_SCAN_ENABLED`、`FFLOGS_DELAYED_SCAN_RECENT_GAP_HOURS`、`FFLOGS_DELAYED_SCAN_LOOKBACK_HOURS`、`FFLOGS_DELAYED_MAX_DEEP_REPORTS_PER_RUN`：控制 24-72 小時延遲掃描與本輪深查上限。
-- `FFLOGS_HISTORY_SCAN_ENABLED`、`FFLOGS_HISTORY_SCAN_FULL_RUN`、`FFLOGS_HISTORY_SCAN_WINDOW_HOURS`、`FFLOGS_HISTORY_SCAN_WINDOWS_PER_RUN`、`FFLOGS_HISTORY_SCAN_RECENT_GAP_HOURS`、`FFLOGS_HISTORY_MAX_DEEP_REPORTS_PER_RUN`：控制歷史補查輪巡。
+- `FFLOGS_HISTORY_SCAN_ENABLED`、`FFLOGS_HISTORY_SCAN_FULL_RUN`、`FFLOGS_HISTORY_SCAN_WINDOW_HOURS`、`FFLOGS_HISTORY_SCAN_WINDOWS_PER_RUN`、`FFLOGS_HISTORY_SCAN_RECENT_GAP_HOURS`、`FFLOGS_HISTORY_MAX_DEEP_REPORTS_PER_RUN`：控制歷史補查輪巡；workflow 預設 `FFLOGS_HISTORY_SCAN_WINDOWS_PER_RUN=1`、`FFLOGS_HISTORY_MAX_DEEP_REPORTS_PER_RUN=2000`。
 - `FFLOGS_EXISTING_REPORT_STATUS_CHECK_ENABLED`、`FFLOGS_EXISTING_REPORT_STATUS_CHECK_LIMIT`：控制既有 report 狀態巡檢。
 - `FFLOGS_FETCH_GCD_COVERAGE_ENABLED`、`FFLOGS_FETCH_GCD_COVERAGE_MAX_FIGHTS_PER_RUN`：控制新 report 落地時的 GCD 即時計算。
 
