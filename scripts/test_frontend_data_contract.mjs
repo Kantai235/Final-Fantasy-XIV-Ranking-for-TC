@@ -663,20 +663,23 @@ function validateAnnouncementRules() {
   assert(blocks.some((block) => block.parts?.some((part) => part.type === "link")), "公告詳細內容應解析 Markdown 連結。");
 }
 
-async function loadUrlStateTestModule() {
+async function loadUrlStateTestModule({ honeyFansEnabled = true } = {}) {
   const filePath = path.join(srcDir, "utils", "urlState.js");
   let source = await readText(filePath);
   const importMatch = source.match(/import\s*\{\s*([^}]+?)\s*\}\s*from\s*["']\.\/shareMeta(?:\.js)?["'];\r?\n/);
+  const siteFeaturesImportMatch = source.match(/import\s*\{\s*[^}]*顯示Honey粉絲榜[^}]*\}\s*from\s*["']\.\/siteFeatures(?:\.js)?["'];\r?\n/);
   const exportedFunctions = [...source.matchAll(/export function\s+([^\s(]+)\s*\(/g)].map((match) => match[1]);
 
   assert(Boolean(importMatch), "urlState.js 必須明確匯入分享網址變更事件，讓網址寫入後可同步 SEO/OG meta");
+  assert(Boolean(siteFeaturesImportMatch), "urlState.js 必須明確匯入 Honey B. Lovely 功能旗標，讓分享網址與舊路由可分開控管");
   assert(exportedFunctions.length >= 2, "urlState.js 必須匯出讀取與寫入網址狀態函式");
-  if (!importMatch || exportedFunctions.length < 2) {
+  if (!importMatch || !siteFeaturesImportMatch || exportedFunctions.length < 2) {
     return null;
   }
 
   const importedEventName = importMatch[1].trim();
   source = source.replace(importMatch[0], 'const shareUrlChangeEvent = "ffxivtc:urlchange";\n');
+  source = source.replace(siteFeaturesImportMatch[0], `const 顯示Honey粉絲榜 = ${honeyFansEnabled ? "true" : "false"};\n`);
   source = source.split(importedEventName).join("shareUrlChangeEvent");
   source = source.replace(/export const /g, "const ");
   source = source.replace(/export function /g, "function ");
@@ -996,6 +999,14 @@ async function validateShareUrlStateCompatibility() {
       assert(state[key] === value, `${testCase.label} 解析失敗：${key} 應為 ${value}，實際為 ${state[key]}`);
     }
   }
+
+  const disabledHoneyModule = await loadUrlStateTestModule({ honeyFansEnabled: false });
+  installUrlStateWindow("https://ranking.init.engineer/honey-fans", events);
+  const disabledHoneyState = disabledHoneyModule?.readState();
+  assert(
+    disabledHoneyState?.page === "honey-fans",
+    "Honey B. Lovely 關閉時仍應辨識 /honey-fans 舊路由，讓 app 層能 replace 回排行榜",
+  );
 
   installUrlStateWindow("https://example.test/repo/stats/savage_m1s?server=x", events);
   module.writeState({ page: "jobs", job: "Paladin" }, { replace: true });

@@ -7,6 +7,7 @@ if (顯示Honey粉絲榜) {
 }
 
 export const 可分享頁面模式 = new Set(可分享頁面清單);
+const 可辨識頁面模式 = new Set([...可分享頁面清單, "honey-fans"]);
 
 const 頁面路徑片段 = {
   ranking: "",
@@ -17,10 +18,8 @@ const 頁面路徑片段 = {
   activity: "activity",
   teams: "teams",
   servers: "servers",
+  "honey-fans": "honey-fans",
 };
-if (顯示Honey粉絲榜) {
-  頁面路徑片段["honey-fans"] = "honey-fans";
-}
 
 const 路徑片段頁面 = new Map(
   Object.entries(頁面路徑片段)
@@ -160,13 +159,13 @@ function 讀取路徑伺服器對比(網址) {
 
 function 正規化頁面模式(頁面模式, 參數 = null) {
   const 模式 = String(頁面模式 || "").trim();
-  if (可分享頁面模式.has(模式)) {
+  if (可辨識頁面模式.has(模式)) {
     return 模式;
   }
 
   // 相容舊版 query 分享：?page=user 或只有 ?user= 的連結仍可直接打開。
   const 舊版頁面 = String(參數?.get("page") || "").trim();
-  if (可分享頁面模式.has(舊版頁面)) {
+  if (可辨識頁面模式.has(舊版頁面)) {
     return 舊版頁面;
   }
   if (參數?.get("user") || 參數?.get("name")) {

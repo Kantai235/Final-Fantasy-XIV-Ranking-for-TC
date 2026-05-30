@@ -1,7 +1,7 @@
 <script>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { injectRankingApp } from "../composables/useRankingApp";
-import { 顯示Honey粉絲榜, 顯示Telegram連結 } from "../utils/siteFeatures";
+import { 顯示Telegram連結 } from "../utils/siteFeatures";
 
 const Telegram連結 = "https://t.me/ffxiv_tc";
 

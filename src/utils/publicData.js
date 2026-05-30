@@ -1,13 +1,8 @@
 ﻿// 前端只讀取 Vite 打包後位於 public/data 的靜態 JSON。
 // 這裡集中處理公開資料 URL，避免頁面或 composable 各自拼接路徑時漏掉 base path。
 const Vite公開基底路徑 = import.meta.env?.BASE_URL ?? "/";
-import { 顯示Honey粉絲榜 } from "./siteFeatures.js";
 
-const 乾淨路由片段清單 = ["stats", "user", "compare", "jobs", "activity", "teams", "servers"];
-if (顯示Honey粉絲榜) {
-  乾淨路由片段清單.push("honey-fans");
-}
-const 乾淨路由片段 = new Set(乾淨路由片段清單);
+const 乾淨路由片段 = new Set(["stats", "user", "compare", "jobs", "activity", "teams", "servers", "honey-fans"]);
 
 const DEFAULT_USER_DATA_BASE_URL =
   "https://raw.githubusercontent.com/Kantai235/Final-Fantasy-XIV-Ranking-for-TC-Users/refs/heads/main/";
