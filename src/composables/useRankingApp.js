@@ -2546,9 +2546,37 @@ const 分享資訊 = computed(() => ({
 const 使用者索引列表 = computed(() => {
   return Array.isArray(使用者索引.value?.users) ? 使用者索引.value.users : [];
 });
+const 使用者搜尋建議索引 = ref([]);
 
 function 正規化搜尋比對文字(文字) {
   return String(文字 || "").trim().toLocaleLowerCase("zh-TW");
+}
+
+function 建立使用者搜尋建議索引條目(使用者) {
+  const 伺服器 = 取得使用者主要伺服器(使用者);
+  const 伺服器列表 = 取得使用者伺服器列表(使用者);
+  const 顯示文字 = 格式化使用者搜尋文字(使用者.character_name, 伺服器);
+  const 搜尋候選文字 = [
+    使用者.character_name,
+    伺服器,
+    顯示文字,
+    ...伺服器列表,
+    ...伺服器列表.map((伺服器名稱) => 格式化使用者搜尋文字(使用者.character_name, 伺服器名稱)),
+  ];
+
+  return {
+    value: 顯示文字,
+    label: `${使用者.encounter_count || 0} 副本 / ${使用者.public_entry_count || 0} 筆公開成績`,
+    character_name: 使用者.character_name,
+    server: 伺服器,
+    搜尋文字: Array.from(new Set(搜尋候選文字.map(正規化搜尋比對文字).filter(Boolean))).join("\n"),
+  };
+}
+
+function 重建使用者搜尋建議索引() {
+  // users/index.json 會隨玩家數量持續成長；搜尋建議只需要查詢用字串與顯示欄位。
+  // 在索引載入時先完成正規化，避免使用者每打一個字就重建上萬筆候選資料。
+  使用者搜尋建議索引.value = 使用者索引列表.value.map(建立使用者搜尋建議索引條目);
 }
 
 function 初始化玩家搜尋歷史() {
@@ -2717,39 +2745,29 @@ function 選擇最近搜尋玩家(欄位, 紀錄) {
 }
 
 function 建立使用者搜尋建議列表(搜尋文字) {
-  const 關鍵字 = String(搜尋文字 || "")
-    .trim()
-    .toLocaleLowerCase("zh-TW");
+  const 關鍵字 = 正規化搜尋比對文字(搜尋文字);
   if (!關鍵字) {
     return [];
   }
 
-  return 使用者索引列表.value
-    .map((使用者) => {
-      const 伺服器 = 取得使用者主要伺服器(使用者);
-      const 伺服器列表 = 取得使用者伺服器列表(使用者);
-      const 顯示文字 = 格式化使用者搜尋文字(使用者.character_name, 伺服器);
-      return {
-        value: 顯示文字,
-        label: `${使用者.encounter_count || 0} 副本 / ${使用者.public_entry_count || 0} 筆公開成績`,
-        character_name: 使用者.character_name,
-        server: 伺服器,
-        搜尋候選文字: [
-          使用者.character_name,
-          伺服器,
-          顯示文字,
-          ...伺服器列表,
-          ...伺服器列表.map((伺服器名稱) => 格式化使用者搜尋文字(使用者.character_name, 伺服器名稱)),
-        ],
-      };
-    })
-    .filter((建議) => {
-      return 建議.搜尋候選文字.some((文字) =>
-        String(文字 || "").toLocaleLowerCase("zh-TW").includes(關鍵字),
-      );
-    })
-    .map(({ 搜尋候選文字, ...建議 }) => 建議)
-    .slice(0, 8);
+  if (使用者索引列表.value.length > 0 && 使用者搜尋建議索引.value.length === 0) {
+    重建使用者搜尋建議索引();
+  }
+
+  const 建議列表 = [];
+  for (const 建議 of 使用者搜尋建議索引.value) {
+    if (!建議.搜尋文字.includes(關鍵字)) {
+      continue;
+    }
+
+    const { 搜尋文字, ...顯示建議 } = 建議;
+    建議列表.push(顯示建議);
+    if (建議列表.length >= 8) {
+      break;
+    }
+  }
+
+  return 建議列表;
 }
 
 const 使用者搜尋建議 = computed(() => {
@@ -3587,10 +3605,14 @@ async function 讀取個人成績報告詳細資料(成績) {
 
 async function 讀取使用者索引() {
   if (使用者索引.value) {
+    if (使用者搜尋建議索引.value.length === 0) {
+      重建使用者搜尋建議索引();
+    }
     return 使用者索引.value;
   }
 
   使用者索引.value = await 讀取Json(使用者索引網址, "讀取個人成績單索引失敗");
+  重建使用者搜尋建議索引();
   return 使用者索引.value;
 }
 
