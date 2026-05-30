@@ -192,6 +192,7 @@ jobs:
           cp -R public/data/all/user-entry-details/. "$USER_REPO_DIR/data/all/user-entry-details/" || true
 
           USER_SYNC_MANIFEST="$USER_REPO_DIR/data/sync-manifest.json"
+          export USER_SYNC_MANIFEST
           node <<'NODE'
           const fs = require("node:fs");
           const path = require("node:path");
