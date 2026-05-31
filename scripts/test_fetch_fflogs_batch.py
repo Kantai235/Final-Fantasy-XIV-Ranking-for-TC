@@ -177,6 +177,7 @@ class FetchFFLogsBatchTest(unittest.TestCase):
 
     def test_history_scan_deep_report_code_default_keeps_local_runs_conservative(self) -> None:
         self.assertEqual(fflogs.FFLogs執行設定預設值["history_max_deep_reports_per_run"], 200)
+        self.assertEqual(fflogs.FFLogs執行設定預設值["history_max_deep_reports_per_group_per_run"], 0)
 
     def test_state_checkpoint_default_avoids_frequent_large_state_writes(self) -> None:
         self.assertEqual(fflogs.FFLogs執行設定預設值["state_checkpoint_flush_reports"], 2000)
@@ -187,6 +188,7 @@ class FetchFFLogsBatchTest(unittest.TestCase):
             "history_scan_windows_per_run": 0,
             "history_scan_window_hours": 24,
             "history_max_deep_reports_per_run": 0,
+            "history_max_deep_reports_per_group_per_run": 0,
             "existing_report_status_check_enabled": False,
             "existing_report_status_check_limit": 0,
             "report_region_scope": "china",
@@ -210,6 +212,7 @@ class FetchFFLogsBatchTest(unittest.TestCase):
                 "FFLOGS_HISTORY_SCAN_WINDOWS_PER_RUN": "2",
                 "FFLOGS_HISTORY_SCAN_WINDOW_HOURS": "12",
                 "FFLOGS_HISTORY_MAX_DEEP_REPORTS_PER_RUN": "10",
+                "FFLOGS_HISTORY_MAX_DEEP_REPORTS_PER_GROUP_PER_RUN": "4",
                 "FFLOGS_EXISTING_REPORT_STATUS_CHECK_ENABLED": "true",
                 "FFLOGS_EXISTING_REPORT_STATUS_CHECK_LIMIT": "200",
                 "FFLOGS_REPORT_REGION_SCOPE": "all",
@@ -232,6 +235,7 @@ class FetchFFLogsBatchTest(unittest.TestCase):
         self.assertEqual(覆寫後設定["history_scan_windows_per_run"], 2)
         self.assertEqual(覆寫後設定["history_scan_window_hours"], 12)
         self.assertEqual(覆寫後設定["history_max_deep_reports_per_run"], 10)
+        self.assertEqual(覆寫後設定["history_max_deep_reports_per_group_per_run"], 4)
         self.assertTrue(覆寫後設定["existing_report_status_check_enabled"])
         self.assertEqual(覆寫後設定["existing_report_status_check_limit"], 200)
         self.assertEqual(覆寫後設定["report_region_scope"], "all")
@@ -425,6 +429,31 @@ class FetchFFLogsBatchTest(unittest.TestCase):
         self.assertEqual(歷史補查狀態["next_cursor_at"], 1000)
         self.assertEqual(歷史補查狀態["cursor_resume_source"], "current_window_start")
         self.assertIsNone(歷史補查狀態["cursor_resume_report_code"])
+
+    def test_history_deep_candidate_budget_limits_each_zone_group(self) -> None:
+        額度 = fflogs.歷史補查深層候選額度(總上限=10, 群組上限=2)
+        舊絕本 = {"zone_id": 59, "difficulty": 100}
+        伊甸絕 = {"zone_id": 65, "difficulty": 100}
+
+        self.assertTrue(額度.可加入(舊絕本, "old-1"))
+        額度.加入(舊絕本, "old-1")
+        self.assertTrue(額度.可加入(舊絕本, "old-2"))
+        額度.加入(舊絕本, "old-2")
+
+        self.assertFalse(額度.可加入(舊絕本, "old-3"))
+        self.assertTrue(額度.可加入(舊絕本, "old-1"))
+        self.assertTrue(額度.可加入(伊甸絕, "fru-1"))
+
+    def test_history_deep_candidate_budget_still_honors_global_limit(self) -> None:
+        額度 = fflogs.歷史補查深層候選額度(總上限=2, 群組上限=0)
+        第一組 = {"zone_id": 59, "difficulty": 100}
+        第二組 = {"zone_id": 65, "difficulty": 100}
+
+        額度.加入(第一組, "first")
+        額度.加入(第二組, "second")
+
+        self.assertFalse(額度.可加入(第二組, "third"))
+        self.assertTrue(額度.可加入(第一組, "first"))
 
     def test_graphql_private_report_error_is_report_access_error(self) -> None:
         self.assertTrue(
@@ -1209,10 +1238,11 @@ class FetchFFLogsBatchTest(unittest.TestCase):
         self.assertIn("done", 嚴格已知)
 
     def test_ultimate_known_report_without_clear_rule_revision_needs_history_recheck(self) -> None:
-        副本設定 = {"key": "ultimate_bahamut", "category": "絕"}
+        副本設定 = {"key": "ultimate_bahamut", "category": "絕", "encounter_id": 1073}
         副本狀態 = {
             "checked_reports": {
                 "old-no-clear": {"status": fflogs.無通關報告狀態},
+                "old-no-tc": {"status": fflogs.無繁中服玩家報告狀態},
                 "already-rechecked": {
                     "status": fflogs.無通關報告狀態,
                     "clear_rule_revision": fflogs.絕本通關規則版本,
@@ -1225,7 +1255,15 @@ class FetchFFLogsBatchTest(unittest.TestCase):
                 副本設定,
                 "old-no-clear",
                 副本狀態,
-                {"old-no-clear", "already-rechecked"},
+                {"old-no-clear", "old-no-tc", "already-rechecked"},
+            )
+        )
+        self.assertFalse(
+            fflogs.報告需要絕本通關規則重判(
+                副本設定,
+                "old-no-tc",
+                副本狀態,
+                {"old-no-clear", "old-no-tc", "already-rechecked"},
             )
         )
         self.assertFalse(
@@ -1233,7 +1271,7 @@ class FetchFFLogsBatchTest(unittest.TestCase):
                 副本設定,
                 "already-rechecked",
                 副本狀態,
-                {"old-no-clear", "already-rechecked"},
+                {"old-no-clear", "old-no-tc", "already-rechecked"},
             )
         )
         self.assertFalse(
@@ -1241,7 +1279,20 @@ class FetchFFLogsBatchTest(unittest.TestCase):
                 副本設定,
                 "unknown",
                 副本狀態,
-                {"old-no-clear", "already-rechecked"},
+                {"old-no-clear", "old-no-tc", "already-rechecked"},
+            )
+        )
+
+    def test_unaffected_ultimate_report_never_needs_clear_rule_recheck(self) -> None:
+        副本設定 = {"key": "ultimate_omega", "category": "絕", "encounter_id": 1077}
+        副本狀態 = {"checked_reports": {"known": {"status": fflogs.無通關報告狀態}}}
+
+        self.assertFalse(
+            fflogs.報告需要絕本通關規則重判(
+                副本設定,
+                "known",
+                副本狀態,
+                {"known"},
             )
         )
 

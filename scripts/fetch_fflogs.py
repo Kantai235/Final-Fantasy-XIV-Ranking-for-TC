@@ -35,6 +35,7 @@ TOKEN_URL = "https://www.fflogs.com/oauth/token"
 絕巴哈通關FightPercentage = 80
 絕巴哈最低通關毫秒 = 780_000
 絕本通關規則版本 = "ultimate_clear_rules_2026_05_28"
+絕本通關規則重判副本ID = {絕巴哈副本ID}
 
 專案根目錄 = Path(__file__).resolve().parents[1]
 load_dotenv(專案根目錄 / ".env")
@@ -65,6 +66,7 @@ FFLogs執行設定預設值: dict[str, Any] = {
     "history_scan_windows_per_run": 1,
     "history_scan_recent_gap_hours": 6,
     "history_max_deep_reports_per_run": 200,
+    "history_max_deep_reports_per_group_per_run": 0,
     "existing_report_status_check_enabled": False,
     "existing_report_status_check_limit": 0,
     "fetch_gcd_coverage_enabled": False,
@@ -290,9 +292,11 @@ def 正規化報告地區範圍(值: Any) -> str:
 版本紀錄範圍清單 = ("all", "valid", "obsolete")
 報告尚未完整匯出狀態 = "deferred_incomplete_export"
 無通關報告狀態 = "skipped_no_clear"
+無繁中服玩家報告狀態 = "skipped_no_traditional_chinese_players"
 報告無法存取隱藏原因 = "private_or_deleted"
 深層掃描階段名稱 = "深層過濾與成績整理"
 可重試報告處理狀態 = {報告尚未完整匯出狀態}
+絕本通關規則不影響狀態 = {無繁中服玩家報告狀態}
 暫時性HTTP狀態碼 = {500, 502, 503, 504}
 
 每頁報告數量 = 整數設定("report_page_limit")
@@ -321,6 +325,7 @@ def 正規化報告地區範圍(值: Any) -> str:
     整數設定("history_scan_recent_gap_hours"),
 )
 歷史補查深層報告上限 = 整數設定("history_max_deep_reports_per_run")
+歷史補查每群組深層報告上限 = max(0, 整數設定("history_max_deep_reports_per_group_per_run"))
 既有報告狀態巡檢已啟用 = 布林設定("existing_report_status_check_enabled")
 既有報告狀態巡檢上限 = max(0, 整數設定("existing_report_status_check_limit"))
 即時GCD覆蓋率已啟用 = 布林設定("fetch_gcd_coverage_enabled")
@@ -1169,6 +1174,40 @@ def 套用歷史補查深查上限游標(
     歷史補查狀態["cursor_resume_report_code"] = 接續報告代碼
 
 
+def 歷史補查候選群組鍵(副本設定: dict[str, Any]) -> tuple[Any, Any]:
+    return (副本設定.get("zone_id"), 副本設定.get("difficulty"))
+
+
+class 歷史補查深層候選額度:
+    def __init__(self, 總上限: int, 群組上限: int) -> None:
+        self.總上限 = max(0, 總上限)
+        self.群組上限 = max(0, 群組上限)
+        self.全部報告代碼: set[str] = set()
+        self.群組報告代碼: dict[tuple[Any, Any], set[str]] = {}
+
+    def 可加入(self, 副本設定: dict[str, Any], 報告代碼: str) -> bool:
+        if 報告代碼 in self.全部報告代碼:
+            return True
+
+        if self.總上限 > 0 and len(self.全部報告代碼) >= self.總上限:
+            return False
+
+        群組鍵 = 歷史補查候選群組鍵(副本設定)
+        群組報告代碼 = self.群組報告代碼.get(群組鍵, set())
+        if self.群組上限 > 0 and len(群組報告代碼) >= self.群組上限:
+            return False
+
+        return True
+
+    def 加入(self, 副本設定: dict[str, Any], 報告代碼: str) -> None:
+        # 歷史補查深查上限原本是整輪共用；舊絕本同屬 zone 59，候選量遠高於其他組，
+        # 若不再加上分組上限，UCoB 歷史視窗會長時間吃滿 2000 筆預算，讓其它副本游標停住。
+        # 這裡以 zone/difficulty 當公平群組，仍保留全域上限避免 workflow 對 FFLogs 打出過量深查。
+        self.全部報告代碼.add(報告代碼)
+        群組鍵 = 歷史補查候選群組鍵(副本設定)
+        self.群組報告代碼.setdefault(群組鍵, set()).add(報告代碼)
+
+
 def 分割環境清單(值: str | None) -> list[str]:
     if not 值:
         return []
@@ -1868,6 +1907,10 @@ def 是絕巴哈副本(副本設定: dict[str, Any]) -> bool:
 def 是絕本副本(副本設定: dict[str, Any]) -> bool:
     key = str(副本設定.get("key") or "")
     return 副本設定.get("category") == "絕" or key.startswith("ultimate_")
+
+
+def 是絕本通關規則重判副本(副本設定: dict[str, Any]) -> bool:
+    return 副本設定.get("encounter_id") in 絕本通關規則重判副本ID
 
 
 def 計算FFLogs戰鬥持續毫秒(戰鬥: dict[str, Any]) -> float | None:
@@ -3748,6 +3791,15 @@ def 報告處理記錄已套用絕本通關規則(記錄: Any) -> bool:
     return isinstance(記錄, dict) and 記錄.get("clear_rule_revision") == 絕本通關規則版本
 
 
+def 報告處理記錄不需絕本通關規則重判(記錄: Any) -> bool:
+    if not isinstance(記錄, dict):
+        return False
+
+    # 通關規則重判只會改變 fight 是否算通關；若 masterData 已確認沒有繁中服玩家，
+    # 重新查 fight list 與 damage table 也不可能產生繁中服排行榜資料，應把深查預算留給未知 report。
+    return 記錄.get("status") in 絕本通關規則不影響狀態
+
+
 def 建立報告處理額外內容(副本設定: dict[str, Any], 額外內容: dict[str, Any] | None = None) -> dict[str, Any]:
     內容 = dict(額外內容 or {})
     if 是絕本副本(副本設定):
@@ -3761,15 +3813,22 @@ def 報告需要絕本通關規則重判(
     副本狀態: dict[str, Any],
     已知報告代碼: set[str],
 ) -> bool:
-    if not 是絕本副本(副本設定) or 報告代碼 not in 已知報告代碼:
+    if (
+        not 是絕本副本(副本設定)
+        or not 是絕本通關規則重判副本(副本設定)
+        or 報告代碼 not in 已知報告代碼
+    ):
         return False
 
-    # 歷史補查原本只選未知 report；UCoB/TOP 等絕本通關與 Phase 判讀規則更新時，
-    # 已標成 no-clear 或已落地的舊 report 也要重新走一次 Data Fetching Layer。
+    # 歷史補查原本只選未知 report；只有本次規則版本明確影響的絕本（目前是 UCoB）
+    # 才需要把已標成 no-clear 或已落地的舊 report 重新送進 Data Fetching Layer。
+    # 其它絕本仍沿用 FFLogs 原生 kill 旗標，重刷只會消耗深查預算，不會改變通關判定。
     # per-report revision 寫在 checked_reports / processed_reports，讓這個重判是可續跑的一次性遷移。
     for 欄位 in ("processed_reports", "checked_reports"):
         記錄 = (副本狀態.get(欄位) or {}).get(報告代碼)
         if 報告處理記錄已套用絕本通關規則(記錄):
+            return False
+        if 報告處理記錄不需絕本通關規則重判(記錄):
             return False
 
     return True
@@ -4022,7 +4081,10 @@ def main() -> int:
     淺層掃描快取: dict[tuple[int, int, int, int | None], list[dict[str, Any]]] = {}
     本輪報告繁中服檢查快取: dict[str, dict[str, Any]] = {}
     延遲掃描候選報告代碼: set[str] = set()
-    歷史補查候選報告代碼: set[str] = set()
+    歷史補查候選額度 = 歷史補查深層候選額度(
+        歷史補查深層報告上限,
+        歷史補查每群組深層報告上限,
+    )
     已完成副本清單: list[dict[str, Any]] = []
     暫時失敗副本清單: list[dict[str, Any]] = []
     待寫入狀態檢查點數 = 0
@@ -4101,10 +4163,8 @@ def main() -> int:
                 return True
         return False
 
-    def 歷史補查仍可加入候選(報告代碼: str) -> bool:
-        if 報告代碼 in 歷史補查候選報告代碼:
-            return True
-        return 歷史補查深層報告上限 <= 0 or len(歷史補查候選報告代碼) < 歷史補查深層報告上限
+    def 歷史補查仍可加入候選(副本設定: dict[str, Any], 報告代碼: str) -> bool:
+        return 歷史補查候選額度.可加入(副本設定, 報告代碼)
 
     def 延遲掃描仍可加入候選(報告代碼: str) -> bool:
         if 報告代碼 in 延遲掃描候選報告代碼:
@@ -4182,11 +4242,11 @@ def main() -> int:
             if not 需要重判 and not 是否需要深層處理任何同區副本(副本設定, 報告代碼):
                 統計["skipped_known"] += 1
                 continue
-            if not 歷史補查仍可加入候選(報告代碼):
+            if not 歷史補查仍可加入候選(副本設定, 報告代碼):
                 統計["deferred"] += 1
                 continue
 
-            歷史補查候選報告代碼.add(報告代碼)
+            歷史補查候選額度.加入(副本設定, 報告代碼)
             候選 = dict(報告)
             if 需要重判:
                 候選["_history_clear_rule_recheck"] = True
@@ -4770,7 +4830,7 @@ def main() -> int:
                     標記報告略過(
                         副本處理狀態[目標副本["key"]],
                         報告代碼,
-                        "skipped_no_traditional_chinese_players",
+                        無繁中服玩家報告狀態,
                         立即寫入=False,
                     )
                 登記狀態檢查點變更(len(待處理副本))
