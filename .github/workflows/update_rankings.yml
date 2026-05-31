@@ -428,6 +428,12 @@ jobs:
           echo "PAGES_BUILD_SECONDS=${BUILD_SECONDS}" >> "$GITHUB_ENV"
           echo "build_seconds=${BUILD_SECONDS}" >> "$GITHUB_OUTPUT"
 
+      - name: 壓縮 state 並檢查 Git 單檔大小
+        run: |
+          # data/state.json 會保留大量 checked_reports 快取，不能為了縮小檔案任意刪除。
+          # 提交前先移除可安全重建的 checkpoint 與 JSON 空白，避免 push 時才被 GitHub 單檔 100 MiB 限制擋下。
+          npm run compact:state -- --max-bytes 104857600
+
       - name: 檢查排行榜資料是否有變動
         id: data-changes
         run: |

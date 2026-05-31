@@ -558,11 +558,14 @@ def 就地覆寫檔案(來源路徑: Path, 目標路徑: Path) -> None:
 def 寫入_json(路徑: Path, 內容: Any, *, 緊湊格式: bool = False) -> None:
     路徑.parent.mkdir(parents=True, exist_ok=True)
     暫存路徑 = 路徑.with_name(f".{路徑.name}.{os.getpid()}.{time.time_ns()}.tmp")
+    是狀態檔案 = 路徑.resolve() == 狀態檔案路徑.resolve()
 
     try:
         with 暫存路徑.open("w", encoding="utf-8", newline="\n") as 檔案:
-            if 緊湊格式:
-                json.dump(內容, 檔案, ensure_ascii=False, separators=(",", ":"))
+            if 緊湊格式 or 是狀態檔案:
+                # state.json 保存大量 checked_reports 快取；這些狀態不能任意刪除，
+                # 因此用無縮排格式降低 Git blob 體積，避免排程資料 commit 超過 GitHub 100 MiB 單檔限制。
+                json.dump(內容, 檔案, ensure_ascii=False, sort_keys=是狀態檔案, separators=(",", ":"))
             else:
                 json.dump(內容, 檔案, ensure_ascii=False, indent=2, sort_keys=True)
             檔案.write("\n")

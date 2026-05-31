@@ -196,11 +196,11 @@ npm run compact:rankings
 
 這個指令只移除 `fflogs_raw`、`master_data`、`matched_players` 與 fight 層 raw payload，並重新分片；不會刪除 report、fight 或 player 紀錄。
 
-壓縮 `data/state.json` 中已由 `checked_reports` 保留的重複 checkpoint 時，先預覽再正式執行：
+壓縮 `data/state.json` 中已由 `checked_reports` 保留的重複 checkpoint 與 JSON 空白時，先預覽再正式執行：
 
 ```bash
 npm run compact:state -- --dry-run
 npm run compact:state
 ```
 
-這個指令只移除和 `checked_reports` 完全相同的 `processed_reports` 重複紀錄；`checked_reports` 仍保留 report 狀態，避免破壞掃描略過依據。
+這個指令只移除和 `checked_reports` 完全相同的 `processed_reports` 重複紀錄，並把狀態檔改寫為無縮排 JSON；`checked_reports` 仍保留 report 狀態，避免破壞掃描略過依據。GitHub Actions 會在資料 commit 前執行 `npm run compact:state -- --max-bytes 104857600`，若壓縮後仍超過 GitHub 100 MiB 單檔限制，就會在 commit/push 前提早失敗並提示需要調整 state 保留策略。

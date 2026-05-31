@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sys
 import time
 from pathlib import Path
 from typing import Any
@@ -10,6 +11,7 @@ from typing import Any
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 STATE_PATH = PROJECT_ROOT / "data" / "state.json"
+GITHUB_SINGLE_BLOB_LIMIT_BYTES = 100 * 1024 * 1024
 
 
 def read_json(path: Path, default: Any) -> Any:
@@ -19,12 +21,14 @@ def read_json(path: Path, default: Any) -> Any:
         return json.load(file)
 
 
+def compact_json_bytes(content: Any) -> bytes:
+    return (json.dumps(content, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n").encode("utf-8")
+
+
 def write_json(path: Path, content: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temp_path = path.with_name(f".{path.name}.{os.getpid()}.{time.time_ns()}.tmp")
-    with temp_path.open("w", encoding="utf-8", newline="\n") as file:
-        json.dump(content, file, ensure_ascii=False, indent=2, sort_keys=True)
-        file.write("\n")
+    temp_path.write_bytes(compact_json_bytes(content))
     os.replace(temp_path, path)
 
 
@@ -78,8 +82,14 @@ def compact_processed_reports(state: dict[str, Any]) -> dict[str, Any]:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="壓縮 data/state.json 中可由 checked_reports 保留的重複 checkpoint。")
+    parser = argparse.ArgumentParser(description="壓縮 data/state.json 的重複 checkpoint 與 JSON 空白。")
     parser.add_argument("--dry-run", action="store_true", help="只列出預估異動，不寫入檔案。")
+    parser.add_argument(
+        "--max-bytes",
+        type=int,
+        default=0,
+        help="壓縮後若仍超過此 byte 數就失敗；0 代表使用 GitHub 100 MiB 單檔限制。",
+    )
     return parser.parse_args()
 
 
@@ -91,14 +101,15 @@ def main() -> int:
 
     before_bytes = STATE_PATH.stat().st_size if STATE_PATH.exists() else 0
     summary = compact_processed_reports(state)
+    compacted_bytes = len(compact_json_bytes(state))
 
-    if not args.dry_run and summary["removed_duplicate_processed_reports"] > 0:
+    if not args.dry_run and STATE_PATH.exists() and compacted_bytes != before_bytes:
         write_json(STATE_PATH, state)
 
     after_bytes = STATE_PATH.stat().st_size if STATE_PATH.exists() else 0
     mode = "dry-run" if args.dry_run else "written"
     if args.dry_run:
-        after_bytes = before_bytes
+        after_bytes = compacted_bytes
 
     print(
         f"State compact {mode}: "
@@ -109,6 +120,20 @@ def main() -> int:
         f"processed_reports: {summary['processed_before']:,} -> {summary['processed_after']:,}; "
         f"bytes: {before_bytes:,} -> {after_bytes:,}."
     )
+    limit = args.max_bytes or GITHUB_SINGLE_BLOB_LIMIT_BYTES
+    if after_bytes > limit:
+        print(
+            f"ERROR: data/state.json is {after_bytes:,} bytes after compaction; "
+            f"limit is {limit:,} bytes.",
+            file=sys.stderr,
+        )
+        return 1
+    if after_bytes > GITHUB_SINGLE_BLOB_LIMIT_BYTES:
+        print(
+            f"WARNING: data/state.json is above GitHub's 100 MiB single-file limit "
+            f"({after_bytes:,} > {GITHUB_SINGLE_BLOB_LIMIT_BYTES:,}).",
+            file=sys.stderr,
+        )
     return 0
 
 
