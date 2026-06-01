@@ -43,14 +43,17 @@ npm run build
 8. 執行 `python scripts/fetch_fflogs.py --split-rankings`，將完整排行榜資料拆分成適合 Git 追蹤的檔案。
 9. 執行 `npm run build:user-data`，產生個人成績單、個人成績報告細節、全服統計、近期動態、隊伍榜、伺服器對比與排行榜薄索引。
 10. 執行 `npm run build:honey-fans`，由 `data/fun/honey_b_fans.json` 重建 `public/data/fun/honey_b_fans.json`。
-11. 由 workflow 寫入 `data/update_status.json`，記錄本輪 GitHub Actions run、資料更新時間與總量摘要。
-12. 執行 `npm run build`，重建公開排行榜、使用者資料、Honey B. Lovely 粉絲榜公開 JSON，完成公開資料驗證與 Vite 建置，並把建置秒數寫入後續 payload 稽核。
-13. 若 `data`、`public/data/*.json` 或 `public/data/fun/*.json` 有變更，先提交並推送更新，避免後續 artifact 體積超標時白白丟失本輪 FFLogs 抓取成果。
-14. 執行 `npm run audit:pages-payload:strict -- --write-history data/pages_payload_history.jsonl`，讓 artifact 體積超過 target 時在上傳 Pages artifact 前失敗，並在 GitHub Step Summary 顯示本輪與上一筆歷史差異。
-15. 若 `data/pages_payload_history.jsonl` 有變更，另行提交並推送 payload 稽核歷史。
-16. 執行 `npm run cloudflare:estimate` 與 `npm run cloudflare:purge -- --dry-run --summary`，在 Step Summary 顯示 HIT ratio 承載估算與 scoped purge 範圍。
-17. 上傳 `dist/` 並部署到 GitHub Pages。
-18. 若有 Cloudflare purge token，部署成功後清除會變動的 CDN 快取。
+11. 執行 `npm run validate:data`，在個人成績單還保留於 `public/data/` 時驗證公開資料契約、來源分片、使用者索引、報告細節、隊伍榜、伺服器對比與 Honey B. Lovely 粉絲榜。
+12. 執行 `node scripts/sync_user_leaderboard_repo.mjs`，把 `public/data/users`、`public/data/user-entry-details` 與 hidden delta 的個人成績單同步到 `Final-Fantasy-XIV-Ranking-for-TC-Users`。這一步只抓專用 users repo 的最新 commit/tree 與上一版 `data/sync-manifest.json`，再用 Git index 直接重建下一個 commit，避免完整 clone 舊資料歷史造成 GitHub runner 磁碟不足。
+13. 從主站 `public/data/` 移除個人成績單資料夾，讓 Pages artifact 只保留主站公開資料，前端再從專用 users repo 載入個人成績單。
+14. 由 workflow 寫入 `data/update_status.json`，記錄本輪 GitHub Actions run、資料更新時間與總量摘要。
+15. 執行 `npx vite build` 與 `npm run postbuild`，完成 Vite 建置、route fallback、SEO/OG 靜態頁、OG PNG、`sitemap.xml`、`robots.txt` 與 `404.html`，並把建置秒數寫入後續 payload 稽核。
+16. 若 `data`、`public/data/*.json` 或 `public/data/fun/*.json` 有變更，先提交並推送更新，避免後續 artifact 體積超標時白白丟失本輪 FFLogs 抓取成果。
+17. 執行 `npm run audit:pages-payload:strict -- --write-history data/pages_payload_history.jsonl`，讓 artifact 體積超過 target 時在上傳 Pages artifact 前失敗，並在 GitHub Step Summary 顯示本輪與上一筆歷史差異。
+18. 若 `data/pages_payload_history.jsonl` 有變更，另行提交並推送 payload 稽核歷史。
+19. 執行 `npm run cloudflare:estimate` 與 `npm run cloudflare:purge -- --dry-run --summary`，在 Step Summary 顯示 HIT ratio 承載估算與 scoped purge 範圍。
+20. 上傳 `dist/` 並部署到 GitHub Pages。
+21. 若有 Cloudflare purge token，部署成功後清除會變動的 CDN 快取。
 
 ## 緊急部署
 
@@ -73,6 +76,7 @@ npm run build
 
 - `FFLOGS_CLIENT_ID`
 - `FFLOGS_CLIENT_SECRET`
+- `GIT_PAT`，需可推送 `Kantai235/Final-Fantasy-XIV-Ranking-for-TC-Users`，用來同步個人成績單專用 users repo。
 
 可選 Secrets：
 
