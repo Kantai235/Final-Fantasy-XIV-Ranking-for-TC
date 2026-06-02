@@ -165,6 +165,20 @@ export default {
         </svg>
         <span class="標題按鈕文字">{{ 目前主題文字 }}</span>
       </button>
+      <div class="分位顯示切換" role="group" :aria-label="分位顯示切換標籤">
+        <button
+          v-for="選項 in 分位顯示模式選項"
+          :key="選項.value"
+          class="分位顯示切換選項"
+          type="button"
+          :class="{ 作用中: 分位顯示模式 === 選項.value }"
+          :aria-pressed="分位顯示模式 === 選項.value ? 'true' : 'false'"
+          :title="`同職分位顯示為${選項.label}`"
+          @click="設定分位顯示模式(選項.value)"
+        >
+          {{ 選項.label }}
+        </button>
+      </div>
       <button
         v-if="頁面模式 === 'honey-fans'"
         class="蜂蜂背景音樂切換"

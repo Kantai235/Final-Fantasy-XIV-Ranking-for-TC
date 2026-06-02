@@ -248,7 +248,9 @@ export default {
                 <td class="數字">{{ 格式化帶號整數(成績.rdps_gain) }}</td>
                 <td class="數字">
                   <span v-if="成績.is_obsolete_record" class="版本紀錄標籤">過版紀錄</span>
-                  <template v-else>{{ 格式化前段百分位(成績.performance?.rank, 成績.performance?.sample_count) }}</template>
+                  <template v-else>
+                    <span :class="同職分位色彩類別(成績.performance)">{{ 格式化目前同職分位(成績.performance) }}</span>
+                  </template>
                 </td>
                 <td v-show="顯示Gcd覆蓋率" class="數字 gcd參考文字">{{ 格式化Gcd覆蓋率(成績.gcd_coverage) }}</td>
                 <td>{{ 格式化紀錄時間(成績.recorded_at_iso) }}</td>

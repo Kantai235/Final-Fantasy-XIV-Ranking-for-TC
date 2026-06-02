@@ -46,6 +46,16 @@ export default {
             label: "排名",
             value: app.格式化排名(成績.job_rank ?? 成績.rank),
             className: "報告彈窗排名項",
+            tooltip: app.統計說明文字("職業 Rank"),
+            tooltipLabel: "職業 Rank 說明",
+          },
+          {
+            key: "percentile",
+            label: "同職分位",
+            value: app.格式化目前同職分位(成績.performance),
+            className: ["報告彈窗分位項", app.同職分位色彩類別(成績.performance)].filter(Boolean).join(" "),
+            tooltip: app.統計說明文字("同職分位"),
+            tooltipLabel: "同職分位說明",
           },
           {
             key: "active",
@@ -350,7 +360,7 @@ export default {
               />
               <span>{{ 顯示職業名稱(成績.job) }}</span>
             </span>
-            <strong>{{ 格式化前段百分位(成績.performance?.rank, 成績.performance?.sample_count) }}</strong>
+            <strong :class="同職分位色彩類別(成績.performance)">{{ 格式化目前同職分位(成績.performance) }}</strong>
             <small>
               rDPS {{ 格式化傷害數值(成績.rdps) }}
               <span v-if="顯示Gcd覆蓋率" class="gcd參考文字">・GCD {{ 格式化Gcd覆蓋率(成績.gcd_coverage) }}</span>
@@ -564,13 +574,32 @@ export default {
             </span>
             <span v-else class="版本紀錄標籤">無有效最佳紀錄</span>
             <span class="成績列數值 成績列數值次要">
-              <small>職業 Rank</small>
+              <small class="說明標籤">
+                <span>職業 Rank</span>
+                <span class="說明提示">
+                  <button class="說明提示按鈕" type="button" aria-label="職業 Rank 說明">?</button>
+                  <span class="說明提示內容" role="tooltip">{{ 統計說明文字("職業 Rank") }}</span>
+                </span>
+              </small>
               <strong>{{ 副本.best_entry ? 格式化排名(副本.best_entry.job_rank ?? 副本.best_entry.rank) : "無法參考" }}</strong>
-              <em v-if="副本.best_entry">{{ 格式化前段百分位(副本.best_entry.job_rank ?? 副本.best_entry.rank, 取得成績職業總數(副本.best_entry)) }}</em>
+              <em
+                v-if="副本.best_entry"
+                :class="排名分位色彩類別(副本.best_entry.job_rank ?? 副本.best_entry.rank, 取得成績職業總數(副本.best_entry))"
+              >
+                {{ 格式化目前排名分位(副本.best_entry.job_rank ?? 副本.best_entry.rank, 取得成績職業總數(副本.best_entry)) }}
+              </em>
             </span>
             <span class="成績列數值 成績列數值次要">
-              <small>同職分位</small>
-              <strong>{{ 副本.best_entry ? 格式化前段百分位(副本.best_entry.performance?.rank, 副本.best_entry.performance?.sample_count) : "過時紀錄" }}</strong>
+              <small class="說明標籤">
+                <span>同職分位</span>
+                <span class="說明提示">
+                  <button class="說明提示按鈕" type="button" aria-label="同職分位說明">?</button>
+                  <span class="說明提示內容" role="tooltip">{{ 統計說明文字("同職分位") }}</span>
+                </span>
+              </small>
+              <strong :class="副本.best_entry ? 同職分位色彩類別(副本.best_entry.performance) : ''">
+                {{ 副本.best_entry ? 格式化目前同職分位(副本.best_entry.performance) : "過時紀錄" }}
+              </strong>
               <em v-if="副本.best_entry">中位 {{ 格式化帶號整數(副本.best_entry.performance?.delta_to_median) }}</em>
             </span>
             <span class="成績列數值 成績列數值狀態">
@@ -633,7 +662,15 @@ export default {
                   <th scope="col">紀錄時間</th>
                   <th scope="col">職業</th>
                   <th scope="col" class="歷史報告欄位">報告</th>
-                  <th scope="col" class="數字">同職分位</th>
+                  <th scope="col" class="數字">
+                    <span class="表頭說明標籤">
+                      <span>同職分位</span>
+                      <span class="說明提示">
+                        <button class="說明提示按鈕" type="button" aria-label="同職分位說明">?</button>
+                        <span class="說明提示內容" role="tooltip">{{ 統計說明文字("同職分位") }}</span>
+                      </span>
+                    </span>
+                  </th>
                   <th scope="col" class="數字">
                     <span class="表頭說明標籤">
                       <span>Active</span>
@@ -705,7 +742,9 @@ export default {
                     </button>
                     <span v-else>-</span>
                   </td>
-                  <td class="數字">{{ 成績.is_obsolete_record ? "過時紀錄" : 格式化前段百分位(成績.performance?.rank, 成績.performance?.sample_count) }}</td>
+                  <td class="數字" :class="成績.is_obsolete_record ? '' : 同職分位色彩類別(成績.performance)">
+                    {{ 成績.is_obsolete_record ? "過時紀錄" : 格式化目前同職分位(成績.performance) }}
+                  </td>
                   <td class="數字">{{ 格式化Active(成績.active_percent) }}</td>
                   <td v-show="顯示Gcd覆蓋率" class="數字 gcd參考文字">{{ 格式化Gcd覆蓋率(成績.gcd_coverage) }}</td>
                   <td class="數字">{{ 格式化傷害數值(成績.dps) }}</td>

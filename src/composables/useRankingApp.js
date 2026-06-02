@@ -21,8 +21,11 @@ import {
   解析紀錄日期,
   格式化Active,
   格式化Gcd覆蓋率,
+  格式化PR值,
   格式化傷害數值,
   格式化前段百分位,
+  格式化同職分位,
+  格式化排名分位,
   格式化帶號整數,
   格式化排名,
   格式化整數,
@@ -31,7 +34,13 @@ import {
   格式化紀錄時刻,
   格式化紀錄時間,
   格式化通關時間,
+  分位顯示模式PR,
+  分位顯示模式前段,
+  取得PR色彩類別,
   計算Active百分比,
+  計算排名PR值,
+  正規化分位顯示模式,
+  預設分位顯示模式,
   轉為數字,
 } from "../utils/formatters";
 import {
@@ -94,6 +103,11 @@ import { useTheme } from "./useTheme";
 const 蜂蜂背景音樂偏好儲存鍵 = "ffxiv-tc-rankings-honey-bgm";
 const 蜂蜂背景音樂影片Id = "07V_j5a9kHw";
 const 蜂蜂背景音樂嵌入網址 = `https://www.youtube.com/embed/${蜂蜂背景音樂影片Id}`;
+const 分位顯示偏好儲存鍵 = "ffxiv-tc-rankings-percentile-display-mode";
+const 分位顯示模式選項 = [
+  { value: 分位顯示模式前段, label: "前 N%" },
+  { value: 分位顯示模式PR, label: "PR" },
+];
 
 const activityLogMobileMediaQuery = "(max-width: 720px)";
 const activityLogMobileDefaultRange = "30";
@@ -220,6 +234,7 @@ const 啟用Honey粉絲榜 = computed(() => 顯示Honey粉絲榜);
 const 蜂蜂背景音樂啟用 = ref(false);
 const 蜂蜂背景音樂偏好已設定 = ref(false);
 const 顯示蜂蜂背景音樂詢問 = ref(false);
+const 分位顯示模式 = ref(預設分位顯示模式);
 const 使用者索引 = ref(null);
 const 使用者資料 = ref(null);
 const 使用者搜尋關鍵字 = ref("");
@@ -1237,6 +1252,8 @@ const 統計詞彙說明 = {
   cDPS: "綜合 DPS。公式：DPS - 被選取的單體增益 + 自體團輔，用來同時觀察自身爆發與你提供給團隊的增益價值。",
   "GCD 覆蓋率": "以 FFLogs Casts graph 與本地規則補算玩家在扣除停手視窗後，GCD 技能覆蓋有效輸出時間的比例。由於停手、轉場與部分職業技能判定仍可能與實際狀況有落差，精準度有限，請只作為參考；尚未補齊或 report 無法存取時會顯示 -。",
   "最佳 rDPS": "此玩家目前公開成績中最高的團隊貢獻 DPS。",
+  "職業 Rank": "同副本、同職業的有效版本排行榜名次；會以角色、伺服器與職業去重保留最佳紀錄。下方前 N% / PR 由此名次與該職業通關數換算，母體不等同同職分位。",
+  同職分位: "同副本、同職業、非過版且 Active 達 50% 的 rDPS 比較分位；低 Active 或缺少 rDPS 的紀錄不列入樣本，所以可能與職業 Rank 的前 N% / PR 不同。",
 };
 
 function 統計說明文字(詞彙) {
@@ -1261,6 +1278,27 @@ function 格式化帶號百分比(數值) {
     return `-${絕對值文字}`;
   }
   return "0.00%";
+}
+
+const 使用PR分位顯示 = computed(() => 分位顯示模式.value === 分位顯示模式PR);
+const 目前分位顯示模式文字 = computed(() => (使用PR分位顯示.value ? "PR" : "前 N%"));
+const 前段四分位標籤 = computed(() => (使用PR分位顯示.value ? "PR 75" : "前段 25%"));
+const 分位顯示切換標籤 = computed(() => `同職分位顯示：${目前分位顯示模式文字.value}`);
+
+function 格式化目前同職分位(performance) {
+  return 格式化同職分位(performance, 分位顯示模式.value);
+}
+
+function 格式化目前排名分位(排名, 總數) {
+  return 格式化排名分位(排名, 總數, 分位顯示模式.value);
+}
+
+function 同職分位色彩類別(performance) {
+  return 使用PR分位顯示.value ? 取得PR色彩類別(performance) : "";
+}
+
+function 排名分位色彩類別(排名, 總數) {
+  return 使用PR分位顯示.value ? 取得PR色彩類別(計算排名PR值(排名, 總數)) : "";
 }
 
 const 伺服器佔比列表 = computed(() => {
@@ -4597,6 +4635,35 @@ function 切換主題() {
   切換使用者主題();
 }
 
+function 讀取分位顯示偏好() {
+  if (typeof window === "undefined") {
+    return 預設分位顯示模式;
+  }
+
+  return 正規化分位顯示模式(window.localStorage.getItem(分位顯示偏好儲存鍵));
+}
+
+function 套用分位顯示模式(模式, { 寫入偏好 = true } = {}) {
+  const 有效模式 = 正規化分位顯示模式(模式);
+  分位顯示模式.value = 有效模式;
+
+  if (寫入偏好 && typeof window !== "undefined") {
+    window.localStorage.setItem(分位顯示偏好儲存鍵, 有效模式);
+  }
+}
+
+function 初始化分位顯示偏好() {
+  套用分位顯示模式(讀取分位顯示偏好(), { 寫入偏好: false });
+}
+
+function 設定分位顯示模式(模式) {
+  套用分位顯示模式(模式, { 寫入偏好: true });
+}
+
+function 切換分位顯示模式() {
+  設定分位顯示模式(使用PR分位顯示.value ? 分位顯示模式前段 : 分位顯示模式PR);
+}
+
 function 讀取蜂蜂背景音樂偏好() {
   if (typeof window === "undefined") {
     return null;
@@ -5059,6 +5126,7 @@ watch(頁面模式, (目前頁面模式) => {
 
 onMounted(() => {
   初始化主題();
+  初始化分位顯示偏好();
   初始化玩家搜尋歷史();
   if (typeof window !== "undefined") {
     window.addEventListener("popstate", 處理瀏覽紀錄變更);
@@ -5111,6 +5179,10 @@ onUnmounted(() => {
     頁面模式,
     顯示作者相關標示,
     顯示Gcd覆蓋率,
+    分位顯示偏好儲存鍵,
+    分位顯示模式選項,
+    分位顯示模式,
+    使用PR分位顯示,
     作者說明文字,
     使用者索引,
     使用者資料,
@@ -5205,6 +5277,11 @@ onUnmounted(() => {
     切換主題,
     主題按鈕文字,
     目前主題文字,
+    目前分位顯示模式文字,
+    分位顯示切換標籤,
+    前段四分位標籤,
+    設定分位顯示模式,
+    切換分位顯示模式,
     職業繁中名稱,
     職業群組設定,
     職業群組索引,
@@ -5260,6 +5337,11 @@ onUnmounted(() => {
     格式化帶號百分比,
     格式化百分比,
     格式化前段百分位,
+    格式化PR值,
+    格式化目前同職分位,
+    格式化目前排名分位,
+    同職分位色彩類別,
+    排名分位色彩類別,
     格式化通關時間,
     解析紀錄日期,
     格式化紀錄時間,

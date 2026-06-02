@@ -107,6 +107,50 @@ h1 {
   min-width: 94px;
 }
 
+.分位顯示切換 {
+  min-height: 38px;
+  display: inline-flex;
+  align-items: stretch;
+  overflow: hidden;
+  border: 1px solid var(--輸入邊框);
+  border-radius: 8px;
+  background: var(--輸入背景);
+}
+
+.分位顯示切換選項 {
+  min-width: 54px;
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+  padding: 0 10px;
+  color: var(--次要文字);
+  background: transparent;
+  font-size: 0.82rem;
+  font-weight: 820;
+}
+
+.分位顯示切換選項 + .分位顯示切換選項 {
+  border-left: 1px solid var(--邊框柔和色);
+}
+
+.分位顯示切換選項:hover:not(:disabled) {
+  color: var(--主要文字);
+  background: var(--表面背景柔和);
+}
+
+.分位顯示切換選項.作用中,
+.分位顯示切換選項.作用中:hover:not(:disabled) {
+  color: var(--重點文字);
+  background: var(--重點色);
+}
+
+.分位顯示切換選項:focus {
+  position: relative;
+  z-index: 1;
+  outline: 3px solid var(--焦點陰影);
+  outline-offset: -2px;
+}
+
 .標題按鈕圖示 {
   display: none;
 }

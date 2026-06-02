@@ -110,7 +110,7 @@ export default {
                 <strong>{{ 顯示職業名稱(列.job) }}</strong>
               </span>
               <span class="職業分位亮點數值 職業分位亮點主值">
-                <small>前段 25%</small>
+                <small>{{ 前段四分位標籤 }}</small>
                 <strong>{{ 格式化傷害數值(列.前段值) }}</strong>
               </span>
               <span class="職業分位亮點數值 職業分位亮點中位值">
@@ -170,7 +170,7 @@ export default {
                 <strong>{{ 格式化傷害數值(副本.中位數) }}</strong>
               </span>
               <span class="職業副本輸出數值">
-                <small>前段 25%</small>
+                <small>{{ 前段四分位標籤 }}</small>
                 <strong>{{ 格式化傷害數值(副本.上四分位) }}</strong>
               </span>
               <span class="職業副本輸出數值">

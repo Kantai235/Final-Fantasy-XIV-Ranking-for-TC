@@ -14,6 +14,13 @@ import {
 import { buildReportExternalLinks } from "../src/utils/reportLinks.js";
 import { publicDataContracts, validateSchemaContract } from "../schemas/public_data_contracts.mjs";
 import { 建立職業佔比分組, 取得統計範圍計數 } from "../src/utils/statsDisplay.js";
+import {
+  分位顯示模式PR,
+  分位顯示模式前段,
+  取得PR色彩類別,
+  格式化同職分位,
+  格式化排名分位,
+} from "../src/utils/formatters.js";
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const srcDir = path.join(rootDir, "src");
@@ -45,6 +52,42 @@ function normalizePath(filePath) {
 function assert(condition, message) {
   if (!condition) {
     reportIssue(message);
+  }
+}
+
+function validatePercentileDisplayFormatting() {
+  const performance = {
+    qualified: true,
+    active_threshold: 90,
+    sample_count: 100,
+    rank: 6,
+    top_percent: 6,
+    score_percentile: 95.4,
+  };
+
+  assert(格式化同職分位(performance, 分位顯示模式前段) === "前 6.00%", "前 N% 模式應顯示 top_percent 到小數兩位。");
+  assert(格式化同職分位(performance, 分位顯示模式PR) === "PR 95", "PR 模式應四捨五入為整數。");
+  assert(格式化排名分位(1, 1, 分位顯示模式PR) === "PR 100", "排名分位 PR 應支援單筆樣本。");
+  assert(格式化同職分位({ rank: 2, sample_count: 4 }, 分位顯示模式PR) === "PR 75", "缺少 score_percentile 時應由 rank/sample_count 回推 PR。");
+  assert(格式化同職分位({ rank: null, sample_count: 10 }, 分位顯示模式PR) === "-", "缺少排名時不可把 null 誤判為 PR 0。");
+
+  const expectedClasses = [
+    [0, "分位PR0"],
+    [24, "分位PR0"],
+    [25, "分位PR25"],
+    [49, "分位PR25"],
+    [50, "分位PR50"],
+    [74, "分位PR50"],
+    [75, "分位PR75"],
+    [94, "分位PR75"],
+    [95, "分位PR95"],
+    [98, "分位PR95"],
+    [99, "分位PR99"],
+    [100, "分位PR100"],
+  ];
+
+  for (const [score, className] of expectedClasses) {
+    assert(取得PR色彩類別(score) === className, `PR ${score} 應套用 ${className} 色彩類別。`);
   }
 }
 
@@ -1089,6 +1132,7 @@ async function main() {
   await validateFrontendFetchBoundary();
   await validateStaticSeoBuildOptions();
   await validateSiteFeatureFlags();
+  validatePercentileDisplayFormatting();
   validateGcdCoverageDiagnosticFields();
   validateJobIconCacheKeys();
   await validateEncounterSwitchFilterPersistence();
