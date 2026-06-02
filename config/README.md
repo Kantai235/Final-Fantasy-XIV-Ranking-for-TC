@@ -31,7 +31,8 @@
 - `report_status_cache_limit` 控制 `data/state.json` 內每個副本保留多少筆 `checked_reports` 狀態快取，避免 state 無限制膨脹；它不會刪除 `data/rankings/` 的歷史 report。`data/state.json` 會以緊湊 JSON 寫入，因為 `checked_reports` 是跨輪略過依據，應優先保留資料語意而非靠刪狀態降低 Git blob 體積。
 - `json_write_retries` 與 `json_write_retry_seconds` 控制 JSON 寫入遇到本機檔案鎖定時的重試策略；`ranking_flush_reports` 控制抓取流程累積幾份有效 report 後先批次落地，降低長時間掃描中斷時的資料遺失風險。
 - `player_stats_batch_size` 控制同一份 report、同一副本內一次 GraphQL request 會合併查詢幾場通關戰鬥的 playerDetails / damageDone；每場 fight 仍用獨立 alias 查詢，避免多場戰鬥的輸出數值被 FFLogs 聚合。
-- `retry_report_codes` 會在一般掃描中強制重抓指定 report code。
-- `only_report_codes` 只處理指定 report code，且不推進掃描點，適合手動補抓或除錯。
-- 手動補抓完成後應清空 `retry_report_codes` 與 `only_report_codes`，避免排程重複處理同一批 report。
+- `excluded_report_codes` 是站務判定排除的 report code 清單。這些 report 會從近期、延遲、歷史、手動補抓、公開排行榜重建與既有 report 狀態巡檢排除，避免疑似灌水或其他不應採計的成績被排程重新寫回。
+- `retry_report_codes` 會在一般掃描中強制重抓指定 report code；若同時出現在 `excluded_report_codes`，排除清單優先。
+- `only_report_codes` 只處理指定 report code，且不推進掃描點，適合手動補抓或除錯；若同時出現在 `excluded_report_codes`，排除清單優先。
+- 手動補抓完成後應清空 `retry_report_codes` 與 `only_report_codes`，避免排程重複處理同一批 report。`excluded_report_codes` 則只有在站務確認可重新採計時才移除。
 - 所有 `fflogs.json` 非敏感執行設定都可用 `FFLOGS_{設定名稱大寫}` 環境變數暫時覆寫，例如 `FFLOGS_HISTORY_SCAN_WINDOWS_PER_RUN=2`。環境變數只影響當次執行，不會改寫設定檔。

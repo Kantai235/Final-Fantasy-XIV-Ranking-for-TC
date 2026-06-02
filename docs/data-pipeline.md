@@ -75,10 +75,12 @@ npm run fetch:honey-fans
 | 歷史補查 | workflow 預設每輪掃 1 個 168 小時視窗，最多選入 2000 份深層候選，且同一 zone/difficulty 群組最多 500 份，抓回後來才公開或延後匯出的 logs。 |
 | 既有 report 狀態巡檢 | workflow 預設每輪由舊到新檢查固定數量，將不可存取 report 標記 hidden。 |
 | 新 report GCD 即時計算 | workflow 預設查同一場 FFLogs `Casts` graph，只保存 GCD 衍生結果。 |
+| 站務 report 排除 | `excluded_report_codes` 會讓指定 report 從近期、延遲、歷史、手動補抓、公開重建與既有狀態巡檢排除，避免疑似灌水或其他不採計紀錄重新進入排行榜。 |
 
 重要環境變數：
 
 - `FFLOGS_REPORT_REGION_SCOPE`：淺層 reports 候選地區，專案與 workflow 預設 `all`。
+- `FFLOGS_EXCLUDED_REPORT_CODES`：站務排除的 report code 逗號分隔清單；設定檔中的 `excluded_report_codes` 適合保存長期排除，環境變數適合當次維護覆寫。
 - `FFLOGS_INCREMENTAL_LOOKBACK_HOURS`：近期完整重查回溯時數，workflow 預設 `24`。
 - `FFLOGS_NO_CLEAR_RETRY_HOURS`：`skipped_no_clear` 的近期重試時數，workflow 預設 `24`。
 - `FFLOGS_DELAYED_SCAN_ENABLED`、`FFLOGS_DELAYED_SCAN_RECENT_GAP_HOURS`、`FFLOGS_DELAYED_SCAN_LOOKBACK_HOURS`、`FFLOGS_DELAYED_MAX_DEEP_REPORTS_PER_RUN`：控制 24-72 小時延遲掃描與本輪深查上限。
@@ -158,6 +160,7 @@ npm run audit:gcd:xivanalysis
 
 - `retry_report_codes`：在一般掃描中強制重抓指定 report code。
 - `only_report_codes`：只處理指定 report code，不推進掃描進度。
+- `excluded_report_codes`：站務判定不採計的 report code；排除清單優先於重抓與手動指定，只有確認可重新採計時才移除。
 
 修改後執行：
 

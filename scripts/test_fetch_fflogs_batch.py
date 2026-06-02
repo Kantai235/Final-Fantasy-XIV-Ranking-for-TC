@@ -1442,6 +1442,139 @@ class FetchFFLogsBatchTest(unittest.TestCase):
         self.assertTrue(隱藏條目["report_hidden"])
         self.assertEqual(隱藏條目["hidden_reason"], fflogs.報告無法存取隱藏原因)
 
+    def test_excluded_report_codes_are_not_reintroduced_by_manual_settings(self) -> None:
+        執行設定 = {
+            "excluded_report_codes": ["blocked"],
+            "retry_report_codes": ["retry", "blocked"],
+            "only_report_codes": ["only", "blocked"],
+        }
+        with (
+            patch.object(fflogs, "排除報告代碼", {"blocked"}),
+            patch.object(fflogs, "FFLogs執行設定", 執行設定),
+        ):
+            重抓報告代碼, 只處理報告代碼 = fflogs.讀取指定報告代碼()
+            補入後 = fflogs.補入指定報告([], {"allowed", "blocked"}, 1000, 2000)
+            合併後 = fflogs.合併淺層報告列表(
+                [{"code": "blocked"}, {"code": "allowed"}],
+                [{"code": "allowed"}, {"code": "blocked"}],
+            )
+
+        self.assertEqual(重抓報告代碼, {"retry"})
+        self.assertEqual(只處理報告代碼, {"only"})
+        self.assertEqual([報告["code"] for 報告 in 補入後], ["allowed"])
+        self.assertEqual([報告["code"] for 報告 in 合併後], ["allowed"])
+
+    def test_excluded_report_codes_are_removed_from_public_ranking_sources(self) -> None:
+        排行榜 = {
+            "encounter": {"key": "savage_m1s", "name": "零式 M1S / 黑貓"},
+            "ranking_entries": [
+                {
+                    "character_name": "排除角色",
+                    "server": "巴哈姆特",
+                    "job": "Paladin",
+                    "dps": 999,
+                    "rdps": 999,
+                    "adps": 999,
+                    "report_code": "blocked",
+                    "fight_id": 1,
+                },
+                {
+                    "character_name": "保留角色",
+                    "server": "巴哈姆特",
+                    "job": "Paladin",
+                    "dps": 100,
+                    "rdps": 100,
+                    "adps": 100,
+                    "report_code": "allowed",
+                    "source_reports": ["allowed", "blocked"],
+                    "duplicate_count": 2,
+                    "fight_id": 2,
+                },
+            ],
+        }
+
+        with patch.object(fflogs, "排除報告代碼", {"blocked"}):
+            條目 = fflogs.建立排行榜條目(排行榜)
+
+        self.assertEqual([項目["character_name"] for 項目 in 條目], ["保留角色"])
+        self.assertEqual(條目[0]["source_reports"], ["allowed"])
+        self.assertEqual(條目[0]["duplicate_count"], 1)
+
+    def test_excluded_report_codes_are_removed_from_report_sources(self) -> None:
+        排行榜 = {
+            "encounter": {"key": "savage_m1s", "name": "零式 M1S / 黑貓"},
+            "reports": {
+                "blocked": {
+                    "title": "封鎖報告",
+                    "url": "https://www.fflogs.com/reports/blocked",
+                    "fights": [
+                        {
+                            "fight_id": 1,
+                            "clear_time_seconds": 500,
+                            "damage_time_ms": 500000,
+                            "recorded_at_iso": "2026-01-01T00:00:00+00:00",
+                            "players": [
+                                {
+                                    "name": "排除角色",
+                                    "server": "巴哈姆特",
+                                    "job": "Paladin",
+                                    "dps": 999,
+                                    "rdps": 999,
+                                    "adps": 999,
+                                }
+                            ],
+                        }
+                    ],
+                },
+                "allowed": {
+                    "title": "保留報告",
+                    "url": "https://www.fflogs.com/reports/allowed",
+                    "fights": [
+                        {
+                            "fight_id": 2,
+                            "clear_time_seconds": 600,
+                            "damage_time_ms": 600000,
+                            "recorded_at_iso": "2026-01-02T00:00:00+00:00",
+                            "players": [
+                                {
+                                    "name": "保留角色",
+                                    "server": "巴哈姆特",
+                                    "job": "Paladin",
+                                    "dps": 100,
+                                    "rdps": 100,
+                                    "adps": 100,
+                                }
+                            ],
+                        }
+                    ],
+                },
+            },
+        }
+
+        with patch.object(fflogs, "排除報告代碼", {"blocked"}):
+            公開排行榜 = fflogs.建立公開排行榜(排行榜)
+
+        self.assertEqual(
+            [條目["character_name"] for 條目 in 公開排行榜["ranking_entries"]],
+            ["保留角色"],
+        )
+
+    def test_existing_report_status_check_candidates_ignore_excluded_reports(self) -> None:
+        副本清單 = [{"key": "savage_m1s", "name": "零式 M1S / 黑貓"}]
+        排行榜索引 = {
+            "savage_m1s": {
+                "reports": {
+                    "blocked": {"report_start_time": 1000, "fights": []},
+                    "allowed": {"report_start_time": 2000, "fights": []},
+                }
+            }
+        }
+
+        with patch.object(fflogs, "排除報告代碼", {"blocked"}):
+            候選列表 = fflogs.建立既有報告狀態巡檢候選(副本清單, 排行榜索引)
+
+        self.assertEqual([候選["report_code"] for 候選 in 候選列表], ["allowed"])
+
     def test_mark_ranking_report_hidden_preserves_report_context(self) -> None:
         排行榜 = {
             "reports": {

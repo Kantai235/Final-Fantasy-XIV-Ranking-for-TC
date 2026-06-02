@@ -37,6 +37,9 @@
   "ranking_flush_reports": 25,
   "state_checkpoint_flush_reports": 2000,
   "player_stats_batch_size": 10,
+  "excluded_report_codes": [
+    "VAPFYLGCpgvkW3q7"
+  ],
   "retry_report_codes": [],
   "only_report_codes": []
 }

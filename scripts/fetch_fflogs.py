@@ -86,6 +86,7 @@ FFLogs執行設定預設值: dict[str, Any] = {
     "ranking_flush_reports": 25,
     "state_checkpoint_flush_reports": 2000,
     "player_stats_batch_size": 10,
+    "excluded_report_codes": [],
     "retry_report_codes": [],
     "only_report_codes": [],
 }
@@ -1225,9 +1226,35 @@ def 清單設定(名稱: str) -> list[str]:
     raise RuntimeError(f"FFLogs 執行設定 {名稱} 必須是陣列或逗號分隔字串。")
 
 
+def 讀取排除報告代碼() -> set[str]:
+    return set(清單設定("excluded_report_codes"))
+
+
+排除報告代碼 = 讀取排除報告代碼()
+
+
+def 報告代碼已排除(報告代碼: Any) -> bool:
+    return str(報告代碼 or "") in 排除報告代碼
+
+
+def 過濾已排除報告列表(報告列表: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    if not 排除報告代碼:
+        return 報告列表
+    return [
+        報告
+        for 報告 in 報告列表
+        if not 報告代碼已排除(報告.get("code") if isinstance(報告, dict) else None)
+    ]
+
+
 def 讀取指定報告代碼() -> tuple[set[str], set[str]]:
     重抓報告代碼 = set(清單設定("retry_report_codes"))
     只處理報告代碼 = set(清單設定("only_report_codes"))
+    if 排除報告代碼:
+        # 站務判定排除的 report 不能再被手動補抓或重抓設定繞過，否則排程仍可能把
+        # 疑似灌水資料寫回 ranking 分片。解除封鎖時必須先從 excluded_report_codes 移除。
+        重抓報告代碼 -= 排除報告代碼
+        只處理報告代碼 -= 排除報告代碼
     return 重抓報告代碼, 只處理報告代碼
 
 
@@ -1253,6 +1280,8 @@ def 補入指定報告(
     已存在代碼 = {str(報告.get("code")) for 報告 in 報告列表 if 報告.get("code")}
     補齊後列表 = list(報告列表)
     for 報告代碼 in sorted(指定報告代碼):
+        if 報告代碼已排除(報告代碼):
+            continue
         if 報告代碼 not in 已存在代碼:
             補齊後列表.append(建立手動報告資料(報告代碼, 起始時間戳記, 結束時間戳記))
 
@@ -1276,7 +1305,7 @@ def 合併淺層報告列表(
     已加入代碼: set[str] = set()
     for 報告 in [*主要報告列表, *補充報告列表]:
         代碼 = str(報告.get("code") or "")
-        if not 代碼 or 代碼 in 已加入代碼:
+        if not 代碼 or 代碼 in 已加入代碼 or 報告代碼已排除(代碼):
             continue
         已加入代碼.add(代碼)
         合併後列表.append(報告)
@@ -2874,6 +2903,9 @@ def 標準化排行榜條目(條目: dict[str, Any]) -> dict[str, Any] | None:
     dps = 成績.get("dps")
     if not 名稱 or 伺服器 not in 繁中服伺服器名稱 or 職業 not in 有效職業名稱 or dps is None:
         return None
+    原始報告代碼 = str(成績.get("report_code") or "")
+    if 原始報告代碼 and 報告代碼已排除(原始報告代碼):
+        return None
 
     # 遊戲允許不同伺服器使用相同角色名稱；fallback 讀舊扁平索引時也要依目前
     # 條目的伺服器重算身分鍵，避免早期轉服合併留下的 character_key 再次把同名玩家合併。
@@ -2896,15 +2928,28 @@ def 標準化排行榜條目(條目: dict[str, Any]) -> dict[str, Any] | None:
         )
 
     來源報告 = 成績.get("source_reports")
+    原始來源報告數量 = len(來源報告) if isinstance(來源報告, list) else 0
     if isinstance(來源報告, list):
-        成績["source_reports"] = list(dict.fromkeys(str(報告代碼) for 報告代碼 in 來源報告 if 報告代碼))
+        成績["source_reports"] = list(
+            dict.fromkeys(
+                str(報告代碼)
+                for 報告代碼 in 來源報告
+                if 報告代碼 and not 報告代碼已排除(報告代碼)
+            )
+        )
     elif 成績.get("report_code"):
         成績["source_reports"] = [str(成績["report_code"])]
     else:
         成績["source_reports"] = []
+    if 原始報告代碼 and 原始報告代碼 not in 成績["source_reports"]:
+        成績["source_reports"].insert(0, 原始報告代碼)
 
     重複數量 = 轉_int_or_none(成績.get("duplicate_count"))
-    成績["duplicate_count"] = max(重複數量 or 1, len(成績["source_reports"]) or 1)
+    已過濾排除來源 = 原始來源報告數量 > len(成績["source_reports"])
+    if 已過濾排除來源:
+        成績["duplicate_count"] = max(len(成績["source_reports"]) or 1, 1)
+    else:
+        成績["duplicate_count"] = max(重複數量 or 1, len(成績["source_reports"]) or 1)
     return 成績
 
 
@@ -3009,6 +3054,8 @@ def 建立既有報告狀態巡檢候選(
         排行榜 = 排行榜索引.get(副本鍵值) or {}
         報告索引 = 排行榜.get("reports") if isinstance(排行榜.get("reports"), dict) else {}
         for 原始報告代碼, 報告 in 報告索引.items():
+            if 報告代碼已排除(原始報告代碼):
+                continue
             if not isinstance(報告, dict) or 報告已標記隱藏(報告):
                 continue
 
@@ -3138,6 +3185,8 @@ def 建立排行榜條目(
                 登記排行榜條目(條目, 精確成績索引)
 
     for 報告代碼, 報告 in 報告索引.items():
+        if 報告代碼已排除(報告代碼):
+            continue
         if not isinstance(報告, dict):
             continue
         if 報告已標記隱藏(報告) and not 包含隱藏報告:
@@ -4036,6 +4085,8 @@ def main() -> int:
     if gcd計算器.啟用:
         上限文字 = str(gcd計算器.戰鬥上限) if gcd計算器.戰鬥上限 > 0 else "無上限"
         print(f"已啟用新 report 即時 GCD 覆蓋率計算，本輪 Casts graph 戰鬥上限：{上限文字}。")
+    if 排除報告代碼:
+        print(f"永久排除 FFLogs report：{', '.join(sorted(排除報告代碼))}")
     if 重抓報告代碼:
         print(f"指定重抓報告：{', '.join(sorted(重抓報告代碼))}")
     if 只處理報告代碼:
@@ -4207,6 +4258,9 @@ def main() -> int:
             報告代碼 = str(報告.get("code") or "")
             if not 報告代碼:
                 continue
+            if 報告代碼已排除(報告代碼):
+                統計["skipped_known"] += 1
+                continue
             if 報告代碼 in 最新報告代碼:
                 統計["skipped_known"] += 1
                 continue
@@ -4238,6 +4292,9 @@ def main() -> int:
         for 報告 in 報告列表:
             報告代碼 = str(報告.get("code") or "")
             if not 報告代碼:
+                continue
+            if 報告代碼已排除(報告代碼):
+                統計["skipped_known"] += 1
                 continue
             if 報告代碼 in 最新報告代碼:
                 統計["skipped_known"] += 1
@@ -4575,6 +4632,7 @@ def main() -> int:
             except FFLogs暫時性API錯誤 as 錯誤:
                 延後副本掃描(副本設定, 目前處理狀態, 錯誤)
                 continue
+            最新報告列表 = 過濾已排除報告列表(最新報告列表)
             最新報告列表 = 補入指定報告(最新報告列表, 重抓報告代碼, 起始時間戳記, 掃描結束時間戳記)
             最新報告列表 = 加入掃描來源(最新報告列表, "recent")
             最新報告代碼 = {str(報告.get("code")) for 報告 in 最新報告列表 if 報告.get("code")}
@@ -4611,6 +4669,7 @@ def main() -> int:
             if 延遲掃描暫停:
                 continue
 
+            延遲報告列表 = 過濾已排除報告列表(延遲報告列表)
             延遲報告列表 = 加入掃描來源(延遲報告列表, "delayed")
             延遲報告候選列表, 延遲候選統計 = 篩選延遲掃描候選(副本設定, 延遲報告列表, 最新報告代碼)
             延遲報告代碼 = {str(報告.get("code")) for 報告 in 延遲報告列表 if 報告.get("code")}
@@ -4661,6 +4720,7 @@ def main() -> int:
             if 歷史補查暫停:
                 continue
 
+            歷史報告列表 = 過濾已排除報告列表(歷史報告列表)
             歷史報告列表 = 加入掃描來源(歷史報告列表, "history")
             近期已涵蓋報告代碼 = 最新報告代碼 | 延遲報告代碼
             歷史報告候選列表, 歷史候選統計 = 篩選歷史補查候選(副本設定, 歷史報告列表, 近期已涵蓋報告代碼)
@@ -4994,6 +5054,7 @@ def main() -> int:
         "completed_encounters": [副本["key"] for 副本 in 已完成副本清單],
         "deferred_encounters": 暫時失敗副本鍵值,
         "manual_report_codes": sorted(只處理報告代碼 or 重抓報告代碼),
+        "excluded_report_codes": sorted(排除報告代碼),
         "encounters": 副本統計,
         "rankings_inserted_or_updated": 總新增或更新數量,
         "reports_failed": 總失敗報告數量,
