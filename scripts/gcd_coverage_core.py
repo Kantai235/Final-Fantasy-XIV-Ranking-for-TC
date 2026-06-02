@@ -17,7 +17,7 @@ from xivanalysis_gcd_rules import XIVANALYSIS_GCD_ACTION_RULES
 ACTION_CSV_URL = "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/master/csv/en/Action.csv"
 STATUS_CSV_URL = "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/master/csv/en/Status.csv"
 GCD_ACTION_CATEGORY_IDS = {2, 3}  # 2=Spell, 3=Weaponskill
-GCD_CALCULATION_VERSION = 19
+GCD_CALCULATION_VERSION = 20
 GCD_SOURCE_CASTS_GRAPH = "fflogs_casts_graph"
 GCD_SOURCE_RAW_EVENTS = "fflogs_raw_events"
 GCD_SOURCE = GCD_SOURCE_CASTS_GRAPH
@@ -59,11 +59,20 @@ RAW_EVENT_GCD_ENCOUNTERS = {
 RAW_TARGETABILITY_ONLY_DOWNTIME_JOBS_BY_ENCOUNTER = {
     # 極永恆女王的 FFLogs Casts graph 會把部分短暫 boss downtime 放進
     # damageDowntime；xivanalysis raw-events 路徑對黑魔、舞者、繪靈法師、學者、
-    # Paladin 與少數 Gunbreaker 樣本更接近只看 targetability / 玩家 UnableToAct 的分母。
+    # Monk、Samurai 與少數 Gunbreaker 樣本更接近只看 targetability / 玩家 UnableToAct 的分母。
     # 舞者若吃 graph downtime，部分 Technical / Standard 流程會因分母過短而高估
     # ABC；PCT/SCH 則先走 targetability-only，再由 SCH selector 處理少數 graph
-    # lock 較貼近 xivanalysis 的 intermission-adjacent 樣本。
-    "extreme_queen_eternal": {"BlackMage", "Dancer", "Gunbreaker", "Paladin", "Pictomancer", "Scholar"},
+    # lock 較貼近 xivanalysis 的 intermission-adjacent 樣本。PLD 在 100 場頁面稽核中
+    # 改回 raw+graph downtime 更貼近站端，因此不放在 targetability-only 清單。
+    "extreme_queen_eternal": {
+        "BlackMage",
+        "Dancer",
+        "Gunbreaker",
+        "Monk",
+        "Pictomancer",
+        "Samurai",
+        "Scholar",
+    },
 }
 RAW_NEXT_GCD_CAPPED_JOBS_BY_ENCOUNTER = {
     # 極瓦利加爾曼達的 Monk/Viper raw packet 已與 xivanalysis 的 lock 語意一致；
@@ -79,19 +88,24 @@ RAW_NEXT_GCD_CAPPED_JOBS_BY_ENCOUNTER = {
     # 極永恆女王的 raw event timestamp 對武僧較接近 xivanalysis 的
     # CastTime lock 累加語意；若沿用幻白虎的 Monk 下一個 GCD 裁切，會把
     # 高速連段窗口少算約一個半 GCD。Gunbreaker 的 raw combo packet 會在
-    # downtime-adjacent 間隔重疊加分，需裁到下一個 GCD 才貼近 xivanalysis。
-    "extreme_queen_eternal": (RAW_NEXT_GCD_CAPPED_JOBS - {"Monk"}) | {"Gunbreaker"},
+    # downtime-adjacent 間隔重疊加分；Machinist 的 Hypercharge/短 GCD raw packet
+    # 在 Queen 少數樣本也會重疊高估，因此兩者需裁到下一個 GCD 才貼近 xivanalysis。
+    "extreme_queen_eternal": (RAW_NEXT_GCD_CAPPED_JOBS - {"Monk"}) | {"Gunbreaker", "Machinist"},
 }
 # 幻白虎需要 raw events 推 downtime；少數 job 的 raw packet 語意仍已知會高估 ABC，
 # 因此保留在 Casts graph 路徑。
 RAW_EVENT_GCD_EXCLUDED_JOBS: set[str] = set()
 RAW_EVENT_GCD_EXCLUDED_JOBS_BY_ENCOUNTER = {
-    # 極瓦利加爾曼達大多數 job 需要 raw downtime。占星在低覆蓋率樣本的 raw
-    # targetability/UTA 分母會偏高；Casts graph 反而更貼近 xivanalysis 顯示值。
-    "extreme_valigarmanda": {"Astrologian"},
-    # M2S 的 WhiteMage raw events 在高 GCD 覆蓋率樣本會把部份 instant/詠唱鎖
-    # 累得比 xivanalysis 顯示值更滿；Casts graph 對本層 WHM 更穩定。
-    "savage_m2s": {"WhiteMage"},
+    # 極佐拉加固定 seed 稽核中，Sage 的 Eukrasia / Eukrasian Prognosis II
+    # raw events 會比 xivanalysis legacy 頁面多吃約兩到三個短 GCD lock；
+    # 同批所有 SGE 樣本改用 Casts graph 仍與站端顯示值吻合，因此在這個副本
+    # 讓賢者保留 graph 路徑，避免 raw packet 語意小幅高估 ABC。
+    "extreme_zoraal_ja": {"Sage"},
+    # AAC 零式 BLM raw event 會多吃部分 Ley Lines / instant packet 邊界；M2S-M4S
+    # 在 100 場外站頁面稽核中改用 Casts graph 可明顯降低顯示百分比偏高。
+    "savage_m2s": {"BlackMage"},
+    "savage_m3s": {"BlackMage", "Scholar"},
+    "savage_m4s": {"BlackMage", "Scholar"},
 }
 RAW_EVENT_GCD_REQUIRED_JOBS = {"Bard"}
 # xivanalysis 的 legacy FFLogs raw-events 路徑在黑魔死亡事件落在 downtime 內的案例中，
@@ -101,12 +115,16 @@ RAW_EVENT_UNADJUSTED_SOURCE_SPEED_JOBS = {"BlackMage"}
 TANK_JOBS = {"DarkKnight", "Gunbreaker", "Paladin", "Warrior"}
 PCT_BYAKKO_GRAPH_DOWNTIME_DELTA_MIN = 0.75
 PCT_BYAKKO_GRAPH_DOWNTIME_DELTA_MAX = 1.25
+PCT_BYAKKO_GRAPH_DOWNTIME_RAW_PERCENT_MAX = 72.5
 BLM_BYAKKO_GRAPH_FALLBACK_DELTA_MIN = 8.0
 BLM_BYAKKO_RAW_DOWNTIME_GRAPH_OVERCOUNT_MIN = 1.0
 BLM_BYAKKO_RAW_DOWNTIME_GRAPH_OVERCOUNT_MAX = 2.0
 TANK_BYAKKO_MAIN_GAP_FALLBACK_DELTA_MIN = 1.25
 TANK_BYAKKO_MAIN_GAP_RAW_PERCENT_MIN = 90.0
 TANK_BYAKKO_UNCLAMPED_HIGH_UPTIME_RAW_MIN = 95.0
+PALADIN_BYAKKO_GRAPH_FALLBACK_RAW_PERCENT_MIN = 90.0
+PALADIN_BYAKKO_GRAPH_FALLBACK_DELTA_MIN = 0.95
+PALADIN_BYAKKO_GRAPH_FALLBACK_DELTA_MAX = 1.05
 BARD_ARMY_STATUS_IDS = {1932, 2218}  # Army's Muse / Army's Paeon
 BARD_GRAPH_FALLBACK_ENCOUNTERS = {
     "extreme_queen_eternal",
@@ -121,12 +139,15 @@ BARD_RAW_GRAPH_BLEND_RATIO = 0.22
 BARD_RAW_GRAPH_BLEND_RATIO_BY_ENCOUNTER = {
     "savage_m1s": 0.30,
 }
+BARD_RAW_GRAPH_BLEND_RAW_PERCENT_MIN = 85.0
 BARD_QUEEN_GRAPH_FALLBACK_RAW_PERCENT_MIN = 98.0
 BARD_QUEEN_GRAPH_FALLBACK_GRAPH_PERCENT_MIN = 99.95
 BARD_VALIGARMANDA_LOW_RAW_ADJUSTMENT_PERCENT_MIN = 80.0
 BARD_VALIGARMANDA_LOW_RAW_ADJUSTMENT_PERCENT_MAX = 83.0
 BARD_VALIGARMANDA_LOW_RAW_ADJUSTMENT = 0.75
 BARD_VALIGARMANDA_GRAPH_FALLBACK_DELTA_MAX = 1.0
+BARD_BYAKKO_HIGH_UPTIME_RAW_PERCENT_MIN = 98.5
+BARD_BYAKKO_HIGH_UPTIME_GRAPH_PERCENT_MIN = 99.95
 BARD_GRAPH_FALLBACK_RAW_PERCENT_MIN = 98.0
 BARD_GRAPH_FALLBACK_GRAPH_PERCENT_MIN = 99.95
 VALIGARMANDA_RDM_GRAPH_FALLBACK_RAW_PERCENT_MAX = 75.0
@@ -135,6 +156,19 @@ VALIGARMANDA_RDM_GRAPH_FALLBACK_DELTA_MAX = 2.0
 VALIGARMANDA_WHM_GRAPH_FALLBACK_RAW_PERCENT_MAX = 60.0
 VALIGARMANDA_WHM_GRAPH_FALLBACK_DELTA_MIN = 1.0
 VALIGARMANDA_WHM_GRAPH_FALLBACK_DELTA_MAX = 2.0
+VALIGARMANDA_SMN_GRAPH_FALLBACK_RAW_PERCENT_MAX = 92.0
+VALIGARMANDA_SMN_GRAPH_FALLBACK_DELTA_MIN = 0.8
+VALIGARMANDA_SMN_GRAPH_FALLBACK_DELTA_MAX = 1.5
+VALIGARMANDA_BLM_GRAPH_FALLBACK_DELTA_MIN = 0.4
+VALIGARMANDA_BLM_GRAPH_FALLBACK_DELTA_MAX = 1.0
+BYAKKO_RDM_GRAPH_FALLBACK_DELTA_MIN = 0.8
+BYAKKO_RDM_GRAPH_FALLBACK_DELTA_MAX = 1.4
+BYAKKO_RDM_GRAPH_FALLBACK_RAW_PERCENT_MAX = 75.0
+BYAKKO_RDM_GRAPH_BLEND_RAW_PERCENT_MIN = 78.0
+BYAKKO_RDM_GRAPH_BLEND_RAW_PERCENT_MAX = 84.0
+BYAKKO_RDM_GRAPH_BLEND_DELTA_MIN = 1.4
+BYAKKO_RDM_GRAPH_BLEND_DELTA_MAX = 1.8
+BYAKKO_RDM_GRAPH_BLEND_RATIO = 0.5
 QUEEN_RDM_RAW_FALLBACK_GRAPH_PERCENT_MAX = 89.0
 QUEEN_RDM_RAW_FALLBACK_DELTA_MIN = 1.0
 QUEEN_RDM_RAW_FALLBACK_DELTA_MAX = 2.5
@@ -916,7 +950,10 @@ def select_pct_byakko_downtime_coverage(
         return raw_targetability_coverage
 
     delta = graph_percent - raw_percent
-    if PCT_BYAKKO_GRAPH_DOWNTIME_DELTA_MIN <= delta <= PCT_BYAKKO_GRAPH_DOWNTIME_DELTA_MAX:
+    if (
+        raw_percent <= PCT_BYAKKO_GRAPH_DOWNTIME_RAW_PERCENT_MAX
+        and PCT_BYAKKO_GRAPH_DOWNTIME_DELTA_MIN <= delta <= PCT_BYAKKO_GRAPH_DOWNTIME_DELTA_MAX
+    ):
         selected = dict(graph_downtime_coverage)
         selected["downtime_selection"] = "casts_graph_encounter_gap"
         selected["raw_targetability_percent"] = raw_targetability_coverage.get("percent")
@@ -997,9 +1034,65 @@ def select_blm_byakko_coverage(
     return raw_events_coverage
 
 
+def select_red_mage_byakko_coverage(
+    raw_targetability_coverage: dict[str, Any] | None,
+    casts_graph_coverage: dict[str, Any] | None,
+    *,
+    encounter_key: str | None,
+) -> dict[str, Any] | None:
+    if not raw_targetability_coverage or not casts_graph_coverage:
+        return raw_targetability_coverage or casts_graph_coverage
+    if str(encounter_key or "") != "unreal_byakko":
+        return raw_targetability_coverage
+
+    raw_percent = to_number(raw_targetability_coverage.get("percent"))
+    graph_percent = to_number(casts_graph_coverage.get("percent"))
+    if raw_percent is None or graph_percent is None:
+        return raw_targetability_coverage
+
+    delta = raw_percent - graph_percent
+    if (
+        raw_targetability_coverage.get("estimated_speed_below_minimum")
+        and BYAKKO_RDM_GRAPH_BLEND_RAW_PERCENT_MIN <= raw_percent <= BYAKKO_RDM_GRAPH_BLEND_RAW_PERCENT_MAX
+        and BYAKKO_RDM_GRAPH_BLEND_DELTA_MIN <= delta <= BYAKKO_RDM_GRAPH_BLEND_DELTA_MAX
+    ):
+        selected = dict(raw_targetability_coverage)
+        adjusted_percent = raw_percent + (graph_percent - raw_percent) * BYAKKO_RDM_GRAPH_BLEND_RATIO
+        selected["percent"] = round(adjusted_percent, 2)
+        denominator_ms = to_number(raw_targetability_coverage.get("denominator_ms"))
+        if denominator_ms is not None:
+            selected["covered_time_ms"] = round(denominator_ms * selected["percent"] / 100)
+        selected["fallback_selection"] = "byakko_red_mage_raw_graph_estimated_speed_blend"
+        selected["raw_targetability_percent"] = raw_targetability_coverage.get("percent")
+        selected["casts_graph_percent"] = casts_graph_coverage.get("percent")
+        selected["casts_graph_denominator_ms"] = casts_graph_coverage.get("denominator_ms")
+        # 幻白虎 RDM 低速反推樣本中，raw targetability 仍保留 Dualcast/instant
+        # packet 語意，但少數 raw 與 Casts graph 相差約 1.5 個百分點時，
+        # xivanalysis 顯示值會落在兩者中間，而非完全回退 graph。
+        return selected
+
+    if (
+        raw_percent <= BYAKKO_RDM_GRAPH_FALLBACK_RAW_PERCENT_MAX
+        and BYAKKO_RDM_GRAPH_FALLBACK_DELTA_MIN <= delta <= BYAKKO_RDM_GRAPH_FALLBACK_DELTA_MAX
+    ):
+        selected = dict(casts_graph_coverage)
+        selected["fallback_selection"] = "byakko_red_mage_casts_graph_raw_overcount"
+        selected["raw_targetability_percent"] = raw_targetability_coverage.get("percent")
+        selected["raw_targetability_denominator_ms"] = raw_targetability_coverage.get("denominator_ms")
+        # 幻白虎 RDM 的 Dualcast/instant raw packet 在少數低覆蓋率樣本會比
+        # xivanalysis legacy 頁面多吃約一個百分點；當 Casts graph 只比 raw 低
+        # 約 0.8-1.4 個百分點時，站端顯示更貼近 graph。
+        return selected
+
+    return raw_targetability_coverage
+
+
 def select_tank_byakko_coverage(
     raw_targetability_coverage: dict[str, Any] | None,
     main_target_gap_coverage: dict[str, Any] | None,
+    casts_graph_coverage: dict[str, Any] | None = None,
+    *,
+    job: str | None = None,
 ) -> dict[str, Any] | None:
     if not raw_targetability_coverage or not main_target_gap_coverage:
         return raw_targetability_coverage or main_target_gap_coverage
@@ -1008,6 +1101,24 @@ def select_tank_byakko_coverage(
     main_gap_percent = to_number(main_target_gap_coverage.get("percent"))
     if raw_percent is None or main_gap_percent is None:
         return raw_targetability_coverage
+
+    graph_percent = to_number(casts_graph_coverage.get("percent")) if casts_graph_coverage else None
+    if (
+        str(job or "") == "Paladin"
+        and graph_percent is not None
+        and raw_targetability_coverage.get("estimated_speed_below_minimum")
+        and raw_percent >= PALADIN_BYAKKO_GRAPH_FALLBACK_RAW_PERCENT_MIN
+    ):
+        graph_delta = raw_percent - graph_percent
+        if PALADIN_BYAKKO_GRAPH_FALLBACK_DELTA_MIN <= graph_delta <= PALADIN_BYAKKO_GRAPH_FALLBACK_DELTA_MAX:
+            selected = dict(casts_graph_coverage)
+            selected["fallback_selection"] = "paladin_byakko_casts_graph_estimated_speed_gap"
+            selected["raw_targetability_percent"] = raw_targetability_coverage.get("percent")
+            selected["raw_targetability_denominator_ms"] = raw_targetability_coverage.get("denominator_ms")
+            # 幻白虎 PLD 若缺 combatantinfo 且 raw 比 Casts graph 高約 1%，
+            # xivanalysis 在這批外站稽核中更接近 graph 的 lock/分母組合。
+            # 條件刻意限縮在高覆蓋率與約 1% gap，避免一般坦克樣本被 graph 低估。
+            return selected
 
     if (
         raw_targetability_coverage.get("estimated_speed_below_minimum")
@@ -1041,12 +1152,29 @@ def select_bard_raw_event_coverage(
 ) -> dict[str, Any] | None:
     if not raw_events_coverage or not casts_graph_coverage:
         return raw_events_coverage or casts_graph_coverage
-    if str(encounter_key or "") not in BARD_GRAPH_FALLBACK_ENCOUNTERS:
-        return raw_events_coverage
 
     raw_percent = to_number(raw_events_coverage.get("percent"))
     graph_percent = to_number(casts_graph_coverage.get("percent"))
     if raw_percent is None or graph_percent is None:
+        return raw_events_coverage
+
+    if str(encounter_key or "") == "unreal_byakko":
+        if (
+            raw_events_coverage.get("speed_stat_source") == "combatantinfo"
+            and raw_percent >= BARD_BYAKKO_HIGH_UPTIME_RAW_PERCENT_MIN
+            and graph_percent >= BARD_BYAKKO_HIGH_UPTIME_GRAPH_PERCENT_MIN
+        ):
+            selected = dict(casts_graph_coverage)
+            selected["fallback_selection"] = "bard_casts_graph_byakko_high_uptime"
+            selected["raw_events_percent"] = raw_events_coverage.get("percent")
+            selected["raw_events_denominator_ms"] = raw_events_coverage.get("denominator_ms")
+            # 幻白虎 Bard 在 combatantinfo 可用且 raw 已接近滿覆蓋時，xivanalysis
+            # checklist 會把最後一小段 Army/encounter gap 邊界顯示為 100%。低於此門檻
+            # 的樣本仍保留 raw events，避免 graph 高估 Army 排除窗。
+            return selected
+        return raw_events_coverage
+
+    if str(encounter_key or "") not in BARD_GRAPH_FALLBACK_ENCOUNTERS:
         return raw_events_coverage
 
     if (
@@ -1061,6 +1189,16 @@ def select_bard_raw_event_coverage(
         # 少數 AAC / Zoraal Bard 缺 combatantinfo 時，raw interval 會反推到低於遊戲
         # 實際下限的副屬性；xivanalysis 頁面在接近滿覆蓋的樣本更接近 Casts graph 的
         # 100% 顯示值。只對 estimated_speed_below_minimum 且 graph 幾乎滿覆蓋時回退。
+        return selected
+
+    if raw_events_coverage.get("estimated_speed_below_minimum"):
+        selected = dict(raw_events_coverage)
+        selected["fallback_selection"] = "bard_raw_events_low_estimated_speed_kept_raw"
+        selected["casts_graph_percent"] = casts_graph_coverage.get("percent")
+        selected["casts_graph_denominator_ms"] = casts_graph_coverage.get("denominator_ms")
+        # xivanalysis 會保留低於 420 的反推副屬性；非接近滿覆蓋的 Bard 樣本若再混入
+        # Casts graph lock，會把 Army 窗口後的 raw-events 分母語意高估。只有上方高覆蓋率
+        # 分支可回退 graph，其餘低速反推樣本保留 raw-events。
         return selected
 
     if str(encounter_key or "") == "extreme_queen_eternal":
@@ -1109,7 +1247,7 @@ def select_bard_raw_event_coverage(
             return selected
         return raw_events_coverage
 
-    if graph_percent > raw_percent:
+    if graph_percent > raw_percent and raw_percent >= BARD_RAW_GRAPH_BLEND_RAW_PERCENT_MIN:
         selected = dict(raw_events_coverage)
         blend_ratio = BARD_RAW_GRAPH_BLEND_RATIO_BY_ENCOUNTER.get(
             str(encounter_key or ""),
@@ -1124,9 +1262,10 @@ def select_bard_raw_event_coverage(
         selected["raw_events_percent"] = raw_events_coverage.get("percent")
         selected["casts_graph_percent"] = casts_graph_coverage.get("percent")
         selected["casts_graph_denominator_ms"] = casts_graph_coverage.get("denominator_ms")
-        # AAC / Zoraal 的 Bard 在 Army 排除窗內仍會受 FFLogs raw packet 與 Casts graph
-        # lock 語意差異影響。xivanalysis 顯示值落在兩者之間；固定 seed 樣本顯示以 raw
-        # 分母為主、只混入少量 graph lock，可同時對齊 89%、94% 與接近 100% 的 Bard。
+        # AAC / Zoraal 的 Bard 在中高覆蓋率 Army 排除窗內仍會受 FFLogs raw packet 與
+        # Casts graph lock 語意差異影響。xivanalysis 顯示值落在兩者之間；固定 seed 樣本
+        # 顯示以 raw 分母為主、只混入少量 graph lock，可同時對齊 89%、94% 與接近
+        # 100% 的 Bard。低覆蓋率樣本則仍貼近 raw events，不套這個混合修正。
         return selected
 
     return raw_events_coverage
@@ -1160,6 +1299,71 @@ def select_valigarmanda_white_mage_coverage(
         # 極瓦利加爾曼達 WHM 多數樣本需要 raw downtime；但低 ABC 且 raw 只比 graph
         # 高約一到兩個百分點時，raw targetability/UTA 會把 Presence of Mind 附近
         # 的 lock 吃得略滿。此時回 Casts graph 會更貼近 xivanalysis 顯示值。
+        return selected
+
+    return raw_events_coverage
+
+
+def select_valigarmanda_summoner_coverage(
+    raw_events_coverage: dict[str, Any] | None,
+    casts_graph_coverage: dict[str, Any] | None,
+    *,
+    encounter_key: str | None,
+) -> dict[str, Any] | None:
+    if not raw_events_coverage or not casts_graph_coverage:
+        return raw_events_coverage or casts_graph_coverage
+    if str(encounter_key or "") != "extreme_valigarmanda":
+        return raw_events_coverage
+
+    raw_percent = to_number(raw_events_coverage.get("percent"))
+    graph_percent = to_number(casts_graph_coverage.get("percent"))
+    if raw_percent is None or graph_percent is None:
+        return raw_events_coverage
+
+    delta = raw_percent - graph_percent
+    if (
+        raw_events_coverage.get("speed_stat_source") == "estimated"
+        and raw_percent <= VALIGARMANDA_SMN_GRAPH_FALLBACK_RAW_PERCENT_MAX
+        and VALIGARMANDA_SMN_GRAPH_FALLBACK_DELTA_MIN <= delta <= VALIGARMANDA_SMN_GRAPH_FALLBACK_DELTA_MAX
+    ):
+        selected = dict(casts_graph_coverage)
+        selected["fallback_selection"] = "valigarmanda_summoner_casts_graph_estimated_speed_gap"
+        selected["raw_events_percent"] = raw_events_coverage.get("percent")
+        selected["raw_events_denominator_ms"] = raw_events_coverage.get("denominator_ms")
+        # 極瓦利加爾曼達 Summoner 大多數樣本 raw events 已貼近 xivanalysis；但缺
+        # combatantinfo、且 raw 只比 Casts graph 高約一個百分點的中低覆蓋率樣本，
+        # 站端顯示更接近 graph lock。限縮在 estimated speed 與 92% 以下避免破壞
+        # 原本已對齊的高覆蓋率召喚樣本。
+        return selected
+
+    return raw_events_coverage
+
+
+def select_valigarmanda_black_mage_coverage(
+    raw_events_coverage: dict[str, Any] | None,
+    casts_graph_coverage: dict[str, Any] | None,
+    *,
+    encounter_key: str | None,
+) -> dict[str, Any] | None:
+    if not raw_events_coverage or not casts_graph_coverage:
+        return raw_events_coverage or casts_graph_coverage
+    if str(encounter_key or "") != "extreme_valigarmanda":
+        return raw_events_coverage
+
+    raw_percent = to_number(raw_events_coverage.get("percent"))
+    graph_percent = to_number(casts_graph_coverage.get("percent"))
+    if raw_percent is None or graph_percent is None:
+        return raw_events_coverage
+
+    delta = raw_percent - graph_percent
+    if VALIGARMANDA_BLM_GRAPH_FALLBACK_DELTA_MIN <= delta <= VALIGARMANDA_BLM_GRAPH_FALLBACK_DELTA_MAX:
+        selected = dict(casts_graph_coverage)
+        selected["fallback_selection"] = "valigarmanda_black_mage_casts_graph_raw_overcount"
+        selected["raw_events_percent"] = raw_events_coverage.get("percent")
+        selected["raw_events_denominator_ms"] = raw_events_coverage.get("denominator_ms")
+        # 極瓦利加爾曼達 BLM 的 raw events 多數仍需 raw downtime；但當 graph
+        # 只比 raw 低約半到一個百分點時，xivanalysis 頁面更貼近 Casts graph 的
+        # Ley Lines / instant packet 邊界。
         return selected
 
     return raw_events_coverage
@@ -1262,6 +1466,28 @@ def select_queen_red_mage_coverage(
         return selected
 
     return casts_graph_coverage
+
+
+def select_savage_m1s_black_mage_coverage(
+    raw_events_coverage: dict[str, Any] | None,
+    graph_downtime_coverage: dict[str, Any] | None,
+    *,
+    encounter_key: str | None,
+    job: str | None,
+) -> dict[str, Any] | None:
+    if not raw_events_coverage or not graph_downtime_coverage:
+        return raw_events_coverage or graph_downtime_coverage
+    if str(encounter_key or "") != "savage_m1s" or str(job or "") != "BlackMage":
+        return raw_events_coverage
+
+    selected = dict(graph_downtime_coverage)
+    selected["fallback_selection"] = "m1s_black_mage_raw_events_graph_downtime"
+    selected["raw_events_percent"] = raw_events_coverage.get("percent")
+    selected["raw_events_denominator_ms"] = raw_events_coverage.get("denominator_ms")
+    # M1S 的 BLM raw targetability/UTA downtime 在 Ley Lines 與轉場 packet 邊界會讓
+    # ABC 分母略短、分子略滿；同一批 100 場外站頁面稽核中，raw action events 搭配
+    # Casts graph downtime 才貼近 xivanalysis legacy FFLogs adapter 的顯示百分比。
+    return selected
 
 
 def estimate_speed_stats_from_attempts(
@@ -1872,6 +2098,67 @@ def raw_recast_ms(
     return floor_to_10_ms(recast)
 
 
+def adjusted_cast_ms_for_uptime(
+    attempt: dict[str, Any],
+    *,
+    job: str | None,
+    speed_windows: list[SpeedModifierWindow],
+    speed_stats: dict[str, int] | None = None,
+    default_speed_multiplier: float | None = None,
+    recast_timing: RecastTimingEstimate | None = None,
+    status_windows_by_status_id: dict[int, list[tuple[float, float]]] | None = None,
+    first_gcd_timestamp: float | None = None,
+) -> float:
+    metadata = attempt["metadata"]
+    observed_cast_ms = to_number(attempt.get("cast_duration_ms")) or 0
+    if observed_cast_ms <= 0 or metadata.cast_ms <= 0:
+        return max(0.0, observed_cast_ms)
+
+    timestamp = to_number(attempt.get("timestamp"))
+    adjusted_cast = float(metadata.cast_ms)
+    if metadata.recast_speed_adjusted:
+        attribute_key = "spell_speed" if metadata.action_category_id == 2 else "skill_speed"
+        if speed_stats and speed_stats.get(attribute_key) is not None:
+            adjusted_cast = speed_stat_adjusted_duration_ms(speed_stats.get(attribute_key), metadata.cast_ms)
+        elif recast_timing is not None and default_speed_multiplier is not None:
+            multiplier = recast_timing.multiplier_by_base.get(BASE_GCD_MS, default_speed_multiplier)
+            adjusted_cast = float(metadata.cast_ms) * multiplier
+
+    if metadata.recast_status_adjusted and timestamp is not None:
+        adjusted_cast *= speed_modifier_at_timestamp(timestamp, job=job, speed_windows=speed_windows)
+        if (
+            str(job) == "Pictomancer"
+            and metadata.action_id in PCT_HYPERPHANTASIA_ACTION_IDS
+            and timestamp_in_windows_inclusive(
+                timestamp,
+                (status_windows_by_status_id or {}).get(PCT_INSPIRATION_STATUS_ID, []),
+            )
+        ):
+            adjusted_cast *= 0.75
+
+    if (
+        str(job) == "Pictomancer"
+        and metadata.action_id == PCT_RAINBOW_DRIP_ACTION_ID
+        and timestamp is not None
+        and (
+            timestamp_in_windows_inclusive(
+                timestamp,
+                (status_windows_by_status_id or {}).get(PCT_RAINBOW_BRIGHT_STATUS_ID, []),
+            )
+            or (first_gcd_timestamp is not None and timestamp == first_gcd_timestamp)
+        )
+    ):
+        # Rainbow Bright 會把 Rainbow Drip 變成即時施放；FFLogs raw/graph 有時仍保留
+        # begincast duration。本地分子必須跟 xivanalysis 的 CastTime instant adjustment
+        # 一樣歸零，否則 PCT 在 proc 當下會被多算一段讀條時間。
+        adjusted_cast = 0.0
+
+    # xivanalysis 的 AlwaysBeCasting 使用 CastTime 模組的技能表 cast time，而不是
+    # FFLogs 封包實際讀條耗時。封包耗時仍可辨識 Swiftcast/Dualcast 等即時施放
+    # （observed=0），但不應把延遲或 packet duration 放大成額外 GCD uptime。
+    return max(0.0, min(observed_cast_ms, floor_to_10_ms(adjusted_cast)))
+
+
 def raw_speed_stats_cover_attempt(attempt: dict[str, Any], speed_stats: dict[str, int]) -> bool:
     metadata = attempt["metadata"]
     if not metadata.recast_speed_adjusted:
@@ -2424,7 +2711,13 @@ def calculate_gcd_coverage_from_graph(
         if cast_start is not None and timestamp_in_windows(cast_start, coverage_windows):
             continue
 
-        cast_duration = to_number(attempt.get("cast_duration_ms")) or 0
+        cast_duration = adjusted_cast_ms_for_uptime(
+            attempt,
+            job=job,
+            speed_windows=speed_windows,
+            default_speed_multiplier=default_speed_multiplier,
+            recast_timing=recast_timing,
+        )
         recast = adjusted_recast_ms(
             attempt,
             default_speed_multiplier,
@@ -2595,7 +2888,16 @@ def calculate_gcd_coverage_from_raw_events(
         if should_skip_raw_gcd_uptime(encounter_key, job, attempt, next_attempt):
             continue
 
-        cast_duration = to_number(attempt.get("cast_duration_ms")) or 0
+        cast_duration = adjusted_cast_ms_for_uptime(
+            attempt,
+            job=job,
+            speed_windows=speed_windows,
+            speed_stats=speed_stats,
+            default_speed_multiplier=default_speed_multiplier,
+            recast_timing=recast_timing,
+            status_windows_by_status_id=status_windows_by_status_id,
+            first_gcd_timestamp=first_gcd_timestamp,
+        )
         if raw_speed_stats_cover_attempt(attempt, speed_stats):
             recast = raw_recast_ms(
                 attempt,

@@ -130,12 +130,13 @@ const hiddenReportFields = {
 
 const gcdCoverageSchema = nullable(objectOf({
   percent: numberSchema,
-  covered_time_ms: numberSchema,
-  denominator_ms: numberSchema,
-  downtime_ms: numberSchema,
-  gcd_cast_count: numberSchema,
+  covered_time_ms: optional(numberSchema),
+  denominator_ms: optional(numberSchema),
+  downtime_ms: optional(numberSchema),
+  gcd_cast_count: optional(numberSchema),
   calculation_version: integerSchema,
   source: stringSchema,
+  xivanalysis_url: optional(urlSchema),
   speed_stat_source: optional(stringSchema),
   coverage_downtime_ms: optional(numberSchema),
   denominator_downtime_ms: optional(numberSchema),
@@ -148,6 +149,8 @@ const gcdCoverageSchema = nullable(objectOf({
   casts_graph_denominator_ms: optional(nullableNumberSchema),
   raw_targetability_percent: optional(nullableNumberSchema),
   raw_targetability_denominator_ms: optional(nullableNumberSchema),
+  raw_next_gcd_capped_percent: optional(nullableNumberSchema),
+  raw_next_gcd_capped_denominator_ms: optional(nullableNumberSchema),
 }));
 
 const gcdCoverageStatusSchema = objectOf({
@@ -155,6 +158,8 @@ const gcdCoverageStatusSchema = objectOf({
   calculation_version: optional(integerSchema),
   checked_at_iso: optional(isoTimestampSchema),
   reason: optional(stringSchema),
+  source: optional(stringSchema),
+  fallback_from: optional(stringSchema),
 });
 
 const performanceSchema = objectOf({

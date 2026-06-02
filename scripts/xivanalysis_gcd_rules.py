@@ -4,14 +4,14 @@ from dataclasses import dataclass
 
 
 # 本檔只保存「xivanalysis 明確覆寫、且 XIVAPI Action.csv 無法安全推回」的 GCD 規則。
-# 來源為 xivanalysis/xivanalysis dawntrail 分支 9ef68c2ca6175f68841596fd770450594ab5913a：
+# 來源為 xivanalysis/xivanalysis dawntrail 分支 aaa13d4b380f69bf01968c79b78904d9477aa9db：
 # - src/data/ACTIONS/index.ts 會替 onGcd action 補上預設 castTime=0、cooldown=2500。
 # - src/data/ACTIONS/root/*.ts 與 layers/patch*.ts 的 gcdRecast/cooldown/speedAttribute
 #   決定 Always Be Casting 的 recast；例如 7.01 layer 會把 Tendo Setsugekka 調回 2.5 秒。
 # 這裡不保存完整 xivanalysis action 表，避免把無關職業循環資料複製進本專案；只有當
 # Action.csv 可能把技能本身冷卻誤當 GCD、或 xivanalysis 將該 action 標成非副屬性加速時才列入。
 XIVANALYSIS_SOURCE_REPOSITORY = "https://github.com/xivanalysis/xivanalysis"
-XIVANALYSIS_SOURCE_COMMIT = "9ef68c2ca6175f68841596fd770450594ab5913a"
+XIVANALYSIS_SOURCE_COMMIT = "aaa13d4b380f69bf01968c79b78904d9477aa9db"
 
 
 @dataclass(frozen=True)

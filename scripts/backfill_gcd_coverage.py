@@ -785,6 +785,18 @@ def main() -> int:
                     cap_next_gcd_jobs=gcd_core.raw_next_gcd_capped_jobs_for_encounter(candidate.encounter_key),
                 )
                 if coverage and candidate.encounter_key == "unreal_byakko" and job in gcd_core.TANK_JOBS:
+                    casts_graph_coverage = calculate_gcd_coverage_from_graph(
+                        graph,
+                        metadata_store,
+                        source_id=to_int(candidate.player.get("fflogs_id")),
+                        job=candidate.player.get("job"),
+                        fight_end_time=first_number(candidate.fight.get("end_time"), candidate.fight.get("endTime")),
+                        fallback_denominator_ms=first_number(
+                            candidate.fight.get("clear_time_ms"),
+                            end_time - start_time,
+                            candidate.fight.get("damage_time_ms"),
+                        ),
+                    )
                     main_gap_coverage = calculate_gcd_coverage_from_raw_events(
                         raw_events,
                         metadata_store,
@@ -810,7 +822,12 @@ def main() -> int:
                         ),
                         cap_next_gcd_jobs=gcd_core.raw_next_gcd_capped_jobs_for_encounter(candidate.encounter_key),
                     )
-                    coverage = gcd_core.select_tank_byakko_coverage(coverage, main_gap_coverage)
+                    coverage = gcd_core.select_tank_byakko_coverage(
+                        coverage,
+                        main_gap_coverage,
+                        casts_graph_coverage,
+                        job=job,
+                    )
                 if coverage and candidate.encounter_key == "unreal_byakko" and job == "Pictomancer":
                     graph_downtime_coverage = calculate_gcd_coverage_from_raw_events(
                         raw_events,
@@ -857,6 +874,46 @@ def main() -> int:
                         coverage,
                         graph_coverage,
                         raw_downtime_graph_coverage,
+                    )
+                if coverage and candidate.encounter_key == "unreal_byakko" and job == "RedMage":
+                    graph_coverage = calculate_gcd_coverage_from_graph(
+                        graph,
+                        metadata_store,
+                        source_id=to_int(candidate.player.get("fflogs_id")),
+                        job=candidate.player.get("job"),
+                        fight_end_time=first_number(candidate.fight.get("end_time"), candidate.fight.get("endTime")),
+                        fallback_denominator_ms=first_number(
+                            candidate.fight.get("clear_time_ms"),
+                            end_time - start_time,
+                            candidate.fight.get("damage_time_ms"),
+                        ),
+                    )
+                    coverage = gcd_core.select_red_mage_byakko_coverage(
+                        coverage,
+                        graph_coverage,
+                        encounter_key=candidate.encounter_key,
+                    )
+                if coverage and candidate.encounter_key == "savage_m1s" and job == "BlackMage":
+                    graph_downtime_coverage = calculate_gcd_coverage_from_raw_events(
+                        raw_events,
+                        metadata_store,
+                        encounter_key=candidate.encounter_key,
+                        source_id=to_int(candidate.player.get("fflogs_id")),
+                        job=candidate.player.get("job"),
+                        fight_end_time=first_number(candidate.fight.get("end_time"), candidate.fight.get("endTime")),
+                        fallback_denominator_ms=first_number(
+                            candidate.fight.get("clear_time_ms"),
+                            end_time - start_time,
+                            candidate.fight.get("damage_time_ms"),
+                        ),
+                        downtime_source=graph,
+                        cap_next_gcd_jobs=gcd_core.raw_next_gcd_capped_jobs_for_encounter(candidate.encounter_key),
+                    )
+                    coverage = gcd_core.select_savage_m1s_black_mage_coverage(
+                        coverage,
+                        graph_downtime_coverage,
+                        encounter_key=candidate.encounter_key,
+                        job=job,
                     )
                 if coverage and candidate.encounter_key == "extreme_queen_eternal" and job == "RedMage":
                     graph_coverage = calculate_gcd_coverage_from_graph(
@@ -930,7 +987,43 @@ def main() -> int:
                         graph_coverage,
                         encounter_key=candidate.encounter_key,
                     )
-                if coverage and job == "Bard" and candidate.encounter_key in gcd_core.BARD_GRAPH_FALLBACK_ENCOUNTERS:
+                if coverage and candidate.encounter_key == "extreme_valigarmanda" and job == "Summoner":
+                    graph_coverage = calculate_gcd_coverage_from_graph(
+                        graph,
+                        metadata_store,
+                        source_id=to_int(candidate.player.get("fflogs_id")),
+                        job=candidate.player.get("job"),
+                        fight_end_time=first_number(candidate.fight.get("end_time"), candidate.fight.get("endTime")),
+                        fallback_denominator_ms=first_number(
+                            candidate.fight.get("clear_time_ms"),
+                            end_time - start_time,
+                            candidate.fight.get("damage_time_ms"),
+                        ),
+                    )
+                    coverage = gcd_core.select_valigarmanda_summoner_coverage(
+                        coverage,
+                        graph_coverage,
+                        encounter_key=candidate.encounter_key,
+                    )
+                if coverage and candidate.encounter_key == "extreme_valigarmanda" and job == "BlackMage":
+                    graph_coverage = calculate_gcd_coverage_from_graph(
+                        graph,
+                        metadata_store,
+                        source_id=to_int(candidate.player.get("fflogs_id")),
+                        job=candidate.player.get("job"),
+                        fight_end_time=first_number(candidate.fight.get("end_time"), candidate.fight.get("endTime")),
+                        fallback_denominator_ms=first_number(
+                            candidate.fight.get("clear_time_ms"),
+                            end_time - start_time,
+                            candidate.fight.get("damage_time_ms"),
+                        ),
+                    )
+                    coverage = gcd_core.select_valigarmanda_black_mage_coverage(
+                        coverage,
+                        graph_coverage,
+                        encounter_key=candidate.encounter_key,
+                    )
+                if coverage and job == "Bard":
                     graph_coverage = calculate_gcd_coverage_from_graph(
                         graph,
                         metadata_store,

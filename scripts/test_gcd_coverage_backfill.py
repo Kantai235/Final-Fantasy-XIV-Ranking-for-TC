@@ -7,6 +7,7 @@ from typing import Any
 from unittest.mock import patch
 
 import backfill_gcd_coverage as gcd
+import audit_xivanalysis_gcd_sample as audit_gcd
 
 
 class FakeMetadataStore:
@@ -91,6 +92,88 @@ class GcdCoverageBackfillTest(unittest.TestCase):
         selected = gcd.select_candidates(candidates, player_limit=2, report_limit=0)
 
         self.assertEqual([candidate.report_code for candidate in selected], ["A", "B"])
+
+    def test_audit_apply_all_checked_updates_stale_stored_value_after_recompute_match(self) -> None:
+        class FakeClient:
+            def fetch_gcd_percent(self, candidate: gcd.GcdCandidate) -> tuple[float, str]:
+                return 95.0, "ok"
+
+        class FakeFallback:
+            def calculate(self, candidate: gcd.GcdCandidate) -> dict[str, Any]:
+                return {"percent": 95.02, "source": "fixture_recompute"}
+
+        player = {
+            "name": "測試玩家",
+            "server": "測試伺服器",
+            "job": "Samurai",
+            "fflogs_id": 7,
+            "dps": 1,
+            "gcd_coverage": {
+                "percent": 96.2,
+                "calculation_version": gcd.GCD_CALCULATION_VERSION,
+                "source": gcd.GCD_SOURCE,
+            },
+        }
+        candidate = gcd.GcdCandidate(
+            encounter_key="fixture",
+            encounter={},
+            ranking={},
+            report_code="REPORT",
+            report={},
+            fight={"fight_id": 1},
+            player=player,
+            sort_time=0,
+        )
+
+        result = audit_gcd.compare_candidate(
+            FakeClient(),  # type: ignore[arg-type]
+            candidate,
+            checked_at_iso="1970-01-01T00:00:00Z",
+            tolerance=0,
+            apply=True,
+            apply_all_checked=True,
+            local_mode=audit_gcd.LOCAL_MODE_RECOMPUTE,
+            local_fallback=FakeFallback(),  # type: ignore[arg-type]
+        )
+
+        self.assertEqual(result["state"], "matched")
+        self.assertTrue(result["applied"])
+        self.assertEqual(result["applied_reason"], "all_checked")
+        self.assertEqual(result["stored_display_percent"], 96.2)
+        self.assertEqual(result["stored_difference"], 1.2)
+        self.assertEqual(player["gcd_coverage"]["percent"], 95.0)
+        self.assertEqual(player["gcd_coverage"]["source"], audit_gcd.xiv_gcd.XIVANALYSIS_GCD_SOURCE)
+
+    def test_zoraal_ja_sage_uses_casts_graph_for_xivanalysis_alignment(self) -> None:
+        # 極佐拉加大多數職業需要 raw events 才能對齊 xivanalysis 的 packet 語意；
+        # Sage 例外，固定 seed 稽核顯示 raw events 會多算 Eukrasia 系短 GCD lock。
+        self.assertFalse(gcd.gcd_core.should_use_raw_events_for_gcd("extreme_zoraal_ja", "Sage"))
+        self.assertTrue(gcd.gcd_core.should_use_raw_events_for_gcd("extreme_zoraal_ja", "Samurai"))
+
+    def test_m1s_black_mage_prefers_raw_actions_with_graph_downtime(self) -> None:
+        raw_coverage = {
+            "percent": 95.2,
+            "denominator_ms": 500000,
+            "source": gcd.gcd_core.GCD_SOURCE_RAW_EVENTS,
+        }
+        graph_downtime_coverage = {
+            "percent": 94.7,
+            "denominator_ms": 505000,
+            "source": gcd.gcd_core.GCD_SOURCE_RAW_EVENTS,
+        }
+
+        selected = gcd.gcd_core.select_savage_m1s_black_mage_coverage(
+            raw_coverage,
+            graph_downtime_coverage,
+            encounter_key="savage_m1s",
+            job="BlackMage",
+        )
+
+        self.assertIsNotNone(selected)
+        assert selected is not None
+        self.assertEqual(selected["percent"], 94.7)
+        self.assertEqual(selected["fallback_selection"], "m1s_black_mage_raw_events_graph_downtime")
+        self.assertEqual(selected["raw_events_percent"], 95.2)
 
     def test_stateful_report_window_uses_existing_cursor_before_now(self) -> None:
         state = {
@@ -1449,7 +1532,7 @@ class GcdCoverageBackfillTest(unittest.TestCase):
         self.assertEqual(result["percent"], 100.0)
 
     def test_queen_uses_targetability_only_downtime_for_verified_jobs(self) -> None:
-        for job in ("BlackMage", "Dancer", "Gunbreaker", "Paladin", "Pictomancer", "Scholar"):
+        for job in ("BlackMage", "Dancer", "Gunbreaker", "Monk", "Pictomancer", "Samurai", "Scholar"):
             self.assertTrue(
                 gcd.gcd_core.raw_event_uses_targetability_only_downtime(
                     "extreme_queen_eternal",
@@ -1460,7 +1543,7 @@ class GcdCoverageBackfillTest(unittest.TestCase):
         self.assertFalse(
             gcd.gcd_core.raw_event_uses_targetability_only_downtime(
                 "extreme_queen_eternal",
-                "Monk",
+                "Paladin",
             )
         )
 
@@ -1475,6 +1558,10 @@ class GcdCoverageBackfillTest(unittest.TestCase):
             "Gunbreaker",
             gcd.gcd_core.raw_next_gcd_capped_jobs_for_encounter("extreme_queen_eternal"),
         )
+        self.assertIn(
+            "Machinist",
+            gcd.gcd_core.raw_next_gcd_capped_jobs_for_encounter("extreme_queen_eternal"),
+        )
         self.assertNotIn(
             "Paladin",
             gcd.gcd_core.raw_next_gcd_capped_jobs_for_encounter("extreme_queen_eternal"),
@@ -1486,8 +1573,8 @@ class GcdCoverageBackfillTest(unittest.TestCase):
 
     def test_valigarmanda_uses_raw_events_for_verified_downtime_gaps(self) -> None:
         # 極瓦利加爾曼達的 Casts graph 會漏掉短暫 targetability / UnableToAct downtime。
-        # 大多數職業需固定走 raw events，讓分母對齊 xivanalysis legacy FFLogs 頁面；
-        # AST 則另有測試鎖住 Casts graph 例外。
+        # 100 場外站頁面稽核顯示 AST 也應回到 raw events；舊 graph 例外會低估
+        # 低覆蓋率樣本的可用分母。
         for job in (
             "BlackMage",
             "Dancer",
@@ -1499,6 +1586,7 @@ class GcdCoverageBackfillTest(unittest.TestCase):
             "Sage",
             "DarkKnight",
             "Monk",
+            "Astrologian",
         ):
             self.assertTrue(
                 gcd.gcd_core.should_use_raw_events_for_gcd(
@@ -1509,14 +1597,8 @@ class GcdCoverageBackfillTest(unittest.TestCase):
             )
 
     def test_valigarmanda_keeps_verified_graph_jobs_and_uncapped_monk_viper_raw_events(self) -> None:
-        # 固定 seed 稽核顯示 AST 使用 raw targetability/UTA 分母時會在低覆蓋率樣本偏高；
-        # Casts graph 對占星更貼近 xivanalysis，而 MNK/VPR raw lock 不應裁到下一個 GCD。
-        self.assertFalse(
-            gcd.gcd_core.should_use_raw_events_for_gcd(
-                "extreme_valigarmanda",
-                "Astrologian",
-            )
-        )
+        # MNK/VPR raw lock 不應裁到下一個 GCD；xivanalysis legacy 事件流會累加這些
+        # 高速轉化窗口，裁切反而會低估 ABC。
         self.assertNotIn(
             "Viper",
             gcd.gcd_core.raw_next_gcd_capped_jobs_for_encounter("extreme_valigarmanda"),
@@ -1562,8 +1644,16 @@ class GcdCoverageBackfillTest(unittest.TestCase):
             gcd.gcd_core.should_use_raw_events_for_gcd("unreal_byakko", "RedMage")
         )
 
-    def test_savage_m2s_white_mage_remains_on_casts_graph(self) -> None:
-        self.assertFalse(
+    def test_savage_black_mage_graph_exceptions_and_m2s_white_mage_raw_events(self) -> None:
+        for encounter_key in ("savage_m2s", "savage_m3s", "savage_m4s"):
+            self.assertFalse(
+                gcd.gcd_core.should_use_raw_events_for_gcd(
+                    encounter_key,
+                    "BlackMage",
+                ),
+                msg=f"{encounter_key} 的 BlackMage 應回到 Casts graph 對齊頁面值。",
+            )
+        self.assertTrue(
             gcd.gcd_core.should_use_raw_events_for_gcd(
                 "savage_m2s",
                 "WhiteMage",
@@ -1718,6 +1808,14 @@ class GcdCoverageBackfillTest(unittest.TestCase):
 
         self.assertIs(selected, raw)
 
+    def test_pct_byakko_selector_keeps_raw_for_mid_uptime_graph_gap(self) -> None:
+        raw = {"percent": 74.97, "denominator_ms": 552109}
+        graph_gap = {"percent": 75.82, "denominator_ms": 525511}
+
+        selected = gcd.gcd_core.select_pct_byakko_downtime_coverage(raw, graph_gap)
+
+        self.assertIs(selected, raw)
+
     def test_blm_byakko_selector_uses_graph_when_raw_events_underestimate_badly(self) -> None:
         raw = {"percent": 81.40, "denominator_ms": 475085}
         graph = {"percent": 94.96, "denominator_ms": 456381}
@@ -1801,6 +1899,38 @@ class GcdCoverageBackfillTest(unittest.TestCase):
         main_gap = {"percent": 98.29, "denominator_ms": 478940}
 
         selected = gcd.gcd_core.select_tank_byakko_coverage(raw, main_gap)
+
+        self.assertIs(selected, raw)
+
+    def test_tank_byakko_selector_uses_paladin_graph_for_estimated_speed_gap(self) -> None:
+        raw = {"percent": 96.3, "denominator_ms": 534595, "estimated_speed_below_minimum": True}
+        main_gap = {"percent": 96.1, "denominator_ms": 534595}
+        graph = {"percent": 95.3, "denominator_ms": 534595}
+
+        selected = gcd.gcd_core.select_tank_byakko_coverage(
+            raw,
+            main_gap,
+            graph,
+            job="Paladin",
+        )
+
+        self.assertIsNotNone(selected)
+        assert selected is not None
+        self.assertEqual(selected["percent"], 95.3)
+        self.assertEqual(selected["fallback_selection"], "paladin_byakko_casts_graph_estimated_speed_gap")
+        self.assertEqual(selected["raw_targetability_percent"], 96.3)
+
+    def test_tank_byakko_selector_keeps_non_paladin_high_raw_with_graph_gap(self) -> None:
+        raw = {"percent": 95.64, "denominator_ms": 534595, "estimated_speed_below_minimum": True}
+        main_gap = {"percent": 95.2, "denominator_ms": 534595}
+        graph = {"percent": 94.55, "denominator_ms": 534595}
+
+        selected = gcd.gcd_core.select_tank_byakko_coverage(
+            raw,
+            main_gap,
+            graph,
+            job="DarkKnight",
+        )
 
         self.assertIs(selected, raw)
 
@@ -1962,6 +2092,22 @@ class GcdCoverageBackfillTest(unittest.TestCase):
         self.assertEqual(selected["percent"], 98.82)
         self.assertEqual(selected["fallback_selection"], "bard_raw_events_with_casts_graph_lock_blend")
 
+    def test_bard_selector_keeps_low_estimated_speed_raw_when_not_high_uptime(self) -> None:
+        raw = {"percent": 87.97, "denominator_ms": 479527, "estimated_speed_below_minimum": True}
+        graph = {"percent": 92.59, "denominator_ms": 656736}
+
+        selected = gcd.gcd_core.select_bard_raw_event_coverage(
+            raw,
+            graph,
+            encounter_key="savage_m4s",
+        )
+
+        self.assertIsNotNone(selected)
+        assert selected is not None
+        self.assertEqual(selected["percent"], 87.97)
+        self.assertEqual(selected["fallback_selection"], "bard_raw_events_low_estimated_speed_kept_raw")
+        self.assertEqual(selected["casts_graph_percent"], 92.59)
+
     def test_bard_selector_blends_raw_and_graph_lock_for_aac_samples(self) -> None:
         raw = {"percent": 93.26, "denominator_ms": 412170, "covered_time_ms": 384400}
         graph = {"percent": 99.35, "denominator_ms": 603476}
@@ -1976,6 +2122,18 @@ class GcdCoverageBackfillTest(unittest.TestCase):
         assert selected is not None
         self.assertEqual(selected["percent"], 94.6)
         self.assertEqual(selected["fallback_selection"], "bard_raw_events_with_casts_graph_lock_blend")
+
+    def test_bard_selector_keeps_low_uptime_raw_instead_of_blending_graph(self) -> None:
+        raw = {"percent": 63.74, "denominator_ms": 484199, "covered_time_ms": 308600}
+        graph = {"percent": 69.54, "denominator_ms": 656950}
+
+        selected = gcd.gcd_core.select_bard_raw_event_coverage(
+            raw,
+            graph,
+            encounter_key="extreme_zoraal_ja",
+        )
+
+        self.assertIs(selected, raw)
 
     def test_bard_selector_uses_m1s_specific_blend_ratio(self) -> None:
         raw = {"percent": 91.86, "denominator_ms": 389838, "covered_time_ms": 358088}
@@ -2007,6 +2165,137 @@ class GcdCoverageBackfillTest(unittest.TestCase):
         self.assertEqual(selected["percent"], 86.79)
         self.assertEqual(selected["fallback_selection"], "bard_casts_graph_valigarmanda_small_raw_gap")
         self.assertEqual(selected["raw_events_percent"], 86.28)
+
+    def test_bard_selector_uses_byakko_graph_for_combatantinfo_high_uptime(self) -> None:
+        raw = {
+            "percent": 99.02,
+            "denominator_ms": 362902,
+            "speed_stat_source": "combatantinfo",
+        }
+        graph = {"percent": 100.0, "denominator_ms": 362902}
+
+        selected = gcd.gcd_core.select_bard_raw_event_coverage(
+            raw,
+            graph,
+            encounter_key="unreal_byakko",
+        )
+
+        self.assertIsNotNone(selected)
+        assert selected is not None
+        self.assertEqual(selected["percent"], 100.0)
+        self.assertEqual(selected["fallback_selection"], "bard_casts_graph_byakko_high_uptime")
+        self.assertEqual(selected["raw_events_percent"], 99.02)
+
+    def test_bard_selector_keeps_byakko_mid_uptime_raw(self) -> None:
+        raw = {
+            "percent": 95.92,
+            "denominator_ms": 404716,
+            "speed_stat_source": "combatantinfo",
+        }
+        graph = {"percent": 98.21, "denominator_ms": 404716}
+
+        selected = gcd.gcd_core.select_bard_raw_event_coverage(
+            raw,
+            graph,
+            encounter_key="unreal_byakko",
+        )
+
+        self.assertIs(selected, raw)
+
+    def test_byakko_red_mage_selector_uses_graph_for_raw_overcount(self) -> None:
+        raw = {"percent": 71.66, "denominator_ms": 562808}
+        graph = {"percent": 70.61, "denominator_ms": 544269}
+
+        selected = gcd.gcd_core.select_red_mage_byakko_coverage(
+            raw,
+            graph,
+            encounter_key="unreal_byakko",
+        )
+
+        self.assertIsNotNone(selected)
+        assert selected is not None
+        self.assertEqual(selected["percent"], 70.61)
+        self.assertEqual(selected["fallback_selection"], "byakko_red_mage_casts_graph_raw_overcount")
+        self.assertEqual(selected["raw_targetability_percent"], 71.66)
+
+    def test_byakko_red_mage_selector_keeps_high_uptime_raw(self) -> None:
+        raw = {"percent": 84.54, "denominator_ms": 562808}
+        graph = {"percent": 83.54, "denominator_ms": 544269}
+
+        selected = gcd.gcd_core.select_red_mage_byakko_coverage(
+            raw,
+            graph,
+            encounter_key="unreal_byakko",
+        )
+
+        self.assertIsNotNone(selected)
+        assert selected is not None
+        self.assertEqual(selected["percent"], 84.54)
+        self.assertNotIn("fallback_selection", selected)
+
+    def test_byakko_red_mage_selector_blends_estimated_speed_mid_gap(self) -> None:
+        raw = {
+            "percent": 82.02,
+            "denominator_ms": 573831,
+            "estimated_speed_below_minimum": True,
+        }
+        graph = {"percent": 80.43, "denominator_ms": 544269}
+
+        selected = gcd.gcd_core.select_red_mage_byakko_coverage(
+            raw,
+            graph,
+            encounter_key="unreal_byakko",
+        )
+
+        self.assertIsNotNone(selected)
+        assert selected is not None
+        self.assertEqual(selected["percent"], 81.22)
+        self.assertEqual(selected["fallback_selection"], "byakko_red_mage_raw_graph_estimated_speed_blend")
+        self.assertEqual(selected["raw_targetability_percent"], 82.02)
+        self.assertEqual(selected["casts_graph_percent"], 80.43)
+
+    def test_valigarmanda_summoner_selector_uses_graph_for_estimated_speed_gap(self) -> None:
+        raw = {
+            "percent": 91.16,
+            "denominator_ms": 589950,
+            "covered_time_ms": 537825,
+            "speed_stat_source": "estimated",
+        }
+        graph = {"percent": 89.98, "denominator_ms": 591607}
+
+        selected = gcd.gcd_core.select_valigarmanda_summoner_coverage(
+            raw,
+            graph,
+            encounter_key="extreme_valigarmanda",
+        )
+
+        self.assertIsNotNone(selected)
+        assert selected is not None
+        self.assertEqual(selected["percent"], 89.98)
+        self.assertEqual(
+            selected["fallback_selection"],
+            "valigarmanda_summoner_casts_graph_estimated_speed_gap",
+        )
+        self.assertEqual(selected["raw_events_percent"], 91.16)
+
+    def test_valigarmanda_black_mage_selector_uses_graph_for_small_raw_overcount(self) -> None:
+        raw = {"percent": 92.99, "denominator_ms": 445248}
+        graph = {"percent": 92.41, "denominator_ms": 446532}
+
+        selected = gcd.gcd_core.select_valigarmanda_black_mage_coverage(
+            raw,
+            graph,
+            encounter_key="extreme_valigarmanda",
+        )
+
+        self.assertIsNotNone(selected)
+        assert selected is not None
+        self.assertEqual(selected["percent"], 92.41)
+        self.assertEqual(
+            selected["fallback_selection"],
+            "valigarmanda_black_mage_casts_graph_raw_overcount",
+        )
+        self.assertEqual(selected["raw_events_percent"], 92.99)
 
     def test_bard_selector_uses_queen_graph_for_high_uptime(self) -> None:
         raw = {"percent": 98.48, "denominator_ms": 383646}
