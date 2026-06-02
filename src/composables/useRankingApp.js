@@ -95,6 +95,43 @@ const 蜂蜂背景音樂偏好儲存鍵 = "ffxiv-tc-rankings-honey-bgm";
 const 蜂蜂背景音樂影片Id = "07V_j5a9kHw";
 const 蜂蜂背景音樂嵌入網址 = `https://www.youtube.com/embed/${蜂蜂背景音樂影片Id}`;
 
+const activityLogMobileMediaQuery = "(max-width: 720px)";
+const activityLogMobileDefaultRange = "30";
+const activityLogDesktopDefaultRange = "90";
+// 這裡保存時間軸脈絡事件，僅用於前端標註，不參與 Logs 或通關場次統計。
+const activityLogTimelineAnnotations = [
+  {
+    date: "2026-02-10",
+    title: "更新 7.01",
+    detail: "輕量級",
+  },
+  {
+    date: "2026-03-10",
+    title: "更新 7.05",
+    detail: "零式 輕量級",
+  },
+  {
+    date: "2026-04-21",
+    title: "更新 7.1",
+    detail: "極 永恆女王、幻 白虎",
+  },
+  {
+    date: "2026-05-26",
+    title: "更新 7.11",
+    detail: "絕 伊甸",
+  },
+];
+
+function getActivityLogDefaultTimeRange() {
+  if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+    return activityLogDesktopDefaultRange;
+  }
+
+  return window.matchMedia(activityLogMobileMediaQuery).matches
+    ? activityLogMobileDefaultRange
+    : activityLogDesktopDefaultRange;
+}
+
 export function useRankingApp() {
 
 // 核心 Vue 狀態只保留畫面會變動的資料；不隨操作變動的職業定義、
@@ -174,6 +211,14 @@ const 職業分析選單開啟 = ref(false);
 const 近期動態資料 = ref(null);
 const 近期動態讀取中 = ref(false);
 const 近期動態錯誤訊息 = ref("");
+const 近期動態日誌副本鍵值 = ref("all");
+const 近期動態日誌副本選單開啟 = ref(false);
+const 近期動態日誌時間範圍 = ref(getActivityLogDefaultTimeRange());
+const 近期動態日誌指標 = ref("unique_report_count");
+const 近期動態日誌自訂開始日期 = ref("");
+const 近期動態日誌自訂結束日期 = ref("");
+const 近期動態日誌提示點 = ref(null);
+const 近期動態日誌提示鎖定 = ref(false);
 const 隊伍榜資料 = ref(null);
 const 隊伍榜讀取中 = ref(false);
 const 隊伍榜錯誤訊息 = ref("");
@@ -194,6 +239,15 @@ const 排行榜詳細資料快取 = new Map();
 const 個人成績報告詳細資料快取 = new Map();
 let 正在套用網址狀態 = false;
 let 分享狀態計時器 = null;
+
+const 近期動態日誌時間範圍選項 = [
+  { value: "7", label: "近 7 天" },
+  { value: "14", label: "近 14 天" },
+  { value: "30", label: "近 30 天" },
+  { value: "90", label: "近 90 天" },
+  { value: "all", label: "全部資料" },
+  { value: "custom", label: "自訂日期" },
+];
 
 const 目前副本 = computed(() => {
   return 副本清單.value.find((副本) => 副本.key === 副本鍵值.value) || 副本清單.value[0] || null;
@@ -406,6 +460,7 @@ function 切換職業選單() {
   統計副本選單開啟.value = false;
   比較副本選單開啟.value = false;
   隊伍榜副本選單開啟.value = false;
+  近期動態日誌副本選單開啟.value = false;
   統計職業選單開啟.value = false;
   職業分析選單開啟.value = false;
   使用者職業選單開啟.value = false;
@@ -439,6 +494,7 @@ function 切換使用者職業選單() {
   統計副本選單開啟.value = false;
   比較副本選單開啟.value = false;
   隊伍榜副本選單開啟.value = false;
+  近期動態日誌副本選單開啟.value = false;
   統計職業選單開啟.value = false;
   職業選單開啟.value = false;
   職業分析選單開啟.value = false;
@@ -457,6 +513,7 @@ function 切換副本選單() {
   統計副本選單開啟.value = false;
   比較副本選單開啟.value = false;
   隊伍榜副本選單開啟.value = false;
+  近期動態日誌副本選單開啟.value = false;
   統計職業選單開啟.value = false;
   職業分析選單開啟.value = false;
   副本選單開啟.value = !副本選單開啟.value;
@@ -483,6 +540,7 @@ function 切換統計副本選單() {
   使用者職業選單開啟.value = false;
   比較副本選單開啟.value = false;
   隊伍榜副本選單開啟.value = false;
+  近期動態日誌副本選單開啟.value = false;
   統計職業選單開啟.value = false;
   職業分析選單開啟.value = false;
   統計副本選單開啟.value = !統計副本選單開啟.value;
@@ -505,6 +563,7 @@ function 切換比較副本選單() {
   使用者職業選單開啟.value = false;
   統計副本選單開啟.value = false;
   隊伍榜副本選單開啟.value = false;
+  近期動態日誌副本選單開啟.value = false;
   統計職業選單開啟.value = false;
   職業分析選單開啟.value = false;
   比較副本選單開啟.value = !比較副本選單開啟.value;
@@ -527,6 +586,7 @@ function 切換隊伍榜副本選單() {
   使用者職業選單開啟.value = false;
   統計副本選單開啟.value = false;
   比較副本選單開啟.value = false;
+  近期動態日誌副本選單開啟.value = false;
   統計職業選單開啟.value = false;
   職業分析選單開啟.value = false;
   隊伍榜副本選單開啟.value = !隊伍榜副本選單開啟.value;
@@ -535,6 +595,33 @@ function 切換隊伍榜副本選單() {
 function 處理隊伍榜副本選單失焦(event) {
   if (!event.currentTarget.contains(event.relatedTarget)) {
     隊伍榜副本選單開啟.value = false;
+  }
+}
+
+function 切換近期動態日誌副本選單() {
+  副本選單開啟.value = false;
+  職業選單開啟.value = false;
+  使用者職業選單開啟.value = false;
+  統計副本選單開啟.value = false;
+  比較副本選單開啟.value = false;
+  隊伍榜副本選單開啟.value = false;
+  統計職業選單開啟.value = false;
+  職業分析選單開啟.value = false;
+  近期動態日誌副本選單開啟.value = !近期動態日誌副本選單開啟.value;
+}
+
+function 選擇近期動態日誌副本(副本鍵值) {
+  if (!副本鍵值) {
+    return;
+  }
+  近期動態日誌副本鍵值.value = 副本鍵值;
+  近期動態日誌副本選單開啟.value = false;
+  清除近期動態日誌提示();
+}
+
+function 處理近期動態日誌副本選單失焦(event) {
+  if (!event.currentTarget.contains(event.relatedTarget)) {
+    近期動態日誌副本選單開啟.value = false;
   }
 }
 
@@ -1709,6 +1796,356 @@ const 資料狀態分組 = computed(() => {
 });
 
 const 近期動態來源 = computed(() => 近期動態資料.value || {});
+
+function 台灣日期字串轉時間(日期字串) {
+  const 時間 = new Date(`${日期字串 || ""}T00:00:00+08:00`).getTime();
+  return Number.isFinite(時間) ? 時間 : null;
+}
+
+function 時間轉台灣日期字串(時間) {
+  if (!Number.isFinite(時間)) {
+    return "";
+  }
+  return new Date(時間 + 8 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
+function 台灣日期字串加天數(日期字串, 天數) {
+  const 時間 = 台灣日期字串轉時間(日期字串);
+  return 時間 === null ? "" : 時間轉台灣日期字串(時間 + 天數 * 24 * 60 * 60 * 1000);
+}
+
+function 台灣日期相差天數(開始日期, 結束日期) {
+  const 開始時間 = 台灣日期字串轉時間(開始日期);
+  const 結束時間 = 台灣日期字串轉時間(結束日期);
+  if (開始時間 === null || 結束時間 === null) {
+    return 0;
+  }
+  return Math.round((結束時間 - 開始時間) / (24 * 60 * 60 * 1000));
+}
+
+function 台灣月份第一天(日期字串) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(日期字串 || "") ? `${日期字串.slice(0, 7)}-01` : "";
+}
+
+function 台灣月份加一個月(月份第一天) {
+  const 年 = Number(月份第一天.slice(0, 4));
+  const 月 = Number(月份第一天.slice(5, 7));
+  if (!Number.isFinite(年) || !Number.isFinite(月)) {
+    return "";
+  }
+  const 下一月 = 月 === 12 ? 1 : 月 + 1;
+  const 下一年 = 月 === 12 ? 年 + 1 : 年;
+  return `${下一年}-${String(下一月).padStart(2, "0")}-01`;
+}
+
+function 近期動態日誌月份標籤(日期字串) {
+  return /^\d{4}-\d{2}/.test(日期字串 || "") ? 日期字串.slice(0, 7).replace("-", "/") : "";
+}
+
+function 近期動態日誌日期標籤(日期字串) {
+  return 日期字串 ? 格式化紀錄日期(`${日期字串}T00:00:00+08:00`) : "-";
+}
+
+function 取近期動態日誌數值(點, 指標) {
+  return 轉為數字(點?.[指標]) ?? 0;
+}
+
+function 建立近期動態日誌每日點(原始點列表, 指標, 開始日期, 結束日期) {
+  const 點索引 = new Map((原始點列表 || []).map((點) => [點.date, 點]));
+  const 每日點 = [];
+  let 游標日期 = 開始日期;
+
+  while (游標日期 && 游標日期 <= 結束日期) {
+    const 原始點 = 點索引.get(游標日期);
+    每日點.push({
+      key: 游標日期,
+      label: 近期動態日誌日期標籤(游標日期),
+      start_date: 游標日期,
+      end_date: 游標日期,
+      count: 取近期動態日誌數值(原始點, 指標),
+      unique_report_count: 取近期動態日誌數值(原始點, "unique_report_count"),
+      unique_fight_count: 取近期動態日誌數值(原始點, "unique_fight_count"),
+    });
+    游標日期 = 台灣日期字串加天數(游標日期, 1);
+  }
+
+  return 每日點;
+}
+
+function 建立近期動態日誌月份刻度(開始日期, 結束日期) {
+  const 總天數 = Math.max(台灣日期相差天數(開始日期, 結束日期), 0);
+  const 刻度列表 = [];
+  let 游標月份 = 台灣月份第一天(開始日期);
+
+  while (游標月份 && 游標月份 <= 結束日期) {
+    const 刻度日期 = 游標月份 < 開始日期 ? 開始日期 : 游標月份;
+    const 位移天數 = 總天數 <= 0 ? 0 : 台灣日期相差天數(開始日期, 刻度日期);
+    const x = 總天數 <= 0 ? 0 : (位移天數 / 總天數) * 100;
+    const 位置 = Number(Math.min(Math.max(x, 0), 100).toFixed(2));
+    刻度列表.push({
+      key: 游標月份,
+      label: 近期動態日誌月份標籤(游標月份),
+      x: 位置,
+      align: 位置 <= 6 ? "start" : 位置 >= 94 ? "end" : "center",
+    });
+    游標月份 = 台灣月份加一個月(游標月份);
+  }
+
+  return 刻度列表;
+}
+
+function 建立近期動態日誌時間標註(開始日期, 結束日期) {
+  const 總天數 = Math.max(台灣日期相差天數(開始日期, 結束日期), 0);
+  return activityLogTimelineAnnotations
+    .filter((標註) => 標註.date >= 開始日期 && 標註.date <= 結束日期)
+    .map((標註) => {
+      const 位移天數 = 總天數 <= 0 ? 0 : 台灣日期相差天數(開始日期, 標註.date);
+      const x = 總天數 <= 0 ? 50 : (位移天數 / 總天數) * 100;
+      const 位置 = Number(Math.min(Math.max(x, 0), 100).toFixed(2));
+      return {
+        key: `${標註.date}:${標註.title}`,
+        date: 標註.date,
+        title: 標註.title,
+        detail: 標註.detail,
+        x: 位置,
+      };
+    });
+}
+
+const 近期動態日誌來源 = computed(() => 近期動態來源.value.log_activity || {});
+
+const 近期動態日誌副本選項 = computed(() => {
+  const 系列列表 = Array.isArray(近期動態日誌來源.value.series) ? 近期動態日誌來源.value.series : [];
+  return 系列列表
+    .map((系列) => ({
+      value: 系列.encounter_key,
+      label: 系列.encounter_key === "all" ? "全部副本" : 系列.encounter_name || 系列.encounter_key,
+      category: 系列.encounter_category || "",
+    }))
+    .filter((選項) => 選項.value);
+});
+
+const 近期動態日誌副本分組 = computed(() => {
+  const 分組索引 = new Map();
+
+  for (const 分類 of ["全部", ...副本分類順序]) {
+    分組索引.set(分類, []);
+  }
+
+  for (const 選項 of 近期動態日誌副本選項.value) {
+    const 分類 = 選項.value === "all" ? "全部" : 選項.category || "其他";
+    if (!分組索引.has(分類)) {
+      分組索引.set(分類, []);
+    }
+    分組索引.get(分類).push(選項);
+  }
+
+  return Array.from(分組索引.entries())
+    .map(([分類, 副本列表]) => ({
+      分類,
+      副本列表,
+    }))
+    .filter((分組) => 分組.副本列表.length > 0);
+});
+
+const 近期動態日誌指標選項 = computed(() => {
+  const 指標列表 = Array.isArray(近期動態日誌來源.value.metrics) ? 近期動態日誌來源.value.metrics : [];
+  return 指標列表.length > 0
+    ? 指標列表
+    : [
+        { key: "unique_report_count", label: "Logs" },
+        { key: "unique_fight_count", label: "通關場次" },
+      ];
+});
+
+const 近期動態日誌有效副本鍵值 = computed(() => {
+  return 近期動態日誌副本選項.value.some((選項) => 選項.value === 近期動態日誌副本鍵值.value)
+    ? 近期動態日誌副本鍵值.value
+    : "all";
+});
+
+const 近期動態日誌有效指標 = computed(() => {
+  return 近期動態日誌指標選項.value.some((選項) => 選項.key === 近期動態日誌指標.value)
+    ? 近期動態日誌指標.value
+    : "unique_report_count";
+});
+
+const 近期動態日誌指標標籤 = computed(() => {
+  return 近期動態日誌指標選項.value.find((選項) => 選項.key === 近期動態日誌有效指標.value)?.label || "Logs";
+});
+
+const 近期動態日誌副本選單文字 = computed(() => {
+  return 近期動態日誌副本選項.value.find((選項) => 選項.value === 近期動態日誌有效副本鍵值.value)?.label || "全部副本";
+});
+
+const 近期動態日誌選取系列 = computed(() => {
+  const 系列列表 = Array.isArray(近期動態日誌來源.value.series) ? 近期動態日誌來源.value.series : [];
+  return 系列列表.find((系列) => 系列.encounter_key === 近期動態日誌有效副本鍵值.value) || 系列列表[0] || null;
+});
+
+const 顯示近期動態日誌自訂日期 = computed(() => 近期動態日誌時間範圍.value === "custom");
+
+const 近期動態日誌日期範圍 = computed(() => {
+  const 可用結束日期 = 近期動態日誌來源.value.available_end_date || "";
+  const 可用開始日期 = 近期動態日誌來源.value.available_start_date || 可用結束日期;
+  if (!可用結束日期) {
+    return { start: "", end: "" };
+  }
+
+  if (近期動態日誌時間範圍.value === "custom") {
+    const 自訂開始 = 近期動態日誌自訂開始日期.value || 可用開始日期;
+    const 自訂結束 = 近期動態日誌自訂結束日期.value || 可用結束日期;
+    return 自訂開始 <= 自訂結束
+      ? { start: 自訂開始, end: 自訂結束 }
+      : { start: 自訂結束, end: 自訂開始 };
+  }
+
+  if (近期動態日誌時間範圍.value === "all") {
+    return { start: 可用開始日期, end: 可用結束日期 };
+  }
+
+  const 天數 = Math.max(1, 轉為數字(近期動態日誌時間範圍.value) ?? 近期動態日誌來源.value.default_window_days ?? 30);
+  const 請求開始日期 = 台灣日期字串加天數(可用結束日期, -(天數 - 1));
+  return {
+    start: 請求開始日期 && 請求開始日期 < 可用開始日期 ? 可用開始日期 : 請求開始日期,
+    end: 可用結束日期,
+  };
+});
+
+const 近期動態日誌圖表資料 = computed(() => {
+  const 系列 = 近期動態日誌選取系列.value;
+  const 日期範圍 = 近期動態日誌日期範圍.value;
+  if (!系列 || !日期範圍.start || !日期範圍.end) {
+    return null;
+  }
+
+  const 區段點 = 建立近期動態日誌每日點(系列.points || [], 近期動態日誌有效指標.value, 日期範圍.start, 日期範圍.end);
+  const 最大值 = Math.max(...區段點.map((點) => 點.count), 0);
+  const 繪圖最大值 = Math.max(最大值, 1);
+  const 點列表 = 區段點.map((點, index) => {
+    const x = 區段點.length <= 1 ? 50 : (index / (區段點.length - 1)) * 100;
+    const y = 44 - (點.count / 繪圖最大值) * 34;
+    return {
+      ...點,
+      id: `${點.key}:${近期動態日誌有效指標.value}`,
+      x: Number(x.toFixed(2)),
+      y: Number(y.toFixed(2)),
+    };
+  });
+  const 折線路徑 = 點列表.length > 0
+    ? 點列表.map((點, index) => `${index === 0 ? "M" : "L"} ${點.x} ${點.y}`).join(" ")
+    : "";
+  const 面積路徑 = 點列表.length > 1 ? `${折線路徑} L 100 48 L 0 48 Z` : "";
+  const 月份刻度 = 建立近期動態日誌月份刻度(日期範圍.start, 日期範圍.end);
+  const 時間標註 = 建立近期動態日誌時間標註(日期範圍.start, 日期範圍.end);
+  const 總數 = 區段點.reduce((總和, 點) => 總和 + 點.count, 0);
+  const 高峰 = 區段點.slice().sort((前一個, 後一個) => 後一個.count - 前一個.count)[0] || null;
+  const 最新 = 區段點.at(-1) || null;
+
+  return {
+    encounter_key: 系列.encounter_key,
+    encounter_name: 系列.encounter_name,
+    metric: 近期動態日誌有效指標.value,
+    metric_label: 近期動態日誌指標標籤.value,
+    start_date: 日期範圍.start,
+    end_date: 日期範圍.end,
+    total_count: 總數,
+    max_count: 最大值,
+    latest_count: 最新?.count ?? 0,
+    peak: 高峰,
+    line_path: 折線路徑,
+    area_path: 面積路徑,
+    points: 點列表,
+    month_ticks: 月份刻度,
+    annotations: 時間標註,
+  };
+});
+
+const 近期動態日誌摘要 = computed(() => {
+  const 圖表 = 近期動態日誌圖表資料.value;
+  if (!圖表) {
+    return [];
+  }
+
+  return [
+    { 標籤: "總數", 數值: 格式化整數(圖表.total_count) },
+    { 標籤: "高峰", 數值: 圖表.peak ? `${格式化整數(圖表.peak.count)}・${圖表.peak.label}` : "-" },
+    { 標籤: "最新日期", 數值: 格式化整數(圖表.latest_count) },
+  ];
+});
+
+const 近期動態日誌提示資料 = computed(() => {
+  const 圖表 = 近期動態日誌圖表資料.value;
+  const 目前點 = 近期動態日誌提示點.value;
+  if (!圖表 || !目前點) {
+    return null;
+  }
+
+  const 圖表點 = 圖表.points.find((點) => 點.id === 目前點.id);
+  if (!圖表點) {
+    return null;
+  }
+
+  const 水平位置 = Math.min(Math.max(圖表點.x, 8), 92);
+  const 垂直百分比 = (圖表點.y / 52) * 100;
+  const 顯示在下方 = 圖表點.y < 17;
+
+  return {
+    ...圖表點,
+    metric_label: 圖表.metric_label,
+    value_text: 格式化整數(圖表點.count),
+    style: {
+      left: `${水平位置}%`,
+      top: `${垂直百分比}%`,
+      "--近期日誌提示位移Y": 顯示在下方 ? "14px" : "calc(-100% - 12px)",
+    },
+  };
+});
+
+function 顯示近期動態日誌提示(點) {
+  if (!點) {
+    return;
+  }
+  if (近期動態日誌提示鎖定.value) {
+    return;
+  }
+  近期動態日誌提示點.value = 點;
+}
+
+function 隱藏近期動態日誌提示() {
+  if (!近期動態日誌提示鎖定.value) {
+    近期動態日誌提示點.value = null;
+  }
+}
+
+function 固定近期動態日誌提示(點) {
+  if (!點) {
+    return;
+  }
+  const 同一點 = 近期動態日誌提示鎖定.value && 近期動態日誌提示點.value?.id === 點.id;
+  近期動態日誌提示點.value = 同一點 ? null : 點;
+  近期動態日誌提示鎖定.value = !同一點;
+}
+
+function 清除近期動態日誌提示() {
+  近期動態日誌提示點.value = null;
+  近期動態日誌提示鎖定.value = false;
+}
+
+watch(近期動態日誌圖表資料, () => {
+  if (近期動態日誌提示點.value && !近期動態日誌提示資料.value) {
+    清除近期動態日誌提示();
+  }
+});
+
+const 近期動態日誌範圍文字 = computed(() => {
+  const 圖表 = 近期動態日誌圖表資料.value;
+  if (!圖表) {
+    return "尚無 Logs 趨勢資料";
+  }
+
+  return `${近期動態日誌日期標籤(圖表.start_date)} 至 ${近期動態日誌日期標籤(圖表.end_date)}`;
+});
 
 const 近期動態基準時間 = computed(() => {
   const 動態基準時間 = new Date(近期動態來源.value.baseline_at_iso || 0).getTime();
@@ -4566,6 +5003,13 @@ onUnmounted(() => {
     近期動態資料,
     近期動態讀取中,
     近期動態錯誤訊息,
+    近期動態日誌副本鍵值,
+    近期動態日誌副本選單開啟,
+    近期動態日誌時間範圍,
+    近期動態日誌指標,
+    近期動態日誌自訂開始日期,
+    近期動態日誌自訂結束日期,
+    近期動態日誌提示鎖定,
     隊伍榜資料,
     隊伍榜讀取中,
     隊伍榜錯誤訊息,
@@ -4779,6 +5223,25 @@ onUnmounted(() => {
     資料狀態分組,
     近期動態來源,
     近期動態基準時間,
+    近期動態日誌時間範圍選項,
+    近期動態日誌副本選項,
+    近期動態日誌副本分組,
+    近期動態日誌副本選單文字,
+    近期動態日誌有效副本鍵值,
+    近期動態日誌指標選項,
+    近期動態日誌圖表資料,
+    近期動態日誌摘要,
+    近期動態日誌提示資料,
+    近期動態日誌範圍文字,
+    近期動態日誌指標標籤,
+    顯示近期動態日誌自訂日期,
+    切換近期動態日誌副本選單,
+    選擇近期動態日誌副本,
+    處理近期動態日誌副本選單失焦,
+    顯示近期動態日誌提示,
+    隱藏近期動態日誌提示,
+    固定近期動態日誌提示,
+    清除近期動態日誌提示,
     近期動態最新成績列表,
     近期刷新紀錄列表,
     近期刷新版本說明文字,

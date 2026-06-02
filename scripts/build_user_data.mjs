@@ -23,6 +23,7 @@ const savageDamageComparisonEncounterKeys = ["savage_m1s", "savage_m2s", "savage
 const savageDamageComparisonEncounterKeySet = new Set(savageDamageComparisonEncounterKeys);
 const minimumDamageActivePercent = 50;
 const activityWindowDays = 7;
+const activityLogDefaultWindowDays = 30;
 const recentActivityLimit = 40;
 const teamRecordsPerEncounterLimit = 50;
 const versionRecordModes = ["all", "valid", "obsolete"];
@@ -556,6 +557,31 @@ function roundPercent(value) {
 function entryRecordedAtMs(entry) {
   const time = new Date(entry?.recorded_at_iso || 0).getTime();
   return Number.isNaN(time) ? 0 : time;
+}
+
+function fightRecordedAtMs(fight, report) {
+  const recordedAt = toNumber(fight?.recorded_at);
+  if (recordedAt !== null && recordedAt > 0) {
+    return recordedAt;
+  }
+
+  const recordedAtIso = new Date(fight?.recorded_at_iso || report?.report_start_time_iso || 0).getTime();
+  if (Number.isFinite(recordedAtIso) && recordedAtIso > 0) {
+    return recordedAtIso;
+  }
+
+  const reportStartTime = toNumber(report?.report_start_time);
+  return reportStartTime !== null && reportStartTime > 0 ? reportStartTime : 0;
+}
+
+function taiwanDateKeyFromMs(timeMs) {
+  if (!Number.isFinite(timeMs) || timeMs <= 0) {
+    return null;
+  }
+
+  // 近期動態面向繁中服使用者，日誌曲線以台灣日期切日；
+  // 台灣沒有日光節約時間，固定 +08:00 可避免 Intl 在 GitHub runner 上輸出格式差異。
+  return new Date(timeMs + 8 * 60 * 60 * 1000).toISOString().slice(0, 10);
 }
 
 function getEncounterVersionCutoff(encounter) {
@@ -2189,7 +2215,218 @@ function buildScopeActivity(entries, personalBests, scopeName) {
     .sort((left, right) => right.entry_count - left.entry_count || compareByLocale(left[scopeName], right[scopeName]));
 }
 
-function buildActivityPayload(entries, generatedAtIso, latestRankingUpdatedAt) {
+function createActivityLogAccumulator() {
+  return {
+    buckets: new Map(),
+    series: new Map(),
+    earliestDate: null,
+    latestDate: null,
+    latestRecordedAtMs: 0,
+  };
+}
+
+function createActivityLogSeriesMeta(encounter) {
+  return {
+    encounter_key: encounter.encounter_key,
+    encounter_name: encounter.encounter_name,
+    encounter_category: encounter.encounter_category,
+    uniqueReportKeys: new Set(),
+    uniqueFightKeys: new Set(),
+    latestRecordedAtMs: 0,
+  };
+}
+
+function getActivityLogSeriesMeta(accumulator, encounter) {
+  const key = encounter.encounter_key;
+  let meta = accumulator.series.get(key);
+  if (!meta) {
+    meta = createActivityLogSeriesMeta(encounter);
+    accumulator.series.set(key, meta);
+  }
+  return meta;
+}
+
+function getActivityLogBucket(accumulator, encounter, dateKey) {
+  const key = `${encounter.encounter_key}:${dateKey}`;
+  let bucket = accumulator.buckets.get(key);
+  if (!bucket) {
+    bucket = {
+      date: dateKey,
+      encounter_key: encounter.encounter_key,
+      encounter_name: encounter.encounter_name,
+      encounter_category: encounter.encounter_category,
+      uniqueReportKeys: new Set(),
+      uniqueFightKeys: new Set(),
+      latestRecordedAtMs: 0,
+    };
+    accumulator.buckets.set(key, bucket);
+  }
+  return bucket;
+}
+
+function updateActivityLogDateRange(accumulator, dateKey, recordedAtMs) {
+  if (!accumulator.earliestDate || dateKey < accumulator.earliestDate) {
+    accumulator.earliestDate = dateKey;
+  }
+  if (!accumulator.latestDate || dateKey > accumulator.latestDate) {
+    accumulator.latestDate = dateKey;
+  }
+  if (recordedAtMs > accumulator.latestRecordedAtMs) {
+    accumulator.latestRecordedAtMs = recordedAtMs;
+  }
+}
+
+function addActivityLogCounts(accumulator, encounter, dateKey, recordedAtMs, counts) {
+  const bucket = getActivityLogBucket(accumulator, encounter, dateKey);
+  const meta = getActivityLogSeriesMeta(accumulator, encounter);
+
+  if (counts.reportKey) {
+    bucket.uniqueReportKeys.add(counts.reportKey);
+    meta.uniqueReportKeys.add(counts.reportKey);
+  }
+  if (counts.fightKey) {
+    bucket.uniqueFightKeys.add(counts.fightKey);
+    meta.uniqueFightKeys.add(counts.fightKey);
+  }
+
+  bucket.latestRecordedAtMs = Math.max(bucket.latestRecordedAtMs, recordedAtMs);
+  meta.latestRecordedAtMs = Math.max(meta.latestRecordedAtMs, recordedAtMs);
+  updateActivityLogDateRange(accumulator, dateKey, recordedAtMs);
+}
+
+function addActivityLogObservation(accumulator, encounter, dateKey, recordedAtMs, counts) {
+  const allEncounter = {
+    encounter_key: "all",
+    encounter_name: "全部副本",
+    encounter_category: null,
+  };
+  addActivityLogCounts(accumulator, allEncounter, dateKey, recordedAtMs, counts);
+  addActivityLogCounts(accumulator, {
+    encounter_key: encounter.key,
+    encounter_name: encounter.name,
+    encounter_category: encounter.category || null,
+  }, dateKey, recordedAtMs, counts);
+}
+
+function addActivityLogsFromReports(
+  accumulator,
+  { ranking, encounter, includeHiddenReports = false },
+) {
+  // 近期動態的 Logs 曲線以 reports/fights/players 權威來源建立：
+  // report_code 回答「有多少份 FFLogs 日誌」，fight_hash 回答「去重後有多少場通關」。
+  // 這兩個口徑若在 Vue 端用 ranking_entries 反推，會把同場多份上傳或同一 report 內多場戰鬥混在一起。
+  for (const [fallbackReportCode, report] of Object.entries(ranking.reports || {})) {
+    if (!report || typeof report !== "object") {
+      continue;
+    }
+    if (isHiddenReport(report) && !includeHiddenReports) {
+      continue;
+    }
+
+    const reportCode = report.report_code || fallbackReportCode;
+    for (const fight of report.fights || []) {
+      if (!fight || typeof fight !== "object") {
+        continue;
+      }
+
+      const recordedAtMs = fightRecordedAtMs(fight, report);
+      const dateKey = taiwanDateKeyFromMs(recordedAtMs);
+      const fightPlayers = Array.isArray(fight.players) ? fight.players : [];
+      if (!dateKey || fightPlayers.length === 0) {
+        continue;
+      }
+
+      const fightKey = fight.fight_hash
+        ? `${encounter.key}:${fight.fight_hash}`
+        : `${encounter.key}:${reportCode}:${fight.fight_id ?? ""}:${recordedAtMs}`;
+      addActivityLogObservation(accumulator, encounter, dateKey, recordedAtMs, {
+        reportKey: reportCode || null,
+        fightKey,
+      });
+    }
+  }
+}
+
+function addActivityLogsFromEntries(accumulator, { entries, encounter }) {
+  // 舊資料若沒有 reports 分片，至少用 ranking_entries 建出相容的 Logs 與通關場次粗估。
+  // 這條路徑沒有 fight_hash 與同場完整隊友，因此只作為舊格式保底，不應成為新統計的主要來源。
+  for (const entry of entries || []) {
+    const recordedAtMs = entryRecordedAtMs(entry);
+    const dateKey = taiwanDateKeyFromMs(recordedAtMs);
+    if (!dateKey) {
+      continue;
+    }
+
+    const reportKey = entry.report_code || entry.report_url || null;
+    const fightKey = entry.fight_hash
+      ? `${encounter.key}:${entry.fight_hash}`
+      : `${encounter.key}:${reportKey || entry.id}:${entry.fight_id ?? ""}:${recordedAtMs}`;
+
+    addActivityLogObservation(accumulator, encounter, dateKey, recordedAtMs, {
+      reportKey,
+      fightKey,
+    });
+  }
+}
+
+function serializeActivityLogPoint(bucket) {
+  return {
+    date: bucket.date,
+    unique_report_count: bucket.uniqueReportKeys.size,
+    unique_fight_count: bucket.uniqueFightKeys.size,
+    latest_recorded_at_iso: bucket.latestRecordedAtMs > 0 ? new Date(bucket.latestRecordedAtMs).toISOString() : null,
+  };
+}
+
+function serializeActivityLogSeries(accumulator, meta) {
+  const points = Array.from(accumulator.buckets.values())
+    .filter((bucket) => bucket.encounter_key === meta.encounter_key)
+    .sort((left, right) => compareByLocale(left.date, right.date))
+    .map(serializeActivityLogPoint);
+
+  return {
+    encounter_key: meta.encounter_key,
+    encounter_name: meta.encounter_name,
+    encounter_category: meta.encounter_category,
+    total_unique_report_count: meta.uniqueReportKeys.size,
+    total_unique_fight_count: meta.uniqueFightKeys.size,
+    latest_recorded_at_iso: meta.latestRecordedAtMs > 0 ? new Date(meta.latestRecordedAtMs).toISOString() : null,
+    points,
+  };
+}
+
+function buildActivityLogPayload(accumulator) {
+  const allMeta = accumulator.series.get("all") || createActivityLogSeriesMeta({
+    encounter_key: "all",
+    encounter_name: "全部副本",
+    encounter_category: null,
+  });
+  const encounterSeries = Array.from(accumulator.series.values())
+    .filter((meta) => meta.encounter_key !== "all")
+    .sort((left, right) => right.uniqueFightKeys.size - left.uniqueFightKeys.size || compareByLocale(left.encounter_name, right.encounter_name));
+
+  return {
+    schema_version: 1,
+    default_window_days: activityLogDefaultWindowDays,
+    available_start_date: accumulator.earliestDate,
+    available_end_date: accumulator.latestDate,
+    baseline_at_iso: accumulator.latestRecordedAtMs > 0 ? new Date(accumulator.latestRecordedAtMs).toISOString() : null,
+    metrics: [
+      { key: "unique_report_count", label: "Logs" },
+      { key: "unique_fight_count", label: "通關場次" },
+    ],
+    summary: {
+      total_unique_report_count: allMeta.uniqueReportKeys.size,
+      total_unique_fight_count: allMeta.uniqueFightKeys.size,
+    },
+    series: [
+      serializeActivityLogSeries(accumulator, allMeta),
+      ...encounterSeries.map((meta) => serializeActivityLogSeries(accumulator, meta)),
+    ],
+  };
+}
+
+function buildActivityPayload(entries, generatedAtIso, latestRankingUpdatedAt, activityLogAccumulator = createActivityLogAccumulator()) {
   const latestEntryTime = entries
     .map(entryRecordedAtMs)
     .filter((time) => time > 0)
@@ -2228,6 +2465,7 @@ function buildActivityPayload(entries, generatedAtIso, latestRankingUpdatedAt) {
     new_characters: newCharacters.slice(0, recentActivityLimit),
     server_activity: serverActivity,
     encounter_activity: encounterActivity,
+    log_activity: buildActivityLogPayload(activityLogAccumulator),
   };
 }
 
@@ -2551,6 +2789,7 @@ async function buildDataset({
   const overallCharacterKeys = new Set();
   const encounterStats = [];
   const allEntries = [];
+  const activityLogAccumulator = createActivityLogAccumulator();
   const teamRecordsByEncounter = new Map();
   const pendingEncounterData = [];
   const hiddenUserStubs = [];
@@ -2571,6 +2810,15 @@ async function buildDataset({
     const teamRecords = ranking.reports
       ? collectTeamRecordsFromReports({ ranking, encounter, includeHiddenReports })
       : [];
+    if (ranking.reports) {
+      addActivityLogsFromReports(activityLogAccumulator, {
+        ranking,
+        encounter,
+        includeHiddenReports,
+      });
+    } else {
+      addActivityLogsFromEntries(activityLogAccumulator, { entries, encounter });
+    }
 
     pendingEncounterData.push({
       encounter,
@@ -2723,7 +2971,7 @@ async function buildDataset({
     encounters: normalizedEncounterStats,
   });
 
-  await writeJson(activityPath, buildActivityPayload(allEntries, generatedAtIso, latestRankingUpdatedAt));
+  await writeJson(activityPath, buildActivityPayload(allEntries, generatedAtIso, latestRankingUpdatedAt, activityLogAccumulator));
   await writeJson(teamRankingsPath, buildTeamRankingsPayload(teamRecordsByEncounter, generatedAtIso, latestRankingUpdatedAt));
   await writeJson(serverComparePath, buildServerComparePayload(allEntries, normalizedEncounterStats, generatedAtIso, latestRankingUpdatedAt));
   await syncAnnouncementMirror(outputDataDir);

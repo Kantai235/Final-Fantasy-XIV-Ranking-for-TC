@@ -428,6 +428,341 @@
   min-width: 900px;
 }
 
+.近期日誌趨勢面板 {
+  overflow: visible;
+}
+
+.近期日誌面板內容 {
+  display: grid;
+  gap: 12px;
+  padding: 12px 14px 14px;
+}
+
+.近期日誌工具列 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(130px, 1fr));
+  gap: 10px;
+  align-items: start;
+}
+
+.近期日誌範圍模式 {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.近期日誌日期區間 {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: end;
+  gap: 8px;
+  padding: 9px;
+  border: 1px solid var(--輸入邊框);
+  border-radius: 8px;
+  background: transparent;
+}
+
+.近期日誌日期區間 label {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+  color: var(--次要文字);
+  font-size: 0.72rem;
+  font-weight: 760;
+}
+
+.近期日誌日期區間 input {
+  min-height: 38px;
+  padding-inline: 9px;
+  font-size: 0.82rem;
+}
+
+.近期日誌日期區間分隔 {
+  align-self: center;
+  color: var(--次要文字);
+  font-size: 0.76rem;
+  font-weight: 760;
+}
+
+.近期日誌摘要列 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid var(--邊框色);
+  border-radius: 8px;
+  background: var(--邊框柔和色);
+}
+
+.近期日誌摘要列 span {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+  padding: 9px 12px;
+  background: var(--表面背景);
+}
+
+.近期日誌摘要列 small {
+  color: var(--次要文字);
+  font-size: 0.74rem;
+  font-weight: 720;
+}
+
+.近期日誌摘要列 strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--主要文字);
+  font-size: 0.98rem;
+  font-weight: 860;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.近期日誌圖表 {
+  position: relative;
+  height: 252px;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) 34px;
+  overflow: hidden;
+  border: 1px solid var(--邊框色);
+  border-radius: 8px;
+  background: var(--表面背景);
+}
+
+.近期日誌繪圖區 {
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.近期日誌曲線圖 {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.近期日誌格線 {
+  stroke: color-mix(in srgb, var(--邊框柔和色) 82%, transparent);
+  stroke-width: 0.8;
+}
+
+.近期日誌面積 {
+  fill: color-mix(in srgb, var(--重點色) 11%, transparent);
+}
+
+.近期日誌折線 {
+  fill: none;
+  stroke: var(--重點色);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2.1;
+  vector-effect: non-scaling-stroke;
+}
+
+.近期日誌標註層 {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  pointer-events: none;
+}
+
+.近期日誌時間標註 {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  color: var(--主要文字);
+}
+
+.近期日誌時間標註線 {
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  left: 0;
+  width: 1px;
+  background: color-mix(in srgb, var(--重點色) 36%, var(--邊框柔和色));
+}
+
+.近期日誌時間標註內容 {
+  position: absolute;
+  top: 12px;
+  left: 0;
+  width: 148px;
+  display: grid;
+  gap: 2px;
+  transform: translateX(-50%);
+  border: 1px solid var(--邊框色);
+  border-top: 3px solid var(--重點色);
+  border-radius: 8px;
+  padding: 6px 9px 7px;
+  background: color-mix(in srgb, var(--表面背景) 98%, var(--表面背景柔和));
+  box-shadow: 0 10px 22px color-mix(in srgb, var(--陰影色) 16%, transparent);
+  text-align: center;
+}
+
+.近期日誌時間標註內容 strong,
+.近期日誌時間標註內容 span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.近期日誌時間標註內容 strong {
+  color: var(--主要文字);
+  font-size: 0.78rem;
+  font-weight: 860;
+}
+
+.近期日誌時間標註內容 span {
+  color: var(--次要文字);
+  font-size: 0.72rem;
+  font-weight: 740;
+}
+
+.近期日誌點層 {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  pointer-events: none;
+}
+
+.近期日誌點 {
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  min-width: 7px;
+  min-height: 7px;
+  padding: 0;
+  transform: translate(-50%, -50%);
+  pointer-events: auto;
+  border: 2px solid var(--重點色);
+  border-radius: 999px;
+  appearance: none;
+  background: var(--表面背景);
+  box-shadow: 0 0 0 2px var(--表面背景);
+  cursor: pointer;
+  transition:
+    transform 0.16s ease,
+    box-shadow 0.16s ease,
+    background 0.16s ease;
+}
+
+.近期日誌點:hover,
+.近期日誌點:focus-visible,
+.近期日誌點作用中 {
+  transform: translate(-50%, -50%) scale(1.55);
+  outline: none;
+  background: var(--重點色);
+  box-shadow:
+    0 0 0 3px var(--表面背景),
+    0 0 0 7px color-mix(in srgb, var(--重點色) 15%, transparent);
+}
+
+.近期日誌提示 {
+  position: absolute;
+  z-index: 3;
+  left: 50%;
+  top: 50%;
+  max-width: min(230px, calc(100% - 24px));
+  display: grid;
+  gap: 3px;
+  transform: translate(-50%, var(--近期日誌提示位移Y, calc(-100% - 12px)));
+  pointer-events: none;
+  border: 1px solid var(--邊框色);
+  border-radius: 8px;
+  padding: 9px 11px;
+  color: var(--主要文字);
+  background: var(--表面背景);
+  box-shadow: 0 12px 26px color-mix(in srgb, var(--陰影色) 20%, transparent);
+}
+
+.近期日誌提示 small {
+  color: var(--次要文字);
+  font-size: 0.74rem;
+  font-weight: 760;
+  white-space: nowrap;
+}
+
+.近期日誌提示 strong {
+  font-size: 0.92rem;
+  font-weight: 860;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.近期日誌提示固定 {
+  border-color: var(--重點色);
+}
+
+.近期日誌刻度 {
+  position: absolute;
+  inset: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  pointer-events: none;
+}
+
+.近期日誌刻度 span {
+  width: fit-content;
+  padding: 2px 6px;
+  border-radius: 6px;
+  color: var(--次要文字);
+  background: color-mix(in srgb, var(--表面背景) 88%, transparent);
+  font-size: 0.72rem;
+  font-weight: 760;
+  font-variant-numeric: tabular-nums;
+}
+
+.近期日誌月份軸 {
+  position: relative;
+  margin: 0 12px;
+  border-top: 1px solid color-mix(in srgb, var(--邊框柔和色) 88%, transparent);
+}
+
+.近期日誌月份刻度 {
+  position: absolute;
+  top: 9px;
+  transform: translateX(-50%);
+  color: var(--次要文字);
+  font-size: 0.72rem;
+  font-weight: 760;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.近期日誌月份刻度::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: -9px;
+  width: 1px;
+  height: 5px;
+  background: var(--邊框柔和色);
+  transform: translateX(-50%);
+}
+
+.近期日誌月份刻度起點 {
+  transform: none;
+}
+
+.近期日誌月份刻度終點 {
+  transform: translateX(-100%);
+}
+
+.近期日誌月份刻度起點::before {
+  left: 0;
+  transform: none;
+}
+
+.近期日誌月份刻度終點::before {
+  left: 100%;
+  transform: translateX(-100%);
+}
+
 .近期動態職業標籤 {
   max-width: 150px;
 }

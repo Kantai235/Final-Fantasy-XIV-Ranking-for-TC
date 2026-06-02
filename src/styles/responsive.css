@@ -1,6 +1,41 @@
 /* 手機版與動作偏好樣式。 */
 
 @media (max-width: 560px) {
+  .近期日誌面板內容 {
+    gap: 10px;
+    padding: 10px 10px 12px;
+  }
+
+  .近期日誌工具列,
+  .近期日誌摘要列 {
+    grid-template-columns: 1fr;
+  }
+
+  .近期日誌圖表 {
+    height: 180px;
+  }
+
+  .近期日誌時間標註內容 {
+    width: 124px;
+    padding: 6px 8px;
+  }
+
+  .近期日誌時間標註內容 strong {
+    font-size: 0.74rem;
+  }
+
+  .近期日誌時間標註內容 span {
+    font-size: 0.68rem;
+  }
+
+  .近期日誌日期區間 {
+    grid-template-columns: 1fr;
+  }
+
+  .近期日誌日期區間分隔 {
+    display: none;
+  }
+
   .報告彈窗遮罩 {
     align-items: flex-end;
     padding: 12px;
@@ -92,6 +127,12 @@
     width: auto;
     min-width: 54px;
     padding-inline: 10px;
+  }
+}
+
+@media (min-width: 561px) and (max-width: 720px) {
+  .近期日誌工具列 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 

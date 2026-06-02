@@ -54,11 +54,14 @@ npm run sync:data -- --dry-run
 - `public/data/ranking-details/*.json` 的按需載入報告細節。
 - `public/data/users/index.json` 與每一份 `public/data/users/*.json` 個人成績單。
 - `public/data/user-entry-details/*.json` 的個人成績報告分頁細節。
+- `public/data/activity.json` 的近期動態、活躍分布與 Logs 趨勢。
 - `public/data/team_rankings.json` 的副本、隊伍紀錄與 8 人隊員列。
 - `public/data/server_compare.json` 的伺服器列、副本列、職業/職能統計與傷害分位。
 - `public/data/fun/honey_b_fans.json` 的 Honey B. Lovely 粉絲榜摘要、頭號粉絲、近期紀錄與完整趣味紀錄。
 
 `public/data/all/` 目前是 hidden delta 產物，不再複製所有公開 JSON；delta 檔也有自己的資料契約，驗證時會先與公開底稿合併再檢查完整資料形狀。新增或移除公開 JSON 欄位時，必須同步更新 `schemas/public_data_contracts.mjs`、資料建置腳本與前端讀取端，讓欄位漂移在 `npm test` 或 `npm run validate:data` 階段被抓到。
+
+`public/data/activity.json` 的 `log_activity` 由 `scripts/build_user_data.mjs` 讀取 `reports -> fights -> players` 產生，不由 Vue 元件即時計算。`unique_report_count` 以 `report_code` 去重，代表 FFLogs 日誌數；`unique_fight_count` 以 `encounter_key + fight_hash` 去重，代表同場多份上傳合併後的通關場次。每日 bucket 使用台灣日期切分，前端只負責依副本、日期範圍與每日座標顯示這些靜態統計；日期範圍的 UI 初始值依響應式模式決定，桌面預設近 90 天，手機預設近 30 天。
 
 `gcd_coverage` 是公開資料中可顯示的衍生結果；除了 `percent`、分母與計算版本，也允許保留小型診斷欄位，例如 `estimated_speed_below_minimum`、`fallback_selection`、`downtime_selection`，以及 raw events、Casts graph、raw targetability fallback 的比較百分比與分母。這些欄位只說明本地演算法為什麼選用某個覆蓋率結果，不保存 FFLogs raw events 或 Casts graph payload，因此符合公開 JSON 的瘦身邊界。
 

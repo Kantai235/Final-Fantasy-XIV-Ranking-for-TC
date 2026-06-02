@@ -591,6 +591,41 @@ async function validateActivity() {
       break;
     }
   }
+
+  const logActivity = activity?.log_activity;
+  if (!isObjectRecord(logActivity)) {
+    reportIssue("public/data/activity.json 缺少 log_activity");
+    return;
+  }
+  if (!Array.isArray(logActivity.series) || logActivity.series.length === 0) {
+    reportIssue("public/data/activity.json 的 log_activity.series 必須是非空陣列");
+    return;
+  }
+  const allSeries = logActivity.series.find((series) => series?.encounter_key === "all");
+  if (!allSeries) {
+    reportIssue("public/data/activity.json 的 log_activity.series 必須包含全部副本系列");
+  }
+  if (!isFiniteNumber(logActivity?.summary?.total_unique_report_count)) {
+    reportIssue("public/data/activity.json 缺少 log_activity.summary.total_unique_report_count");
+  }
+
+  for (const series of logActivity.series) {
+    if (!series?.encounter_key || !series?.encounter_name || !Array.isArray(series.points)) {
+      reportIssue("public/data/activity.json 的 log_activity.series 有條目缺少副本或 points");
+      break;
+    }
+    checkedActivityItems += series.points.length;
+    for (const point of series.points) {
+      if (
+        typeof point?.date !== "string" ||
+        !isFiniteNumber(point.unique_report_count) ||
+        !isFiniteNumber(point.unique_fight_count)
+      ) {
+        reportIssue("public/data/activity.json 的 log_activity point 缺少日期或數量欄位");
+        return;
+      }
+    }
+  }
 }
 
 function isOptionalIsoTimestamp(value) {
