@@ -570,8 +570,9 @@
 }
 
 .近期日誌圖表 {
+  --近期日誌標註帶高度: 130px;
   position: relative;
-  height: 252px;
+  height: 368px;
   display: grid;
   grid-template-rows: minmax(0, 1fr) 34px;
   overflow: hidden;
@@ -587,8 +588,10 @@
 }
 
 .近期日誌曲線圖 {
+  position: absolute;
+  inset: var(--近期日誌標註帶高度) 0 0;
   width: 100%;
-  height: 100%;
+  height: calc(100% - var(--近期日誌標註帶高度));
   display: block;
 }
 
@@ -643,6 +646,18 @@
 }
 
 .近期日誌時間標註 {
+  --近期日誌標註錨點色: var(--重點色);
+  --近期日誌標註對齊線色: color-mix(in srgb, var(--近期日誌標註錨點色) 42%, var(--邊框柔和色));
+  --近期日誌標註邊線色: color-mix(in srgb, var(--近期日誌標註對齊線色) 72%, var(--邊框色));
+  --近期日誌標註重點線色: color-mix(in srgb, var(--近期日誌標註對齊線色) 86%, var(--近期日誌標註錨點色));
+  --近期日誌標註背景色: color-mix(in srgb, var(--表面背景) 98%, var(--表面背景柔和));
+  --近期日誌標註角標尺寸: 9px;
+  --近期日誌標註邊緣角標寬: 14px;
+  --近期日誌標註邊緣角標高: 9px;
+  --近期日誌標註邊緣角標線長: 13px;
+  --近期日誌標註邊緣角標覆蓋: 1px;
+  --近期日誌標註角標遮罩寬: 10px;
+  --近期日誌標註角標遮罩高: 10px;
   position: absolute;
   top: 0;
   bottom: 0;
@@ -656,7 +671,38 @@
   bottom: 8px;
   left: 0;
   width: 1px;
-  background: color-mix(in srgb, var(--重點色) 36%, var(--邊框柔和色));
+  background: var(--近期日誌標註對齊線色);
+}
+
+.近期日誌時間標註線::before {
+  content: "";
+  position: absolute;
+  top: -2px;
+  left: 50%;
+  width: 7px;
+  height: 7px;
+  transform: translateX(-50%);
+  border: 2px solid var(--表面背景);
+  border-radius: 999px;
+  background: var(--近期日誌標註錨點色);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--近期日誌標註錨點色) 34%, transparent);
+  z-index: 4;
+}
+
+.近期日誌時間標註次要 {
+  --近期日誌標註錨點色: color-mix(in srgb, var(--次要文字) 70%, var(--重點色));
+  --近期日誌標註對齊線色: color-mix(in srgb, var(--近期日誌標註錨點色) 38%, var(--邊框柔和色));
+  --近期日誌標註邊線色: color-mix(in srgb, var(--近期日誌標註對齊線色) 72%, var(--邊框色));
+  --近期日誌標註重點線色: color-mix(in srgb, var(--近期日誌標註對齊線色) 88%, var(--近期日誌標註錨點色));
+  --近期日誌標註背景色: color-mix(in srgb, var(--表面背景) 94%, var(--表面背景柔和));
+}
+
+.近期日誌時間標註次要 .近期日誌時間標註線 {
+  background: repeating-linear-gradient(
+    to bottom,
+    var(--近期日誌標註對齊線色) 0 5px,
+    transparent 5px 10px
+  );
 }
 
 .近期日誌時間標註內容 {
@@ -667,17 +713,128 @@
   display: grid;
   gap: 2px;
   transform: translateX(-50%);
-  border: 1px solid var(--邊框色);
-  border-top: 3px solid var(--重點色);
+  border: 1px solid var(--近期日誌標註邊線色);
+  border-top: 2px solid var(--近期日誌標註重點線色);
   border-radius: 8px;
   padding: 6px 9px 7px;
-  background: color-mix(in srgb, var(--表面背景) 98%, var(--表面背景柔和));
-  box-shadow: 0 10px 22px color-mix(in srgb, var(--陰影色) 16%, transparent);
+  background: var(--近期日誌標註背景色);
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.16);
   text-align: center;
+  z-index: 2;
+}
+
+.近期日誌時間標註內容::before {
+  content: "";
+  position: absolute;
+  bottom: -7px;
+  left: 50%;
+  width: var(--近期日誌標註角標尺寸);
+  height: var(--近期日誌標註角標尺寸);
+  transform: translateX(-50%) rotate(45deg);
+  border-right: 1px solid var(--近期日誌標註邊線色);
+  border-bottom: 1px solid var(--近期日誌標註邊線色);
+  background: var(--近期日誌標註背景色);
+  z-index: 0;
+}
+
+.近期日誌時間標註角標遮罩 {
+  display: none;
+  position: absolute;
+  z-index: 2;
+  bottom: -1px;
+  width: var(--近期日誌標註角標遮罩寬);
+  height: var(--近期日誌標註角標遮罩高);
+  pointer-events: none;
+  background: var(--近期日誌標註背景色);
+}
+
+.近期日誌時間標註次要 .近期日誌時間標註內容 {
+  top: 84px;
+  width: 128px;
+  padding: 5px 8px 6px;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.1);
+  opacity: 0.9;
+}
+
+.近期日誌時間標註靠起點 .近期日誌時間標註內容 {
+  transform: translateX(0);
+  text-align: left;
+}
+
+.近期日誌時間標註靠起點 .近期日誌時間標註內容::before {
+  bottom: calc((var(--近期日誌標註邊緣角標高) - var(--近期日誌標註邊緣角標覆蓋)) * -1);
+  left: 0;
+  width: var(--近期日誌標註邊緣角標寬);
+  height: var(--近期日誌標註邊緣角標高);
+  transform: none;
+  border: 0;
+  background: var(--近期日誌標註背景色);
+  clip-path: polygon(0 0, 100% 0, 0 100%);
+}
+
+.近期日誌時間標註靠起點 .近期日誌時間標註角標遮罩 {
+  display: block;
+  left: 0;
+}
+
+.近期日誌時間標註靠終點 .近期日誌時間標註內容 {
+  box-shadow:
+    1px 0 0 var(--近期日誌標註背景色),
+    0 10px 22px rgba(0, 0, 0, 0.16);
+  transform: translateX(-100%);
+  text-align: right;
+}
+
+.近期日誌時間標註次要.近期日誌時間標註靠終點 .近期日誌時間標註內容 {
+  box-shadow:
+    1px 0 0 var(--近期日誌標註背景色),
+    0 8px 18px rgba(0, 0, 0, 0.1);
+}
+
+.近期日誌時間標註靠終點 .近期日誌時間標註內容::before {
+  bottom: calc((var(--近期日誌標註邊緣角標高) - var(--近期日誌標註邊緣角標覆蓋)) * -1);
+  right: 0;
+  left: auto;
+  width: var(--近期日誌標註邊緣角標寬);
+  height: var(--近期日誌標註邊緣角標高);
+  transform: none;
+  border: 0;
+  background: var(--近期日誌標註背景色);
+  clip-path: polygon(0 0, 100% 0, 100% 100%);
+}
+
+.近期日誌時間標註靠終點 .近期日誌時間標註角標遮罩 {
+  display: block;
+  right: 0;
+}
+
+.近期日誌時間標註靠起點 .近期日誌時間標註內容::after,
+.近期日誌時間標註靠終點 .近期日誌時間標註內容::after {
+  content: "";
+  position: absolute;
+  bottom: calc((var(--近期日誌標註邊緣角標高) - var(--近期日誌標註邊緣角標覆蓋)) * -1);
+  width: var(--近期日誌標註邊緣角標線長);
+  height: 1px;
+  background: var(--近期日誌標註邊線色);
+  z-index: 1;
+}
+
+.近期日誌時間標註靠起點 .近期日誌時間標註內容::after {
+  left: 0;
+  transform: rotate(-33deg);
+  transform-origin: left center;
+}
+
+.近期日誌時間標註靠終點 .近期日誌時間標註內容::after {
+  right: 0;
+  transform: rotate(33deg);
+  transform-origin: right center;
 }
 
 .近期日誌時間標註內容 strong,
 .近期日誌時間標註內容 span {
+  position: relative;
+  z-index: 3;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -690,16 +847,31 @@
   font-weight: 860;
 }
 
+.近期日誌時間標註次要 .近期日誌時間標註內容 strong {
+  color: color-mix(in srgb, var(--主要文字) 76%, var(--次要文字));
+  font-size: 0.72rem;
+  font-weight: 780;
+}
+
 .近期日誌時間標註內容 span {
   color: var(--次要文字);
   font-size: 0.72rem;
   font-weight: 740;
 }
 
+.近期日誌時間標註次要 .近期日誌時間標註內容 span {
+  color: color-mix(in srgb, var(--次要文字) 82%, var(--主要文字));
+  font-size: 0.66rem;
+  font-weight: 680;
+}
+
 .近期日誌點層 {
   position: absolute;
   z-index: 2;
-  inset: 0;
+  top: var(--近期日誌標註帶高度);
+  right: 0;
+  bottom: 0;
+  left: 0;
   pointer-events: none;
 }
 
@@ -773,7 +945,10 @@
 
 .近期日誌刻度 {
   position: absolute;
-  inset: 10px 12px;
+  top: calc(var(--近期日誌標註帶高度) + 10px);
+  right: 12px;
+  bottom: 10px;
+  left: 12px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;

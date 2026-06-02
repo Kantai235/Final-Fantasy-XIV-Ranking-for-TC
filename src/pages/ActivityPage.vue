@@ -139,17 +139,19 @@ export default {
                   v-for="標註 in 近期動態日誌圖表資料.annotations"
                   :key="標註.key"
                   class="近期日誌時間標註"
+                  :class="標註.class_names"
                   role="listitem"
                   :style="{ left: `${標註.x}%` }"
                 >
                   <span class="近期日誌時間標註線"></span>
                   <span class="近期日誌時間標註內容">
+                    <i class="近期日誌時間標註角標遮罩" aria-hidden="true"></i>
                     <strong>{{ 標註.title }}</strong>
                     <span>{{ 標註.detail }}</span>
                   </span>
                 </span>
               </span>
-              <span class="近期日誌點層">
+              <div class="近期日誌點層">
                 <button
                   v-for="點 in 近期動態日誌圖表資料.points"
                   :key="點.id"
@@ -166,16 +168,16 @@ export default {
                   @blur="隱藏近期動態日誌提示"
                   @click.stop="固定近期動態日誌提示(點)"
                 ></button>
-              </span>
-              <div
-                v-if="近期動態日誌提示資料"
-                class="近期日誌提示"
-                :class="{ 近期日誌提示固定: 近期動態日誌提示鎖定 }"
-                :style="近期動態日誌提示資料.style"
-                role="status"
-              >
-                <small>{{ 近期動態日誌提示資料.label }}</small>
-                <strong>{{ 近期動態日誌提示資料.metric_label }}：{{ 近期動態日誌提示資料.value_text }}</strong>
+                <div
+                  v-if="近期動態日誌提示資料"
+                  class="近期日誌提示"
+                  :class="{ 近期日誌提示固定: 近期動態日誌提示鎖定 }"
+                  :style="近期動態日誌提示資料.style"
+                  role="status"
+                >
+                  <small>{{ 近期動態日誌提示資料.label }}</small>
+                  <strong>{{ 近期動態日誌提示資料.metric_label }}：{{ 近期動態日誌提示資料.value_text }}</strong>
+                </div>
               </div>
               <div class="近期日誌刻度" aria-hidden="true">
                 <span>{{ 格式化整數(近期動態日誌圖表資料.max_count) }}</span>

@@ -16,12 +16,19 @@
   }
 
   .近期日誌圖表 {
-    height: 180px;
+    --近期日誌標註帶高度: 136px;
+    height: 296px;
   }
 
   .近期日誌時間標註內容 {
     width: 124px;
     padding: 6px 8px;
+  }
+
+  .近期日誌時間標註次要 .近期日誌時間標註內容 {
+    top: 92px;
+    width: 112px;
+    padding: 5px 7px 6px;
   }
 
   .近期日誌時間標註內容 strong {

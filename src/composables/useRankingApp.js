@@ -99,26 +99,69 @@ const activityLogMobileMediaQuery = "(max-width: 720px)";
 const activityLogMobileDefaultRange = "30";
 const activityLogDesktopDefaultRange = "90";
 // 這裡保存時間軸脈絡事件，僅用於前端標註，不參與 Logs 或通關場次統計。
+// 台服開放節點維持主要標籤；國際服版本只提供日誌量判讀脈絡，因此用次要標籤呈現。
 const activityLogTimelineAnnotations = [
   {
+    date: "2025-12-16",
+    title: "國際服 7.4",
+    detail: "霧中奇境",
+    importance: "secondary",
+  },
+  {
+    date: "2026-01-27",
+    title: "國際服 7.41",
+    detail: "霧中奇境",
+    importance: "secondary",
+  },
+  {
     date: "2026-02-10",
-    title: "更新 7.01",
+    title: "繁中服 7.01",
     detail: "輕量級",
   },
   {
+    date: "2026-03-03",
+    title: "國際服 7.45",
+    detail: "霧中奇境",
+    importance: "secondary",
+  },
+  {
     date: "2026-03-10",
-    title: "更新 7.05",
+    title: "繁中服 7.05",
     detail: "零式 輕量級",
   },
   {
     date: "2026-04-21",
-    title: "更新 7.1",
+    title: "繁中服 7.1",
     detail: "極 永恆女王、幻 白虎",
   },
   {
+    date: "2026-04-28",
+    title: "國際服 7.5",
+    detail: "天際的行路",
+    importance: "secondary",
+  },
+  {
     date: "2026-05-26",
-    title: "更新 7.11",
+    title: "繁中服 7.11",
     detail: "絕 伊甸",
+  },
+  {
+    date: "2026-06-02",
+    title: "國際服 7.51",
+    detail: "天際的行路",
+    importance: "secondary",
+  },
+  {
+    date: "2026-07-28",
+    title: "國際服 7.55",
+    detail: "天際的行路",
+    importance: "secondary",
+  },
+  {
+    date: "2026-09-08",
+    title: "國際服 7.56",
+    detail: "天際的行路",
+    importance: "secondary",
   },
 ];
 const activityLogCategoryColorClasses = new Map([
@@ -1908,11 +1951,22 @@ function 建立近期動態日誌時間標註(開始日期, 結束日期) {
       const 位移天數 = 總天數 <= 0 ? 0 : 台灣日期相差天數(開始日期, 標註.date);
       const x = 總天數 <= 0 ? 50 : (位移天數 / 總天數) * 100;
       const 位置 = Number(Math.min(Math.max(x, 0), 100).toFixed(2));
+      const classNames = [];
+      if (標註.importance === "secondary") {
+        classNames.push("近期日誌時間標註次要");
+      }
+      if (位置 <= 9) {
+        classNames.push("近期日誌時間標註靠起點");
+      } else if (位置 >= 91) {
+        classNames.push("近期日誌時間標註靠終點");
+      }
       return {
         key: `${標註.date}:${標註.title}`,
         date: 標註.date,
         title: 標註.title,
         detail: 標註.detail,
+        importance: 標註.importance || "primary",
+        class_names: classNames,
         x: 位置,
       };
     });
