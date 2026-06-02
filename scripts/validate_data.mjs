@@ -17,6 +17,7 @@ const publicAllRankingTablesDir = path.join(publicAllDataDir, "ranking-tables");
 const publicAllRankingDetailsDir = path.join(publicAllDataDir, "ranking-details");
 const publicAllUserEntryDetailsDir = path.join(publicAllDataDir, "user-entry-details");
 const rawFieldNames = new Set(["fflogs_raw", "master_data", "matched_players"]);
+const rawFieldPattern = new RegExp(`"(${[...rawFieldNames].join("|")})"\\s*:`);
 
 const issues = [];
 let checkedSourceReports = 0;
@@ -51,6 +52,36 @@ async function readJson(filePath, label) {
     reportIssue(`${label} 不是可讀取的 JSON：${error.message}`);
     return null;
   }
+}
+
+function rawFieldFromJsonText(jsonText) {
+  const match = jsonText.match(rawFieldPattern);
+  return match ? match[1] : null;
+}
+
+function parseJsonText(jsonText, label) {
+  try {
+    return JSON.parse(jsonText);
+  } catch (error) {
+    reportIssue(`${label} 不是可讀取的 JSON：${error.message}`);
+    return null;
+  }
+}
+
+async function readJsonAndCheckNoRawFields(filePath, label) {
+  let jsonText;
+  try {
+    jsonText = await readFile(filePath, "utf8");
+  } catch (error) {
+    reportIssue(`${label} 不是可讀取的 JSON：${error.message}`);
+    return null;
+  }
+
+  const rawField = rawFieldFromJsonText(jsonText);
+  if (rawField) {
+    reportIssue(`${label} 仍包含可重查的大型 raw 欄位：${rawField}`);
+  }
+  return parseJsonText(jsonText, label);
 }
 
 function validateContract(value, schema, label) {
@@ -356,7 +387,7 @@ async function loadSourceReports(ranking, rankingLabel) {
       continue;
     }
 
-    const shard = await readJson(shardPath, `${rankingLabel} 分片 ${normalizePath(shardPathText)}`);
+    const shard = await readJsonAndCheckNoRawFields(shardPath, `${rankingLabel} 分片 ${normalizePath(shardPathText)}`);
     if (shard && typeof shard === "object" && !Array.isArray(shard)) {
       Object.assign(reports, shard);
     } else {
@@ -365,36 +396,6 @@ async function loadSourceReports(ranking, rankingLabel) {
   }
 
   return reports;
-}
-
-function checkNoRawFields(value, label, depth = 0) {
-  if (!value || typeof value !== "object") {
-    return;
-  }
-  if (Array.isArray(value)) {
-    for (const item of value) {
-      checkNoRawFields(item, label, depth + 1);
-    }
-    return;
-  }
-
-  for (const key of Object.keys(value)) {
-    if (rawFieldNames.has(key)) {
-      reportIssue(`${label} 仍包含可重查的大型 raw 欄位：${key}`);
-      return;
-    }
-  }
-
-  // report/fight/player 樹狀資料可能很大；找到 raw 欄位後立刻回報即可，不需要收集每個重複位置。
-  for (const child of Object.values(value)) {
-    if (depth > 8) {
-      continue;
-    }
-    checkNoRawFields(child, label, depth + 1);
-    if (issues.some((issue) => issue.startsWith(label) && issue.includes("raw 欄位"))) {
-      return;
-    }
-  }
 }
 
 async function validateEncounters() {
@@ -528,16 +529,15 @@ async function validateRankings(publicEncounters) {
       continue;
     }
 
-    const sourceRanking = await readJson(sourceRankingPath, `${key} 來源排行榜`);
+    const sourceRanking = await readJsonAndCheckNoRawFields(sourceRankingPath, `${key} 來源排行榜`);
     if (!hasRankingData(sourceRanking)) {
       reportIssue(`${key} 來源排行榜缺少 ranking_entries、report_shards 或 reports`);
       continue;
     }
 
     const sourceReports = await loadSourceReports(sourceRanking, key);
-    for (const [reportCode, report] of Object.entries(sourceReports)) {
+    for (const reportCode of Object.keys(sourceReports)) {
       checkedSourceReports += 1;
-      checkNoRawFields(report, `${key}/${reportCode}`);
     }
   }
 }
