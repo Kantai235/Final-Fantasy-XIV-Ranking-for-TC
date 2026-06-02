@@ -601,6 +601,10 @@ async function validateActivity() {
     reportIssue("public/data/activity.json 的 log_activity.series 必須是非空陣列");
     return;
   }
+  if (!Array.isArray(logActivity.category_series) || logActivity.category_series.length === 0) {
+    reportIssue("public/data/activity.json 的 log_activity.category_series 必須是非空陣列");
+    return;
+  }
   const allSeries = logActivity.series.find((series) => series?.encounter_key === "all");
   if (!allSeries) {
     reportIssue("public/data/activity.json 的 log_activity.series 必須包含全部副本系列");
@@ -622,6 +626,24 @@ async function validateActivity() {
         !isFiniteNumber(point.unique_fight_count)
       ) {
         reportIssue("public/data/activity.json 的 log_activity point 缺少日期或數量欄位");
+        return;
+      }
+    }
+  }
+
+  for (const series of logActivity.category_series) {
+    if (!series?.category || !series?.label || !Array.isArray(series.points)) {
+      reportIssue("public/data/activity.json 的 log_activity.category_series 有條目缺少分類或 points");
+      break;
+    }
+    checkedActivityItems += series.points.length;
+    for (const point of series.points) {
+      if (
+        typeof point?.date !== "string" ||
+        !isFiniteNumber(point.unique_report_count) ||
+        !isFiniteNumber(point.unique_fight_count)
+      ) {
+        reportIssue("public/data/activity.json 的 log_activity category point 缺少日期或數量欄位");
         return;
       }
     }

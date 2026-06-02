@@ -24,6 +24,7 @@ const savageDamageComparisonEncounterKeySet = new Set(savageDamageComparisonEnco
 const minimumDamageActivePercent = 50;
 const activityWindowDays = 7;
 const activityLogDefaultWindowDays = 30;
+const activityLogCategoryOrder = ["零式", "極", "幻", "絕"];
 const recentActivityLimit = 40;
 const teamRecordsPerEncounterLimit = 50;
 const versionRecordModes = ["all", "valid", "obsolete"];
@@ -2395,6 +2396,73 @@ function serializeActivityLogSeries(accumulator, meta) {
   };
 }
 
+function createActivityLogCategoryBucket(category, date) {
+  return {
+    date,
+    category,
+    uniqueReportKeys: new Set(),
+    uniqueFightKeys: new Set(),
+    latestRecordedAtMs: 0,
+  };
+}
+
+function buildActivityLogCategorySeries(accumulator) {
+  const categoryIndex = new Map();
+
+  for (const bucket of accumulator.buckets.values()) {
+    if (bucket.encounter_key === "all" || !bucket.encounter_category) {
+      continue;
+    }
+
+    let categoryEntry = categoryIndex.get(bucket.encounter_category);
+    if (!categoryEntry) {
+      categoryEntry = {
+        category: bucket.encounter_category,
+        uniqueReportKeys: new Set(),
+        uniqueFightKeys: new Set(),
+        latestRecordedAtMs: 0,
+        buckets: new Map(),
+      };
+      categoryIndex.set(bucket.encounter_category, categoryEntry);
+    }
+
+    let categoryBucket = categoryEntry.buckets.get(bucket.date);
+    if (!categoryBucket) {
+      categoryBucket = createActivityLogCategoryBucket(bucket.encounter_category, bucket.date);
+      categoryEntry.buckets.set(bucket.date, categoryBucket);
+    }
+
+    for (const reportKey of bucket.uniqueReportKeys) {
+      categoryBucket.uniqueReportKeys.add(reportKey);
+      categoryEntry.uniqueReportKeys.add(reportKey);
+    }
+    for (const fightKey of bucket.uniqueFightKeys) {
+      categoryBucket.uniqueFightKeys.add(fightKey);
+      categoryEntry.uniqueFightKeys.add(fightKey);
+    }
+    categoryBucket.latestRecordedAtMs = Math.max(categoryBucket.latestRecordedAtMs, bucket.latestRecordedAtMs);
+    categoryEntry.latestRecordedAtMs = Math.max(categoryEntry.latestRecordedAtMs, bucket.latestRecordedAtMs);
+  }
+
+  const categoryOrder = new Map(activityLogCategoryOrder.map((category, index) => [category, index]));
+  return Array.from(categoryIndex.values())
+    .sort((left, right) => {
+      const leftOrder = categoryOrder.get(left.category) ?? activityLogCategoryOrder.length;
+      const rightOrder = categoryOrder.get(right.category) ?? activityLogCategoryOrder.length;
+      return leftOrder - rightOrder || compareByLocale(left.category, right.category);
+    })
+    .map((categoryEntry) => ({
+      category: categoryEntry.category,
+      label: categoryEntry.category,
+      total_unique_report_count: categoryEntry.uniqueReportKeys.size,
+      total_unique_fight_count: categoryEntry.uniqueFightKeys.size,
+      latest_recorded_at_iso: categoryEntry.latestRecordedAtMs > 0 ? new Date(categoryEntry.latestRecordedAtMs).toISOString() : null,
+      points: Array.from(categoryEntry.buckets.values())
+        .sort((left, right) => compareByLocale(left.date, right.date))
+        .map(serializeActivityLogPoint),
+    }));
+}
+
 function buildActivityLogPayload(accumulator) {
   const allMeta = accumulator.series.get("all") || createActivityLogSeriesMeta({
     encounter_key: "all",
@@ -2423,6 +2491,7 @@ function buildActivityLogPayload(accumulator) {
       serializeActivityLogSeries(accumulator, allMeta),
       ...encounterSeries.map((meta) => serializeActivityLogSeries(accumulator, meta)),
     ],
+    category_series: buildActivityLogCategorySeries(accumulator),
   };
 }
 

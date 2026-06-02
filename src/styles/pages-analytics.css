@@ -519,6 +519,56 @@
   white-space: nowrap;
 }
 
+.近期日誌分類圖例 {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid var(--邊框柔和色);
+  border-radius: 8px;
+  background: var(--邊框柔和色);
+}
+
+.近期日誌分類圖例項 {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 2px 7px;
+  padding: 8px 10px;
+  background: var(--表面背景);
+}
+
+.近期日誌分類圖例色塊 {
+  grid-row: span 2;
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--近期日誌分類色);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--近期日誌分類色) 16%, transparent);
+}
+
+.近期日誌分類圖例項 strong,
+.近期日誌分類圖例項 small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.近期日誌分類圖例項 strong {
+  color: var(--主要文字);
+  font-size: 0.78rem;
+  font-weight: 820;
+}
+
+.近期日誌分類圖例項 small {
+  color: var(--次要文字);
+  font-size: 0.72rem;
+  font-weight: 720;
+  font-variant-numeric: tabular-nums;
+}
+
 .近期日誌圖表 {
   position: relative;
   height: 252px;
@@ -549,6 +599,31 @@
 
 .近期日誌面積 {
   fill: color-mix(in srgb, var(--重點色) 11%, transparent);
+}
+
+.近期日誌分類面積 {
+  fill: var(--近期日誌分類色);
+  opacity: 0.72;
+}
+
+.近期日誌分類色彩零式 {
+  --近期日誌分類色: #7c83ff;
+}
+
+.近期日誌分類色彩極 {
+  --近期日誌分類色: #20b8a7;
+}
+
+.近期日誌分類色彩幻 {
+  --近期日誌分類色: #d4a62a;
+}
+
+.近期日誌分類色彩絕 {
+  --近期日誌分類色: #ee6d70;
+}
+
+.近期日誌分類色彩其他 {
+  --近期日誌分類色: #8b97a8;
 }
 
 .近期日誌折線 {

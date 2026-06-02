@@ -61,7 +61,7 @@ npm run sync:data -- --dry-run
 
 `public/data/all/` 目前是 hidden delta 產物，不再複製所有公開 JSON；delta 檔也有自己的資料契約，驗證時會先與公開底稿合併再檢查完整資料形狀。新增或移除公開 JSON 欄位時，必須同步更新 `schemas/public_data_contracts.mjs`、資料建置腳本與前端讀取端，讓欄位漂移在 `npm test` 或 `npm run validate:data` 階段被抓到。
 
-`public/data/activity.json` 的 `log_activity` 由 `scripts/build_user_data.mjs` 讀取 `reports -> fights -> players` 產生，不由 Vue 元件即時計算。`unique_report_count` 以 `report_code` 去重，代表 FFLogs 日誌數；`unique_fight_count` 以 `encounter_key + fight_hash` 去重，代表同場多份上傳合併後的通關場次。每日 bucket 使用台灣日期切分，前端只負責依副本、日期範圍與每日座標顯示這些靜態統計；日期範圍的 UI 初始值依響應式模式決定，桌面預設近 90 天，手機預設近 30 天。
+`public/data/activity.json` 的 `log_activity` 由 `scripts/build_user_data.mjs` 讀取 `reports -> fights -> players` 產生，不由 Vue 元件即時計算。`unique_report_count` 以 `report_code` 去重，代表 FFLogs 日誌數；`unique_fight_count` 以 `encounter_key + fight_hash` 去重，代表同場多份上傳合併後的通關場次。每日 bucket 使用台灣日期切分，前端只負責依副本、日期範圍與每日座標顯示這些靜態統計；日期範圍的 UI 初始值依響應式模式決定，桌面預設近 90 天，手機預設近 30 天。`log_activity.category_series` 會以零式、極、幻、絕等副本分類預先彙整同樣的每日數量，供近期動態頁在全部副本曲線下方顯示分類堆疊占比。
 
 `gcd_coverage` 是公開資料中可顯示的衍生結果；除了 `percent`、分母與計算版本，也允許保留小型診斷欄位，例如 `estimated_speed_below_minimum`、`fallback_selection`、`downtime_selection`，以及 raw events、Casts graph、raw targetability fallback 的比較百分比與分母。這些欄位只說明本地演算法為什麼選用某個覆蓋率結果，不保存 FFLogs raw events 或 Casts graph payload，因此符合公開 JSON 的瘦身邊界。
 

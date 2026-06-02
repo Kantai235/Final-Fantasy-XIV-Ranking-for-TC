@@ -121,6 +121,12 @@ const activityLogTimelineAnnotations = [
     detail: "絕 伊甸",
   },
 ];
+const activityLogCategoryColorClasses = new Map([
+  ["零式", "近期日誌分類色彩零式"],
+  ["極", "近期日誌分類色彩極"],
+  ["幻", "近期日誌分類色彩幻"],
+  ["絕", "近期日誌分類色彩絕"],
+]);
 
 function getActivityLogDefaultTimeRange() {
   if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
@@ -1912,6 +1918,84 @@ function 建立近期動態日誌時間標註(開始日期, 結束日期) {
     });
 }
 
+function 近期動態日誌分類色彩類別(分類) {
+  return activityLogCategoryColorClasses.get(分類) || "近期日誌分類色彩其他";
+}
+
+function 排序近期動態日誌分類序列(分類系列列表) {
+  const 分類順序索引 = new Map(副本分類順序.map((分類, index) => [分類, index]));
+  return (Array.isArray(分類系列列表) ? 分類系列列表 : [])
+    .filter((系列) => 系列?.category && Array.isArray(系列.points))
+    .slice()
+    .sort((前一個, 後一個) => {
+      const 前一個順序 = 分類順序索引.get(前一個.category) ?? 副本分類順序.length;
+      const 後一個順序 = 分類順序索引.get(後一個.category) ?? 副本分類順序.length;
+      return 前一個順序 - 後一個順序 || String(前一個.category).localeCompare(String(後一個.category), "zh-Hant-TW");
+    });
+}
+
+function 建立近期動態日誌分類堆疊(分類系列列表, 指標, 總量點列表, 繪圖最大值) {
+  const 日期列表 = 總量點列表.map((點) => 點.key);
+  const 分類列表 = 排序近期動態日誌分類序列(分類系列列表).map((系列) => {
+    const 點索引 = new Map((系列.points || []).map((點) => [點.date, 點]));
+    const 每日數值 = 日期列表.map((日期) => 取近期動態日誌數值(點索引.get(日期), 指標));
+    return {
+      category: 系列.category,
+      label: 系列.label || 系列.category,
+      color_class: 近期動態日誌分類色彩類別(系列.category),
+      values: 每日數值,
+      total_count: 每日數值.reduce((總和, 數值) => 總和 + 數值, 0),
+      top: [],
+      bottom: [],
+    };
+  });
+
+  if (分類列表.length === 0 || 日期列表.length === 0) {
+    return { layers: [], legend: [] };
+  }
+
+  總量點列表.forEach((總量點, index) => {
+    const 分類總和 = 分類列表.reduce((總和, 分類) => 總和 + 分類.values[index], 0);
+    let 累計高度值 = 0;
+
+    for (const 分類 of 分類列表) {
+      const 正規化高度值 = 分類總和 > 0 ? (總量點.count * 分類.values[index]) / 分類總和 : 0;
+      const y0 = 44 - (累計高度值 / 繪圖最大值) * 34;
+      累計高度值 += 正規化高度值;
+      const y1 = 44 - (累計高度值 / 繪圖最大值) * 34;
+      分類.bottom.push({ x: 總量點.x, y: Number(y0.toFixed(2)) });
+      分類.top.push({ x: 總量點.x, y: Number(y1.toFixed(2)) });
+    }
+  });
+
+  const 分類總數 = 分類列表.reduce((總和, 分類) => 總和 + 分類.total_count, 0);
+  const layers = 分類列表
+    .filter((分類) => 分類.total_count > 0)
+    .map((分類) => {
+      const 上緣 = 分類.top.map((點, index) => `${index === 0 ? "M" : "L"} ${點.x} ${點.y}`).join(" ");
+      const 下緣 = 分類.bottom.slice().reverse().map((點) => `L ${點.x} ${點.y}`).join(" ");
+      return {
+        category: 分類.category,
+        label: 分類.label,
+        color_class: 分類.color_class,
+        total_count: 分類.total_count,
+        percentage: 分類總數 > 0 ? (分類.total_count / 分類總數) * 100 : 0,
+        path: `${上緣} ${下緣} Z`,
+      };
+    });
+
+  return {
+    layers,
+    legend: layers.map((分類) => ({
+      category: 分類.category,
+      label: 分類.label,
+      color_class: 分類.color_class,
+      value_text: 格式化整數(分類.total_count),
+      percentage_text: 格式化百分比(分類.percentage),
+    })),
+  };
+}
+
 const 近期動態日誌來源 = computed(() => 近期動態來源.value.log_activity || {});
 
 const 近期動態日誌副本選項 = computed(() => {
@@ -2038,6 +2122,14 @@ const 近期動態日誌圖表資料 = computed(() => {
   const 面積路徑 = 點列表.length > 1 ? `${折線路徑} L 100 48 L 0 48 Z` : "";
   const 月份刻度 = 建立近期動態日誌月份刻度(日期範圍.start, 日期範圍.end);
   const 時間標註 = 建立近期動態日誌時間標註(日期範圍.start, 日期範圍.end);
+  const 分類堆疊 = 系列.encounter_key === "all"
+    ? 建立近期動態日誌分類堆疊(
+        近期動態日誌來源.value.category_series,
+        近期動態日誌有效指標.value,
+        點列表,
+        繪圖最大值,
+      )
+    : { layers: [], legend: [] };
   const 總數 = 區段點.reduce((總和, 點) => 總和 + 點.count, 0);
   const 高峰 = 區段點.slice().sort((前一個, 後一個) => 後一個.count - 前一個.count)[0] || null;
   const 最新 = 區段點.at(-1) || null;
@@ -2058,6 +2150,8 @@ const 近期動態日誌圖表資料 = computed(() => {
     points: 點列表,
     month_ticks: 月份刻度,
     annotations: 時間標註,
+    category_layers: 分類堆疊.layers,
+    category_legend: 分類堆疊.legend,
   };
 });
 

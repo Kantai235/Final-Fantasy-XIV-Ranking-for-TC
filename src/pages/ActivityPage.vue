@@ -101,6 +101,18 @@ export default {
               <strong>{{ 項目.數值 }}</strong>
             </span>
           </div>
+          <div v-if="近期動態日誌圖表資料.category_legend?.length" class="近期日誌分類圖例" aria-label="Logs 分類占比">
+            <span
+              v-for="分類 in 近期動態日誌圖表資料.category_legend"
+              :key="分類.category"
+              class="近期日誌分類圖例項"
+              :class="分類.color_class"
+            >
+              <i class="近期日誌分類圖例色塊" aria-hidden="true"></i>
+              <strong>{{ 分類.label }}</strong>
+              <small>{{ 分類.percentage_text }}・{{ 分類.value_text }}</small>
+            </span>
+          </div>
           <div
             class="近期日誌圖表"
             role="group"
@@ -112,7 +124,14 @@ export default {
                 <line class="近期日誌格線" x1="0" y1="10" x2="100" y2="10"></line>
                 <line class="近期日誌格線" x1="0" y1="26" x2="100" y2="26"></line>
                 <line class="近期日誌格線" x1="0" y1="44" x2="100" y2="44"></line>
-                <path v-if="近期動態日誌圖表資料.area_path" class="近期日誌面積" :d="近期動態日誌圖表資料.area_path"></path>
+                <path
+                  v-for="分類 in 近期動態日誌圖表資料.category_layers"
+                  :key="分類.category"
+                  class="近期日誌分類面積"
+                  :class="分類.color_class"
+                  :d="分類.path"
+                ></path>
+                <path v-if="近期動態日誌圖表資料.area_path && !近期動態日誌圖表資料.category_layers?.length" class="近期日誌面積" :d="近期動態日誌圖表資料.area_path"></path>
                 <path v-if="近期動態日誌圖表資料.line_path" class="近期日誌折線" :d="近期動態日誌圖表資料.line_path"></path>
               </svg>
               <span v-if="近期動態日誌圖表資料.annotations?.length" class="近期日誌標註層" role="list" aria-label="Logs 趨勢時間標註">
