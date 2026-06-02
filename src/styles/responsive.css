@@ -314,7 +314,7 @@
 
   .Telegram交流按鈕,
   .分享按鈕,
-  .主題切換,
+  .設定按鈕,
   .公告中心按鈕 {
     width: 38px;
     min-width: 38px;
@@ -323,16 +323,6 @@
     align-items: center;
     justify-content: center;
     padding: 0;
-  }
-
-  .分位顯示切換 {
-    min-height: 38px;
-  }
-
-  .分位顯示切換選項 {
-    min-width: 44px;
-    padding: 0 7px;
-    font-size: 0.76rem;
   }
 
   .公告中心徽章 {
@@ -406,6 +396,41 @@
 
   .TelegramQRCode圖片 {
     width: min(220px, 100%);
+  }
+
+  .設定視窗遮罩 {
+    align-items: flex-end;
+    padding: 12px;
+  }
+
+  .設定視窗 {
+    max-height: calc(100vh - 24px);
+    padding: 20px;
+  }
+
+  .設定視窗標頭 {
+    padding-right: 34px;
+  }
+
+  .設定視窗 h2 {
+    font-size: 1.3rem;
+  }
+
+  .設定群組 {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .設定選項切換 {
+    width: 100%;
+    justify-self: stretch;
+  }
+
+  .設定選項切換按鈕 {
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 0 10px;
   }
 
   h1 {

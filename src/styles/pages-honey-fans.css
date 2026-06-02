@@ -2892,7 +2892,7 @@
 
   .頁面[data-accent="honey"] .頁面選單開關,
   .頁面[data-accent="honey"] .分享按鈕,
-  .頁面[data-accent="honey"] .主題切換,
+  .頁面[data-accent="honey"] .設定按鈕,
   .頁面[data-accent="honey"] .蜂蜂背景音樂切換,
   .頁面[data-accent="honey"] .公告中心按鈕 {
     width: 34px;
@@ -2901,7 +2901,7 @@
   }
 
   .頁面[data-accent="honey"] .分享按鈕 svg.標題按鈕圖示,
-  .頁面[data-accent="honey"] .主題切換 svg.標題按鈕圖示,
+  .頁面[data-accent="honey"] .設定按鈕 svg.標題按鈕圖示,
   .頁面[data-accent="honey"] .蜂蜂背景音樂切換 svg.標題按鈕圖示 {
     width: 18px;
     height: 18px;

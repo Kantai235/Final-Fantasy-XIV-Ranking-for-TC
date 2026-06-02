@@ -20,8 +20,14 @@ export default {
     const 顯示Telegram交流視窗 = ref(false);
     const Telegram交流視窗顯示中 = ref(false);
     const TelegramQrCode載入中 = ref(true);
+    const 設定開啟按鈕 = ref(null);
+    const 設定關閉按鈕 = ref(null);
+    const 顯示設定視窗 = ref(false);
+    const 設定視窗顯示中 = ref(false);
     let Telegram關閉計時器 = null;
     let Telegram動畫序號 = 0;
+    let 設定關閉計時器 = null;
+    let 設定動畫序號 = 0;
 
     function 清除Telegram關閉計時器() {
       if (Telegram關閉計時器 !== null) {
@@ -84,8 +90,60 @@ export default {
       TelegramQrCode載入中.value = false;
     }
 
+    function 清除設定關閉計時器() {
+      if (設定關閉計時器 !== null) {
+        clearTimeout(設定關閉計時器);
+        設定關閉計時器 = null;
+      }
+    }
+
+    function 開啟設定視窗() {
+      清除設定關閉計時器();
+      設定動畫序號 += 1;
+      const 本次動畫序號 = 設定動畫序號;
+      顯示設定視窗.value = true;
+      設定視窗顯示中.value = false;
+
+      nextTick(() => {
+        const 啟動進場動畫 = () => {
+          if (本次動畫序號 !== 設定動畫序號 || !顯示設定視窗.value) {
+            return;
+          }
+
+          設定視窗顯示中.value = true;
+          設定關閉按鈕.value?.focus();
+        };
+
+        if (typeof window !== "undefined" && typeof window.requestAnimationFrame === "function") {
+          window.requestAnimationFrame(啟動進場動畫);
+        } else {
+          setTimeout(啟動進場動畫, 0);
+        }
+      });
+    }
+
+    function 關閉設定視窗() {
+      if (!顯示設定視窗.value) {
+        return;
+      }
+
+      清除設定關閉計時器();
+      設定動畫序號 += 1;
+      設定視窗顯示中.value = false;
+      設定關閉計時器 = setTimeout(() => {
+        顯示設定視窗.value = false;
+        設定關閉計時器 = null;
+      }, 200);
+    }
+
+    function 關閉設定視窗並回焦() {
+      關閉設定視窗();
+      setTimeout(() => 設定開啟按鈕.value?.focus(), 200);
+    }
+
     onBeforeUnmount(() => {
       清除Telegram關閉計時器();
+      清除設定關閉計時器();
     });
 
     return {
@@ -98,9 +156,15 @@ export default {
       顯示Telegram交流視窗,
       Telegram交流視窗顯示中,
       TelegramQrCode載入中,
+      設定開啟按鈕,
+      設定關閉按鈕,
+      顯示設定視窗,
+      設定視窗顯示中,
       開啟Telegram交流視窗,
       關閉Telegram交流視窗並回焦,
       標記TelegramQrCode載入完成,
+      開啟設定視窗,
+      關閉設定視窗並回焦,
     };
   },
 };
@@ -142,43 +206,20 @@ export default {
         <span class="標題按鈕文字">{{ 正在分享 ? "分享中" : "分享" }}</span>
       </button>
       <button
-        class="主題切換"
+        ref="設定開啟按鈕"
+        class="設定按鈕"
         type="button"
-        :disabled="停用主題切換"
-        :aria-label="停用主題切換 ? 'Honey B. Lovely 粉絲榜固定由演出控制亮暗模式' : `切換為${主題按鈕文字}模式`"
-        :title="停用主題切換 ? 'Honey B. Lovely 粉絲榜固定由演出控制亮暗模式' : ''"
-        @click="切換主題"
+        aria-controls="偏好設定視窗"
+        :aria-expanded="顯示設定視窗 ? 'true' : 'false'"
+        aria-label="開啟設定"
+        @click="開啟設定視窗"
       >
-        <svg v-if="主題模式 === 'dark'" class="標題按鈕圖示" viewBox="0 0 24 24" aria-hidden="true">
-          <circle cx="12" cy="12" r="4"></circle>
-          <path d="M12 2v2"></path>
-          <path d="M12 20v2"></path>
-          <path d="m4.9 4.9 1.4 1.4"></path>
-          <path d="m17.7 17.7 1.4 1.4"></path>
-          <path d="M2 12h2"></path>
-          <path d="M20 12h2"></path>
-          <path d="m4.9 19.1 1.4-1.4"></path>
-          <path d="m17.7 6.3 1.4-1.4"></path>
+        <svg class="標題按鈕圖示" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0-.73-2.73l-.15-.09a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2Z"></path>
+          <circle cx="12" cy="12" r="3"></circle>
         </svg>
-        <svg v-else class="標題按鈕圖示" viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M20.4 14.5A8.5 8.5 0 0 1 9.5 3.6 8.7 8.7 0 1 0 20.4 14.5Z"></path>
-        </svg>
-        <span class="標題按鈕文字">{{ 目前主題文字 }}</span>
+        <span class="標題按鈕文字">設定</span>
       </button>
-      <div class="分位顯示切換" role="group" :aria-label="分位顯示切換標籤">
-        <button
-          v-for="選項 in 分位顯示模式選項"
-          :key="選項.value"
-          class="分位顯示切換選項"
-          type="button"
-          :class="{ 作用中: 分位顯示模式 === 選項.value }"
-          :aria-pressed="分位顯示模式 === 選項.value ? 'true' : 'false'"
-          :title="`同職分位顯示為${選項.label}`"
-          @click="設定分位顯示模式(選項.value)"
-        >
-          {{ 選項.label }}
-        </button>
-      </div>
       <button
         v-if="頁面模式 === 'honey-fans'"
         class="蜂蜂背景音樂切換"
@@ -245,6 +286,90 @@ export default {
         <a class="Telegram主要連結" :href="Telegram連結" target="_blank" rel="noopener noreferrer">
           開啟 Telegram 交流群
         </a>
+      </div>
+    </section>
+  </div>
+</Teleport>
+<Teleport to="body">
+  <div
+    v-if="顯示設定視窗"
+    class="設定視窗遮罩"
+    :class="{ 顯示: 設定視窗顯示中 }"
+    @click.self="關閉設定視窗並回焦"
+    @keydown.escape="關閉設定視窗並回焦"
+  >
+    <section
+      id="偏好設定視窗"
+      class="設定視窗"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="偏好設定標題"
+      aria-describedby="偏好設定說明"
+    >
+      <button
+        ref="設定關閉按鈕"
+        class="設定視窗關閉"
+        type="button"
+        aria-label="關閉設定視窗"
+        @click="關閉設定視窗並回焦"
+      >
+        ×
+      </button>
+      <div class="設定視窗標頭">
+        <p class="設定視窗副標">個人化偏好</p>
+        <h2 id="偏好設定標題">設定</h2>
+        <p id="偏好設定說明">調整畫面外觀與排行榜分位的顯示方式。</p>
+      </div>
+      <div class="設定視窗內容">
+        <section class="設定群組" aria-labelledby="外觀設定標題">
+          <div class="設定群組文字">
+            <h3 id="外觀設定標題">亮色 / 暗色模式</h3>
+            <p v-if="停用主題切換">Honey B. Lovely 粉絲榜會依演出暫時控制亮暗模式。</p>
+            <p v-else>目前使用 {{ 目前主題文字 }}。</p>
+          </div>
+          <div class="設定選項切換" role="group" aria-label="亮色或暗色模式">
+            <button
+              class="設定選項切換按鈕"
+              type="button"
+              :class="{ 作用中: 主題模式 === 'light' }"
+              :aria-pressed="主題模式 === 'light' ? 'true' : 'false'"
+              :disabled="停用主題切換"
+              @click="套用主題('light')"
+            >
+              亮色
+            </button>
+            <button
+              class="設定選項切換按鈕"
+              type="button"
+              :class="{ 作用中: 主題模式 === 'dark' }"
+              :aria-pressed="主題模式 === 'dark' ? 'true' : 'false'"
+              :disabled="停用主題切換"
+              @click="套用主題('dark')"
+            >
+              暗色
+            </button>
+          </div>
+        </section>
+        <section class="設定群組" aria-labelledby="分位設定標題">
+          <div class="設定群組文字">
+            <h3 id="分位設定標題">前 N% / PR</h3>
+            <p>{{ 分位顯示切換標籤 }}</p>
+          </div>
+          <div class="設定選項切換" role="group" :aria-label="分位顯示切換標籤">
+            <button
+              v-for="選項 in 分位顯示模式選項"
+              :key="選項.value"
+              class="設定選項切換按鈕"
+              type="button"
+              :class="{ 作用中: 分位顯示模式 === 選項.value }"
+              :aria-pressed="分位顯示模式 === 選項.value ? 'true' : 'false'"
+              :title="`同職分位顯示為${選項.label}`"
+              @click="設定分位顯示模式(選項.value)"
+            >
+              {{ 選項.label }}
+            </button>
+          </div>
+        </section>
       </div>
     </section>
   </div>
