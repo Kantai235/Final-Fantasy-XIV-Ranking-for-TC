@@ -71,7 +71,7 @@ npm run fetch:honey-fans
 | 策略 | 預設脈絡 |
 | --- | --- |
 | 近期掃描 | `incremental_lookback_hours=24`，讓最近一天的 no-clear / incomplete report 重新深查。 |
-| 延遲掃描 | workflow 預設掃 24-72 小時前的 reports，只選 state 與排行榜都沒見過的新 report。 |
+| 延遲掃描 | workflow 預設掃 24-72 小時前的 reports，一般只選 state 與排行榜都沒見過的新 report；UCoB 通關規則重判例外會重查需要更新 `clear_rule_revision` 的既有 report。 |
 | 歷史補查 | workflow 預設每輪掃 1 個 168 小時視窗，最多選入 2000 份深層候選，且同一 zone/difficulty 群組最多 500 份，抓回後來才公開或延後匯出的 logs。 |
 | 既有 report 狀態巡檢 | workflow 預設每輪由舊到新檢查固定數量，將不可存取 report 標記 hidden。 |
 | 新 report GCD 即時計算 | workflow 預設查同一場 FFLogs `Casts` graph，只保存 GCD 衍生結果。 |
@@ -90,9 +90,9 @@ npm run fetch:honey-fans
 
 近期掃描負責最近 24 小時完整重查。`skipped_no_clear` 與 `deferred_incomplete_export` 會在重試窗內被視為未完成，重新進入深層檢查，避免剛上傳但尚未匯出通關 fight 的 report 被舊快取永久擋住。
 
-延遲掃描固定檢查 24-72 小時前的 reports，但使用嚴格已知 report 集合：凡是已在 state 或排行榜出現過的 report 都會略過。這段只補抓後來才出現在 reports 查詢中的新 report，不重查既有 no-clear 紀錄。
+延遲掃描固定檢查 24-72 小時前的 reports，但使用嚴格已知 report 集合：凡是已在 state 或排行榜出現過的 report 原則上都會略過。這段主要補抓後來才出現在 reports 查詢中的新 report，不重查既有 no-clear 紀錄；唯一例外是 UCoB 通關規則重判，因舊版可能把 `fightPercentage=80` 的通關寫成 `skipped_no_clear`，所以尚未寫入目前 `clear_rule_revision` 的已知 UCoB report 仍會穿透快取重新深查。
 
-歷史補查會從副本的 `history_scan_start_date`、`scan_start_date` 或 `initial_scan_start_date` 開始，依 `data/state.json` 內各副本的 `history_scan_cursor_at` 往後輪巡。一般副本只會把尚未在 state 或排行榜中的 report 選入候選，適合抓回當時未公開、後來改成公開，或 FFLogs 延後完成匯出的更舊 logs。候選先受整輪 `FFLOGS_HISTORY_MAX_DEEP_REPORTS_PER_RUN` 限制，再受 `FFLOGS_HISTORY_MAX_DEEP_REPORTS_PER_GROUP_PER_RUN` 的 zone/difficulty 分組限制，避免舊絕本同區大量候選讓其它副本長時間沒有深查預算。絕本額外支援通關規則重判：當程式內的 `clear_rule_revision` 更新時，歷史補查只會把本次規則版本明確影響的既有絕本 report 重新選入深查；目前受影響的是 UCoB。已確認沒有繁中服玩家的 report 不會因通關規則版本重刷，因為通關判斷不會改變 `masterData` 的玩家伺服器。重判完成後會在 `checked_reports` / `processed_reports` 記錄版本，避免同一份 report 每輪都被重刷。若深查上限使本輪候選出現 deferred，`fetch_fflogs.py` 會把 `history_scan_cursor_at` 停在最後一筆已選候選 report 的 `startTime`；若該副本本輪未分到深查額度，游標會停回本輪時間窗起點，避免尚未處理的 report 被推到下一輪全區間輪巡後才重試。
+歷史補查會從副本的 `history_scan_start_date`、`scan_start_date` 或 `initial_scan_start_date` 開始，依 `data/state.json` 內各副本的 `history_scan_cursor_at` 往後輪巡。一般副本只會把尚未在 state 或排行榜中的 report 選入候選，適合抓回當時未公開、後來改成公開，或 FFLogs 延後完成匯出的更舊 logs。候選先受整輪 `FFLOGS_HISTORY_MAX_DEEP_REPORTS_PER_RUN` 限制，再受 `FFLOGS_HISTORY_MAX_DEEP_REPORTS_PER_GROUP_PER_RUN` 的 zone/difficulty 分組限制，避免舊絕本同區大量候選讓其它副本長時間沒有深查預算。絕本額外支援通關規則重判：當程式內的 `clear_rule_revision` 更新時，近期、延遲與歷史來源只要看到本次規則版本明確影響的既有絕本 report，都要讓該副本穿透 checked_reports 已處理快取重新深查；目前受影響的是 UCoB。已確認沒有繁中服玩家的 report 不會因通關規則版本重刷，因為通關判斷不會改變 `masterData` 的玩家伺服器。重判完成後會在 `checked_reports` / `processed_reports` 記錄版本，避免同一份 report 每輪都被重刷。若深查上限使本輪候選出現 deferred，`fetch_fflogs.py` 會把 `history_scan_cursor_at` 停在最後一筆已選候選 report 的 `startTime`；若該副本本輪未分到深查額度，游標會停回本輪時間窗起點，避免尚未處理的 report 被推到下一輪全區間輪巡後才重試。
 
 ## GCD 覆蓋率
 

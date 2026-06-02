@@ -4210,7 +4210,8 @@ def main() -> int:
             if 報告代碼 in 最新報告代碼:
                 統計["skipped_known"] += 1
                 continue
-            if not 是否為任何同區副本的未知報告(副本設定, 報告代碼):
+            需要重判 = 是否需要絕本歷史通關重判(副本設定, 報告代碼)
+            if not 需要重判 and not 是否為任何同區副本的未知報告(副本設定, 報告代碼):
                 統計["skipped_known"] += 1
                 continue
             if not 延遲掃描仍可加入候選(報告代碼):
@@ -4218,7 +4219,10 @@ def main() -> int:
                 continue
 
             延遲掃描候選報告代碼.add(報告代碼)
-            候選列表.append(報告)
+            候選 = dict(報告)
+            if 需要重判:
+                候選["_clear_rule_recheck"] = True
+            候選列表.append(候選)
             統計["selected"] += 1
 
         return 候選列表, 統計
@@ -4294,18 +4298,31 @@ def main() -> int:
         目前副本設定: dict[str, Any],
         報告代碼: str,
         強制重抓: bool,
+        通關規則重判報告代碼: set[str] | None = None,
     ) -> tuple[list[dict[str, Any]], bool]:
         # 強制重抓模式只重新處理指定 report，不推進掃描點；一般模式則跳過已在 state 或排行榜中的報告。
-        # 這讓手動補抓能修正單份報告，同時保護既有 append-only 資料不被整批重算覆蓋。
+        # UCoB 通關規則改版是例外：舊版可能把 fightPercentage=80 的通關記成 skipped_no_clear，
+        # 因此需要讓指定 report 穿透 checked_reports 快取，回到 fight/player 查詢重新判定。
         待處理副本: list[dict[str, Any]] = []
         目前副本已處理 = False
+        重判報告代碼 = 通關規則重判報告代碼 or set()
 
         for 目標副本設定 in 取得同區同難度副本清單(目前副本設定):
             目標處理狀態 = 副本處理狀態[目標副本設定["key"]]
             if 報告代碼 in 目標處理狀態["本輪已嘗試報告代碼"]:
                 continue
 
-            if 報告代碼 in 目標處理狀態["已處理報告代碼"] and not 強制重抓:
+            需要通關規則重判 = False
+            if 報告代碼 in 重判報告代碼:
+                副本狀態 = (狀態.get("encounters") or {}).get(目標副本設定["key"]) or {}
+                需要通關規則重判 = 報告需要絕本通關規則重判(
+                    目標副本設定,
+                    報告代碼,
+                    副本狀態,
+                    目標處理狀態["已知報告代碼"],
+                )
+
+            if 報告代碼 in 目標處理狀態["已處理報告代碼"] and not 強制重抓 and not 需要通關規則重判:
                 if 目標副本設定["key"] == 目前副本設定["key"]:
                     目前副本已處理 = True
                     目標處理狀態["skipped_already_processed_reports"] += 1
@@ -4692,9 +4709,15 @@ def main() -> int:
         歷史重判報告代碼 = {
             str(報告.get("code") or "")
             for 報告 in 淺層報告列表
-            if 報告.get("_history_clear_rule_recheck") and 報告.get("code")
+            if (報告.get("_history_clear_rule_recheck") or 報告.get("_clear_rule_recheck")) and 報告.get("code")
         }
-        強制處理報告代碼 = 重抓報告代碼 | 只處理報告代碼 | 歷史重判報告代碼
+        通關規則重判報告代碼 = set(歷史重判報告代碼)
+        for 報告 in 淺層報告列表:
+            報告代碼 = str(報告.get("code") or "")
+            if 報告代碼 and 是否需要絕本歷史通關重判(副本設定, 報告代碼):
+                通關規則重判報告代碼.add(報告代碼)
+
+        強制處理報告代碼 = 重抓報告代碼 | 只處理報告代碼 | 通關規則重判報告代碼
         已處理前綴快轉索引 = 取得已處理報告前綴快轉索引(
             淺層報告列表,
             同區副本清單,
@@ -4753,7 +4776,12 @@ def main() -> int:
             進度文字 = f"({報告序號}/{總報告數量})"
             強制重抓 = 報告代碼 in 重抓報告代碼 or 報告代碼 in 只處理報告代碼
 
-            待處理副本, 目前副本已處理 = 篩選待處理副本(副本設定, 報告代碼, 強制重抓)
+            待處理副本, 目前副本已處理 = 篩選待處理副本(
+                副本設定,
+                報告代碼,
+                強制重抓,
+                通關規則重判報告代碼,
+            )
             if not 待處理副本:
                 if 目前副本已處理:
                     已處理略過摘要數 += 1
