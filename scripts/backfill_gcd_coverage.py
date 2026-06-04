@@ -23,6 +23,7 @@ GCD_REPORT_BACKFILL_STATE_KEY = "gcd_report_backfill"
 MIN_REASONABLE_EPOCH_MS = 946684800000
 MAIN_TARGET_DAMAGE_DOWNTIME_ENCOUNTERS = {"unreal_byakko"}
 RAW_EVENT_GCD_ENCOUNTERS = gcd_core.RAW_EVENT_GCD_ENCOUNTERS
+GCD_CALCULATION_VERSION = gcd_core.GCD_CALCULATION_VERSION
 
 read_json = getattr(fflogs, "\u8b80\u53d6_json")
 write_json = getattr(fflogs, "\u5beb\u5165_json")
@@ -295,20 +296,28 @@ def resolve_stateful_report_window(
     *,
     explicit_cutoff: str | None,
     now_ms: int,
+    calculation_version: int = GCD_CALCULATION_VERSION,
 ) -> tuple[int, int, str | None, bool]:
     node = state.get(GCD_REPORT_BACKFILL_STATE_KEY)
     if not isinstance(node, dict):
         node = {}
 
+    stored_calculation_version = to_int(node.get("calculation_version"))
+    version_changed = stored_calculation_version != calculation_version
     parsed_explicit = parse_report_cutoff_ms(explicit_cutoff)
     if parsed_explicit is not None:
-        initialized = to_int(node.get("cutoff_sort_time")) != parsed_explicit
+        initialized = version_changed or to_int(node.get("cutoff_sort_time")) != parsed_explicit
         cursor_report_code = str(node.get("cursor_report_code")) if node.get("cursor_report_code") else None
         cursor_ms = to_int(node.get("cursor_sort_time")) if not initialized else None
         return parsed_explicit, cursor_ms or parsed_explicit, cursor_report_code if not initialized else None, initialized
 
     existing_cutoff = to_int(node.get("cutoff_sort_time"))
     if existing_cutoff is not None:
+        if version_changed:
+            # GCD 演算法版本升級時，舊 cursor 只代表上一版已掃到哪裡。
+            # 保留 cutoff 可以維持「既有 report」邊界，但必須從 cutoff 重新往舊重算，
+            # 否則新版待補玩家會被已走到底的舊游標整批略過。
+            return existing_cutoff, existing_cutoff, None, True
         cursor_ms = to_int(node.get("cursor_sort_time")) or existing_cutoff
         cursor_report_code = str(node.get("cursor_report_code")) if node.get("cursor_report_code") else None
         return existing_cutoff, cursor_ms, cursor_report_code, False
@@ -379,6 +388,7 @@ def update_stateful_report_backfill_state(
 
     node["schema_version"] = 1
     node["mode"] = "new_to_old_report_backfill"
+    node["calculation_version"] = GCD_CALCULATION_VERSION
     if initialized or "cutoff_sort_time" not in node:
         node["cutoff_sort_time"] = cutoff_ms
         node["cutoff_sort_time_iso"] = cutoff_iso(cutoff_ms)
@@ -434,7 +444,6 @@ def parse_int_env_default(name: str, fallback: int) -> int:
 ActionMetadata = gcd_core.ActionMetadata
 ActionMetadataStore = gcd_core.ActionMetadataStore
 StatusMetadataStore = gcd_core.StatusMetadataStore
-GCD_CALCULATION_VERSION = gcd_core.GCD_CALCULATION_VERSION
 GCD_SOURCE = gcd_core.GCD_SOURCE
 to_number = gcd_core.to_number
 to_int = gcd_core.to_int
@@ -631,7 +640,7 @@ def main() -> int:
             "已啟用 stateful report 回補："
             f"cutoff={cutoff_iso(stateful_cutoff_ms)}，"
             f"cursor={cursor_text}，"
-            f"切點前待補玩家 {len(candidates)} / 全部篩選後 {unfiltered_candidate_count}"
+            f"游標前待補玩家 {len(candidates)} / 全部篩選後 {unfiltered_candidate_count}"
         )
     print(f"本輪選取更新筆數：{len(selected)}")
     if args.report_limit > 0:

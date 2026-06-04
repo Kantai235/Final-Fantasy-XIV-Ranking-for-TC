@@ -178,6 +178,7 @@ class GcdCoverageBackfillTest(unittest.TestCase):
     def test_stateful_report_window_uses_existing_cursor_before_now(self) -> None:
         state = {
             gcd.GCD_REPORT_BACKFILL_STATE_KEY: {
+                "calculation_version": gcd.GCD_CALCULATION_VERSION,
                 "cutoff_sort_time": 5000,
                 "cursor_sort_time": 2000,
                 "cursor_report_code": "CURSOR",
@@ -194,6 +195,47 @@ class GcdCoverageBackfillTest(unittest.TestCase):
         self.assertEqual(cursor, 2000)
         self.assertEqual(report_code, "CURSOR")
         self.assertFalse(initialized)
+
+    def test_stateful_report_window_resets_legacy_cursor_without_version(self) -> None:
+        state = {
+            gcd.GCD_REPORT_BACKFILL_STATE_KEY: {
+                "cutoff_sort_time": 5000,
+                "cursor_sort_time": 2000,
+                "cursor_report_code": "CURSOR",
+            }
+        }
+
+        cutoff, cursor, report_code, initialized = gcd.resolve_stateful_report_window(
+            state,
+            explicit_cutoff=None,
+            now_ms=8000,
+        )
+
+        self.assertEqual(cutoff, 5000)
+        self.assertEqual(cursor, 5000)
+        self.assertIsNone(report_code)
+        self.assertTrue(initialized)
+
+    def test_stateful_report_window_resets_cursor_when_calculation_version_changes(self) -> None:
+        state = {
+            gcd.GCD_REPORT_BACKFILL_STATE_KEY: {
+                "calculation_version": gcd.GCD_CALCULATION_VERSION - 1,
+                "cutoff_sort_time": 5000,
+                "cursor_sort_time": 2000,
+                "cursor_report_code": "CURSOR",
+            }
+        }
+
+        cutoff, cursor, report_code, initialized = gcd.resolve_stateful_report_window(
+            state,
+            explicit_cutoff=None,
+            now_ms=8000,
+        )
+
+        self.assertEqual(cutoff, 5000)
+        self.assertEqual(cursor, 5000)
+        self.assertIsNone(report_code)
+        self.assertTrue(initialized)
 
     def test_stateful_report_window_initializes_from_now(self) -> None:
         cutoff, cursor, report_code, initialized = gcd.resolve_stateful_report_window(
@@ -285,6 +327,7 @@ class GcdCoverageBackfillTest(unittest.TestCase):
 
         node = state[gcd.GCD_REPORT_BACKFILL_STATE_KEY]
         self.assertEqual(node["cutoff_sort_time"], 5000)
+        self.assertEqual(node["calculation_version"], gcd.GCD_CALCULATION_VERSION)
         self.assertEqual(node["cursor_sort_time"], 1000)
         self.assertEqual(node["cursor_report_code"], "OLD")
         self.assertEqual(node["retry_report_codes"], ["OLD"])
@@ -312,6 +355,7 @@ class GcdCoverageBackfillTest(unittest.TestCase):
 
         node = state[gcd.GCD_REPORT_BACKFILL_STATE_KEY]
         self.assertEqual(node["cutoff_sort_time"], 3000)
+        self.assertEqual(node["calculation_version"], gcd.GCD_CALCULATION_VERSION)
         self.assertEqual(node["cursor_sort_time"], 3000)
         self.assertNotIn("cursor_report_code", node)
 

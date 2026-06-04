@@ -135,7 +135,7 @@ npm run backfill:gcd:reports -- --dry-run
 
 `backfill_gcd_coverage.py` 預設依玩家筆數逐批補齊，適合人工追平或抽樣重算。若帶 `--report-limit 200`，則改以 FFLogs report code 為單位，將同一份 report 內所有待更新玩家一起補齊，避免留下半套 GCD 結果。
 
-GitHub Actions 會執行 `python scripts/backfill_gcd_coverage.py --stateful-report-backfill --report-limit 200`，從固定切點往更舊 report 逐輪追平既有 GCD。第一次正式執行時若未設定 `FFLOGS_GCD_BACKFILL_CUTOFF_ISO`，腳本會把當下時間寫入 `data/state.json` 的 `gcd_report_backfill.cutoff_sort_time`；每輪完成後再把本輪最舊 report 的排序時間與 report code 寫入 `cursor_sort_time` / `cursor_report_code`，下一輪從該位置繼續往舊推進。
+GitHub Actions 會執行 `python scripts/backfill_gcd_coverage.py --stateful-report-backfill --report-limit 200`，從固定切點往更舊 report 逐輪追平既有 GCD。第一次正式執行時若未設定 `FFLOGS_GCD_BACKFILL_CUTOFF_ISO`，腳本會把當下時間寫入 `data/state.json` 的 `gcd_report_backfill.cutoff_sort_time`；每輪完成後再把本輪最舊 report 的排序時間與 report code 寫入 `cursor_sort_time` / `cursor_report_code`，下一輪從該位置繼續往舊推進。`gcd_report_backfill.calculation_version` 會記錄本輪使用的 GCD 演算法版本；若 state 缺少版本或版本落後目前 `GCD_CALCULATION_VERSION`，腳本會保留固定切點但將 cursor 重設回 cutoff，避免新版重算被上一版已走到底的舊游標略過。
 
 若要在本機把既有玩家 GCD 都以目前本地演算法重新計算：
 
