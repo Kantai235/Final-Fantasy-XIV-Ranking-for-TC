@@ -36,6 +36,8 @@
   "json_write_retry_seconds": 0.5,
   "ranking_flush_reports": 25,
   "state_checkpoint_flush_reports": 2000,
+  "max_runtime_seconds": 0,
+  "runtime_grace_seconds": 600,
   "player_stats_batch_size": 10,
   "excluded_report_codes": [
     "VAPFYLGCpgvkW3q7"

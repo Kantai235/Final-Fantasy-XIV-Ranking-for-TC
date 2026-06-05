@@ -202,6 +202,8 @@ class FetchFFLogsBatchTest(unittest.TestCase):
             "delayed_scan_lookback_hours": 72,
             "delayed_max_deep_reports_per_run": 0,
             "state_checkpoint_flush_reports": 10,
+            "max_runtime_seconds": 0,
+            "runtime_grace_seconds": 600,
             "retry_report_codes": [],
         }
 
@@ -226,6 +228,8 @@ class FetchFFLogsBatchTest(unittest.TestCase):
                 "FFLOGS_DELAYED_SCAN_LOOKBACK_HOURS": "72",
                 "FFLOGS_DELAYED_MAX_DEEP_REPORTS_PER_RUN": "30",
                 "FFLOGS_STATE_CHECKPOINT_FLUSH_REPORTS": "75",
+                "FFLOGS_MAX_RUNTIME_SECONDS": "6000",
+                "FFLOGS_RUNTIME_GRACE_SECONDS": "900",
                 "FFLOGS_RETRY_REPORT_CODES": "abc123, def456",
             },
         ):
@@ -249,7 +253,21 @@ class FetchFFLogsBatchTest(unittest.TestCase):
         self.assertEqual(覆寫後設定["delayed_scan_lookback_hours"], 72)
         self.assertEqual(覆寫後設定["delayed_max_deep_reports_per_run"], 30)
         self.assertEqual(覆寫後設定["state_checkpoint_flush_reports"], 75)
+        self.assertEqual(覆寫後設定["max_runtime_seconds"], 6000)
+        self.assertEqual(覆寫後設定["runtime_grace_seconds"], 900)
         self.assertEqual(覆寫後設定["retry_report_codes"], ["abc123", "def456"])
+
+    def test_runtime_budget_rejects_long_cooldown_when_grace_would_be_consumed(self) -> None:
+        with (
+            patch.object(fflogs, "最大執行秒數", 100),
+            patch.object(fflogs, "執行收尾保留秒數", 30),
+            patch.object(fflogs, "執行開始時間", 50.0),
+            patch.object(fflogs.time, "monotonic", return_value=80.0),
+        ):
+            with self.assertRaises(fflogs.FFLogs時間預算耗盡):
+                fflogs.檢查執行時間預算("測試冷卻等待", 額外需要秒數=41)
+
+            fflogs.檢查執行時間預算("測試短等待", 額外需要秒數=39)
 
     def test_report_fight_list_query_does_not_request_ranked_character_claimed(self) -> None:
         # claimed 是 FFLogs 帳號認領狀態，部分 report 會因這個欄位回傳權限錯誤；

@@ -72,7 +72,7 @@ npm run fetch:honey-fans
 | --- | --- |
 | 近期掃描 | `incremental_lookback_hours=24`，讓最近一天的 no-clear / incomplete report 重新深查。 |
 | 延遲掃描 | workflow 預設掃 24-72 小時前的 reports，一般只選 state 與排行榜都沒見過的新 report；UCoB 通關規則重判例外會重查需要更新 `clear_rule_revision` 的既有 report。 |
-| 歷史補查 | workflow 預設每輪掃 1 個 168 小時視窗，最多選入 2000 份深層候選，且同一 zone/difficulty 群組最多 500 份，抓回後來才公開或延後匯出的 logs。 |
+| 歷史補查 | workflow 預設每輪掃 1 個 168 小時視窗，最多選入 600 份深層候選，且同一 zone/difficulty 群組最多 150 份，抓回後來才公開或延後匯出的 logs。 |
 | 既有 report 狀態巡檢 | workflow 預設每輪由舊到新檢查固定數量，將不可存取 report 標記 hidden。 |
 | 新 report GCD 即時計算 | workflow 預設查同一場 FFLogs `Casts` graph，只保存 GCD 衍生結果。 |
 | 站務 report 排除 | `excluded_report_codes` 會讓指定 report 從近期、延遲、歷史、手動補抓、公開重建與既有狀態巡檢排除，避免疑似灌水或其他不採計紀錄重新進入排行榜。 |
@@ -84,7 +84,8 @@ npm run fetch:honey-fans
 - `FFLOGS_INCREMENTAL_LOOKBACK_HOURS`：近期完整重查回溯時數，workflow 預設 `24`。
 - `FFLOGS_NO_CLEAR_RETRY_HOURS`：`skipped_no_clear` 的近期重試時數，workflow 預設 `24`。
 - `FFLOGS_DELAYED_SCAN_ENABLED`、`FFLOGS_DELAYED_SCAN_RECENT_GAP_HOURS`、`FFLOGS_DELAYED_SCAN_LOOKBACK_HOURS`、`FFLOGS_DELAYED_MAX_DEEP_REPORTS_PER_RUN`：控制 24-72 小時延遲掃描與本輪深查上限。
-- `FFLOGS_HISTORY_SCAN_ENABLED`、`FFLOGS_HISTORY_SCAN_FULL_RUN`、`FFLOGS_HISTORY_SCAN_WINDOW_HOURS`、`FFLOGS_HISTORY_SCAN_WINDOWS_PER_RUN`、`FFLOGS_HISTORY_SCAN_RECENT_GAP_HOURS`、`FFLOGS_HISTORY_MAX_DEEP_REPORTS_PER_RUN`、`FFLOGS_HISTORY_MAX_DEEP_REPORTS_PER_GROUP_PER_RUN`：控制歷史補查輪巡；workflow 預設 `FFLOGS_HISTORY_SCAN_WINDOWS_PER_RUN=1`、`FFLOGS_HISTORY_MAX_DEEP_REPORTS_PER_RUN=2000`、`FFLOGS_HISTORY_MAX_DEEP_REPORTS_PER_GROUP_PER_RUN=500`。
+- `FFLOGS_HISTORY_SCAN_ENABLED`、`FFLOGS_HISTORY_SCAN_FULL_RUN`、`FFLOGS_HISTORY_SCAN_WINDOW_HOURS`、`FFLOGS_HISTORY_SCAN_WINDOWS_PER_RUN`、`FFLOGS_HISTORY_SCAN_RECENT_GAP_HOURS`、`FFLOGS_HISTORY_MAX_DEEP_REPORTS_PER_RUN`、`FFLOGS_HISTORY_MAX_DEEP_REPORTS_PER_GROUP_PER_RUN`：控制歷史補查輪巡；workflow 預設 `FFLOGS_HISTORY_SCAN_WINDOWS_PER_RUN=1`、`FFLOGS_HISTORY_MAX_DEEP_REPORTS_PER_RUN=600`、`FFLOGS_HISTORY_MAX_DEEP_REPORTS_PER_GROUP_PER_RUN=150`。
+- `FFLOGS_MAX_RUNTIME_SECONDS`、`FFLOGS_RUNTIME_GRACE_SECONDS`：控制 `fetch_fflogs.py` 在 GitHub Actions 的時間預算；workflow 預設 `6000` 與 `900`，代表抓取步驟會在剩餘時間不足時保留 `active_scan` 位置並正常收尾，不讓 runner 6 小時硬上限中斷後續資料建置與 commit。
 - `FFLOGS_EXISTING_REPORT_STATUS_CHECK_ENABLED`、`FFLOGS_EXISTING_REPORT_STATUS_CHECK_LIMIT`：控制既有 report 狀態巡檢。
 - `FFLOGS_FETCH_GCD_COVERAGE_ENABLED`、`FFLOGS_FETCH_GCD_COVERAGE_MAX_FIGHTS_PER_RUN`：控制新 report 落地時的 GCD 即時計算。
 
@@ -133,9 +134,9 @@ npm run backfill:gcd
 npm run backfill:gcd:reports -- --dry-run
 ```
 
-`backfill_gcd_coverage.py` 預設依玩家筆數逐批補齊，適合人工追平或抽樣重算。若帶 `--report-limit 200`，則改以 FFLogs report code 為單位，將同一份 report 內所有待更新玩家一起補齊，避免留下半套 GCD 結果。
+`backfill_gcd_coverage.py` 預設依玩家筆數逐批補齊，適合人工追平或抽樣重算。若帶 `--report-limit 50`，則改以 FFLogs report code 為單位，將同一份 report 內所有待更新玩家一起補齊，避免留下半套 GCD 結果。
 
-GitHub Actions 會執行 `python scripts/backfill_gcd_coverage.py --stateful-report-backfill --report-limit 200`，從固定切點往更舊 report 逐輪追平既有 GCD。第一次正式執行時若未設定 `FFLOGS_GCD_BACKFILL_CUTOFF_ISO`，腳本會把當下時間寫入 `data/state.json` 的 `gcd_report_backfill.cutoff_sort_time`；每輪完成後再把本輪最舊 report 的排序時間與 report code 寫入 `cursor_sort_time` / `cursor_report_code`，下一輪從該位置繼續往舊推進。`gcd_report_backfill.calculation_version` 會記錄本輪使用的 GCD 演算法版本；若 state 缺少版本或版本落後目前 `GCD_CALCULATION_VERSION`，腳本會保留固定切點但將 cursor 重設回 cutoff，避免新版重算被上一版已走到底的舊游標略過。
+GitHub Actions 會執行 `python scripts/backfill_gcd_coverage.py --stateful-report-backfill --report-limit 50`，從固定切點往更舊 report 逐輪追平既有 GCD；若本輪 FFLogs 抓取已用盡時間預算，workflow 會略過這個額外 FFLogs 步驟，優先保留時間給公開資料建置與 commit。第一次正式執行時若未設定 `FFLOGS_GCD_BACKFILL_CUTOFF_ISO`，腳本會把當下時間寫入 `data/state.json` 的 `gcd_report_backfill.cutoff_sort_time`；每輪完成後再把本輪最舊 report 的排序時間與 report code 寫入 `cursor_sort_time` / `cursor_report_code`，下一輪從該位置繼續往舊推進。`gcd_report_backfill.calculation_version` 會記錄本輪使用的 GCD 演算法版本；若 state 缺少版本或版本落後目前 `GCD_CALCULATION_VERSION`，腳本會保留固定切點但將 cursor 重設回 cutoff，避免新版重算被上一版已走到底的舊游標略過。
 
 若要在本機把既有玩家 GCD 都以目前本地演算法重新計算：
 

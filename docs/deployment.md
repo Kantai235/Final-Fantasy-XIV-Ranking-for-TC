@@ -37,9 +37,9 @@ npm run build
 2. 設定 Python 3.11 與 Node.js 20。
 3. 安裝 Python 與 Node.js 依賴。
 4. 若有 Cloudflare secrets，先同步 Cloudflare Cache Rules、Facebook 分享爬蟲例外與 Rate Limiting Rules。
-5. 使用 GitHub Secrets 中的 FFLogs 憑證執行 `python scripts/fetch_fflogs.py`，掃描全部地區候選 report，近期 24 小時完整重查、24-72 小時只選未知 report，並以每輪 1 個 168 小時視窗、最多 2000 份深層候選且同一 zone/difficulty 群組最多 500 份的歷史補查檢查更舊時間窗是否有新的公開 logs 可抓取，同時對新落地 fight 即時計算 GCD 覆蓋率。
-6. 執行 `npm run fetch:honey-fans`，以同一組 FFLogs 憑證抓取 Honey B. Lovely 粉絲榜趣味資料；workflow 預設掃近 3 天，並從歷史游標最多檢查 200 場未記錄戰鬥。
-7. 執行 `python scripts/backfill_gcd_coverage.py --stateful-report-backfill --report-limit 200`，從固定切點往更舊 report 逐輪追平既有 GCD。
+5. 使用 GitHub Secrets 中的 FFLogs 憑證執行 `python scripts/fetch_fflogs.py`，掃描全部地區候選 report，近期 24 小時完整重查、24-72 小時只選未知 report，並以每輪 1 個 168 小時視窗、最多 600 份深層候選且同一 zone/difficulty 群組最多 150 份的歷史補查檢查更舊時間窗是否有新的公開 logs 可抓取，同時對新落地 fight 即時計算 GCD 覆蓋率。抓取步驟另有時間預算，避免 FFLogs 長冷卻把 runner 拖到 6 小時硬上限。
+6. 執行 `npm run fetch:honey-fans`，以同一組 FFLogs 憑證抓取 Honey B. Lovely 粉絲榜趣味資料；workflow 預設掃近 3 天，並從歷史游標最多檢查 200 場未記錄戰鬥。若 FFLogs 抓取步驟已用盡時間預算，會略過這個額外 FFLogs 步驟。
+7. 執行 `python scripts/backfill_gcd_coverage.py --stateful-report-backfill --report-limit 50`，從固定切點往更舊 report 逐輪追平既有 GCD；若 FFLogs 抓取步驟已用盡時間預算，會略過此步驟。
 8. 執行 `python scripts/fetch_fflogs.py --split-rankings`，將完整排行榜資料拆分成適合 Git 追蹤的檔案。
 9. 執行 `npm run build:user-data`，產生個人成績單、個人成績報告細節、全服統計、近期動態、隊伍榜、伺服器對比與排行榜薄索引。
 10. 執行 `npm run build:honey-fans`，由 `data/fun/honey_b_fans.json` 重建 `public/data/fun/honey_b_fans.json`。
@@ -104,6 +104,9 @@ npm run build
 - `FFLOGS_HISTORY_SCAN_WINDOWS_PER_RUN`
 - `FFLOGS_HISTORY_SCAN_RECENT_GAP_HOURS`
 - `FFLOGS_HISTORY_MAX_DEEP_REPORTS_PER_RUN`
+- `FFLOGS_HISTORY_MAX_DEEP_REPORTS_PER_GROUP_PER_RUN`
+- `FFLOGS_MAX_RUNTIME_SECONDS`
+- `FFLOGS_RUNTIME_GRACE_SECONDS`
 - `FFLOGS_EXISTING_REPORT_STATUS_CHECK_ENABLED`
 - `FFLOGS_EXISTING_REPORT_STATUS_CHECK_LIMIT`
 - `FFLOGS_FETCH_GCD_COVERAGE_ENABLED`
@@ -118,7 +121,7 @@ npm run build
 - `CLOUDFLARE_MANAGE_RATE_LIMIT`
 - `VITE_GA_MEASUREMENT_ID`
 
-workflow 預設掃全部地區候選 report，近期 24 小時完整重查，24-72 小時一般只選未知 report；UCoB 通關規則重判是例外，尚未寫入目前 `clear_rule_revision` 的既有 report 仍會重新深查。歷史補查則以每輪 1 個 168 小時視窗、最多 2000 份深層候選且同一 zone/difficulty 群組最多 500 份的設定檢查更舊時間窗是否有新的公開 logs 可抓取，同時對新落地 fight 即時計算 GCD 覆蓋率。Honey B. Lovely 粉絲榜另以 `HONEY_FANS_*` variables 控制近期掃描天數、每輪歷史檢查上限與查詢切窗，預設為近 3 天、每輪 200 場、24 小時切窗。
+workflow 預設掃全部地區候選 report，近期 24 小時完整重查，24-72 小時一般只選未知 report；UCoB 通關規則重判是例外，尚未寫入目前 `clear_rule_revision` 的既有 report 仍會重新深查。歷史補查則以每輪 1 個 168 小時視窗、最多 600 份深層候選且同一 zone/difficulty 群組最多 150 份的設定檢查更舊時間窗是否有新的公開 logs 可抓取，同時對新落地 fight 即時計算 GCD 覆蓋率。`FFLOGS_MAX_RUNTIME_SECONDS=6000` 與 `FFLOGS_RUNTIME_GRACE_SECONDS=900` 會讓抓取步驟主動保留收尾時間；時間不足時 `fetch_fflogs.py` 會保留 `active_scan` 續跑位置，後續仍可建置並 commit 已落地資料。Honey B. Lovely 粉絲榜另以 `HONEY_FANS_*` variables 控制近期掃描天數、每輪歷史檢查上限與查詢切窗，預設為近 3 天、每輪 200 場、24 小時切窗。
 
 ## 暫停的維護步驟
 
@@ -132,7 +135,7 @@ npm run validate:data
 
 ## 既有 report GCD 逐輪回補
 
-`scripts/backfill_gcd_coverage.py --stateful-report-backfill --report-limit 200` 已在 workflow 內啟用，用來從上線切點往舊 report 回補既有 GCD。新 report 的 GCD 仍由 `fetch_fflogs.py` 即時計算；若需要人工追平或重算舊資料，可手動執行：
+`scripts/backfill_gcd_coverage.py --stateful-report-backfill --report-limit 50` 已在 workflow 內啟用，用來從上線切點往舊 report 回補既有 GCD。新 report 的 GCD 仍由 `fetch_fflogs.py` 即時計算；若需要人工追平或重算舊資料，可手動執行：
 
 ```bash
 npm run backfill:gcd -- --dry-run

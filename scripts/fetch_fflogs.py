@@ -87,6 +87,8 @@ FFLogs執行設定預設值: dict[str, Any] = {
     "json_write_retry_seconds": 0.5,
     "ranking_flush_reports": 25,
     "state_checkpoint_flush_reports": 2000,
+    "max_runtime_seconds": 0,
+    "runtime_grace_seconds": 600,
     "player_stats_batch_size": 10,
     "excluded_report_codes": [],
     "retry_report_codes": [],
@@ -349,8 +351,11 @@ json寫入重試等待秒數 = max(0.1, 浮點設定("json_write_retry_seconds")
 排行榜批次寫入報告數 = max(1, 整數設定("ranking_flush_reports"))
 狀態檢查點批次寫入報告數 = max(1, 整數設定("state_checkpoint_flush_reports"))
 深層掃描進度落地報告數 = 狀態檢查點批次寫入報告數
+最大執行秒數 = max(0, 整數設定("max_runtime_seconds"))
+執行收尾保留秒數 = max(0, 整數設定("runtime_grace_seconds"))
 玩家成績批次查詢戰鬥數 = max(1, 整數設定("player_stats_batch_size"))
 台灣時區 = timezone(timedelta(hours=8))
+執行開始時間 = time.monotonic()
 
 
 def 台灣時間戳記文字() -> str:
@@ -362,6 +367,44 @@ def print(*內容: Any, **選項: Any) -> None:
     訊息 = 分隔字元.join(str(片段) for 片段 in 內容)
     選項.setdefault("flush", True)
     builtins.print(f"[{台灣時間戳記文字()}] {訊息}", **選項)
+
+
+class FFLogs時間預算耗盡(RuntimeError):
+    def __init__(self, 動作: str, 剩餘秒數: float, 需要保留秒數: float) -> None:
+        self.動作 = 動作
+        self.剩餘秒數 = max(0.0, 剩餘秒數)
+        self.需要保留秒數 = max(0.0, 需要保留秒數)
+        super().__init__(
+            f"FFLogs 抓取時間預算不足，停止於「{動作}」"
+            f"（剩餘 {self.剩餘秒數:.1f} 秒，需保留 {self.需要保留秒數:.1f} 秒收尾）。"
+        )
+
+
+def 剩餘執行秒數() -> float | None:
+    if 最大執行秒數 <= 0:
+        return None
+    return 最大執行秒數 - (time.monotonic() - 執行開始時間)
+
+
+def 檢查執行時間預算(動作: str, *, 額外需要秒數: float = 0.0) -> None:
+    剩餘秒數 = 剩餘執行秒數()
+    if 剩餘秒數 is None:
+        return
+
+    # GitHub-hosted runner 會在 6 小時硬上限直接取消整個 job；若 Python 還在 FFLogs
+    # 限流冷卻或深層 report 處理中，後續 build/user-data 與資料 commit 都會被跳過。
+    # 因此 workflow 會給 fetch_fflogs.py 一個較短的時間預算；時間不足時主動停在可續跑
+    # 的 active_scan checkpoint，保留已落地的 report 與排行榜批次，讓下一輪接著補。
+    需要保留秒數 = 執行收尾保留秒數 + max(0.0, 額外需要秒數)
+    if 剩餘秒數 <= 需要保留秒數:
+        raise FFLogs時間預算耗盡(動作, 剩餘秒數, 需要保留秒數)
+
+
+def 等待或因時間預算停止(等待秒數: float, 動作: str) -> None:
+    if 等待秒數 <= 0:
+        return
+    檢查執行時間預算(動作, 額外需要秒數=等待秒數)
+    time.sleep(等待秒數)
 
 
 class 滑動視窗速率限制器:
@@ -394,7 +437,7 @@ class 滑動視窗速率限制器:
                 f"等待 {等待秒數:.1f} 秒後繼續。",
                 file=sys.stderr,
             )
-            time.sleep(等待秒數)
+            等待或因時間預算停止(等待秒數, "FFLogs 速率限制等待")
 
 
 FFLOGS速率限制器 = 滑動視窗速率限制器(速率限制請求數, 速率限制視窗秒數, 速率限制緩衝秒數)
@@ -1524,7 +1567,7 @@ def post_並重試(
                 f"{等待秒數} 秒後重試。HTTP {回應.status_code}",
                 file=sys.stderr,
             )
-            time.sleep(等待秒數)
+            等待或因時間預算停止(等待秒數, f"FFLogs API 暫時錯誤重試等待 HTTP {回應.status_code}")
         except requests.RequestException as 錯誤:
             最後錯誤 = 錯誤
             等待秒數 = min(2 ** 第幾次, 30)
@@ -1537,7 +1580,7 @@ def post_並重試(
                 f"{等待秒數} 秒後重試：{錯誤}",
                 file=sys.stderr,
             )
-            time.sleep(等待秒數)
+            等待或因時間預算停止(等待秒數, f"FFLogs API {錯誤類型}重試等待")
 
     if 最後錯誤:
         raise FFLogs暫時性API錯誤(
@@ -1601,7 +1644,7 @@ class FFLogs認證池:
         最早時間 = min(認證.get("limited_until", 0) for 認證 in self.認證清單)
         等待秒數 = max(最早時間 - time.monotonic() + 速率限制緩衝秒數, 1)
         print(f"所有 FFLogs 憑證都在冷卻中，等待 {等待秒數:.1f} 秒後繼續。", file=sys.stderr)
-        time.sleep(等待秒數)
+        等待或因時間預算停止(等待秒數, "等待 FFLogs 憑證冷卻")
 
     def 取得目前認證(self) -> dict[str, Any]:
         while True:
@@ -1897,6 +1940,8 @@ def 取得本輪報告繁中服檢查結果(
                 "has_traditional_chinese_players": 有繁中服玩家,
                 "traditional_chinese_players": 繁中服玩家,
             }
+        except FFLogs時間預算耗盡:
+            raise
         except Exception as 錯誤:
             本輪快取[報告代碼] = {"ok": False, "error": 錯誤}
 
@@ -2509,6 +2554,8 @@ class 即時GCD覆蓋率計算器:
                 if windows:
                     graph = dict(graph)
                     graph["encounter_downtime"] = windows
+        except FFLogs時間預算耗盡:
+            raise
         except Exception as 錯誤:  # noqa: BLE001
             # GCD 是衍生欄位；Casts graph 暫時失敗不能阻擋排行榜主資料落地。
             self.失敗戰鬥數 += 1
@@ -4258,6 +4305,9 @@ def main() -> int:
     )
     已完成副本清單: list[dict[str, Any]] = []
     暫時失敗副本清單: list[dict[str, Any]] = []
+    時間預算延後副本清單: list[dict[str, Any]] = []
+    時間預算耗盡 = False
+    時間預算錯誤文字: str | None = None
     待寫入狀態檢查點數 = 0
 
     def 標記狀態已寫入() -> None:
@@ -4713,6 +4763,8 @@ def main() -> int:
                     統計["error"] = str(錯誤)
                     print(f"既有 report 狀態巡檢因 FFLogs 暫時性錯誤暫停：{錯誤}", file=sys.stderr)
                     break
+                except FFLogs時間預算耗盡:
+                    raise
                 except Exception as 錯誤:
                     查詢結果快取[報告代碼] = None
                     統計["failed_reports"] += 1
@@ -4759,7 +4811,43 @@ def main() -> int:
             file=sys.stderr,
         )
 
+    def 延後副本至下輪時間預算(
+        副本設定: dict[str, Any],
+        錯誤: FFLogs時間預算耗盡,
+        **進度: Any,
+    ) -> None:
+        nonlocal 時間預算耗盡, 時間預算錯誤文字
+        時間預算耗盡 = True
+        時間預算錯誤文字 = str(錯誤)
+
+        處理狀態 = 副本處理狀態[副本設定["key"]]
+        if 副本設定 not in 時間預算延後副本清單:
+            時間預算延後副本清單.append(副本設定)
+        處理狀態["scan_failed"] = True
+        處理狀態["scan_error"] = str(錯誤)
+
+        更新副本掃描進度(
+            狀態,
+            副本設定,
+            time_budget_exhausted=True,
+            scan_failed=True,
+            failure_stage=進度.get("stage"),
+            last_error_type=錯誤.__class__.__name__,
+            last_error_message=截短文字(str(錯誤)),
+            last_error_at=現在毫秒(),
+            last_error_at_iso=毫秒轉_iso(現在毫秒()),
+            **進度,
+        )
+        print(
+            f"{副本設定['name']} 因 workflow 時間預算不足延後至下一輪，"
+            "掃描點維持在原位置，已保留 active_scan 續跑進度。",
+            file=sys.stderr,
+        )
+
     for 副本設定 in 副本清單:
+        if 時間預算耗盡:
+            break
+
         目前處理狀態 = 副本處理狀態[副本設定["key"]]
         原始副本狀態 = (狀態.get("encounters") or {}).get(副本設定["key"]) or {}
         原始即時進度 = 原始副本狀態.get("active_scan") if isinstance(原始副本狀態, dict) else None
@@ -4787,6 +4875,19 @@ def main() -> int:
             scan_end_at=掃描結束時間戳記,
             scan_end_at_iso=毫秒轉_iso(掃描結束時間戳記),
         )
+        try:
+            檢查執行時間預算(f"開始掃描 {副本設定['name']}")
+        except FFLogs時間預算耗盡 as 錯誤:
+            延後副本至下輪時間預算(
+                副本設定,
+                錯誤,
+                stage="準備掃描",
+                scan_start_at=起始時間戳記,
+                scan_start_at_iso=毫秒轉_iso(起始時間戳記),
+                scan_end_at=掃描結束時間戳記,
+                scan_end_at_iso=毫秒轉_iso(掃描結束時間戳記),
+            )
+            break
 
         if 只處理指定報告模式:
             淺層報告列表 = 補入指定報告([], 只處理報告代碼, 起始時間戳記, 掃描結束時間戳記)
@@ -4817,6 +4918,17 @@ def main() -> int:
                     掃描結束時間戳記,
                     記錄淺層掃描進度,
                 )
+            except FFLogs時間預算耗盡 as 錯誤:
+                延後副本至下輪時間預算(
+                    副本設定,
+                    錯誤,
+                    stage="淺層掃描",
+                    scan_start_at=起始時間戳記,
+                    scan_start_at_iso=毫秒轉_iso(起始時間戳記),
+                    scan_end_at=掃描結束時間戳記,
+                    scan_end_at_iso=毫秒轉_iso(掃描結束時間戳記),
+                )
+                break
             except FFLogs暫時性API錯誤 as 錯誤:
                 延後副本掃描(副本設定, 目前處理狀態, 錯誤)
                 continue
@@ -4850,10 +4962,23 @@ def main() -> int:
                         記錄延遲掃描進度,
                         階段名稱="延遲淺層掃描",
                     )
+                except FFLogs時間預算耗盡 as 錯誤:
+                    延後副本至下輪時間預算(
+                        副本設定,
+                        錯誤,
+                        stage="延遲淺層掃描",
+                        scan_start_at=起始時間戳記,
+                        scan_start_at_iso=毫秒轉_iso(起始時間戳記),
+                        scan_end_at=掃描結束時間戳記,
+                        scan_end_at_iso=毫秒轉_iso(掃描結束時間戳記),
+                    )
+                    延遲掃描暫停 = True
                 except FFLogs暫時性API錯誤 as 錯誤:
                     延後副本掃描(副本設定, 目前處理狀態, 錯誤)
                     延遲掃描暫停 = True
 
+            if 時間預算耗盡:
+                break
             if 延遲掃描暫停:
                 continue
 
@@ -4906,11 +5031,25 @@ def main() -> int:
                                 階段名稱="歷史補查淺層掃描",
                             )
                         )
+                    except FFLogs時間預算耗盡 as 錯誤:
+                        延後副本至下輪時間預算(
+                            副本設定,
+                            錯誤,
+                            stage="歷史補查淺層掃描",
+                            scan_start_at=起始時間戳記,
+                            scan_start_at_iso=毫秒轉_iso(起始時間戳記),
+                            scan_end_at=掃描結束時間戳記,
+                            scan_end_at_iso=毫秒轉_iso(掃描結束時間戳記),
+                        )
+                        歷史補查暫停 = True
+                        break
                     except FFLogs暫時性API錯誤 as 錯誤:
                         延後副本掃描(副本設定, 目前處理狀態, 錯誤)
                         歷史補查暫停 = True
                         break
 
+            if 時間預算耗盡:
+                break
             if 歷史補查暫停:
                 continue
 
@@ -5042,6 +5181,20 @@ def main() -> int:
             報告代碼 = 報告["code"]
             進度文字 = f"({報告序號}/{總報告數量})"
             強制重抓 = 報告代碼 in 重抓報告代碼 or 報告代碼 in 只處理報告代碼
+            目前深層進度 = {
+                "stage": 深層掃描階段名稱,
+                "current_report_index": 報告序號,
+                "total_reports": 總報告數量,
+                "current_report_code": 報告代碼,
+                "current_report_start_at": 報告.get("startTime"),
+                "current_report_start_at_iso": 毫秒轉_iso(報告.get("startTime")),
+                "processed_reports_in_checkpoint": len(目前處理狀態["已處理報告代碼"]),
+            }
+            try:
+                檢查執行時間預算(f"{副本設定['name']} 深層處理 {進度文字} {報告代碼}")
+            except FFLogs時間預算耗盡 as 錯誤:
+                延後副本至下輪時間預算(副本設定, 錯誤, **目前深層進度)
+                break
 
             待處理副本, 目前副本已處理 = 篩選待處理副本(
                 副本設定,
@@ -5069,13 +5222,7 @@ def main() -> int:
                 更新副本掃描進度(
                     狀態,
                     副本設定,
-                    stage=深層掃描階段名稱,
-                    current_report_index=報告序號,
-                    total_reports=總報告數量,
-                    current_report_code=報告代碼,
-                    current_report_start_at=報告.get("startTime"),
-                    current_report_start_at_iso=毫秒轉_iso(報告.get("startTime")),
-                    processed_reports_in_checkpoint=len(目前處理狀態["已處理報告代碼"]),
+                    **目前深層進度,
                 )
                 標記狀態已寫入()
 
@@ -5113,6 +5260,9 @@ def main() -> int:
                 視需要寫入狀態檢查點("報告無法存取")
                 print(f"{副本設定['name']} {進度文字} FFLogs 報告無法存取，已略過 {len(待處理副本)} 個副本：{報告代碼}")
                 continue
+            except FFLogs時間預算耗盡 as 錯誤:
+                延後副本至下輪時間預算(副本設定, 錯誤, **目前深層進度)
+                break
             except Exception as 錯誤:
                 for 目標副本 in 待處理副本:
                     目標處理狀態 = 副本處理狀態[目標副本["key"]]
@@ -5150,6 +5300,9 @@ def main() -> int:
                 視需要寫入狀態檢查點("報告無法存取")
                 print(f"{副本設定['name']} {進度文字} FFLogs 報告無法存取，已略過 {len(待處理副本)} 個副本：{報告代碼}")
                 continue
+            except FFLogs時間預算耗盡 as 錯誤:
+                延後副本至下輪時間預算(副本設定, 錯誤, **目前深層進度)
+                break
             except Exception as 錯誤:
                 for 目標副本 in 待處理副本:
                     目標處理狀態 = 副本處理狀態[目標副本["key"]]
@@ -5222,6 +5375,9 @@ def main() -> int:
                     登記狀態檢查點變更()
                     print(f"{目標副本['name']} {進度文字} FFLogs 報告無法存取，已略過：{報告代碼}")
                     continue
+                except FFLogs時間預算耗盡 as 錯誤:
+                    延後副本至下輪時間預算(副本設定, 錯誤, **目前深層進度)
+                    break
                 except Exception as 錯誤:
                     # 單份報告失敗時不中斷整批排程，避免一份異常報告卡住 GitHub Actions。
                     目標處理狀態["reports_failed"] += 1
@@ -5244,6 +5400,8 @@ def main() -> int:
                     登記狀態檢查點變更()
                     print(f"{目標副本['name']} {進度文字} 未找到通關戰鬥，已略過：{報告代碼}")
 
+            if 時間預算耗盡:
+                break
             視需要寫入狀態檢查點("深層處理批次")
 
         輸出已處理略過摘要()
@@ -5255,9 +5413,52 @@ def main() -> int:
                 else f"{副本設定['name']} 跨副本掃描結尾"
             )
             批次寫入排行榜(處理狀態, 原因)
+        if 時間預算耗盡:
+            break
         已完成副本清單.append(副本設定)
 
-    既有報告狀態巡檢統計 = 執行既有報告狀態巡檢()
+    if 時間預算耗盡:
+        既有報告狀態巡檢統計 = {
+            "enabled": 既有報告狀態巡檢已啟用,
+            "limit": 既有報告狀態巡檢上限,
+            "candidate_reports": 0,
+            "selected_reports": 0,
+            "checked_reports": 0,
+            "unique_codes_checked": 0,
+            "inaccessible_reports": 0,
+            "unique_inaccessible_codes": 0,
+            "hidden_reports_changed": 0,
+            "failed_reports": 0,
+            "wrapped": False,
+            "deferred": True,
+            "error": 時間預算錯誤文字,
+            "skipped_reason": "time_budget_exhausted",
+        }
+        print("已略過既有 report 狀態巡檢，保留 workflow 剩餘時間給資料建置與 commit。")
+    else:
+        try:
+            檢查執行時間預算("既有 report 狀態巡檢")
+            既有報告狀態巡檢統計 = 執行既有報告狀態巡檢()
+        except FFLogs時間預算耗盡 as 錯誤:
+            時間預算耗盡 = True
+            時間預算錯誤文字 = str(錯誤)
+            既有報告狀態巡檢統計 = {
+                "enabled": 既有報告狀態巡檢已啟用,
+                "limit": 既有報告狀態巡檢上限,
+                "candidate_reports": 0,
+                "selected_reports": 0,
+                "checked_reports": 0,
+                "unique_codes_checked": 0,
+                "inaccessible_reports": 0,
+                "unique_inaccessible_codes": 0,
+                "hidden_reports_changed": 0,
+                "failed_reports": 0,
+                "wrapped": False,
+                "deferred": True,
+                "error": 時間預算錯誤文字,
+                "skipped_reason": "time_budget_exhausted",
+            }
+            print("已略過既有 report 狀態巡檢，保留 workflow 剩餘時間給資料建置與 commit。")
 
     副本統計: dict[str, Any] = {}
     for 副本設定 in 副本清單:
@@ -5303,6 +5504,8 @@ def main() -> int:
     總新增或更新數量 = sum(處理狀態["rankings_inserted_or_updated"] for 處理狀態 in 副本處理狀態.values())
     總失敗報告數量 = sum(處理狀態["reports_failed"] for 處理狀態 in 副本處理狀態.values())
     暫時失敗副本鍵值 = [副本["key"] for 副本 in 暫時失敗副本清單]
+    時間預算延後副本鍵值 = [副本["key"] for 副本 in 時間預算延後副本清單]
+    延後副本鍵值 = list(dict.fromkeys([*暫時失敗副本鍵值, *時間預算延後副本鍵值]))
     即時GCD統計 = gcd計算器.建立統計()
 
     統計 = {
@@ -5311,13 +5514,19 @@ def main() -> int:
         "report_region_scope": 報告地區範圍,
         "enabled_encounters": [副本["key"] for 副本 in 副本清單],
         "completed_encounters": [副本["key"] for 副本 in 已完成副本清單],
-        "deferred_encounters": 暫時失敗副本鍵值,
+        "deferred_encounters": 延後副本鍵值,
+        "temporary_error_deferred_encounters": 暫時失敗副本鍵值,
+        "time_budget_deferred_encounters": 時間預算延後副本鍵值,
+        "time_budget_exhausted": 時間預算耗盡,
+        "time_budget_error": 時間預算錯誤文字,
+        "max_runtime_seconds": 最大執行秒數,
+        "runtime_grace_seconds": 執行收尾保留秒數,
         "manual_report_codes": sorted(只處理報告代碼 or 重抓報告代碼),
         "excluded_report_codes": sorted(排除報告代碼),
         "encounters": 副本統計,
         "rankings_inserted_or_updated": 總新增或更新數量,
         "reports_failed": 總失敗報告數量,
-        "scan_deferred_encounters": len(暫時失敗副本鍵值),
+        "scan_deferred_encounters": len(延後副本鍵值),
         "fetch_gcd_coverage": 即時GCD統計,
         "existing_report_status_check": 既有報告狀態巡檢統計,
     }
@@ -5338,7 +5547,7 @@ def main() -> int:
             掃描結束時間戳記,
             統計,
             已完成副本清單,
-            完整成功=not 暫時失敗副本鍵值,
+            完整成功=not 延後副本鍵值,
         )
 
     # 即使單次只更新部分副本，最後仍要以目前 data/rankings 全量重建 public/data，
@@ -5362,6 +5571,12 @@ def main() -> int:
         return 1
     if 只處理指定報告模式:
         print(f"完成：寫入或更新 {總新增或更新數量} 筆排行榜成績，掃描點維持不變。")
+    elif 時間預算耗盡:
+        print(
+            f"完成：寫入或更新 {總新增或更新數量} 筆排行榜成績；"
+            f"{len(時間預算延後副本鍵值)} 個副本因 workflow 時間預算延後，"
+            "已完成副本的掃描點已更新，未完成副本會從 active_scan 續跑。"
+        )
     elif 暫時失敗副本鍵值:
         print(
             f"完成：寫入或更新 {總新增或更新數量} 筆排行榜成績；"

@@ -93,22 +93,42 @@ jobs:
           FFLOGS_DELAYED_SCAN_ENABLED: ${{ vars.FFLOGS_DELAYED_SCAN_ENABLED || 'true' }}
           FFLOGS_DELAYED_SCAN_RECENT_GAP_HOURS: ${{ vars.FFLOGS_DELAYED_SCAN_RECENT_GAP_HOURS || '24' }}
           FFLOGS_DELAYED_SCAN_LOOKBACK_HOURS: ${{ vars.FFLOGS_DELAYED_SCAN_LOOKBACK_HOURS || '72' }}
-          FFLOGS_DELAYED_MAX_DEEP_REPORTS_PER_RUN: ${{ vars.FFLOGS_DELAYED_MAX_DEEP_REPORTS_PER_RUN || '0' }}
-          # config/fflogs.json 預設關閉歷史補查；workflow 每輪掃 1 個 168 小時視窗，最多選入 2000 份深層候選。
+          FFLOGS_DELAYED_MAX_DEEP_REPORTS_PER_RUN: ${{ vars.FFLOGS_DELAYED_MAX_DEEP_REPORTS_PER_RUN || '100' }}
+          # config/fflogs.json 預設關閉歷史補查；workflow 以小批量持續推進，避免單輪撞上 GitHub-hosted runner 6 小時硬上限。
           FFLOGS_HISTORY_SCAN_ENABLED: ${{ vars.FFLOGS_HISTORY_SCAN_ENABLED || 'true' }}
           FFLOGS_HISTORY_SCAN_FULL_RUN: ${{ vars.FFLOGS_HISTORY_SCAN_FULL_RUN || 'false' }}
           FFLOGS_HISTORY_SCAN_WINDOW_HOURS: ${{ vars.FFLOGS_HISTORY_SCAN_WINDOW_HOURS || '168' }}
           FFLOGS_HISTORY_SCAN_WINDOWS_PER_RUN: ${{ vars.FFLOGS_HISTORY_SCAN_WINDOWS_PER_RUN || '1' }}
           FFLOGS_HISTORY_SCAN_RECENT_GAP_HOURS: ${{ vars.FFLOGS_HISTORY_SCAN_RECENT_GAP_HOURS || '6' }}
-          FFLOGS_HISTORY_MAX_DEEP_REPORTS_PER_RUN: ${{ vars.FFLOGS_HISTORY_MAX_DEEP_REPORTS_PER_RUN || '2000' }}
-          FFLOGS_HISTORY_MAX_DEEP_REPORTS_PER_GROUP_PER_RUN: ${{ vars.FFLOGS_HISTORY_MAX_DEEP_REPORTS_PER_GROUP_PER_RUN || '500' }}
+          FFLOGS_HISTORY_MAX_DEEP_REPORTS_PER_RUN: ${{ vars.FFLOGS_HISTORY_MAX_DEEP_REPORTS_PER_RUN || '600' }}
+          FFLOGS_HISTORY_MAX_DEEP_REPORTS_PER_GROUP_PER_RUN: ${{ vars.FFLOGS_HISTORY_MAX_DEEP_REPORTS_PER_GROUP_PER_RUN || '150' }}
+          # 目標讓整輪 workflow 約 2 小時內結束：fetch 最多跑 6000 秒，且至少保留 900 秒給 Python 收尾。
+          # 時間不足時 fetch_fflogs.py 會保留 active_scan 與已落地批次，下一輪從同一區段續跑。
+          FFLOGS_MAX_RUNTIME_SECONDS: ${{ vars.FFLOGS_MAX_RUNTIME_SECONDS || '6000' }}
+          FFLOGS_RUNTIME_GRACE_SECONDS: ${{ vars.FFLOGS_RUNTIME_GRACE_SECONDS || '900' }}
           # 每輪由舊到新抽查既有排行榜 report 是否仍可存取，跑完後會從最舊紀錄重新輪巡。
           FFLOGS_EXISTING_REPORT_STATUS_CHECK_ENABLED: ${{ vars.FFLOGS_EXISTING_REPORT_STATUS_CHECK_ENABLED || 'true' }}
-          FFLOGS_EXISTING_REPORT_STATUS_CHECK_LIMIT: ${{ vars.FFLOGS_EXISTING_REPORT_STATUS_CHECK_LIMIT || '200' }}
+          FFLOGS_EXISTING_REPORT_STATUS_CHECK_LIMIT: ${{ vars.FFLOGS_EXISTING_REPORT_STATUS_CHECK_LIMIT || '25' }}
           # 新 report 抓取時順手查同一場 Casts graph 並以本地演算法計算 GCD，只保存衍生結果。
           FFLOGS_FETCH_GCD_COVERAGE_ENABLED: ${{ vars.FFLOGS_FETCH_GCD_COVERAGE_ENABLED || 'true' }}
-          FFLOGS_FETCH_GCD_COVERAGE_MAX_FIGHTS_PER_RUN: ${{ vars.FFLOGS_FETCH_GCD_COVERAGE_MAX_FIGHTS_PER_RUN || '500' }}
+          FFLOGS_FETCH_GCD_COVERAGE_MAX_FIGHTS_PER_RUN: ${{ vars.FFLOGS_FETCH_GCD_COVERAGE_MAX_FIGHTS_PER_RUN || '150' }}
         run: python scripts/fetch_fflogs.py
+
+      - name: 檢查 FFLogs 抓取時間預算
+        id: fetch-budget
+        run: |
+          node <<'NODE'
+          const fs = require("node:fs");
+          let exhausted = false;
+          try {
+            const state = JSON.parse(fs.readFileSync("data/state.json", "utf8"));
+            exhausted = state?.last_run_stats?.time_budget_exhausted === true;
+          } catch {
+            exhausted = false;
+          }
+          console.log(`FFLogs fetch time budget exhausted: ${exhausted}`);
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `exhausted=${exhausted}\n`);
+          NODE
 
       - name: 輸出混合上傳分派完成度
         env:
@@ -117,6 +137,7 @@ jobs:
         run: npm run audit:mixed-report-dispatch
 
       - name: 執行 Honey B. Lovely 粉絲榜抓取腳本
+        if: steps.fetch-budget.outputs.exhausted != 'true'
         env:
           FFLOGS_CLIENT_ID: ${{ secrets.FFLOGS_CLIENT_ID }}
           FFLOGS_CLIENT_SECRET: ${{ secrets.FFLOGS_CLIENT_SECRET }}
@@ -146,18 +167,19 @@ jobs:
       #   run: python scripts/backfill_missing_fflogs_data.py --limit 250
 
       - name: 由新往舊補齊既有 report 的 GCD 覆蓋率
+        if: steps.fetch-budget.outputs.exhausted != 'true'
         env:
           FFLOGS_CLIENT_ID: ${{ secrets.FFLOGS_CLIENT_ID }}
           FFLOGS_CLIENT_SECRET: ${{ secrets.FFLOGS_CLIENT_SECRET }}
           FFLOGS_CLIENT_IDS: ${{ secrets.FFLOGS_CLIENT_IDS }}
           FFLOGS_CLIENT_SECRETS: ${{ secrets.FFLOGS_CLIENT_SECRETS }}
           FFLOGS_CLIENT_CREDENTIALS_JSON: ${{ secrets.FFLOGS_CLIENT_CREDENTIALS_JSON }}
-          FFLOGS_GCD_BACKFILL_REPORT_LIMIT: ${{ vars.FFLOGS_GCD_BACKFILL_REPORT_LIMIT || '200' }}
+          FFLOGS_GCD_BACKFILL_REPORT_LIMIT: ${{ vars.FFLOGS_GCD_BACKFILL_REPORT_LIMIT || '50' }}
           FFLOGS_GCD_BACKFILL_CUTOFF_ISO: ${{ vars.FFLOGS_GCD_BACKFILL_CUTOFF_ISO }}
         run: |
           python scripts/backfill_gcd_coverage.py \
             --stateful-report-backfill \
-            --report-limit "${FFLOGS_GCD_BACKFILL_REPORT_LIMIT:-200}"
+            --report-limit "${FFLOGS_GCD_BACKFILL_REPORT_LIMIT:-50}"
 
       - name: 分割完整排行榜資料供 Git 追蹤
         run: python scripts/fetch_fflogs.py --split-rankings
