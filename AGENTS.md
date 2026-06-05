@@ -127,6 +127,7 @@
 24. `npm run test:data-conservation` 是公開資料瘦身前的資料守恆測試，會解析 hidden delta 並檢查排行榜薄索引、報告細節檔、使用者檔、個人成績報告細節檔與多來源 report 線索，避免後續拆檔或延遲載入時讓既有成績或來源追溯消失。
 25. GitHub Actions 會在資料 commit/push 後、上傳 Pages artifact 前執行 `npm run audit:pages-payload:strict -- --write-history data/pages_payload_history.jsonl`，以 target 作為 `dist/`、`dist/data/`、`dist/data/all/`、`dist/data/users/` 與 `dist/og/` 的強制門檻；這讓 FFLogs 抓取成果先保存進 Git，payload 超標時只停止部署。稽核通過後若 `data/pages_payload_history.jsonl` 有變更，workflow 會另行 commit/push，記錄 artifact 體積、檔案數、建置秒數與上一筆差異；`npm run audit:pages-payload` 只保留作為本機 baseline 觀察用途。
 26. GitHub Actions 會在 payload 稽核與 history commit 後把 `npm run cloudflare:estimate` 與 `npm run cloudflare:purge -- --dry-run --summary` 輸出到 Step Summary，用來檢查 Cloudflare HIT ratio 承載估算與 scoped purge 範圍；正式部署後仍只執行 scoped purge，不做 purge everything。
+27. GitHub Actions 會在 `fetch_fflogs.py` 後執行 `npm run audit:mixed-report-dispatch`，把 mixed report 分派版本覆蓋率、待重查副本-report 組合、ranking-only 待補項目、歷史補查游標與 deferred 數量輸出到 Step Summary。此報表只作觀測用途，pending 大於 0 不應阻擋資料 commit 或部署；若要判斷歷史混合上傳重掃是否追平，應看「待重查」是否歸零，並搭配各副本歷史游標是否完成全區間輪巡。
 
 ### F. 版本切點與過版紀錄
 1. `config/encounters.json` 的 `version_cutoff` 用來描述副本版本有效期限；目前 `極 佐拉加` 與 `極 豔翼蛇鳥` 的過版切點是台灣時間 2026-04-21 18:00，對應 `2026-04-21T10:00:00.000Z`。

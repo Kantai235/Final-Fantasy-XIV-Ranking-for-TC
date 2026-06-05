@@ -88,7 +88,8 @@ jobs:
           FFLOGS_INCREMENTAL_LOOKBACK_HOURS: ${{ vars.FFLOGS_INCREMENTAL_LOOKBACK_HOURS || '24' }}
           # 近期 report 可能先被掃到但尚未出現通關 fight；保留 24 小時重試窗，避免 skipped_no_clear 永久擋掉後續匯出的 kill。
           FFLOGS_NO_CLEAR_RETRY_HOURS: ${{ vars.FFLOGS_NO_CLEAR_RETRY_HOURS || '24' }}
-          # 延遲淺層掃描固定檢查 24-72 小時前的 reports，只選入 state 與排行榜都沒見過的新 report，不重查既有紀錄。
+          # 延遲淺層掃描固定檢查 24-72 小時前的 reports；一般只選入未知 report，
+          # 但 UCoB 通關規則與混合上傳分派版本更新時，會讓需要重判的既有 report 穿透快取。
           FFLOGS_DELAYED_SCAN_ENABLED: ${{ vars.FFLOGS_DELAYED_SCAN_ENABLED || 'true' }}
           FFLOGS_DELAYED_SCAN_RECENT_GAP_HOURS: ${{ vars.FFLOGS_DELAYED_SCAN_RECENT_GAP_HOURS || '24' }}
           FFLOGS_DELAYED_SCAN_LOOKBACK_HOURS: ${{ vars.FFLOGS_DELAYED_SCAN_LOOKBACK_HOURS || '72' }}
@@ -108,6 +109,12 @@ jobs:
           FFLOGS_FETCH_GCD_COVERAGE_ENABLED: ${{ vars.FFLOGS_FETCH_GCD_COVERAGE_ENABLED || 'true' }}
           FFLOGS_FETCH_GCD_COVERAGE_MAX_FIGHTS_PER_RUN: ${{ vars.FFLOGS_FETCH_GCD_COVERAGE_MAX_FIGHTS_PER_RUN || '500' }}
         run: python scripts/fetch_fflogs.py
+
+      - name: 輸出混合上傳分派完成度
+        env:
+          FFLOGS_HISTORY_SCAN_WINDOW_HOURS: ${{ vars.FFLOGS_HISTORY_SCAN_WINDOW_HOURS || '168' }}
+          FFLOGS_HISTORY_SCAN_WINDOWS_PER_RUN: ${{ vars.FFLOGS_HISTORY_SCAN_WINDOWS_PER_RUN || '1' }}
+        run: npm run audit:mixed-report-dispatch
 
       - name: 執行 Honey B. Lovely 粉絲榜抓取腳本
         env:

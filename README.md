@@ -109,6 +109,7 @@ README 只保留入口與最小操作脈絡，完整說明請依主題閱讀：
 | `npm run test:data-conservation` | 檢查排行榜薄索引、細節檔、使用者檔與 hidden delta 的資料守恆。 |
 | `npm run audit:pages-payload` | 以 baseline 模式稽核 `dist/` 與 GitHub Pages payload 體積，只在超過硬上限時失敗，可用 `-- --write-history <path>` 記錄趨勢。 |
 | `npm run audit:pages-payload:strict` | 以與 GitHub Actions 相同的 strict 模式稽核 payload，任一項超過 target 就失敗；workflow 會寫入 `data/pages_payload_history.jsonl`。 |
+| `npm run audit:mixed-report-dispatch` | 統計 mixed report 分派版本在已知歷史 report 的覆蓋率與歷史補查游標進度；GitHub Actions 會輸出到 Step Summary。 |
 | `npm run check` | 執行 Python 與 Node.js 語法檢查。 |
 | `npm test` | 執行資料管線、GCD、資料建置與前端資料契約測試。 |
 | `npm run build` | 完整建置靜態網站到 `dist/`。 |

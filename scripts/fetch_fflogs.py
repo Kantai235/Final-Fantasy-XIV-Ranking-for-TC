@@ -4073,6 +4073,10 @@ def 套用延遲掃描執行狀態(
     副本狀態["delayed_last_reports_selected"] = 延遲掃描狀態.get("reports_selected", 0)
     副本狀態["delayed_last_reports_skipped_known"] = 延遲掃描狀態.get("reports_skipped_known", 0)
     副本狀態["delayed_last_reports_deferred"] = 延遲掃描狀態.get("reports_deferred", 0)
+    副本狀態["delayed_last_reports_mixed_dispatch_recheck_selected"] = 延遲掃描狀態.get(
+        "reports_mixed_dispatch_recheck_selected",
+        0,
+    )
 
 
 def 套用歷史補查執行狀態(
@@ -4108,6 +4112,10 @@ def 套用歷史補查執行狀態(
     副本狀態["history_last_reports_skipped_known"] = 歷史補查狀態.get("reports_skipped_known", 0)
     副本狀態["history_last_reports_deferred"] = 歷史補查狀態.get("reports_deferred", 0)
     副本狀態["history_last_reports_recheck_selected"] = 歷史補查狀態.get("reports_recheck_selected", 0)
+    副本狀態["history_last_reports_mixed_dispatch_recheck_selected"] = 歷史補查狀態.get(
+        "reports_mixed_dispatch_recheck_selected",
+        0,
+    )
 
 
 def 標記報告處理狀態(
@@ -4222,12 +4230,14 @@ def main() -> int:
             "delayed_reports_selected": 0,
             "delayed_reports_skipped_known": 0,
             "delayed_reports_deferred": 0,
+            "delayed_reports_mixed_dispatch_recheck_selected": 0,
             "delayed_scan": None,
             "history_reports_found": 0,
             "history_reports_selected": 0,
             "history_reports_skipped_known": 0,
             "history_reports_deferred": 0,
             "history_reports_recheck_selected": 0,
+            "history_reports_mixed_dispatch_recheck_selected": 0,
             "history_scan": None,
             "scan_failed": False,
             "scan_error": None,
@@ -4382,7 +4392,12 @@ def main() -> int:
         最新報告代碼: set[str],
     ) -> tuple[list[dict[str, Any]], dict[str, int]]:
         候選列表: list[dict[str, Any]] = []
-        統計 = {"selected": 0, "skipped_known": 0, "deferred": 0}
+        統計 = {
+            "selected": 0,
+            "skipped_known": 0,
+            "deferred": 0,
+            "mixed_dispatch_recheck_selected": 0,
+        }
 
         for 報告 in 報告列表:
             報告代碼 = str(報告.get("code") or "")
@@ -4413,6 +4428,7 @@ def main() -> int:
                 候選["_clear_rule_recheck"] = True
             if 需要混合分派重查:
                 候選["_mixed_report_dispatch_recheck"] = True
+                統計["mixed_dispatch_recheck_selected"] += 1
             候選列表.append(候選)
             統計["selected"] += 1
 
@@ -4424,7 +4440,13 @@ def main() -> int:
         最新報告代碼: set[str],
     ) -> tuple[list[dict[str, Any]], dict[str, int]]:
         候選列表: list[dict[str, Any]] = []
-        統計 = {"selected": 0, "skipped_known": 0, "deferred": 0, "recheck_selected": 0}
+        統計 = {
+            "selected": 0,
+            "skipped_known": 0,
+            "deferred": 0,
+            "recheck_selected": 0,
+            "mixed_dispatch_recheck_selected": 0,
+        }
 
         for 報告 in 報告列表:
             報告代碼 = str(報告.get("code") or "")
@@ -4456,6 +4478,7 @@ def main() -> int:
                 統計["recheck_selected"] += 1
             if 需要混合分派重查:
                 候選["_mixed_report_dispatch_recheck"] = True
+                統計["mixed_dispatch_recheck_selected"] += 1
             候選列表.append(候選)
             統計["selected"] += 1
 
@@ -4842,11 +4865,17 @@ def main() -> int:
             目前處理狀態["delayed_reports_selected"] = 延遲候選統計["selected"]
             目前處理狀態["delayed_reports_skipped_known"] = 延遲候選統計["skipped_known"]
             目前處理狀態["delayed_reports_deferred"] = 延遲候選統計["deferred"]
+            目前處理狀態["delayed_reports_mixed_dispatch_recheck_selected"] = 延遲候選統計[
+                "mixed_dispatch_recheck_selected"
+            ]
             if 延遲掃描狀態 is not None:
                 延遲掃描狀態["reports_found"] = len(延遲報告代碼)
                 延遲掃描狀態["reports_selected"] = 延遲候選統計["selected"]
                 延遲掃描狀態["reports_skipped_known"] = 延遲候選統計["skipped_known"]
                 延遲掃描狀態["reports_deferred"] = 延遲候選統計["deferred"]
+                延遲掃描狀態["reports_mixed_dispatch_recheck_selected"] = 延遲候選統計[
+                    "mixed_dispatch_recheck_selected"
+                ]
 
             歷史報告列表: list[dict[str, Any]] = []
             歷史區間列表, 歷史補查狀態 = 建立歷史補查區間(狀態, 副本設定, 狀態時間戳記)
@@ -4895,12 +4924,18 @@ def main() -> int:
             目前處理狀態["history_reports_skipped_known"] = 歷史候選統計["skipped_known"]
             目前處理狀態["history_reports_deferred"] = 歷史候選統計["deferred"]
             目前處理狀態["history_reports_recheck_selected"] = 歷史候選統計["recheck_selected"]
+            目前處理狀態["history_reports_mixed_dispatch_recheck_selected"] = 歷史候選統計[
+                "mixed_dispatch_recheck_selected"
+            ]
             if 歷史補查狀態 is not None:
                 歷史補查狀態["reports_found"] = len(歷史報告代碼)
                 歷史補查狀態["reports_selected"] = 歷史候選統計["selected"]
                 歷史補查狀態["reports_skipped_known"] = 歷史候選統計["skipped_known"]
                 歷史補查狀態["reports_deferred"] = 歷史候選統計["deferred"]
                 歷史補查狀態["reports_recheck_selected"] = 歷史候選統計["recheck_selected"]
+                歷史補查狀態["reports_mixed_dispatch_recheck_selected"] = 歷史候選統計[
+                    "mixed_dispatch_recheck_selected"
+                ]
                 套用歷史補查深查上限游標(歷史補查狀態, 歷史報告候選列表, 歷史候選統計)
 
             淺層報告列表 = 合併淺層報告列表(最新報告列表, 延遲報告候選列表 + 歷史報告候選列表)
@@ -5243,12 +5278,18 @@ def main() -> int:
             "delayed_reports_selected": 處理狀態["delayed_reports_selected"],
             "delayed_reports_skipped_known": 處理狀態["delayed_reports_skipped_known"],
             "delayed_reports_deferred": 處理狀態["delayed_reports_deferred"],
+            "delayed_reports_mixed_dispatch_recheck_selected": 處理狀態[
+                "delayed_reports_mixed_dispatch_recheck_selected"
+            ],
             "delayed_scan": 處理狀態.get("delayed_scan"),
             "history_reports_found": 處理狀態["history_reports_found"],
             "history_reports_selected": 處理狀態["history_reports_selected"],
             "history_reports_skipped_known": 處理狀態["history_reports_skipped_known"],
             "history_reports_deferred": 處理狀態["history_reports_deferred"],
             "history_reports_recheck_selected": 處理狀態["history_reports_recheck_selected"],
+            "history_reports_mixed_dispatch_recheck_selected": 處理狀態[
+                "history_reports_mixed_dispatch_recheck_selected"
+            ],
             "history_scan": 處理狀態.get("history_scan"),
             "scan_failed": 處理狀態["scan_failed"],
             "scan_error": 處理狀態["scan_error"],
