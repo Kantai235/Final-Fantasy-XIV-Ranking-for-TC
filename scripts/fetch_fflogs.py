@@ -17,6 +17,7 @@ from dotenv import load_dotenv
 from fflogs_pipeline.graphql_queries import (
     深層過濾查詢,
     報告狀態查詢,
+    報告完整戰鬥清單查詢,
     戰鬥清單查詢,
     戰鬥清單全部查詢,
     淺層掃描查詢,
@@ -36,6 +37,7 @@ TOKEN_URL = "https://www.fflogs.com/oauth/token"
 絕巴哈最低通關毫秒 = 780_000
 絕本通關規則版本 = "ultimate_clear_rules_2026_05_28"
 絕本通關規則重判副本ID = {絕巴哈副本ID}
+混合Report分派版本 = "mixed_report_dispatch_2026_06_05"
 
 專案根目錄 = Path(__file__).resolve().parents[1]
 load_dotenv(專案根目錄 / ".env")
@@ -1976,13 +1978,26 @@ def 是絕巴哈通關戰鬥(戰鬥: dict[str, Any]) -> bool:
     return 戰鬥.get("kill") is True or 是絕巴哈補判通關戰鬥(戰鬥)
 
 
-def 套用絕巴哈通關戰鬥篩選(副本設定: dict[str, Any], 報告: dict[str, Any]) -> dict[str, Any]:
-    if not 是絕巴哈副本(副本設定):
-        return 報告
+def 戰鬥符合副本設定(副本設定: dict[str, Any], 戰鬥: dict[str, Any]) -> bool:
+    return (
+        戰鬥.get("encounterID") == 副本設定.get("encounter_id")
+        and 戰鬥.get("difficulty") == 副本設定.get("difficulty")
+    )
 
-    # UCoB（encounterID 1073）在不同年代的 FFLogs 回傳並不一致：部分通關會有 kill=true，
-    # 部分則只留下 fightPercentage=80。這裡保留 FFLogs 原生 kill=true 的紀錄，同時補上
-    # 「80%、已進 Bahamut Prime 後段、戰鬥至少 13 分鐘」三條件，排除 P4→P5 轉換點全滅。
+
+def 戰鬥是副本通關(副本設定: dict[str, Any], 戰鬥: dict[str, Any]) -> bool:
+    if 是絕巴哈副本(副本設定):
+        return 是絕巴哈通關戰鬥(戰鬥)
+    return 戰鬥.get("kill") is True
+
+
+def 篩選報告通關戰鬥(副本設定: dict[str, Any], 報告: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not isinstance(報告, dict):
+        return None
+
+    # FFLogs reports(zoneID) 只看 report 的主 zone；混合上傳時，真正的副本歸屬必須回到
+    # fight 層的 encounterID/difficulty 判斷。一般副本仍要求 kill=true，避免完整 fight list
+    # 把 wipe 誤當成通關；UCoB 則沿用本檔集中維護的補判規則。
     戰鬥列表 = 報告.get("fights") or []
     if not isinstance(戰鬥列表, list):
         return {**報告, "fights": []}
@@ -1990,9 +2005,28 @@ def 套用絕巴哈通關戰鬥篩選(副本設定: dict[str, Any], 報告: dict
     通關戰鬥列表 = [
         戰鬥
         for 戰鬥 in 戰鬥列表
-        if isinstance(戰鬥, dict) and 是絕巴哈通關戰鬥(戰鬥)
+        if (
+            isinstance(戰鬥, dict)
+            and 戰鬥符合副本設定(副本設定, 戰鬥)
+            and 戰鬥是副本通關(副本設定, 戰鬥)
+        )
     ]
     return {**報告, "fights": 通關戰鬥列表}
+
+
+def 查詢報告完整戰鬥清單(
+    session: requests.Session,
+    認證池: FFLogs認證池,
+    報告代碼: str,
+) -> dict[str, Any] | None:
+    資料 = 執行_graphql(
+        session,
+        認證池,
+        報告完整戰鬥清單查詢,
+        {"code": 報告代碼},
+    )
+    報告 = ((資料.get("reportData") or {}).get("report")) or None
+    return 報告 if isinstance(報告, dict) else None
 
 
 def 查詢通關戰鬥(
@@ -2011,7 +2045,7 @@ def 查詢通關戰鬥(
     報告 = ((資料.get("reportData") or {}).get("report")) or None
     if not isinstance(報告, dict):
         return None
-    return 套用絕巴哈通關戰鬥篩選(副本設定, 報告)
+    return 篩選報告通關戰鬥(副本設定, 報告)
 
 
 def 需要FFLogs原生通關篩選(副本設定: dict[str, Any]) -> bool:
@@ -3533,22 +3567,19 @@ def 建立報告成績(
     淺層報告: dict[str, Any],
     繁中服玩家: list[dict[str, Any]],
     gcd計算器: 即時GCD覆蓋率計算器 | None = None,
+    預查報告: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     # 一份 report 可能含同 zone 多個 encounter；這裡保存完成排名建置所需的 report/fight/player 脈絡。
     # GraphQL 原始表格可從 FFLogs 依 report code 重查，若全部落地會讓 repo 以 GB 級成長。
     # 因此只保留已計算出的玩家列、傷害時間分母與追溯用 report code，不保存 fflogs_raw/masterData。
     報告代碼 = 淺層報告["code"]
-    報告 = 查詢通關戰鬥(session, 認證池, 副本設定, 報告代碼)
+    報告 = 篩選報告通關戰鬥(副本設定, 預查報告) if 預查報告 is not None else 查詢通關戰鬥(session, 認證池, 副本設定, 報告代碼)
     if not 報告:
         return None
 
     戰鬥列表 = 報告.get("fights") or []
     if not 戰鬥列表:
         return None
-    if 是絕巴哈副本(副本設定):
-        戰鬥列表 = 套用絕巴哈通關戰鬥篩選(副本設定, {"fights": 戰鬥列表}).get("fights") or []
-        if not 戰鬥列表:
-            return None
 
     整理後戰鬥列表: list[dict[str, Any]] = []
     報告起始時間戳記 = 報告.get("startTime") or 淺層報告.get("startTime")
@@ -3840,6 +3871,10 @@ def 報告處理記錄已套用絕本通關規則(記錄: Any) -> bool:
     return isinstance(記錄, dict) and 記錄.get("clear_rule_revision") == 絕本通關規則版本
 
 
+def 報告處理記錄已完成混合Report分派(記錄: Any) -> bool:
+    return isinstance(記錄, dict) and 記錄.get("mixed_report_dispatch_revision") == 混合Report分派版本
+
+
 def 報告處理記錄不需絕本通關規則重判(記錄: Any) -> bool:
     if not isinstance(記錄, dict):
         return False
@@ -3849,8 +3884,18 @@ def 報告處理記錄不需絕本通關規則重判(記錄: Any) -> bool:
     return 記錄.get("status") in 絕本通關規則不影響狀態
 
 
+def 報告處理記錄不需混合Report分派重查(記錄: Any) -> bool:
+    if not isinstance(記錄, dict):
+        return False
+
+    # masterData.actors 是整份 report 的玩家清單，不受 encounterID 或 zone 影響；若已確認沒有繁中服玩家，
+    # 即使 report 裡混有其它副本，也不可能整理出繁中服排行榜資料。
+    return 記錄.get("status") in {無繁中服玩家報告狀態, "skipped_inaccessible"}
+
+
 def 建立報告處理額外內容(副本設定: dict[str, Any], 額外內容: dict[str, Any] | None = None) -> dict[str, Any]:
     內容 = dict(額外內容 or {})
+    內容["mixed_report_dispatch_revision"] = 混合Report分派版本
     if 是絕本副本(副本設定):
         內容["clear_rule_revision"] = 絕本通關規則版本
     return 內容
@@ -3881,6 +3926,70 @@ def 報告需要絕本通關規則重判(
             return False
 
     return True
+
+
+def 報告需要混合Report分派重查(
+    報告代碼: str,
+    副本狀態: dict[str, Any],
+    已知報告代碼: set[str],
+) -> bool:
+    if 報告代碼 not in 已知報告代碼:
+        return False
+
+    for 欄位 in ("processed_reports", "checked_reports"):
+        記錄 = (副本狀態.get(欄位) or {}).get(報告代碼)
+        if 記錄 is None:
+            continue
+        if 報告處理記錄已完成混合Report分派(記錄):
+            return False
+        if 報告處理記錄不需混合Report分派重查(記錄):
+            return False
+
+    # 可能有舊資料只存在 ranking 分片而 checked_reports 已被 compact/cap 裁掉。
+    # 只要這份 report 對目前副本來說是已知但沒有分派版本，就讓歷史補查有機會重查一次完整 fight list。
+    return True
+
+
+def 報告包含副本通關戰鬥(副本設定: dict[str, Any], 報告: dict[str, Any] | None) -> bool:
+    篩選後報告 = 篩選報告通關戰鬥(副本設定, 報告)
+    return bool((篩選後報告 or {}).get("fights"))
+
+
+def 取得報告相關副本清單(
+    目前副本設定: dict[str, Any],
+    副本清單: list[dict[str, Any]],
+    預查報告: dict[str, Any] | None,
+) -> list[dict[str, Any]]:
+    # 對目前掃描 zone 的同難度副本，保留既有 no-clear checkpoint 行為，避免同一 zone 的 M1S~M4S
+    # 在每個副本迴圈都重複深查同一份 report。跨 zone 則只加入完整 fight list 實際命中的副本；
+    # 這是支援混合上傳的關鍵，同時避免把所有 unrelated 副本都寫入 skipped_no_clear。
+    相關副本: list[dict[str, Any]] = []
+    已加入鍵值: set[str] = set()
+
+    def 加入副本(副本設定: dict[str, Any]) -> None:
+        副本鍵值 = str(副本設定.get("key") or "")
+        if not 副本鍵值 or 副本鍵值 in 已加入鍵值:
+            return
+        已加入鍵值.add(副本鍵值)
+        相關副本.append(副本設定)
+
+    目前zone = 目前副本設定.get("zone_id")
+    目前難度 = 目前副本設定.get("difficulty")
+    for 副本設定 in 副本清單:
+        if (
+            副本設定.get("zone_id") == 目前zone
+            and 副本設定.get("difficulty") == 目前難度
+        ):
+            加入副本(副本設定)
+
+    if 預查報告 is None:
+        return 相關副本
+
+    for 副本設定 in 副本清單:
+        if 報告包含副本通關戰鬥(副本設定, 預查報告):
+            加入副本(副本設定)
+
+    return 相關副本
 
 
 def 讀取已處理報告代碼(
@@ -4131,6 +4240,7 @@ def main() -> int:
 
     淺層掃描快取: dict[tuple[int, int, int, int | None], list[dict[str, Any]]] = {}
     本輪報告繁中服檢查快取: dict[str, dict[str, Any]] = {}
+    本輪報告完整戰鬥清單快取: dict[str, dict[str, Any]] = {}
     延遲掃描候選報告代碼: set[str] = set()
     歷史補查候選額度 = 歷史補查深層候選額度(
         歷史補查深層報告上限,
@@ -4201,6 +4311,12 @@ def main() -> int:
             )
         return [dict(報告) for 報告 in 淺層掃描快取[快取鍵]]
 
+    def 取得本輪報告完整戰鬥清單(報告代碼: str) -> dict[str, Any] | None:
+        if 報告代碼 not in 本輪報告完整戰鬥清單快取:
+            報告 = 查詢報告完整戰鬥清單(session, 認證池, 報告代碼)
+            本輪報告完整戰鬥清單快取[報告代碼] = 報告 or {}
+        return 本輪報告完整戰鬥清單快取[報告代碼] or None
+
     def 是否需要深層處理任何同區副本(
         目前副本設定: dict[str, Any],
         報告代碼: str,
@@ -4246,6 +4362,20 @@ def main() -> int:
                 return True
         return False
 
+    def 是否需要混合Report分派重查(目前副本設定: dict[str, Any], 報告代碼: str) -> bool:
+        for 目標副本設定 in 取得同區同難度副本清單(目前副本設定):
+            目標處理狀態 = 副本處理狀態[目標副本設定["key"]]
+            if 報告代碼 in 目標處理狀態["本輪已嘗試報告代碼"]:
+                continue
+            副本狀態 = (狀態.get("encounters") or {}).get(目標副本設定["key"]) or {}
+            if 報告需要混合Report分派重查(
+                報告代碼,
+                副本狀態,
+                目標處理狀態["已知報告代碼"],
+            ):
+                return True
+        return False
+
     def 篩選延遲掃描候選(
         副本設定: dict[str, Any],
         報告列表: list[dict[str, Any]],
@@ -4265,7 +4395,12 @@ def main() -> int:
                 統計["skipped_known"] += 1
                 continue
             需要重判 = 是否需要絕本歷史通關重判(副本設定, 報告代碼)
-            if not 需要重判 and not 是否為任何同區副本的未知報告(副本設定, 報告代碼):
+            需要混合分派重查 = 是否需要混合Report分派重查(副本設定, 報告代碼)
+            if (
+                not 需要重判
+                and not 需要混合分派重查
+                and not 是否為任何同區副本的未知報告(副本設定, 報告代碼)
+            ):
                 統計["skipped_known"] += 1
                 continue
             if not 延遲掃描仍可加入候選(報告代碼):
@@ -4276,6 +4411,8 @@ def main() -> int:
             候選 = dict(報告)
             if 需要重判:
                 候選["_clear_rule_recheck"] = True
+            if 需要混合分派重查:
+                候選["_mixed_report_dispatch_recheck"] = True
             候選列表.append(候選)
             統計["selected"] += 1
 
@@ -4300,7 +4437,12 @@ def main() -> int:
                 統計["skipped_known"] += 1
                 continue
             需要重判 = 是否需要絕本歷史通關重判(副本設定, 報告代碼)
-            if not 需要重判 and not 是否需要深層處理任何同區副本(副本設定, 報告代碼):
+            需要混合分派重查 = 是否需要混合Report分派重查(副本設定, 報告代碼)
+            if (
+                not 需要重判
+                and not 需要混合分派重查
+                and not 是否需要深層處理任何同區副本(副本設定, 報告代碼)
+            ):
                 統計["skipped_known"] += 1
                 continue
             if not 歷史補查仍可加入候選(副本設定, 報告代碼):
@@ -4312,6 +4454,8 @@ def main() -> int:
             if 需要重判:
                 候選["_history_clear_rule_recheck"] = True
                 統計["recheck_selected"] += 1
+            if 需要混合分派重查:
+                候選["_mixed_report_dispatch_recheck"] = True
             候選列表.append(候選)
             統計["selected"] += 1
 
@@ -4356,15 +4500,22 @@ def main() -> int:
         報告代碼: str,
         強制重抓: bool,
         通關規則重判報告代碼: set[str] | None = None,
+        混合分派重查報告代碼: set[str] | None = None,
+        預查報告: dict[str, Any] | None = None,
     ) -> tuple[list[dict[str, Any]], bool]:
         # 強制重抓模式只重新處理指定 report，不推進掃描點；一般模式則跳過已在 state 或排行榜中的報告。
         # UCoB 通關規則改版是例外：舊版可能把 fightPercentage=80 的通關記成 skipped_no_clear，
         # 因此需要讓指定 report 穿透 checked_reports 快取，回到 fight/player 查詢重新判定。
+        # 混合上傳 report 也是類似的一次性遷移：舊版只檢查 report 主 zone，同一份 report 內的
+        # 跨 zone fight 可能沒有分派到對應副本。預查完整 fight list 後，會把實際命中的跨 zone
+        # 副本加入待處理；但 unrelated 副本不寫 no-clear，避免 state.json 被無意義地放大。
         待處理副本: list[dict[str, Any]] = []
         目前副本已處理 = False
         重判報告代碼 = 通關規則重判報告代碼 or set()
+        混合重查報告代碼 = 混合分派重查報告代碼 or set()
+        相關副本清單 = 取得報告相關副本清單(目前副本設定, 副本清單, 預查報告)
 
-        for 目標副本設定 in 取得同區同難度副本清單(目前副本設定):
+        for 目標副本設定 in 相關副本清單:
             目標處理狀態 = 副本處理狀態[目標副本設定["key"]]
             if 報告代碼 in 目標處理狀態["本輪已嘗試報告代碼"]:
                 continue
@@ -4379,7 +4530,21 @@ def main() -> int:
                     目標處理狀態["已知報告代碼"],
                 )
 
-            if 報告代碼 in 目標處理狀態["已處理報告代碼"] and not 強制重抓 and not 需要通關規則重判:
+            需要混合分派重查 = False
+            if 報告代碼 in 混合重查報告代碼:
+                副本狀態 = (狀態.get("encounters") or {}).get(目標副本設定["key"]) or {}
+                需要混合分派重查 = 報告需要混合Report分派重查(
+                    報告代碼,
+                    副本狀態,
+                    目標處理狀態["已知報告代碼"],
+                )
+
+            if (
+                報告代碼 in 目標處理狀態["已處理報告代碼"]
+                and not 強制重抓
+                and not 需要通關規則重判
+                and not 需要混合分派重查
+            ):
                 if 目標副本設定["key"] == 目前副本設定["key"]:
                     目前副本已處理 = True
                     目標處理狀態["skipped_already_processed_reports"] += 1
@@ -4772,12 +4937,19 @@ def main() -> int:
             if (報告.get("_history_clear_rule_recheck") or 報告.get("_clear_rule_recheck")) and 報告.get("code")
         }
         通關規則重判報告代碼 = set(歷史重判報告代碼)
+        混合分派重查報告代碼 = {
+            str(報告.get("code") or "")
+            for 報告 in 淺層報告列表
+            if 報告.get("_mixed_report_dispatch_recheck") and 報告.get("code")
+        }
         for 報告 in 淺層報告列表:
             報告代碼 = str(報告.get("code") or "")
             if 報告代碼 and 是否需要絕本歷史通關重判(副本設定, 報告代碼):
                 通關規則重判報告代碼.add(報告代碼)
+            if 報告代碼 and 是否需要混合Report分派重查(副本設定, 報告代碼):
+                混合分派重查報告代碼.add(報告代碼)
 
-        強制處理報告代碼 = 重抓報告代碼 | 只處理報告代碼 | 通關規則重判報告代碼
+        強制處理報告代碼 = 重抓報告代碼 | 只處理報告代碼 | 通關規則重判報告代碼 | 混合分派重查報告代碼
         已處理前綴快轉索引 = 取得已處理報告前綴快轉索引(
             淺層報告列表,
             同區副本清單,
@@ -4841,6 +5013,7 @@ def main() -> int:
                 報告代碼,
                 強制重抓,
                 通關規則重判報告代碼,
+                混合分派重查報告代碼,
             )
             if not 待處理副本:
                 if 目前副本已處理:
@@ -4926,13 +5099,58 @@ def main() -> int:
                 print(f"{副本設定['name']} {進度文字} 沒有繁中服玩家，已略過 {len(待處理副本)} 個副本：{報告代碼}")
                 continue
 
+            try:
+                預查報告 = 取得本輪報告完整戰鬥清單(報告代碼)
+            except FFLogs報告存取錯誤 as 錯誤:
+                for 目標副本 in 待處理副本:
+                    標記不可存取報告隱藏(目標副本, 報告代碼, 錯誤)
+                    標記報告略過(
+                        副本處理狀態[目標副本["key"]],
+                        報告代碼,
+                        "skipped_inaccessible",
+                        {"reason": str(錯誤)},
+                        立即寫入=False,
+                    )
+                登記狀態檢查點變更(len(待處理副本))
+                視需要寫入狀態檢查點("報告無法存取")
+                print(f"{副本設定['name']} {進度文字} FFLogs 報告無法存取，已略過 {len(待處理副本)} 個副本：{報告代碼}")
+                continue
+            except Exception as 錯誤:
+                for 目標副本 in 待處理副本:
+                    目標處理狀態 = 副本處理狀態[目標副本["key"]]
+                    目標處理狀態["reports_failed"] += 1
+                    目標處理狀態["本輪已嘗試報告代碼"].add(報告代碼)
+                print(f"{副本設定['name']} {進度文字} 查詢完整 fight list 失敗：{報告代碼} {錯誤}", file=sys.stderr)
+                continue
+
+            待處理副本, 目前副本已處理 = 篩選待處理副本(
+                副本設定,
+                報告代碼,
+                強制重抓,
+                通關規則重判報告代碼,
+                混合分派重查報告代碼,
+                預查報告,
+            )
+            if not 待處理副本:
+                if 目前副本已處理:
+                    print(f"{副本設定['name']} {進度文字} 完整 fight list 未發現尚待分派副本，略過：{報告代碼}")
+                continue
+
             for 目標副本 in 待處理副本:
                 目標處理狀態 = 副本處理狀態[目標副本["key"]]
                 目標處理狀態["traditional_chinese_reports"] += 1
                 目標處理狀態["本輪已嘗試報告代碼"].add(報告代碼)
 
                 try:
-                    成績 = 建立報告成績(session, 認證池, 目標副本, 報告, 繁中服玩家, gcd計算器)
+                    成績 = 建立報告成績(
+                        session,
+                        認證池,
+                        目標副本,
+                        報告,
+                        繁中服玩家,
+                        gcd計算器,
+                        預查報告,
+                    )
                 except FFLogs報告尚未完整匯出錯誤 as 錯誤:
                     標記報告略過(
                         目標處理狀態,

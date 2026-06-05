@@ -276,6 +276,7 @@ class FetchFFLogsBatchTest(unittest.TestCase):
                             {
                                 "id": 21,
                                 "encounterID": 1073,
+                                "difficulty": 100,
                                 "name": "Nael Deus Darnus / Bahamut Prime / Twintania",
                                 "kill": False,
                                 "startTime": 0,
@@ -285,6 +286,7 @@ class FetchFFLogsBatchTest(unittest.TestCase):
                             {
                                 "id": 22,
                                 "encounterID": 1073,
+                                "difficulty": 100,
                                 "name": "Nael Deus Darnus / Bahamut Prime / Twintania",
                                 "kill": False,
                                 "startTime": 0,
@@ -294,6 +296,7 @@ class FetchFFLogsBatchTest(unittest.TestCase):
                             {
                                 "id": 23,
                                 "encounterID": 1073,
+                                "difficulty": 100,
                                 "name": "Twintania",
                                 "kill": False,
                                 "startTime": 0,
@@ -303,6 +306,7 @@ class FetchFFLogsBatchTest(unittest.TestCase):
                             {
                                 "id": 24,
                                 "encounterID": 1073,
+                                "difficulty": 100,
                                 "name": "Nael Deus Darnus / Bahamut Prime / Twintania",
                                 "kill": True,
                                 "startTime": 0,
@@ -343,6 +347,7 @@ class FetchFFLogsBatchTest(unittest.TestCase):
                             {
                                 "id": 88,
                                 "encounterID": 1077,
+                                "difficulty": 100,
                                 "name": "The Omega Protocol",
                                 "kill": True,
                                 "startTime": 0,
@@ -360,6 +365,66 @@ class FetchFFLogsBatchTest(unittest.TestCase):
         self.assertIn("killType: Kills", 呼叫查詢[0])
         self.assertIsNotNone(報告)
         self.assertEqual([戰鬥["id"] for 戰鬥 in 報告["fights"]], [88])
+
+    def test_full_fight_list_query_omits_encounter_and_kill_filters(self) -> None:
+        self.assertIn("query ReportFullFightList($code: String!)", fflogs.報告完整戰鬥清單查詢)
+        self.assertIn("      fights {", fflogs.報告完整戰鬥清單查詢)
+        self.assertNotIn("fights(encounterID:", fflogs.報告完整戰鬥清單查詢)
+        self.assertNotIn("killType: Kills", fflogs.報告完整戰鬥清單查詢)
+
+    def test_mixed_report_filter_uses_fight_level_encounter_and_kill(self) -> None:
+        副本設定 = {"key": "savage_m2s", "encounter_id": 94, "difficulty": 101}
+        預查報告 = {
+            "code": "mixed",
+            "zone": {"id": 64, "name": "Trials (Unreal)"},
+            "fights": [
+                {"id": 4, "encounterID": 3009, "difficulty": 100, "kill": True},
+                {"id": 7, "encounterID": 94, "difficulty": 101, "kill": False},
+                {"id": 12, "encounterID": 94, "difficulty": 101, "kill": True},
+            ],
+        }
+
+        篩選後 = fflogs.篩選報告通關戰鬥(副本設定, 預查報告)
+
+        self.assertIsNotNone(篩選後)
+        self.assertEqual([戰鬥["id"] for 戰鬥 in 篩選後["fights"]], [12])
+
+    def test_mixed_report_related_encounters_include_cross_zone_clear_only(self) -> None:
+        幻白虎 = {
+            "key": "unreal_byakko",
+            "zone_id": 64,
+            "encounter_id": 3009,
+            "difficulty": 100,
+        }
+        零式_m1s = {
+            "key": "savage_m1s",
+            "zone_id": 62,
+            "encounter_id": 93,
+            "difficulty": 101,
+        }
+        零式_m2s = {
+            "key": "savage_m2s",
+            "zone_id": 62,
+            "encounter_id": 94,
+            "difficulty": 101,
+        }
+        預查報告 = {
+            "code": "mixed",
+            "zone": {"id": 64},
+            "fights": [
+                {"id": 4, "encounterID": 3009, "difficulty": 100, "kill": True},
+                {"id": 7, "encounterID": 94, "difficulty": 101, "kill": False},
+                {"id": 12, "encounterID": 94, "difficulty": 101, "kill": True},
+            ],
+        }
+
+        相關副本 = fflogs.取得報告相關副本清單(
+            幻白虎,
+            [零式_m1s, 零式_m2s, 幻白虎],
+            預查報告,
+        )
+
+        self.assertEqual([副本["key"] for 副本 in 相關副本], ["unreal_byakko", "savage_m2s"])
 
     def test_delayed_scan_window_targets_24_to_72_hours_before_scan_end(self) -> None:
         一小時 = 60 * 60 * 1000
@@ -1108,6 +1173,83 @@ class FetchFFLogsBatchTest(unittest.TestCase):
         self.assertEqual(成績["fights"][1]["players"][0]["dps"], 2000)
         self.assertEqual(成績["fights"][0]["players"][0]["gcd_coverage"]["percent"], 97.5)
 
+    def test_report_score_can_use_preloaded_mixed_report_for_cross_zone_fight(self) -> None:
+        副本設定 = {
+            "key": "savage_m2s",
+            "name": "零式 M2S / 蜂蜂",
+            "category": "零式",
+            "zone_id": 62,
+            "encounter_id": 94,
+            "difficulty": 101,
+        }
+        淺層報告 = {"code": "mixed123", "title": "主 zone 是幻白虎", "startTime": 100000, "endTime": 800000}
+        預查報告 = {
+            "code": "mixed123",
+            "title": "主 zone 是幻白虎",
+            "startTime": 100000,
+            "endTime": 800000,
+            "zone": {"id": 64, "name": "Trials (Unreal)"},
+            "fights": [
+                {
+                    "id": 4,
+                    "encounterID": 3009,
+                    "difficulty": 100,
+                    "kill": True,
+                    "startTime": 0,
+                    "endTime": 600000,
+                    "combatTime": 600000,
+                },
+                {
+                    "id": 12,
+                    "encounterID": 94,
+                    "difficulty": 101,
+                    "kill": True,
+                    "startTime": 620000,
+                    "endTime": 700000,
+                    "combatTime": 80000,
+                },
+            ],
+        }
+        批次呼叫: list[list[int]] = []
+
+        def 不應查通關戰鬥(*args: Any, **kwargs: Any) -> dict[str, Any]:
+            raise AssertionError("已有完整 fight list 時，不應再查一次通關戰鬥清單。")
+
+        def 假多場玩家成績(
+            session: Any,
+            認證池: Any,
+            目標副本: dict[str, Any],
+            報告代碼: str,
+            戰鬥_id清單: list[int],
+            戰鬥時間範圍索引: dict[int, dict[str, int | float]] | None = None,
+        ) -> dict[int, dict[str, Any]]:
+            批次呼叫.append(list(戰鬥_id清單))
+            原始成績 = 建立測試原始成績(80000)
+            原始成績["damage_done"]["data"]["combatTime"] = 80000
+            原始成績["damage_done"]["data"]["totalTime"] = 80000
+            原始成績["damage_done"]["data"]["entries"][0]["activeTime"] = 76000
+            return {12: 原始成績}
+
+        with (
+            patch.object(fflogs, "查詢通關戰鬥", 不應查通關戰鬥),
+            patch.object(fflogs, "查詢多場玩家成績", 假多場玩家成績),
+        ):
+            成績 = fflogs.建立報告成績(
+                None,
+                None,
+                副本設定,
+                淺層報告,
+                [{"server": "巴哈姆特"}],
+                預查報告=預查報告,
+            )
+
+        self.assertEqual(批次呼叫, [[12]])
+        self.assertIsNotNone(成績)
+        self.assertEqual(成績["zone"], {"id": 64, "name": "Trials (Unreal)"})
+        self.assertEqual([戰鬥["fight_id"] for 戰鬥 in 成績["fights"]], [12])
+        self.assertEqual(成績["fights"][0]["encounter_id"], 94)
+        self.assertEqual(成績["fights"][0]["players"][0]["name"], "測試角色")
+
     def test_report_score_defers_when_damage_table_is_still_partial(self) -> None:
         副本設定 = {
             "key": "savage_m2s",
@@ -1310,11 +1452,66 @@ class FetchFFLogsBatchTest(unittest.TestCase):
         )
         self.assertEqual(
             fflogs.建立報告處理額外內容({"key": "ultimate_omega", "category": "絕"}, {"has_clear": True}),
-            {"has_clear": True, "clear_rule_revision": fflogs.絕本通關規則版本},
+            {
+                "has_clear": True,
+                "mixed_report_dispatch_revision": fflogs.混合Report分派版本,
+                "clear_rule_revision": fflogs.絕本通關規則版本,
+            },
         )
         self.assertEqual(
             fflogs.建立報告處理額外內容(副本設定, {"has_clear": True}),
-            {"has_clear": True},
+            {
+                "has_clear": True,
+                "mixed_report_dispatch_revision": fflogs.混合Report分派版本,
+            },
+        )
+
+    def test_known_report_without_mixed_dispatch_revision_needs_recheck(self) -> None:
+        副本狀態 = {
+            "checked_reports": {
+                "old-saved": {"status": "saved"},
+                "new-saved": {
+                    "status": "saved",
+                    "mixed_report_dispatch_revision": fflogs.混合Report分派版本,
+                },
+                "no-tc": {"status": fflogs.無繁中服玩家報告狀態},
+            }
+        }
+
+        self.assertTrue(
+            fflogs.報告需要混合Report分派重查(
+                "old-saved",
+                副本狀態,
+                {"old-saved", "new-saved", "no-tc", "ranking-only"},
+            )
+        )
+        self.assertTrue(
+            fflogs.報告需要混合Report分派重查(
+                "ranking-only",
+                副本狀態,
+                {"old-saved", "new-saved", "no-tc", "ranking-only"},
+            )
+        )
+        self.assertFalse(
+            fflogs.報告需要混合Report分派重查(
+                "new-saved",
+                副本狀態,
+                {"old-saved", "new-saved", "no-tc", "ranking-only"},
+            )
+        )
+        self.assertFalse(
+            fflogs.報告需要混合Report分派重查(
+                "no-tc",
+                副本狀態,
+                {"old-saved", "new-saved", "no-tc", "ranking-only"},
+            )
+        )
+        self.assertFalse(
+            fflogs.報告需要混合Report分派重查(
+                "unknown",
+                副本狀態,
+                {"old-saved", "new-saved", "no-tc", "ranking-only"},
+            )
         )
 
     def test_ranking_rebuild_prefers_reports_over_stale_flat_entries(self) -> None:

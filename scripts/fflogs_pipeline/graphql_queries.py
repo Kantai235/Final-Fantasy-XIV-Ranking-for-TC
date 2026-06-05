@@ -268,6 +268,20 @@ def 建立戰鬥清單查詢(套用通關篩選: bool = True) -> str:
 
 戰鬥清單查詢 = 建立戰鬥清單查詢()
 戰鬥清單全部查詢 = 建立戰鬥清單查詢(套用通關篩選=False)
+# 混合上傳 report 的 top-level zone 只會指向其中一種內容，例如 report 主 zone 是幻白虎，
+# 但內部同時含零式 fight。這個查詢一次取回完整 fight list，讓 fetch_fflogs.py 可以在本地
+# 依 encounterID/difficulty 分派到所有啟用副本，而不是被 reports(zoneID) 的主 zone 篩選卡住。
+報告完整戰鬥清單查詢 = (
+    戰鬥清單查詢模板
+    .replace(
+        "query ReportFightList($code: String!, $encounterID: Int!, $difficulty: Int!)",
+        "query ReportFullFightList($code: String!)",
+    )
+    .replace(
+        "      fights(encounterID: $encounterID, difficulty: $difficulty__KILL_TYPE_FILTER__) {",
+        "      fights {",
+    )
+)
 
 
 玩家成績查詢模板 = """
