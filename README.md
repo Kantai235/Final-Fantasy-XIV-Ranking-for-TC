@@ -127,6 +127,6 @@ README 只保留入口與最小操作脈絡，完整說明請依主題閱讀：
 - 若新增前端畫面需要新的統計欄位，請先擴充資料建置層，再讓 Vue 讀取新的靜態 JSON。
 - Honey B. Lovely 粉絲榜來源在 `data/fun/honey_b_fans.json`，公開輸出在 `public/data/fun/honey_b_fans.json`；它是獨立趣味資料，不屬於正式 `data/rankings/` schema。公開榜單、粉絲報告與本期 `records` 只計近 7 天，歷史紀錄仍留在來源檔並輸出 `historical_*`、連續入榜週數與自台灣時間 2026-05-30 00:00:00 起算的活動 `team_rankings`；正式 workflow 會執行 `npm run fetch:honey-fans` 抓新資料，再用 `npm run build:honey-fans` 整理公開 JSON。
 - `data/state.json` 會以緊湊 JSON 保存大量 `checked_reports`，避免為了通過 GitHub 100 MiB 單檔限制而刪除跨輪略過依據；正式 workflow 會在資料 commit 前執行 `npm run compact:state -- --max-bytes 104857600`。
-- GitHub Actions 的 FFLogs 抓取步驟使用時間預算避免撞上 runner 6 小時硬上限；預設 `FFLOGS_MAX_RUNTIME_SECONDS=6000`、`FFLOGS_RUNTIME_GRACE_SECONDS=900`，時間不足時會保留 `active_scan` 續跑位置並讓後續資料建置與 commit 繼續執行。若目標是讓整輪 workflow 約 2 小時內完成，建議 repository variables 使用 `FFLOGS_HISTORY_SCAN_WINDOWS_PER_RUN=1`、`FFLOGS_HISTORY_MAX_DEEP_REPORTS_PER_RUN=400~600`、`FFLOGS_HISTORY_MAX_DEEP_REPORTS_PER_GROUP_PER_RUN=100~150`、`FFLOGS_GCD_BACKFILL_REPORT_LIMIT=25~50`、`FFLOGS_EXISTING_REPORT_STATUS_CHECK_LIMIT=25`。
+- GitHub Actions 的 FFLogs 抓取步驟預設不設定執行時間預算，讓所有副本、Honey B. Lovely 粉絲榜抓取與既有 report GCD 回補都能依序嘗試執行。主排行榜更新的時間目標是落在 GitHub-hosted runner 6 小時硬上限內完成；`fetch_fflogs.py` 仍保留 `FFLOGS_MAX_RUNTIME_SECONDS` / `FFLOGS_RUNTIME_GRACE_SECONDS` 作為人工短時維護工具，啟用後會保留 `active_scan` 續跑位置，但不適合正式排程，因為會讓後段副本延後到下一輪。
 - 若 GitHub Actions 與本機同時產生資料，先跑 `npm run sync:data -- --dry-run`；看到 `REMOVAL` 或 `CONFLICT` 時不可自動套用。
 - 文件或註解變更仍需至少執行 `npm run check` 與 `npm run build:user-data`，若碰到 Honey B. Lovely 粉絲榜流程也要執行 `npm run build:honey-fans`。

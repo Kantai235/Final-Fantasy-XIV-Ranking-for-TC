@@ -85,7 +85,7 @@ npm run fetch:honey-fans
 - `FFLOGS_NO_CLEAR_RETRY_HOURS`：`skipped_no_clear` 的近期重試時數，workflow 預設 `24`。
 - `FFLOGS_DELAYED_SCAN_ENABLED`、`FFLOGS_DELAYED_SCAN_RECENT_GAP_HOURS`、`FFLOGS_DELAYED_SCAN_LOOKBACK_HOURS`、`FFLOGS_DELAYED_MAX_DEEP_REPORTS_PER_RUN`：控制 24-72 小時延遲掃描與本輪深查上限。
 - `FFLOGS_HISTORY_SCAN_ENABLED`、`FFLOGS_HISTORY_SCAN_FULL_RUN`、`FFLOGS_HISTORY_SCAN_WINDOW_HOURS`、`FFLOGS_HISTORY_SCAN_WINDOWS_PER_RUN`、`FFLOGS_HISTORY_SCAN_RECENT_GAP_HOURS`、`FFLOGS_HISTORY_MAX_DEEP_REPORTS_PER_RUN`、`FFLOGS_HISTORY_MAX_DEEP_REPORTS_PER_GROUP_PER_RUN`：控制歷史補查輪巡；workflow 預設 `FFLOGS_HISTORY_SCAN_WINDOWS_PER_RUN=1`、`FFLOGS_HISTORY_MAX_DEEP_REPORTS_PER_RUN=600`、`FFLOGS_HISTORY_MAX_DEEP_REPORTS_PER_GROUP_PER_RUN=150`。
-- `FFLOGS_MAX_RUNTIME_SECONDS`、`FFLOGS_RUNTIME_GRACE_SECONDS`：控制 `fetch_fflogs.py` 在 GitHub Actions 的時間預算；workflow 預設 `6000` 與 `900`，代表抓取步驟會在剩餘時間不足時保留 `active_scan` 位置並正常收尾，不讓 runner 6 小時硬上限中斷後續資料建置與 commit。
+- `FFLOGS_MAX_RUNTIME_SECONDS`、`FFLOGS_RUNTIME_GRACE_SECONDS`：控制 `fetch_fflogs.py` 的可選時間預算；正式 workflow 不設定這組變數，讓所有副本依序推進。人工短時維護若臨時啟用，腳本會在剩餘時間不足時保留 `active_scan` 位置並正常收尾。
 - `FFLOGS_EXISTING_REPORT_STATUS_CHECK_ENABLED`、`FFLOGS_EXISTING_REPORT_STATUS_CHECK_LIMIT`：控制既有 report 狀態巡檢。
 - `FFLOGS_FETCH_GCD_COVERAGE_ENABLED`、`FFLOGS_FETCH_GCD_COVERAGE_MAX_FIGHTS_PER_RUN`：控制新 report 落地時的 GCD 即時計算。
 
@@ -136,7 +136,7 @@ npm run backfill:gcd:reports -- --dry-run
 
 `backfill_gcd_coverage.py` 預設依玩家筆數逐批補齊，適合人工追平或抽樣重算。若帶 `--report-limit 50`，則改以 FFLogs report code 為單位，將同一份 report 內所有待更新玩家一起補齊，避免留下半套 GCD 結果。
 
-GitHub Actions 會執行 `python scripts/backfill_gcd_coverage.py --stateful-report-backfill --report-limit 50`，從固定切點往更舊 report 逐輪追平既有 GCD；若本輪 FFLogs 抓取已用盡時間預算，workflow 會略過這個額外 FFLogs 步驟，優先保留時間給公開資料建置與 commit。第一次正式執行時若未設定 `FFLOGS_GCD_BACKFILL_CUTOFF_ISO`，腳本會把當下時間寫入 `data/state.json` 的 `gcd_report_backfill.cutoff_sort_time`；每輪完成後再把本輪最舊 report 的排序時間與 report code 寫入 `cursor_sort_time` / `cursor_report_code`，下一輪從該位置繼續往舊推進。`gcd_report_backfill.calculation_version` 會記錄本輪使用的 GCD 演算法版本；若 state 缺少版本或版本落後目前 `GCD_CALCULATION_VERSION`，腳本會保留固定切點但將 cursor 重設回 cutoff，避免新版重算被上一版已走到底的舊游標略過。
+GitHub Actions 會執行 `python scripts/backfill_gcd_coverage.py --stateful-report-backfill --report-limit 50`，從固定切點往更舊 report 逐輪追平既有 GCD。第一次正式執行時若未設定 `FFLOGS_GCD_BACKFILL_CUTOFF_ISO`，腳本會把當下時間寫入 `data/state.json` 的 `gcd_report_backfill.cutoff_sort_time`；每輪完成後再把本輪最舊 report 的排序時間與 report code 寫入 `cursor_sort_time` / `cursor_report_code`，下一輪從該位置繼續往舊推進。`gcd_report_backfill.calculation_version` 會記錄本輪使用的 GCD 演算法版本；若 state 缺少版本或版本落後目前 `GCD_CALCULATION_VERSION`，腳本會保留固定切點但將 cursor 重設回 cutoff，避免新版重算被上一版已走到底的舊游標略過。
 
 若要在本機把既有玩家 GCD 都以目前本地演算法重新計算：
 
