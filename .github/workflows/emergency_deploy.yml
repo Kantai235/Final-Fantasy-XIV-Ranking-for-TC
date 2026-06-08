@@ -78,6 +78,12 @@ jobs:
           # 但不會呼叫 FFLogs API、推進 state 掃描點或提交任何資料更新。
           npm run build
 
+      - name: 從 Pages artifact 移除個人成績單 JSON
+        run: |
+          # 緊急部署同樣只讓主站 artifact 保留分享頁、OG 圖與非使用者資料；
+          # 個人成績單 JSON 仍由專用 users repo 提供。
+          npm run prune:pages-user-data
+
       - name: 上傳 GitHub Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:

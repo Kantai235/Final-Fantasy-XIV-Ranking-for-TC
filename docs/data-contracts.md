@@ -61,6 +61,8 @@ npm run sync:data -- --dry-run
 
 `public/data/all/` 目前是 hidden delta 產物，不再複製所有公開 JSON；delta 檔也有自己的資料契約，驗證時會先與公開底稿合併再檢查完整資料形狀。新增或移除公開 JSON 欄位時，必須同步更新 `schemas/public_data_contracts.mjs`、資料建置腳本與前端讀取端，讓欄位漂移在 `npm test` 或 `npm run validate:data` 階段被抓到。
 
+正式部署時，`public/data/users`、`public/data/user-entry-details`、`public/data/all/users` 與 `public/data/all/user-entry-details` 會先同步到 `Final-Fantasy-XIV-Ranking-for-TC-Users`。Vite/postbuild 仍會讀本 repo 的 `public/data/users/index.json` 產生玩家分享頁與 OG 圖；建置完成後才由 `npm run prune:pages-user-data` 移除 `dist/` 內的大型使用者 JSON。也就是說，`public/data/users` 仍是 repo 內可驗證的資料契約來源，但正式主站 artifact 不再把它當作前端個人成績單資料來源。
+
 `public/data/activity.json` 的 `log_activity` 由 `scripts/build_user_data.mjs` 讀取 `reports -> fights -> players` 產生，不由 Vue 元件即時計算。`unique_report_count` 以 `report_code` 去重，代表 FFLogs 日誌數；`unique_fight_count` 以 `encounter_key + fight_hash` 去重，代表同場多份上傳合併後的通關場次。每日 bucket 使用台灣日期切分，前端只負責依副本、日期範圍與每日座標顯示這些靜態統計；日期範圍的 UI 初始值依響應式模式決定，桌面預設近 90 天，手機預設近 30 天。`log_activity.category_series` 會以零式、極、幻、絕等副本分類預先彙整同樣的每日數量，供近期動態頁在全部副本曲線下方顯示分類堆疊占比。圖表上的台服與國際服改版標註是前端維護的靜態時間軸脈絡，不屬於 `activity.json` 資料契約，也不影響 Logs 或通關場次統計。
 
 `gcd_coverage` 是公開資料中可顯示的衍生結果；除了 `percent`、分母與計算版本，也允許保留小型診斷欄位，例如 `estimated_speed_below_minimum`、`fallback_selection`、`downtime_selection`，以及 raw events、Casts graph、raw targetability fallback 的比較百分比與分母。這些欄位只說明本地演算法為什麼選用某個覆蓋率結果，不保存 FFLogs raw events 或 Casts graph payload，因此符合公開 JSON 的瘦身邊界。
@@ -77,9 +79,9 @@ Honey B. Lovely 粉絲榜來源在 `data/fun/honey_b_fans.json`，公開檔在 `
 - `duplicate_count > 1` 的個人成績是否仍保留 `report_variants` / `source_reports`，或能透過 `report_detail_path` / `report_detail_id` 在個人成績報告細節檔找回來源。
 - `public/data/all` 的 hidden delta 是否能與一般公開資料合併，避免額外檢視流程缺漏公開資料或 hidden 來源。
 
-`scripts/audit_pages_payload.mjs` 則量測 `dist/`、`dist/data/`、`dist/data/all/`、`dist/data/users/` 與 `dist/og/`。GitHub Actions 使用 `npm run audit:pages-payload:strict -- --write-history data/pages_payload_history.jsonl`，任一項超過 target 會在上傳 Pages artifact 前失敗；正式 workflow 會先提交並推送本輪 `data` / `public/data` 更新，再執行 payload 稽核，避免體積超標時丟失 FFLogs 抓取成果。稽核通過後若歷史 JSONL 有變更，會用另一筆 commit 追蹤 artifact 體積、檔案數、建置秒數與上一筆差異。本機若只想做 baseline 觀察，可手動執行 `npm run audit:pages-payload`；需要比較趨勢時再加 `-- --write-history /tmp/pages_payload_history.jsonl`。
+`scripts/audit_pages_payload.mjs` 則量測 `dist/`、`dist/data/`、`dist/data/all/`、`dist/data/users/` 與 `dist/og/`。正式 GitHub Actions 會先用 `npm run prune:pages-user-data` 清掉 `dist/data/users` 等大型使用者 JSON，再執行 `npm run audit:pages-payload:strict -- --write-history data/pages_payload_history.jsonl`；若本機完整 build 或緊急流程未清掉 users 資料，`dist/data/users/` 預算仍會提供體積警訊。任一項超過 target 會在上傳 Pages artifact 前失敗；正式 workflow 會先提交並推送本輪 `data` / `public/data` 更新，再執行 payload 稽核，避免體積超標時丟失 FFLogs 抓取成果。稽核通過後若歷史 JSONL 有變更，會用另一筆 commit 追蹤 artifact 體積、檔案數、建置秒數與上一筆差異。本機若只想做 baseline 觀察，可手動執行 `npm run audit:pages-payload`；需要比較趨勢時再加 `-- --write-history /tmp/pages_payload_history.jsonl`。
 
-目前 strict target 將 hidden delta 從 120 MiB 收斂為 90 MiB，並把同樣 30 MiB 的餘裕轉給 `dist/data/users`，讓個人成績單 target 為 530 MiB；這是因為 hidden delta 已穩定低於門檻，而使用者資料會隨角色與歷史成績自然成長。
+目前 strict target 將 hidden delta 從 120 MiB 收斂為 90 MiB；`dist/data/users` target 保留為 530 MiB，主要用來保護本機完整 build、緊急排查或未來流程異動時的體積上限。正式主站 artifact 的這一列通常應為 0，因為個人成績單 JSON 已移到 users 專用 repo。
 
 ## 排行榜前端薄索引
 
@@ -104,6 +106,8 @@ Honey B. Lovely 粉絲榜來源在 `data/fun/honey_b_fans.json`，公開檔在 `
 `public/data/users/*.json` 是個人成績單主檔，保留頁面列表、最佳紀錄、同職分位與常同場隊友。多份 report 上傳同一場戰鬥時，主檔只保留代表成績、`duplicate_count`、`report_detail_path` 與 `report_detail_id`；完整 `report_variants` 與 `source_reports` 會寫入 `public/data/user-entry-details/{玩家檔名}.json`。
 
 個人成績單會保留前端顯示所需的 `gcd_coverage`，但不輸出 `gcd_coverage_status`。後者是 GCD 回補與抓取流程的診斷狀態，會隨每筆歷史成績大量重複；需要追查演算法來源或失敗原因時，應回到排行榜來源資料或 `data/rankings/` 的 report 分片查證。
+
+前端讀取個人成績單時不再預設向主站 `/data/users` 取檔，而是透過 `src/utils/publicData.js` 的 users 專用 repo 基底讀取 `data/users/index.json`、個人成績單主檔與 `user-entry-details`。`VITE_USER_DATA_BASE_URL` 可在部署環境覆寫此基底；檔案內的 `file_path` / `base_path` 仍維持 `data/...` 相對路徑，讓主站與專用 repo 可以共用同一份資料契約。
 
 `public/data/user-entry-details/{玩家檔名}.json` 使用 `format="user_entry_details_v1"`，`entries` 以成績 `id` 為 key。使用者點擊個人成績單的「報告」按鈕時，前端才依 `report_detail_path` 載入這份細節檔並補回報告彈窗分頁。這讓 `public/data/users/` 能維持較薄的列表資料，同時保留每個來源 report code、fight、FFLogs 連結與外部工具深連結所需欄位。細節檔內的 `report_variants` 只保存每個來源必要或與主檔代表成績不同的欄位；前端會先套用主檔成績，再覆蓋來源分頁欄位。
 

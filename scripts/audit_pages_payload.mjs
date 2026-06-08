@@ -38,11 +38,11 @@ const payloadBudgets = [
     reason: "public/data/all 應維持 hidden delta，不可重新膨脹成完整公開資料複本。",
   },
   {
-    label: "個人成績單資料",
+    label: "個人成績單資料（若保留於 artifact）",
     relativePath: "data/users",
     targetMiB: 530,
     hardMiB: Number(process.env.PAGES_PAYLOAD_USERS_HARD_MIB || 800),
-    reason: "個人成績單是使用者資料最大來源，report_variants 延遲載入後應明顯下降。",
+    reason: "正式 Pages artifact 應在 postbuild 後移除這批 JSON，改由專用 users repo 提供；本機完整 build 或緊急流程若保留時仍需監控體積。",
   },
   {
     label: "OG 圖與分享頁媒體",

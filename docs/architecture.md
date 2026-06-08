@@ -1,6 +1,6 @@
 # 系統架構
 
-本專案是靜態化分離架構：Python 負責抓取 FFLogs，Node.js 負責把來源資料建置成網站可讀的統計 JSON，Vue 只負責呈現 `public/data/`。
+本專案是靜態化分離架構：Python 負責抓取 FFLogs，Node.js 負責把來源資料建置成網站可讀的統計 JSON，Vue 只負責呈現靜態 JSON。主站共用資料部署在 Pages artifact 的 `/data/`；個人成績單 JSON 另外同步到 users 專用 repo，避免主站 artifact 隨玩家數量無限制膨脹。
 
 ```mermaid
 flowchart LR
@@ -8,7 +8,10 @@ flowchart LR
   Fetch --> Source["data/rankings/ 與 data/state.json"]
   Source --> Builder["scripts/build_user_data.mjs"]
   Builder --> Public["public/data/ 靜態 JSON"]
-  Public --> Vue["src/ Vue 3 / Vite 前端"]
+  Public --> UserRepo["users 專用 repo"]
+  Public --> PagesData["Pages artifact /data"]
+  UserRepo --> Vue["src/ Vue 3 / Vite 前端"]
+  PagesData --> Vue
 ```
 
 ## 三層責任邊界
@@ -45,12 +48,13 @@ GraphQL 查詢字串集中在 `scripts/fflogs_pipeline/graphql_queries.py`；這
 
 複雜排序、分位數、隊友統計、職業分布與版本切片應在這一層完成。若新增前端畫面需要新的統計欄位，請先擴充這一層，再讓 Vue 讀取結果。
 同名角色若出現在不同伺服器，公開衍生資料會以「角色名稱 + 伺服器」拆成不同玩家；目前不再自動處理轉服合併，也不再把另一個伺服器列為搜尋 alias。
+正式 GitHub Actions 會在資料驗證後把 `public/data/users`、`public/data/user-entry-details` 與 hidden 使用者差量同步到 `Final-Fantasy-XIV-Ranking-for-TC-Users`，再於 Pages 建置完成後移除 `dist/data/users`、`dist/data/user-entry-details`、`dist/data/all/users` 與 `dist/data/all/user-entry-details`。這不改變資料建置層的輸出契約，只是部署時把大型個人成績單 JSON 放到專用資料來源。
 
 全域公告是例外的營運靜態內容：`public/data/announcements.json` 直接隨 commit 維護，不從 FFLogs 或使用者統計建置而來；`build_user_data.mjs` 只負責把它同步到 `public/data/all/announcements.json`。這讓公告可快速發佈，同時不碰 append-only 排行榜歷史資料。
 
 ### UI Presentation Layer
 
-`src/` 是 Vue 3 / Vite 前端，只能讀取 `public/data/` 靜態 JSON：
+`src/` 是 Vue 3 / Vite 前端，只能讀取靜態 JSON：
 
 - `src/pages/` 放主要頁面。
 - `src/components/` 放跨頁共用元件。
@@ -61,6 +65,7 @@ GraphQL 查詢字串集中在 `scripts/fflogs_pipeline/graphql_queries.py`；這
 - `src/styles/app.css` 是樣式入口清單；設計 token、版面骨架、控制項、頁面樣式、表格彈窗與響應式規則分散在同目錄的主題檔，避免所有視覺責任集中在單一 CSS 檔。
 
 前端元件不得直接呼叫 FFLogs API，也不要在 Vue 內重做全服統計或資料聚合。
+`src/utils/publicData.js` 集中處理兩個資料基底：排行榜、全服統計、活動資料與公告使用主站 `/data/`；個人成績單索引、主檔與 report 分頁細節預設使用 GitHub raw 的 users 專用 repo，可用 `VITE_USER_DATA_BASE_URL` 覆寫。
 公告元件只能讀取 `public/data/announcements.json`，並用瀏覽器 `localStorage` 保存使用者已關閉公告 id；這個狀態不會寫回公開資料。
 
 ## 專案結構

@@ -912,9 +912,14 @@ async function validatePublicDataRouteBase() {
     "直接開啟 /user/ 時，公開資料應讀取部署根目錄的 /data/encounters.json。",
   );
   assert(
-    directUserRoute.建立公開資料網址("data/users/篝之霧枝-2.json") ===
-      "/data/users/%E7%AF%9D%E4%B9%8B%E9%9C%A7%E6%9E%9D-2.json",
-    "直接開啟 /user/ 時，個人成績單檔案 URL 不應落到 /user/data 底下。",
+    directUserRoute.使用者索引網址 ===
+      "https://raw.githubusercontent.com/Kantai235/Final-Fantasy-XIV-Ranking-for-TC-Users/refs/heads/main/data/users/index.json",
+    "個人成績單索引預設應由專用 users repo 載入，避免主站 Pages artifact 重新放回大型使用者 JSON。",
+  );
+  assert(
+    directUserRoute.建立使用者資料網址("data/users/篝之霧枝-2.json") ===
+      "https://raw.githubusercontent.com/Kantai235/Final-Fantasy-XIV-Ranking-for-TC-Users/refs/heads/main/data/users/%E7%AF%9D%E4%B9%8B%E9%9C%A7%E6%9E%9D-2.json",
+    "直接開啟 /user/ 時，個人成績單檔案也應由專用 users repo 載入。",
   );
 
   const subpathRoute = await loadPublicDataTestModule("https://example.test/repo/user/Aa?server=%E5%A5%A7%E6%B1%80");

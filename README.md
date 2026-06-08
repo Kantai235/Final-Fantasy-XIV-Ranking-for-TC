@@ -91,8 +91,8 @@ README 只保留入口與最小操作脈絡，完整說明請依主題閱讀：
 本專案最重要的邊界是「抓取、建置、呈現」三層分離：
 
 1. `scripts/fetch_fflogs.py` 是 Data Fetching Layer。它是唯一可直接呼叫 FFLogs GraphQL API 的入口，負責 OAuth、限流、重試、繁中服玩家初篩、report 狀態判定，以及 `data/rankings/` 與 `data/state.json` 的可追溯寫入；GraphQL 查詢字串集中在 `scripts/fflogs_pipeline/graphql_queries.py`，避免掃描策略與查詢文本互相纏在同一個巨型檔。
-2. `scripts/build_user_data.mjs` 是 Data Building Layer。它讀取排行榜來源資料，產生個人成績單、個人成績報告細節、全服統計、近期動態、隊伍榜與伺服器對比等 `public/data/` 靜態 JSON。
-3. `src/` 是 UI Presentation Layer。Vue 只讀取 `public/data/` 靜態 JSON 進行呈現、篩選與狀態管理，不能直接呼叫 FFLogs API；`src/composables/rankingApp/` 承接排行榜預設值、注入 context 與排行列正規化，`src/styles/app.css` 則只作為樣式拆檔入口。
+2. `scripts/build_user_data.mjs` 是 Data Building Layer。它讀取排行榜來源資料，產生個人成績單、個人成績報告細節、全服統計、近期動態、隊伍榜與伺服器對比等 `public/data/` 靜態 JSON；正式部署時，個人成績單 JSON 會先同步到專用 users repo，再從主站 Pages artifact 移除。
+3. `src/` 是 UI Presentation Layer。Vue 只讀取靜態 JSON 進行呈現、篩選與狀態管理：主站共用資料來自 Pages artifact 的 `/data/`，個人成績單資料來自專用 users repo，不能直接呼叫 FFLogs API；`src/composables/rankingApp/` 承接排行榜預設值、注入 context 與排行列正規化，`src/styles/app.css` 則只作為樣式拆檔入口。
 
 ## 常用指令
 
@@ -110,6 +110,7 @@ README 只保留入口與最小操作脈絡，完整說明請依主題閱讀：
 | `npm run audit:pages-payload` | 以 baseline 模式稽核 `dist/` 與 GitHub Pages payload 體積，只在超過硬上限時失敗，可用 `-- --write-history <path>` 記錄趨勢。 |
 | `npm run audit:pages-payload:strict` | 以與 GitHub Actions 相同的 strict 模式稽核 payload，任一項超過 target 就失敗；workflow 會寫入 `data/pages_payload_history.jsonl`。 |
 | `npm run audit:mixed-report-dispatch` | 統計 mixed report 分派版本在已知歷史 report 的覆蓋率與歷史補查游標進度；GitHub Actions 會輸出到 Step Summary。 |
+| `npm run prune:pages-user-data` | 從 `dist/` 移除個人成績單 JSON，模擬正式 Pages artifact 只保留主站資料、分享頁與 OG 圖。 |
 | `npm run check` | 執行 Python 與 Node.js 語法檢查。 |
 | `npm test` | 執行資料管線、GCD、資料建置與前端資料契約測試。 |
 | `npm run build` | 完整建置靜態網站到 `dist/`。 |
@@ -128,5 +129,6 @@ README 只保留入口與最小操作脈絡，完整說明請依主題閱讀：
 - Honey B. Lovely 粉絲榜來源在 `data/fun/honey_b_fans.json`，公開輸出在 `public/data/fun/honey_b_fans.json`；它是獨立趣味資料，不屬於正式 `data/rankings/` schema。公開榜單、粉絲報告與本期 `records` 只計近 7 天，歷史紀錄仍留在來源檔並輸出 `historical_*`、連續入榜週數與自台灣時間 2026-05-30 00:00:00 起算的活動 `team_rankings`；正式 workflow 會執行 `npm run fetch:honey-fans` 抓新資料，再用 `npm run build:honey-fans` 整理公開 JSON。
 - `data/state.json` 會以緊湊 JSON 保存大量 `checked_reports`，避免為了通過 GitHub 100 MiB 單檔限制而刪除跨輪略過依據；正式 workflow 會在資料 commit 前執行 `npm run compact:state -- --max-bytes 104857600`。
 - GitHub Actions 的 FFLogs 抓取步驟預設不設定執行時間預算，讓所有副本、Honey B. Lovely 粉絲榜抓取與既有 report GCD 回補都能依序嘗試執行。主排行榜更新的時間目標是落在 GitHub-hosted runner 6 小時硬上限內完成；`fetch_fflogs.py` 仍保留 `FFLOGS_MAX_RUNTIME_SECONDS` / `FFLOGS_RUNTIME_GRACE_SECONDS` 作為人工短時維護工具，啟用後會保留 `active_scan` 續跑位置，但不適合正式排程，因為會讓後段副本延後到下一輪。
+- 正式 Pages artifact 不保留 `dist/data/users`、`dist/data/user-entry-details` 與 hidden 使用者差量 JSON；`postbuild` 會先用 `public/data/users/index.json` 產生玩家分享頁與 OG 圖，接著由 `npm run prune:pages-user-data` 清掉 artifact 內的大型個人成績單 JSON，前端再從 users 專用 repo 讀取。
 - 若 GitHub Actions 與本機同時產生資料，先跑 `npm run sync:data -- --dry-run`；看到 `REMOVAL` 或 `CONFLICT` 時不可自動套用。
 - 文件或註解變更仍需至少執行 `npm run check` 與 `npm run build:user-data`，若碰到 Honey B. Lovely 粉絲榜流程也要執行 `npm run build:honey-fans`。

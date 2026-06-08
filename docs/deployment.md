@@ -45,15 +45,16 @@ npm run build
 10. 執行 `npm run build:honey-fans`，由 `data/fun/honey_b_fans.json` 重建 `public/data/fun/honey_b_fans.json`。
 11. 執行 `npm run validate:data`，在個人成績單還保留於 `public/data/` 時驗證公開資料契約、來源分片、使用者索引、報告細節、隊伍榜、伺服器對比與 Honey B. Lovely 粉絲榜。
 12. 執行 `node scripts/sync_user_leaderboard_repo.mjs`，把 `public/data/users`、`public/data/user-entry-details` 與 hidden delta 的個人成績單同步到 `Final-Fantasy-XIV-Ranking-for-TC-Users`。這一步只抓專用 users repo 的最新 commit/tree 與上一版 `data/sync-manifest.json`，再用 Git index 直接重建下一個 commit，避免完整 clone 舊資料歷史造成 GitHub runner 磁碟不足。
-13. 從主站 `public/data/` 移除個人成績單資料夾，讓 Pages artifact 只保留主站公開資料，前端再從專用 users repo 載入個人成績單。
-14. 由 workflow 寫入 `data/update_status.json`，記錄本輪 GitHub Actions run、資料更新時間與總量摘要。
-15. 執行 `npx vite build` 與 `npm run postbuild`，完成 Vite 建置、route fallback、SEO/OG 靜態頁、OG PNG、`sitemap.xml`、`robots.txt` 與 `404.html`，並把建置秒數寫入後續 payload 稽核。
-16. 若 `data`、`public/data/*.json` 或 `public/data/fun/*.json` 有變更，先提交並推送更新，避免後續 artifact 體積超標時白白丟失本輪 FFLogs 抓取成果。
-17. 執行 `npm run audit:pages-payload:strict -- --write-history data/pages_payload_history.jsonl`，讓 artifact 體積超過 target 時在上傳 Pages artifact 前失敗，並在 GitHub Step Summary 顯示本輪與上一筆歷史差異。
-18. 若 `data/pages_payload_history.jsonl` 有變更，另行提交並推送 payload 稽核歷史。
-19. 執行 `npm run cloudflare:estimate` 與 `npm run cloudflare:purge -- --dry-run --summary`，在 Step Summary 顯示 HIT ratio 承載估算與 scoped purge 範圍。
-20. 上傳 `dist/` 並部署到 GitHub Pages。
-21. 若有 Cloudflare purge token，部署成功後清除會變動的 CDN 快取。
+13. 由 workflow 寫入 `data/update_status.json`，記錄本輪 GitHub Actions run、資料更新時間與總量摘要。
+14. 執行 `npx vite build` 與 `npm run postbuild`，完成 Vite 建置、route fallback、SEO/OG 靜態頁、OG PNG、`sitemap.xml`、`robots.txt` 與 `404.html`，並把建置秒數寫入後續 payload 稽核。`postbuild` 會讀取 `public/data/users/index.json` 產生玩家分享頁與 OG 圖，因此不可在這一步之前刪除 repo 內的使用者資料。
+15. 執行 `npm run prune:pages-user-data`，只移除 `dist/data/users`、`dist/data/user-entry-details`、`dist/data/all/users` 與 `dist/data/all/user-entry-details`；前端正式讀取個人成績單時會改向 users 專用 repo 取得 JSON。
+16. 壓縮 `data/state.json`，並檢查 Git 單檔大小是否仍低於 100 MiB。
+17. 若 `data`、`public/data/*.json` 或 `public/data/fun/*.json` 有變更，先提交並推送更新，避免後續 artifact 體積超標時白白丟失本輪 FFLogs 抓取成果。
+18. 執行 `npm run audit:pages-payload:strict -- --write-history data/pages_payload_history.jsonl`，讓 artifact 體積超過 target 時在上傳 Pages artifact 前失敗，並在 GitHub Step Summary 顯示本輪與上一筆歷史差異。
+19. 若 `data/pages_payload_history.jsonl` 有變更，另行提交並推送 payload 稽核歷史。
+20. 執行 `npm run cloudflare:estimate` 與 `npm run cloudflare:purge -- --dry-run --summary`，在 Step Summary 顯示 HIT ratio 承載估算與 scoped purge 範圍。
+21. 上傳 `dist/` 並部署到 GitHub Pages。
+22. 若有 Cloudflare purge token，部署成功後清除會變動的 CDN 快取。
 
 ## 緊急部署
 
@@ -68,7 +69,7 @@ npm run build
    - `scoped`：只清除本專案既有 prefix 與核心檔案，適合一般靜態頁或資料路徑更新。
 4. 執行後確認 workflow 的 `部署 GitHub Pages` 與 `清除 Cloudflare CDN 快取` 步驟完成。
 
-緊急部署仍會跑 `npm run build`，因此會重建公開排行榜、個人成績單、排行榜薄索引、Honey B. Lovely 粉絲榜公開 JSON、SEO/OG 靜態頁、`sitemap.xml`、`robots.txt` 與 `404.html`，並執行 `validate:data`。這是為了確保部署出去的靜態產物與 repo 內資料契約一致；差別在於它只重建已提交資料，不向 FFLogs 取得新資料。
+緊急部署仍會跑 `npm run build`，因此會重建公開排行榜、個人成績單、排行榜薄索引、Honey B. Lovely 粉絲榜公開 JSON、SEO/OG 靜態頁、`sitemap.xml`、`robots.txt` 與 `404.html`，並執行 `validate:data`。建置完成後同樣會執行 `npm run prune:pages-user-data`，讓主站 artifact 不重新帶回大型個人成績單 JSON。這是為了確保部署出去的靜態產物與 repo 內資料契約一致；差別在於它只重建已提交資料，不向 FFLogs 取得新資料，也不會同步 users 專用 repo。
 
 ## GitHub Secrets 與 Variables
 

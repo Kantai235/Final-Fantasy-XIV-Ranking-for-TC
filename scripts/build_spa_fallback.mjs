@@ -19,6 +19,8 @@ const defaultDescription =
 const genericOgImageUrl = new URL("og-image.png", siteUrl).href;
 
 // postbuild 只讀取 public/data 的靜態聚合結果，輸出 dist/ 內的 HTML、PNG OG 圖、sitemap 與 robots。
+// 使用者索引在這裡仍由 public/data/users/index.json 提供，因為玩家分享頁與 OG 圖需要本輪最新摘要；
+// Pages artifact 的大型使用者 JSON 會在 postbuild 後清掉，前端再從專用 users repo 載入個人成績單。
 // 這一層不得回寫 data/ 或 public/data/，避免 SEO 分享頁生成影響排行榜歷史資料或前端資料契約。
 const jobNames = {
   Paladin: "騎士",

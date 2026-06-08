@@ -178,10 +178,6 @@ jobs:
           GIT_PAT: ${{ secrets.GIT_PAT }}
         run: node scripts/sync_user_leaderboard_repo.mjs
 
-      - name: 建置 Pages 前移除主站個人成績單資料
-        run: |
-          rm -rf public/data/users public/data/user-entry-details public/data/all/users public/data/all/user-entry-details
-
       - name: 寫入更新執行戳記
         run: |
           node <<'NODE'
@@ -233,6 +229,12 @@ jobs:
           BUILD_SECONDS=$((SECONDS - START_SECONDS))
           echo "PAGES_BUILD_SECONDS=${BUILD_SECONDS}" >> "$GITHUB_ENV"
           echo "build_seconds=${BUILD_SECONDS}" >> "$GITHUB_OUTPUT"
+
+      - name: 從 Pages artifact 移除個人成績單 JSON
+        run: |
+          # postbuild 需要 public/data/users/index.json 產生玩家分享頁與 OG 圖。
+          # 建置完成後只刪 dist/data 的大型使用者 JSON；前端實際由專用 users repo 載入個人成績單。
+          npm run prune:pages-user-data
 
       - name: 壓縮 state 並檢查 Git 單檔大小
         run: |

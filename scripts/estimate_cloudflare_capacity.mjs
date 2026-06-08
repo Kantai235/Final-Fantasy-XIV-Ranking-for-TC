@@ -103,7 +103,7 @@ function printScenarioTable(scenarios) {
   console.log("Cloudflare / GitHub Pages 流量估算");
   console.log("");
   console.log(`資料來源：${DistPath}`);
-console.log(`GitHub Pages 軟性流量上限估算：${formatBytes(GithubPagesSoftLimitBytes)} / 月`);
+  console.log(`GitHub Pages 軟性流量上限估算：${formatBytes(GithubPagesSoftLimitBytes)} / 月`);
   if (!FullCompression) {
     console.log("提示：完整 dist 預設只列未壓縮大小；需要壓縮完整輸出時可加上 --full-compression。");
   }
@@ -145,6 +145,7 @@ const siteIconFiles = [
 ];
 const appShellFiles = ["index.html", ...assetFiles, ...iconFiles, ...siteIconFiles];
 const userFiles = allRelativeFilesUnder("data/users").filter((file) => file !== "data/users/index.json");
+const userIndexFile = existsSync(join(DistPath, "data/users/index.json")) ? "data/users/index.json" : null;
 const medianUserFile = percentileFile(userFiles, 0.5);
 const p95UserFile = percentileFile(userFiles, 0.95);
 
@@ -160,8 +161,27 @@ function buildScenario(name, files) {
 const scenarios = [
   buildScenario("排行榜首屏", [...appShellFiles, "data/encounters.json", "data/rankings/savage_m4s.json"]),
   buildScenario("全服統計首屏", [...appShellFiles, "data/encounters.json", "data/global_stats.json"]),
-  buildScenario("個人成績單首屏（中位數使用者檔）", [...appShellFiles, "data/encounters.json", "data/users/index.json", medianUserFile].filter(Boolean)),
-  buildScenario("個人成績單首屏（前 5% 大使用者檔）", [...appShellFiles, "data/encounters.json", "data/users/index.json", p95UserFile].filter(Boolean)),
+  ...(userIndexFile
+    ? [
+        buildScenario("個人成績單首屏（artifact 內含中位數使用者檔）", [
+          ...appShellFiles,
+          "data/encounters.json",
+          userIndexFile,
+          medianUserFile,
+        ].filter(Boolean)),
+        buildScenario("個人成績單首屏（artifact 內含前 5% 大使用者檔）", [
+          ...appShellFiles,
+          "data/encounters.json",
+          userIndexFile,
+          p95UserFile,
+        ].filter(Boolean)),
+      ]
+    : [
+        buildScenario("個人成績單首屏（主站殼層；users repo 外部載入）", [
+          ...appShellFiles,
+          "data/encounters.json",
+        ]),
+      ]),
   {
     name: "完整 dist 冷爬一次",
     rawBytes: allFiles.reduce((sum, file) => sum + statSync(file).size, 0),

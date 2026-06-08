@@ -1,5 +1,6 @@
-﻿// 前端只讀取 Vite 打包後位於 public/data 的靜態 JSON。
-// 這裡集中處理公開資料 URL，避免頁面或 composable 各自拼接路徑時漏掉 base path。
+﻿// 前端仍維持靜態 JSON 邊界：主站資料由 Pages artifact 的 /data 提供，
+// 個人成績單資料則由專用 users repo 提供，避免大型使用者 JSON 撐大主站 artifact。
+// 這裡集中處理兩種資料 URL，避免頁面或 composable 各自拼接路徑時漏掉 base path 或外部 repo 基底。
 const Vite公開基底路徑 = import.meta.env?.BASE_URL ?? "/";
 
 const 乾淨路由片段 = new Set(["stats", "user", "compare", "jobs", "activity", "teams", "servers", "honey-fans"]);
