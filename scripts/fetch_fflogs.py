@@ -2912,6 +2912,112 @@ def 成績是否優先(候選: dict[str, Any], 目前最佳: dict[str, Any] | No
     return (候選.get("adps") or 候選.get("dps") or 0) > (目前最佳.get("adps") or 目前最佳.get("dps") or 0)
 
 
+def 取得GCD覆蓋率版本(成績或玩家: dict[str, Any]) -> int | None:
+    覆蓋率 = 成績或玩家.get("gcd_coverage")
+    if isinstance(覆蓋率, dict):
+        return 轉_int_or_none(覆蓋率.get("calculation_version"))
+
+    狀態 = 成績或玩家.get("gcd_coverage_status")
+    if isinstance(狀態, dict):
+        return 轉_int_or_none(狀態.get("calculation_version"))
+
+    return None
+
+
+def 是否應採用來源GCD覆蓋率(目標: dict[str, Any], 來源: dict[str, Any]) -> bool:
+    if "gcd_coverage" not in 來源:
+        return False
+    if "gcd_coverage" not in 目標:
+        return True
+
+    來源覆蓋率 = 來源.get("gcd_coverage")
+    目標覆蓋率 = 目標.get("gcd_coverage")
+    if isinstance(來源覆蓋率, dict) and not isinstance(目標覆蓋率, dict):
+        return True
+    if not isinstance(來源覆蓋率, dict) or not isinstance(目標覆蓋率, dict):
+        return False
+
+    來源版本 = 取得GCD覆蓋率版本(來源)
+    目標版本 = 取得GCD覆蓋率版本(目標)
+    return 來源版本 is not None and (目標版本 is None or 來源版本 > 目標版本)
+
+
+def 合併GCD覆蓋率衍生欄位(目標: dict[str, Any], 來源: dict[str, Any]) -> bool:
+    """把已補算的 GCD 衍生欄位從來源合到目標，避免重新抓 report 時洗掉歷史回補結果。"""
+    已更新 = False
+    if 是否應採用來源GCD覆蓋率(目標, 來源):
+        目標["gcd_coverage"] = 來源.get("gcd_coverage")
+        已更新 = True
+        if "gcd_coverage_status" in 來源:
+            目標["gcd_coverage_status"] = 來源.get("gcd_coverage_status")
+        else:
+            目標.pop("gcd_coverage_status", None)
+        return 已更新
+
+    if "gcd_coverage" in 目標 and "gcd_coverage_status" not in 目標 and "gcd_coverage_status" in 來源:
+        目標["gcd_coverage_status"] = 來源.get("gcd_coverage_status")
+        已更新 = True
+
+    return 已更新
+
+
+def 玩家GCD合併鍵值(戰鬥: dict[str, Any], 玩家: dict[str, Any]) -> tuple[str, str, str] | None:
+    fight_id = 戰鬥.get("fight_id")
+    if fight_id is None:
+        return None
+
+    fflogs_source_id = 玩家.get("fflogs_id") or 玩家.get("fflogs_source_id")
+    if fflogs_source_id is not None:
+        return ("source_id", str(fight_id), str(fflogs_source_id))
+
+    名稱 = 玩家.get("name") or 玩家.get("character_name")
+    伺服器 = 玩家.get("server")
+    職業 = 玩家.get("job")
+    if 名稱 and 伺服器 and 職業:
+        return ("identity", str(fight_id), f"{名稱}@{伺服器}:{職業}")
+
+    return None
+
+
+def 建立玩家GCD覆蓋率索引(報告: dict[str, Any]) -> dict[tuple[str, str, str], dict[str, Any]]:
+    索引: dict[tuple[str, str, str], dict[str, Any]] = {}
+    for 戰鬥 in 報告.get("fights") or []:
+        if not isinstance(戰鬥, dict):
+            continue
+        for 玩家 in 戰鬥.get("players") or []:
+            if not isinstance(玩家, dict) or "gcd_coverage" not in 玩家:
+                continue
+            鍵值 = 玩家GCD合併鍵值(戰鬥, 玩家)
+            if 鍵值 is not None:
+                索引[鍵值] = 玩家
+    return 索引
+
+
+def 保留既有報告GCD覆蓋率(既有報告: dict[str, Any], 新報告: dict[str, Any]) -> bool:
+    # GCD 覆蓋率是 backfill 或即時計算後才寫入玩家列的衍生資料；FFLogs report 重抓時不一定
+    # 會同步重算 GCD。若直接用新 report 覆蓋舊 report，就會把已補齊的 GCD key 洗掉，
+    # 造成排行榜看起來「逐筆消失」。同 report/fight/sourceID 對得上時，保留既有衍生欄位。
+    既有玩家索引 = 建立玩家GCD覆蓋率索引(既有報告)
+    if not 既有玩家索引:
+        return False
+
+    已更新 = False
+    for 戰鬥 in 新報告.get("fights") or []:
+        if not isinstance(戰鬥, dict):
+            continue
+        for 玩家 in 戰鬥.get("players") or []:
+            if not isinstance(玩家, dict):
+                continue
+            鍵值 = 玩家GCD合併鍵值(戰鬥, 玩家)
+            if 鍵值 is None:
+                continue
+            既有玩家 = 既有玩家索引.get(鍵值)
+            if 既有玩家 and 合併GCD覆蓋率衍生欄位(玩家, 既有玩家):
+                已更新 = True
+
+    return 已更新
+
+
 def 解析_iso_時間毫秒(時間文字: Any) -> int | None:
     if not isinstance(時間文字, str) or not 時間文字.strip():
         return None
@@ -3053,6 +3159,9 @@ def 登記排行榜條目(
             轉_int_or_none(既有成績.get("duplicate_count")) or 1,
             len(既有來源報告) or 1,
         )
+        # 同一場戰鬥可能被多位隊員上傳成多份 report。代表成績若剛好來自尚未回補 GCD 的
+        # 上傳來源，仍應從其他同分同場 variant 保留已補算的 GCD，避免前端顯示因去重順序而漂移。
+        合併GCD覆蓋率衍生欄位(既有成績, 標準成績)
         標準成績 = 既有成績
     else:
         精確成績索引[精確成績鍵值] = 標準成績
@@ -3787,6 +3896,9 @@ def 套用成績到排行榜(排行榜: dict[str, Any], 新成績列表: list[di
         報告代碼 = 成績.get("report_code")
         if not 報告代碼:
             continue
+        既有報告 = 報告索引.get(報告代碼)
+        if isinstance(既有報告, dict) and isinstance(成績, dict):
+            保留既有報告GCD覆蓋率(既有報告, 成績)
         if 報告索引.get(報告代碼) != 成績:
             新增或更新數量 += 1
         報告索引[報告代碼] = 成績

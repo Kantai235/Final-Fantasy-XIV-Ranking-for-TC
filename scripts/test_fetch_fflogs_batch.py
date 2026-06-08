@@ -50,6 +50,58 @@ def 建立測試原始成績(總傷害: int) -> dict[str, Any]:
     }
 
 
+def 建立測試排行榜戰鬥(*, 有GCD: bool = False) -> dict[str, Any]:
+    玩家 = {
+        "name": "測試角色",
+        "server": "巴哈姆特",
+        "job": "BlackMage",
+        "dps": 21000,
+        "rdps": 20000,
+        "adps": 20500,
+        "ndps": 19800,
+        "total_damage": 12_000_000,
+        "active_time_ms": 590_000,
+        "fflogs_id": 7,
+    }
+    if 有GCD:
+        玩家["gcd_coverage"] = {
+            "percent": 99.5,
+            "covered_time_ms": 597_000,
+            "denominator_ms": 600_000,
+            "downtime_ms": 10_000,
+            "gcd_cast_count": 250,
+            "calculation_version": 20,
+            "source": "fflogs_casts_graph",
+        }
+        玩家["gcd_coverage_status"] = {
+            "state": "ok",
+            "calculation_version": 20,
+            "checked_at_iso": "2026-06-08T00:00:00+00:00",
+        }
+
+    return {
+        "fight_id": 4,
+        "encounter_id": 96,
+        "difficulty": 101,
+        "clear_time_ms": 610_000,
+        "clear_time_seconds": 610,
+        "damage_downtime_ms": 10_000,
+        "damage_time_ms": 600_000,
+        "damage_time_seconds": 600,
+        "recorded_at_iso": "2026-06-08T00:00:00+00:00",
+        "players": [玩家],
+    }
+
+
+def 建立測試排行榜報告(報告代碼: str, *, 有GCD: bool = False) -> dict[str, Any]:
+    return {
+        "report_code": 報告代碼,
+        "title": "測試報告",
+        "url": f"https://www.fflogs.com/reports/{報告代碼}",
+        "fights": [建立測試排行榜戰鬥(有GCD=有GCD)],
+    }
+
+
 class FetchFFLogsBatchTest(unittest.TestCase):
     def test_public_ranking_keeps_same_name_cross_server_players_separate(self) -> None:
         排行榜 = {
@@ -174,6 +226,39 @@ class FetchFFLogsBatchTest(unittest.TestCase):
             {"巴哈姆特", "泰坦"},
         )
         self.assertTrue(all("original_server" not in 條目 for 條目 in 公開排行榜["ranking_entries"]))
+
+    def test_reprocessed_report_preserves_existing_gcd_coverage(self) -> None:
+        舊報告 = 建立測試排行榜報告("same-report", 有GCD=True)
+        新報告 = 建立測試排行榜報告("same-report", 有GCD=False)
+        排行榜 = {"reports": {"same-report": 舊報告}}
+
+        fflogs.套用成績到排行榜(排行榜, [新報告])
+
+        玩家 = 排行榜["reports"]["same-report"]["fights"][0]["players"][0]
+        self.assertEqual(玩家["gcd_coverage"]["percent"], 99.5)
+        self.assertEqual(玩家["gcd_coverage"]["calculation_version"], 20)
+        self.assertEqual(玩家["gcd_coverage_status"]["state"], "ok")
+
+    def test_duplicate_ranking_entry_uses_gcd_from_any_source_report(self) -> None:
+        排行榜 = {
+            "encounter": {
+                "key": "fixture_encounter",
+                "name": "測試副本",
+                "category": "零式",
+            },
+            "reports": {
+                "first-upload": 建立測試排行榜報告("first-upload", 有GCD=False),
+                "second-upload": 建立測試排行榜報告("second-upload", 有GCD=True),
+            },
+        }
+
+        排行榜條目 = fflogs.建立排行榜條目(排行榜)
+
+        self.assertEqual(len(排行榜條目), 1)
+        self.assertEqual(排行榜條目[0]["duplicate_count"], 2)
+        self.assertEqual(排行榜條目[0]["source_reports"], ["first-upload", "second-upload"])
+        self.assertEqual(排行榜條目[0]["gcd_coverage"]["percent"], 99.5)
+        self.assertEqual(排行榜條目[0]["gcd_coverage_status"]["calculation_version"], 20)
 
     def test_history_scan_deep_report_code_default_keeps_local_runs_conservative(self) -> None:
         self.assertEqual(fflogs.FFLogs執行設定預設值["history_max_deep_reports_per_run"], 200)
