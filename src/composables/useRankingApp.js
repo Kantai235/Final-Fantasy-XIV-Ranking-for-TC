@@ -483,7 +483,7 @@ function 目前頁面主色() {
   if (頁面模式.value === "honey-fans") {
     return "honey";
   }
-  if (頁面模式.value === "activity" || 頁面模式.value === "teams" || 頁面模式.value === "servers") {
+  if (頁面模式.value === "activity" || 頁面模式.value === "teams" || 頁面模式.value === "servers" || 頁面模式.value === "faq" || 頁面模式.value === "logs") {
     return "default";
   }
 
@@ -2921,6 +2921,10 @@ const 更新時間文字 = computed(() => {
     return 更新時間 ? `資料更新時間 ${格式化紀錄時間(更新時間)}` : "伺服器對比資料";
   }
 
+  if (頁面模式.value === "faq" || 頁面模式.value === "logs") {
+    return "常見問題";
+  }
+
   if (頁面模式.value === "honey-fans") {
     const 更新時間 = 蜂蜂粉絲榜資料.value?.source_updated_at_iso || 蜂蜂粉絲榜資料.value?.generated_at_iso;
     return 更新時間 ? `資料更新時間 ${格式化紀錄時間(更新時間)}` : "Honey B. Lovely 粉絲榜資料";
@@ -2957,6 +2961,10 @@ const 頁面副標 = computed(() => {
 
   if (頁面模式.value === "servers") {
     return "Final Fantasy XIV 繁中服・伺服器對比";
+  }
+
+  if (頁面模式.value === "faq" || 頁面模式.value === "logs") {
+    return "Final Fantasy XIV 繁中服・常見問題";
   }
 
   if (頁面模式.value === "honey-fans") {
@@ -2996,6 +3004,10 @@ const 頁面標題 = computed(() => {
 
   if (頁面模式.value === "servers") {
     return 伺服器對比已完成.value ? `${伺服器對比左資料.value.server} vs ${伺服器對比右資料.value.server}` : "伺服器對比";
+  }
+
+  if (頁面模式.value === "faq" || 頁面模式.value === "logs") {
+    return "常見問題";
   }
 
   if (頁面模式.value === "honey-fans") {
@@ -3148,6 +3160,9 @@ const 分享描述 = computed(() => {
   }
   if (頁面模式.value === "servers") {
     return 伺服器對比分享描述();
+  }
+  if (頁面模式.value === "faq" || 頁面模式.value === "logs") {
+    return "整理 FFXIV 繁中服排行榜常見問題，並提供 FFLogs report 收錄狀態檢查工具。";
   }
   if (頁面模式.value === "honey-fans") {
     return 蜂蜂粉絲榜分享描述();
@@ -4762,6 +4777,15 @@ function 切換到伺服器對比() {
   讀取伺服器對比資料();
 }
 
+function 切換到常見問題() {
+  頁面模式.value = "faq";
+  更新分享網址("faq", {});
+}
+
+function 切換到Logs檢查() {
+  切換到常見問題();
+}
+
 function 切換到蜂蜂粉絲榜() {
   if (!啟用Honey粉絲榜.value) {
     切換到排行榜();
@@ -4943,6 +4967,8 @@ async function 套用網址狀態(網址狀態 = 讀取目前網址狀態()) {
       await 套用隊伍榜網址狀態(網址狀態);
     } else if (網址狀態.page === "servers") {
       await 套用伺服器對比網址狀態(網址狀態);
+    } else if (網址狀態.page === "faq" || 網址狀態.page === "logs") {
+      頁面模式.value = "faq";
     } else if (網址狀態.page === "honey-fans" && 啟用Honey粉絲榜.value) {
       await 套用蜂蜂粉絲榜網址狀態();
     } else if (網址狀態.page === "honey-fans") {
@@ -5620,6 +5646,8 @@ onUnmounted(() => {
     切換到近期動態,
     切換到隊伍榜,
     切換到伺服器對比,
+    切換到常見問題,
+    切換到Logs檢查,
     切換到蜂蜂粉絲榜,
     切換隊伍榜副本選單,
     處理隊伍榜副本選單失焦,

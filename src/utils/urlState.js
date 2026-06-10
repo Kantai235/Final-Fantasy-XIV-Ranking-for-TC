@@ -1,13 +1,13 @@
 import { 分享網址變更事件 } from "./shareMeta";
 import { 顯示Honey粉絲榜 } from "./siteFeatures";
 
-const 可分享頁面清單 = ["ranking", "stats", "user", "compare", "jobs", "activity", "teams", "servers"];
+const 可分享頁面清單 = ["ranking", "stats", "user", "compare", "jobs", "activity", "teams", "servers", "faq"];
 if (顯示Honey粉絲榜) {
   可分享頁面清單.push("honey-fans");
 }
 
 export const 可分享頁面模式 = new Set(可分享頁面清單);
-const 可辨識頁面模式 = new Set([...可分享頁面清單, "honey-fans"]);
+const 可辨識頁面模式 = new Set([...可分享頁面清單, "logs", "honey-fans"]);
 
 const 頁面路徑片段 = {
   ranking: "",
@@ -18,6 +18,8 @@ const 頁面路徑片段 = {
   activity: "activity",
   teams: "teams",
   servers: "servers",
+  faq: "faq",
+  logs: "logs",
   "honey-fans": "honey-fans",
 };
 
@@ -48,6 +50,7 @@ const 可分享參數 = [
   "split",
   "metric",
   "version",
+  "report",
 ];
 
 function 讀取瀏覽器網址() {
@@ -159,12 +162,18 @@ function 讀取路徑伺服器對比(網址) {
 
 function 正規化頁面模式(頁面模式, 參數 = null) {
   const 模式 = String(頁面模式 || "").trim();
+  if (模式 === "logs") {
+    return "faq";
+  }
   if (可辨識頁面模式.has(模式)) {
     return 模式;
   }
 
   // 相容舊版 query 分享：?page=user 或只有 ?user= 的連結仍可直接打開。
   const 舊版頁面 = String(參數?.get("page") || "").trim();
+  if (舊版頁面 === "logs") {
+    return "faq";
+  }
   if (可辨識頁面模式.has(舊版頁面)) {
     return 舊版頁面;
   }

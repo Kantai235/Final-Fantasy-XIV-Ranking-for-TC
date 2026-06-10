@@ -209,6 +209,7 @@ jobs:
           fs.mkdirSync("data", { recursive: true });
           fs.writeFileSync("data/update_status.json", `${JSON.stringify(status, null, 2)}\n`, "utf8");
           NODE
+          npm run build:public-status
 
       - name: 設定 GitHub Pages
         uses: actions/configure-pages@v5

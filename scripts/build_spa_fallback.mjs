@@ -121,6 +121,22 @@ const routePages = [
     imageHighlights: ["最新成績", "個人最佳刷新", "伺服器活躍"],
   },
   {
+    path: "faq",
+    title: `常見問題 | ${siteName}`,
+    description: "整理 FFXIV 繁中服排行榜常見問題，包含 FFLogs 收錄檢查、更新時間、過版紀錄、GCD 覆蓋率與角色身分判定。",
+    imageTitle: "常見問題",
+    imageSubtitle: "收錄狀態與站務問答",
+    imageHighlights: ["FFLogs 檢查", "更新時間", "GCD 與過版"],
+  },
+  {
+    path: "logs",
+    title: `常見問題 | ${siteName}`,
+    description: "舊版 Logs 檢查連結會開啟常見問題頁，並保留 FFLogs report 收錄狀態檢查工具。",
+    imageTitle: "常見問題",
+    imageSubtitle: "FFLogs 檢查工具",
+    imageHighlights: ["舊連結相容", "公開索引比對", "排程等待判斷"],
+  },
+  {
     path: "honey-fans",
     title: `Honey B. Lovely 粉絲榜 | ${siteName}`,
     description: "趣味統計 M2S 通關紀錄中吃到第 4 顆愛心並進入心醉魂迷：奴役的 Honey B. Lovely 粉絲榜。",

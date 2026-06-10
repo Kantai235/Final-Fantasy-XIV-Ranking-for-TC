@@ -27,6 +27,7 @@ let checkedTeamRecords = 0;
 let checkedServerCompareRows = 0;
 let checkedUserEntryDetails = 0;
 let checkedHoneyFanRows = 0;
+let checkedReportStatusRows = 0;
 
 function reportIssue(message) {
   issues.push(message);
@@ -826,6 +827,116 @@ async function validateServerCompare() {
   }
 }
 
+function indexOfColumn(columns, columnName, label) {
+  const index = Array.isArray(columns) ? columns.indexOf(columnName) : -1;
+  if (index < 0) {
+    reportIssue(`${label} 缺少 ${columnName} 欄位`);
+  }
+  return index;
+}
+
+function validateReportStatusRows(payload, label) {
+  const reportColumns = payload?.report_columns || [];
+  const reportCodeIndex = indexOfColumn(reportColumns, "report_code", label);
+  const entryCountIndex = indexOfColumn(reportColumns, "entry_count", label);
+  const hiddenEntryCountIndex = indexOfColumn(reportColumns, "hidden_entry_count", label);
+  const encountersIndex = indexOfColumn(reportColumns, "encounters", label);
+  const fightsIndex = indexOfColumn(reportColumns, "fights", label);
+
+  if (!Array.isArray(payload?.reports)) {
+    reportIssue(`${label} reports 必須是陣列`);
+    return;
+  }
+  if (payload.report_count !== payload.reports.length) {
+    reportIssue(`${label} report_count=${payload.report_count} 與 reports 長度 ${payload.reports.length} 不一致`);
+  }
+
+  let totalEntryCount = 0;
+  let totalHiddenEntryCount = 0;
+  const seenReportCodes = new Set();
+  for (const [index, report] of payload.reports.entries()) {
+    if (!Array.isArray(report)) {
+      reportIssue(`${label} reports[${index}] 必須是欄位陣列`);
+      continue;
+    }
+
+    const reportCode = reportCodeIndex >= 0 ? report[reportCodeIndex] : null;
+    if (typeof reportCode !== "string" || !reportCode) {
+      reportIssue(`${label} reports[${index}] 缺少 report_code`);
+    } else if (seenReportCodes.has(reportCode)) {
+      reportIssue(`${label} 出現重複 report_code：${reportCode}`);
+    } else {
+      seenReportCodes.add(reportCode);
+    }
+
+    const entryCount = Number(report[entryCountIndex]);
+    const hiddenEntryCount = Number(report[hiddenEntryCountIndex]);
+    if (!Number.isInteger(entryCount) || entryCount < 0) {
+      reportIssue(`${label} ${reportCode || `reports[${index}]`} entry_count 必須是非負整數`);
+    } else {
+      totalEntryCount += entryCount;
+    }
+    if (!Number.isInteger(hiddenEntryCount) || hiddenEntryCount < 0) {
+      reportIssue(`${label} ${reportCode || `reports[${index}]`} hidden_entry_count 必須是非負整數`);
+    } else {
+      totalHiddenEntryCount += hiddenEntryCount;
+    }
+    if (!Array.isArray(report[encountersIndex]) || !Array.isArray(report[fightsIndex])) {
+      reportIssue(`${label} ${reportCode || `reports[${index}]`} 必須包含 encounters 與 fights 摘要`);
+    }
+  }
+
+  if (payload.entry_count !== totalEntryCount) {
+    reportIssue(`${label} entry_count=${payload.entry_count} 與 report rows 加總 ${totalEntryCount} 不一致`);
+  }
+  if (payload.hidden_entry_count !== totalHiddenEntryCount) {
+    reportIssue(`${label} hidden_entry_count=${payload.hidden_entry_count} 與 report rows 加總 ${totalHiddenEntryCount} 不一致`);
+  }
+  checkedReportStatusRows += payload.reports.length;
+}
+
+async function validateReportStatusIndex() {
+  const reportStatusPath = path.join(publicDataDir, "report_status_index.json");
+  if (!existsSync(reportStatusPath)) {
+    reportIssue("缺少 public/data/report_status_index.json，請先執行 npm run build:report-status");
+    return;
+  }
+
+  const reportStatus = await readJson(reportStatusPath, "public/data/report_status_index.json");
+  validateContract(reportStatus, publicDataContracts.reportStatusIndexPayload, "public/data/report_status_index.json");
+  validateReportStatusRows(reportStatus, "public/data/report_status_index.json");
+
+  const hiddenReportStatusPath = path.join(publicAllDataDir, "report_status_index.json");
+  if (existsSync(publicAllRankingDetailsDir) && !existsSync(hiddenReportStatusPath)) {
+    reportIssue("缺少 public/data/all/report_status_index.json，請先執行 npm run build:report-status");
+    return;
+  }
+  if (!existsSync(hiddenReportStatusPath)) {
+    return;
+  }
+
+  const hiddenReportStatus = await readJson(hiddenReportStatusPath, "public/data/all/report_status_index.json");
+  validateContract(hiddenReportStatus, publicDataContracts.reportStatusHiddenDeltaPayload, "public/data/all/report_status_index.json");
+  if (hiddenReportStatus?.base_path !== "data/report_status_index.json") {
+    reportIssue("public/data/all/report_status_index.json base_path 必須指向 data/report_status_index.json");
+  }
+  validateReportStatusRows(hiddenReportStatus, "public/data/all/report_status_index.json");
+}
+
+async function validatePublicUpdateStatus() {
+  const updateStatusPath = path.join(publicDataDir, "update_status.json");
+  if (!existsSync(updateStatusPath)) {
+    reportIssue("缺少 public/data/update_status.json，請先執行 npm run build:public-status");
+    return;
+  }
+
+  const updateStatus = await readJson(updateStatusPath, "public/data/update_status.json");
+  validateContract(updateStatus, publicDataContracts.publicUpdateStatusPayload, "public/data/update_status.json");
+  if ((Number(updateStatus?.schedule?.interval_minutes) || 0) <= 0) {
+    reportIssue("public/data/update_status.json schedule.interval_minutes 必須大於 0");
+  }
+}
+
 async function validateHoneyFans() {
   const honeyFansPath = path.join(publicDataDir, "fun", "honey_b_fans.json");
   if (!existsSync(honeyFansPath)) {
@@ -994,6 +1105,8 @@ async function main() {
   await validateAnnouncements();
   await validateTeamRankings();
   await validateServerCompare();
+  await validateReportStatusIndex();
+  await validatePublicUpdateStatus();
   await validateHoneyFans();
   await validateUsers();
   await validateAllDataMirror();
@@ -1010,7 +1123,7 @@ async function main() {
   }
 
   console.log(
-    `資料驗證通過：${publicEncounters.length} 個公開副本、${checkedSourceReports} 份來源 report、${checkedUserFiles} 份使用者檔案、${checkedUserEntryDetails} 筆個人成績報告細節、${checkedActivityItems} 筆近期動態項目、${checkedTeamRecords} 筆隊伍榜紀錄、${checkedServerCompareRows} 筆伺服器對比資料、${checkedHoneyFanRows} 筆蜂蜂粉絲資料。`,
+    `資料驗證通過：${publicEncounters.length} 個公開副本、${checkedSourceReports} 份來源 report、${checkedReportStatusRows} 份 Logs 狀態索引 report、${checkedUserFiles} 份使用者檔案、${checkedUserEntryDetails} 筆個人成績報告細節、${checkedActivityItems} 筆近期動態項目、${checkedTeamRecords} 筆隊伍榜紀錄、${checkedServerCompareRows} 筆伺服器對比資料、${checkedHoneyFanRows} 筆蜂蜂粉絲資料。`,
   );
 }
 

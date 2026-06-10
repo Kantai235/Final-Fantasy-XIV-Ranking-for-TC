@@ -20,10 +20,12 @@
 
    這一步會產生 `public/data/users/`、`public/data/user-entry-details/`、`public/data/users/index.json`、`public/data/global_stats.json`、`public/data/activity.json`、`public/data/team_rankings.json` 與 `public/data/server_compare.json`。
    同時會在 `public/data/all/` 產生 hidden delta：有 hidden 成績的個人成績單才輸出差量檔，沒有 hidden 成績的索引項目會直接指回公開成績單。
-   指令結束前也會執行 `npm run build:ranking-tables`，由公開排行榜產生 `public/data/ranking-tables/` 薄索引與 `public/data/ranking-details/` 按需載入細節檔，並把 `public/data/all/rankings|ranking-tables|ranking-details` 轉成 hidden delta。
+   指令結束前也會執行 `npm run build:ranking-tables`，由公開排行榜產生 `public/data/ranking-tables/` 薄索引與 `public/data/ranking-details/` 按需載入細節檔，並把 `public/data/all/rankings|ranking-tables|ranking-details` 轉成 hidden delta；接著執行 `npm run build:report-status` 與 `npm run build:public-status`，輸出常見問題頁 FFLogs 檢查工具使用的 `public/data/report_status_index.json`、`public/data/all/report_status_index.json` 與 `public/data/update_status.json`。
    正式部署會把使用者主檔與個人成績報告細節同步到 users 專用 repo；`public/data/users` 仍是資料建置與驗證的來源產物，不能在 postbuild 前刪除，否則玩家分享頁與 OG 圖會失去本輪最新索引。
 
    全域公告內容直接維護在 `public/data/announcements.json`；這一步會把它同步到 `public/data/all/announcements.json`，供 hidden delta 檢視流程使用。
+
+   常見問題頁中的 FFLogs 檢查工具只讀上述靜態索引：`report_status_index.json` 由 `ranking-details` 彙整 report code、fight id、副本、玩家數與紀錄時間，不保存 FFLogs raw payload；`update_status.json` 則只公開最近資料更新、Actions run URL 與排程摘要。若 report 完全不在索引中，前端只能提供排程與常見原因推估，不能在瀏覽器端即時查詢 private/deleted 狀態。
 
 3. 驗證資料完整性：
 

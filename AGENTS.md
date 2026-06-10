@@ -144,3 +144,9 @@
 6. `npm run build:honey-fans` 只由既有來源檔重建公開 JSON，不呼叫 FFLogs API；正式 workflow 會在資料建置階段執行它，並把 `public/data/fun/*.json` 納入資料 commit 路徑。`npm run validate:data` 與 `npm run test:frontend-data` 會檢查公開粉絲榜資料契約。
 7. 公開粉絲榜 `top_fans`、粉絲列 `records`、`latest_records`、公開 `records` 與本期摘要只納入以 `source.updated_at_iso` 為基準的近 7 天紀錄；`latest_records` 最多輸出 5 筆，`latest_fans` 最多輸出 16 筆。來源檔仍保留歷史紀錄，建置層會用同樣 7 天切片回推 `current_streak_weeks`，並以 `summary.historical_*` 與粉絲列 `historical_*` 保留歷史統計，供前端顯示「連續 N 週入榜」。
 8. 公開 `team_rankings` 使用來源檔中自台灣時間 2026-05-30 00:00:00 起的通關場次，依單場全隊 `心醉魂迷：奴役` 總次數排序，並沿用戰鬥時間軸去重合併同一場的多份 FFLogs 上傳；來源檔仍保留全歷史紀錄與 `summary.historical_*` 追溯欄位。前端 Honey 頁面的「超高難度」開關開啟時，顯示此活動團隊榜而非近 7 天粉絲榜。
+
+### H. 常見問題與 Logs 檢查
+1. `src/pages/ReportStatusPage.vue` 是常見問題頁，正式路徑為 `/faq`，舊 `/logs` 只作為相容入口。頁面中的 FFLogs 檢查工具只能讀取 `public/data/report_status_index.json`、`public/data/all/report_status_index.json` 與 `public/data/update_status.json` 這三類靜態資料；不得在前端呼叫 FFLogs API，也不得把 OAuth 憑證或 `data/state.json` 掃描 checkpoint 暴露到瀏覽器。
+2. `scripts/build_report_status_index.mjs` 由 `public/data/ranking-details/*.json` 產生 report code / fight / 副本摘要索引，使用欄位陣列格式控制 payload 體積。這份索引是衍生快取，不是判定 report 是否應入庫的權威來源；權威來源仍是 `data/rankings/*.json` 與分片。
+3. `scripts/build_public_status_data.mjs` 只把 `data/update_status.json` 與 `public/data/global_stats.json` 中可公開的更新摘要輸出到 `public/data/update_status.json`，供前端推估每小時排程、24 小時近期重查、24-72 小時延遲掃描與歷史補查等待時間。
+4. 若使用者貼上的 report 完全不在公開或 hidden delta 索引中，前端只能回報「尚未在公開索引找到」並列出排程與常見原因；不能宣稱已即時確認 private、deleted、沒有繁中服玩家或沒有通關，這類精確判斷仍只能由資料管線下一輪掃描或站務端受保護診斷工具完成。

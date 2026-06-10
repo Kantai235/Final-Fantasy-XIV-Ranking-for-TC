@@ -57,6 +57,8 @@ npm run sync:data -- --dry-run
 - `public/data/activity.json` 的近期動態、活躍分布與 Logs 趨勢。
 - `public/data/team_rankings.json` 的副本、隊伍紀錄與 8 人隊員列。
 - `public/data/server_compare.json` 的伺服器列、副本列、職業/職能統計與傷害分位。
+- `public/data/report_status_index.json` 的 report code、fight、副本與收錄狀態摘要。
+- `public/data/update_status.json` 的最近資料更新與排程摘要。
 - `public/data/fun/honey_b_fans.json` 的 Honey B. Lovely 粉絲榜摘要、頭號粉絲、近期紀錄與完整趣味紀錄。
 
 `public/data/all/` 目前是 hidden delta 產物，不再複製所有公開 JSON；delta 檔也有自己的資料契約，驗證時會先與公開底稿合併再檢查完整資料形狀。新增或移除公開 JSON 欄位時，必須同步更新 `schemas/public_data_contracts.mjs`、資料建置腳本與前端讀取端，讓欄位漂移在 `npm test` 或 `npm run validate:data` 階段被抓到。
@@ -94,6 +96,18 @@ Honey B. Lovely 粉絲榜來源在 `data/fun/honey_b_fans.json`，公開檔在 `
 - `detail_path`：指向 `public/data/ranking-details/{key}.json`，使用者點擊「報告」按鈕時才載入。
 
 `public/data/ranking-details/{key}.json` 保存以 entry `id` 為 key 的完整公開排行榜條目，用來組成 FFLogs、xivanalysis 與 ffreplay 外部連結，以及報告彈窗內的追溯欄位。這組檔案是公開 `ranking_entries` 的衍生快取，不是權威來源；重建時仍以 `data/rankings/*.json` 與分片為準。
+
+## Logs 檢查索引
+
+`public/data/report_status_index.json` 是常見問題頁中 FFLogs 檢查工具的輕量查詢索引，由 `scripts/build_report_status_index.mjs` 讀取 `public/data/ranking-details/*.json` 產生。它使用 `report_columns`、`encounter_columns` 與 `fight_columns` 欄位陣列格式壓縮體積，內容只保留：
+
+- report code 與首次/最新紀錄時間。
+- report 命中的副本、fight id、排行列數與玩家數。
+- hidden entry 計數，用來區分一般公開資料與 hidden delta 摘要。
+
+這份索引不保存玩家完整成績、FFLogs raw payload、`masterData` 或掃描 checkpoint，也不是判定 report 是否應入庫的權威來源；權威來源仍是 `data/rankings/*.json` 與分片。`public/data/all/report_status_index.json` 則是 hidden delta，只保存額外檢視必要的 hidden report 摘要並以 `base_path="data/report_status_index.json"` 指回公開底稿。
+
+`public/data/update_status.json` 由 `scripts/build_public_status_data.mjs` 從 `data/update_status.json` 與 `public/data/global_stats.json` 產生，公開最近資料更新時間、Actions run URL、總角色/成績數，以及 workflow 的每小時排程、近期 24 小時重查、24-72 小時延遲掃描與 168 小時歷史補查視窗摘要。前端只能用它推估等待時間；若 report 完全不在公開索引中，仍不能在瀏覽器端即時確認 private、deleted 或 FFLogs 尚未匯出。
 
 `public/data/all/ranking-tables/` 與 `public/data/all/ranking-details/` 輸出 hidden delta：
 

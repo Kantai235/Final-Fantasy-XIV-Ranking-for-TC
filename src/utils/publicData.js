@@ -3,7 +3,7 @@
 // 這裡集中處理兩種資料 URL，避免頁面或 composable 各自拼接路徑時漏掉 base path 或外部 repo 基底。
 const Vite公開基底路徑 = import.meta.env?.BASE_URL ?? "/";
 
-const 乾淨路由片段 = new Set(["stats", "user", "compare", "jobs", "activity", "teams", "servers", "honey-fans"]);
+const 乾淨路由片段 = new Set(["stats", "user", "compare", "jobs", "activity", "teams", "servers", "faq", "logs", "honey-fans"]);
 
 const DEFAULT_USER_DATA_BASE_URL =
   "https://raw.githubusercontent.com/Kantai235/Final-Fantasy-XIV-Ranking-for-TC-Users/refs/heads/main/";
@@ -86,6 +86,8 @@ export const 伺服器對比網址 = `${公開資料基底路徑}data/server_com
 export const 蜂蜜粉絲榜網址 = `${公開資料基底路徑}data/fun/honey_b_fans.json`;
 export const 蜂蜂粉絲榜網址 = 蜂蜜粉絲榜網址;
 export const 公告資料網址 = `${公開資料基底路徑}data/announcements.json`;
+export const 報告狀態索引網址 = `${公開資料基底路徑}data/report_status_index.json`;
+export const 更新狀態網址 = `${公開資料基底路徑}data/update_status.json`;
 
 export function 建立公開資料網址(相對路徑) {
   return `${公開資料基底路徑}${String(相對路徑)

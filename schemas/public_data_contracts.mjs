@@ -685,6 +685,64 @@ const serverComparePayloadSchema = objectOf({
   servers: arrayOf(serverCompareRowSchema),
 });
 
+const reportStatusEncounterMetadataSchema = objectOf({
+  key: stringSchema,
+  name: stringSchema,
+  category: stringSchema,
+});
+
+const reportStatusIndexBaseSchema = {
+  schema_version: field("integer", { const: 1 }),
+  generated_at_iso: nullableIsoTimestampSchema,
+  encounter_metadata: arrayOf(reportStatusEncounterMetadataSchema),
+  report_columns: arrayOf(stringSchema),
+  encounter_columns: arrayOf(stringSchema),
+  fight_columns: arrayOf(stringSchema),
+  report_count: integerSchema,
+  entry_count: integerSchema,
+  hidden_entry_count: integerSchema,
+  reports: arrayOf(field("array")),
+};
+
+const reportStatusIndexPayloadSchema = objectOf({
+  ...reportStatusIndexBaseSchema,
+  format: field("string", { const: "report_status_index_v1" }),
+});
+
+const reportStatusHiddenDeltaPayloadSchema = objectOf({
+  ...reportStatusIndexBaseSchema,
+  format: field("string", { const: "report_status_hidden_delta_v1" }),
+  base_path: dataPathSchema,
+});
+
+const publicUpdateScheduleSchema = objectOf({
+  workflow_cron_utc: stringSchema,
+  interval_minutes: integerSchema,
+  incremental_lookback_hours: integerSchema,
+  no_clear_retry_hours: integerSchema,
+  delayed_scan_recent_gap_hours: integerSchema,
+  delayed_scan_lookback_hours: integerSchema,
+  history_scan_window_hours: integerSchema,
+  history_scan_windows_per_run: integerSchema,
+  history_max_deep_reports_per_run: integerSchema,
+  history_max_deep_reports_per_group_per_run: integerSchema,
+});
+
+const publicUpdateStatusPayloadSchema = objectOf({
+  schema_version: field("integer", { const: 1 }),
+  format: field("string", { const: "public_update_status_v1" }),
+  updated_at_iso: nullableIsoTimestampSchema,
+  rankings_updated_at_iso: nullableIsoTimestampSchema,
+  event: nullableStringSchema,
+  branch: nullableStringSchema,
+  run_id: nullableStringSchema,
+  run_attempt: nullable(integerSchema),
+  run_url: nullableUrlSchema,
+  total_character_count: integerSchema,
+  total_entry_count: integerSchema,
+  schedule: publicUpdateScheduleSchema,
+});
+
 function valueType(value) {
   if (value === null) {
     return "null";
@@ -802,4 +860,7 @@ export const publicDataContracts = {
   userEntryDetailsPayload: userEntryDetailsPayloadSchema,
   teamRankingsPayload: teamRankingsPayloadSchema,
   serverComparePayload: serverComparePayloadSchema,
+  reportStatusIndexPayload: reportStatusIndexPayloadSchema,
+  reportStatusHiddenDeltaPayload: reportStatusHiddenDeltaPayloadSchema,
+  publicUpdateStatusPayload: publicUpdateStatusPayloadSchema,
 };
