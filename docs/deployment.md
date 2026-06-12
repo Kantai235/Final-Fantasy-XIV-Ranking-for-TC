@@ -33,7 +33,7 @@ npm run build
 
 工作流程摘要：
 
-1. Checkout 並同步最新分支狀態。
+1. 以淺層 partial clone checkout 並同步最新分支狀態；workflow 不抓完整 Git 歷史，避免大型資料 repo 的歷史 pack 耗盡 GitHub-hosted runner 磁碟。
 2. 設定 Python 3.11 與 Node.js 20。
 3. 安裝 Python 與 Node.js 依賴。
 4. 若有 Cloudflare secrets，先同步 Cloudflare Cache Rules、Facebook 分享爬蟲例外與 Rate Limiting Rules。
@@ -59,6 +59,8 @@ npm run build
 ## 緊急部署
 
 `.github/workflows/emergency_deploy.yml` 是手動觸發的緊急部署通道，用於前端 hotfix、空白頁修復、SEO/OG 產物修正或 Cloudflare 快取異常。這條流程只使用目前分支已提交的 `data/` 與 `public/data/`，執行 `npm run build` 後上傳 `dist/` 並部署 GitHub Pages；它不會執行 `python scripts/fetch_fflogs.py` 的正式抓取流程、不會呼叫 FFLogs API、不會推進 `data/state.json` 掃描點，也不會 commit 新資料。
+
+緊急部署同樣只做淺層 partial clone，因為它只需要目前分支的靜態產物，不需要完整 Git 歷史。
 
 手動執行方式：
 

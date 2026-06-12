@@ -128,6 +128,7 @@
 25. GitHub Actions 會在同步 users 專用 repo、執行 Vite/postbuild 產生分享頁與 OG 圖後，先跑 `npm run prune:pages-user-data` 移除 `dist/data/users`、`dist/data/user-entry-details` 與 hidden 使用者差量 JSON，再於上傳 Pages artifact 前執行 `npm run audit:pages-payload:strict -- --write-history data/pages_payload_history.jsonl`。`dist/data/users/` 的 target 仍保留給本機完整 build、緊急排查或流程異動時監控；正式主站 artifact 通常應為 0。這讓 FFLogs 抓取成果先保存進 Git，payload 超標時只停止部署。稽核通過後若 `data/pages_payload_history.jsonl` 有變更，workflow 會另行 commit/push，記錄 artifact 體積、檔案數、建置秒數與上一筆差異；`npm run audit:pages-payload` 只保留作為本機 baseline 觀察用途。
 26. GitHub Actions 會在 payload 稽核與 history commit 後把 `npm run cloudflare:estimate` 與 `npm run cloudflare:purge -- --dry-run --summary` 輸出到 Step Summary，用來檢查 Cloudflare HIT ratio 承載估算與 scoped purge 範圍；正式部署後仍只執行 scoped purge，不做 purge everything。
 27. GitHub Actions 會在 `fetch_fflogs.py` 後執行 `npm run audit:mixed-report-dispatch`，把 mixed report 分派版本覆蓋率、待重查副本-report 組合、ranking-only 待補項目、歷史補查游標與 deferred 數量輸出到 Step Summary。此報表只作觀測用途，pending 大於 0 不應阻擋資料 commit 或部署；若要判斷歷史混合上傳重掃是否追平，應看「待重查」是否歸零，並搭配各副本歷史游標是否完成全區間輪巡。
+28. `.github/workflows/update_rankings.yml` 與 `.github/workflows/emergency_deploy.yml` checkout 時只抓目前分支的淺層 partial clone，後續同步與 push retry 也只 fetch 有限深度。資料 repo 的完整歷史 pack 已累積到數 GiB；正式 workflow 不需要完整歷史，若改回 `fetch-depth: 0`，GitHub-hosted runner 可能在 checkout 階段耗盡磁碟。
 
 ### F. 版本切點與過版紀錄
 1. `config/encounters.json` 的 `version_cutoff` 用來描述副本版本有效期限；目前 `極 佐拉加` 與 `極 豔翼蛇鳥` 的過版切點是台灣時間 2026-04-21 18:00，對應 `2026-04-21T10:00:00.000Z`。
