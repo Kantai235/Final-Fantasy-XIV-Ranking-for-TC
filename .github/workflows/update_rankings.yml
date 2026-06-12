@@ -102,8 +102,10 @@ jobs:
           FFLOGS_HISTORY_SCAN_RECENT_GAP_HOURS: ${{ vars.FFLOGS_HISTORY_SCAN_RECENT_GAP_HOURS || '6' }}
           FFLOGS_HISTORY_MAX_DEEP_REPORTS_PER_RUN: ${{ vars.FFLOGS_HISTORY_MAX_DEEP_REPORTS_PER_RUN || '600' }}
           FFLOGS_HISTORY_MAX_DEEP_REPORTS_PER_GROUP_PER_RUN: ${{ vars.FFLOGS_HISTORY_MAX_DEEP_REPORTS_PER_GROUP_PER_RUN || '150' }}
-          # 正式排程不限制 fetch_fflogs.py 執行時間，讓全部副本都能依序推進；
-          # 若未來要做短時維護，可在人工指令另行傳入 FFLOGS_MAX_RUNTIME_SECONDS。
+          # GitHub-hosted runner 有 6 小時硬上限；若 FFLogs 要求長時間憑證冷卻，
+          # 讓 fetch_fflogs.py 主動保留 active_scan 後結束，避免後續資料建置與 commit 被 runner 取消。
+          FFLOGS_MAX_RUNTIME_SECONDS: ${{ vars.FFLOGS_MAX_RUNTIME_SECONDS || '6000' }}
+          FFLOGS_RUNTIME_GRACE_SECONDS: ${{ vars.FFLOGS_RUNTIME_GRACE_SECONDS || '900' }}
           # 每輪由舊到新抽查既有排行榜 report 是否仍可存取，跑完後會從最舊紀錄重新輪巡。
           FFLOGS_EXISTING_REPORT_STATUS_CHECK_ENABLED: ${{ vars.FFLOGS_EXISTING_REPORT_STATUS_CHECK_ENABLED || 'true' }}
           FFLOGS_EXISTING_REPORT_STATUS_CHECK_LIMIT: ${{ vars.FFLOGS_EXISTING_REPORT_STATUS_CHECK_LIMIT || '25' }}
