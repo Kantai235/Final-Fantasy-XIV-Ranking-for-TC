@@ -24,7 +24,7 @@ npm run sync:data -- --dry-run
 
 - `key`：內部識別碼，也會對應資料檔名與網址狀態。建立後不得任意改名。
 - `name`：網站顯示名稱。
-- `category`：副本分類，例如 `零式`、`極`、`幻`、`絕`。
+- `category`：副本分類，例如 `零式`、`極`、`幻`、`滅`、`絕`。
 - `zone_id`、`encounter_id`、`difficulty`：FFLogs 查詢用設定。
 - `enabled`：是否啟用下一輪 Python 爬蟲掃描。
 - `scan_start_date`：首次掃描起始日期。
@@ -65,7 +65,7 @@ npm run sync:data -- --dry-run
 
 正式部署時，`public/data/users`、`public/data/user-entry-details`、`public/data/all/users` 與 `public/data/all/user-entry-details` 會先同步到 `Final-Fantasy-XIV-Ranking-for-TC-Users`。Vite/postbuild 仍會讀本 repo 的 `public/data/users/index.json` 產生玩家分享頁與 OG 圖；建置完成後才由 `npm run prune:pages-user-data` 移除 `dist/` 內的大型使用者 JSON。也就是說，`public/data/users` 仍是 repo 內可驗證的資料契約來源，但正式主站 artifact 不再把它當作前端個人成績單資料來源。
 
-`public/data/activity.json` 的 `log_activity` 由 `scripts/build_user_data.mjs` 讀取 `reports -> fights -> players` 產生，不由 Vue 元件即時計算。`unique_report_count` 以 `report_code` 去重，代表 FFLogs 日誌數；`unique_fight_count` 以 `encounter_key + fight_hash` 去重，代表同場多份上傳合併後的通關場次。每日 bucket 使用台灣日期切分，前端只負責依副本、日期範圍與每日座標顯示這些靜態統計；日期範圍的 UI 初始值依響應式模式決定，桌面預設近 90 天，手機預設近 30 天。`log_activity.category_series` 會以零式、極、幻、絕等副本分類預先彙整同樣的每日數量，供近期動態頁在全部副本曲線下方顯示分類堆疊占比。圖表上的台服與國際服改版標註是前端維護的靜態時間軸脈絡，不屬於 `activity.json` 資料契約，也不影響 Logs 或通關場次統計。
+`public/data/activity.json` 的 `log_activity` 由 `scripts/build_user_data.mjs` 讀取 `reports -> fights -> players` 產生，不由 Vue 元件即時計算。`unique_report_count` 以 `report_code` 去重，代表 FFLogs 日誌數；`unique_fight_count` 以 `encounter_key + fight_hash` 去重，代表同場多份上傳合併後的通關場次。每日 bucket 使用台灣日期切分，前端只負責依副本、日期範圍與每日座標顯示這些靜態統計；日期範圍的 UI 初始值依響應式模式決定，桌面預設近 90 天，手機預設近 30 天。`log_activity.category_series` 會以零式、極、幻、滅、絕等副本分類預先彙整同樣的每日數量，供近期動態頁在全部副本曲線下方顯示分類堆疊占比。圖表上的台服與國際服改版標註是前端維護的靜態時間軸脈絡，不屬於 `activity.json` 資料契約，也不影響 Logs 或通關場次統計。
 
 `gcd_coverage` 是公開資料中可顯示的衍生結果；除了 `percent`、分母與計算版本，也允許保留小型診斷欄位，例如 `estimated_speed_below_minimum`、`fallback_selection`、`downtime_selection`，以及 raw events、Casts graph、raw targetability fallback 的比較百分比與分母。這些欄位只說明本地演算法為什麼選用某個覆蓋率結果，不保存 FFLogs raw events 或 Casts graph payload，因此符合公開 JSON 的瘦身邊界。
 

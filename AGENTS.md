@@ -70,6 +70,7 @@
 1. `config/encounters.json` 的 `enabled` 只控制下一輪 Python 爬蟲是否掃描該副本。
 2. `public/data/encounters.json` 是前端選單來源。只要副本已有 `data/rankings/` 或 `public/data/rankings/` 歷史資料，即使 `enabled=false`，仍應保留在公開清單中，避免歷史排行榜與個人成績單消失。
 3. `key` 是 `data/rankings/{key}.json`、`data/rankings/{key}.reports/`、`state.encounters[key]` 與前端網址狀態的共同主鍵，建立後不得任意改名。
+4. `chaotic_cloud_of_darkness` 對應繁中服 2026-06-23 18:00 維護後開放的 7.15「滅 黑暗之雲」；FFLogs 為 Alliance Raids (Chaotic) `zone_id=66`、Cloud of Darkness `encounter_id=2061`、`difficulty=100`，`scan_start_date` 使用 `2026-06-23T18:00:00+08:00` 對齊開放時間。
 
 ### C. 排行榜與去重規則
 1. `data/rankings/*.json` 主檔保留 `ranking_entries`、副本摘要、更新時間與 `report_shards`；report/fight/player 脈絡保存在同名 `*.reports/*.json` 分片。

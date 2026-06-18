@@ -26,7 +26,7 @@ export const 版本紀錄範圍選項 = [
   { value: "valid", label: "有效版本紀錄" },
 ];
 
-export const 副本分類順序 = ["零式", "極", "幻", "絕"];
+export const 副本分類順序 = ["零式", "極", "幻", "滅", "絕"];
 
 export const 排序欄位標籤 = {
   rank: "排名",

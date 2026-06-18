@@ -166,6 +166,11 @@ const activityLogTimelineAnnotations = [
     importance: "secondary",
   },
   {
+    date: "2026-06-23",
+    title: "繁中服 7.15",
+    detail: "滅 黑暗之雲",
+  },
+  {
     date: "2026-07-28",
     title: "國際服 7.55",
     detail: "天際的行路",
@@ -182,6 +187,7 @@ const activityLogCategoryColorClasses = new Map([
   ["零式", "近期日誌分類色彩零式"],
   ["極", "近期日誌分類色彩極"],
   ["幻", "近期日誌分類色彩幻"],
+  ["滅", "近期日誌分類色彩滅"],
   ["絕", "近期日誌分類色彩絕"],
 ]);
 
