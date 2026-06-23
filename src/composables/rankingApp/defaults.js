@@ -1,4 +1,4 @@
-export const 預設副本鍵值 = "savage_m4s";
+export const 預設副本鍵值 = "chaotic_cloud_of_darkness";
 export const 預設排序欄位 = "rdps";
 export const 預設排序方向 = "desc";
 export const 預設比較職能 = "role:tank";
