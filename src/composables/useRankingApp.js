@@ -252,6 +252,7 @@ const 使用者伺服器篩選 = ref("");
 const 使用者職業類型篩選 = ref("");
 const 使用者職業篩選 = ref("");
 const 使用者職業選單開啟 = ref(false);
+const 使用者趨勢職業選擇 = ref({});
 const 使用者讀取中 = ref(false);
 const 使用者錯誤訊息 = ref("");
 const 比較角色左輸入 = ref("");
@@ -561,6 +562,17 @@ function 選擇使用者職業類型(類型代碼) {
 function 選擇使用者職業(職業代碼) {
   使用者職業篩選.value = 使用者職業篩選.value === 職業代碼 ? "" : 職業代碼;
   使用者職業選單開啟.value = false;
+}
+
+function 選擇使用者趨勢職業(副本鍵值, 職業代碼) {
+  if (!副本鍵值 || !職業代碼) {
+    return;
+  }
+
+  使用者趨勢職業選擇.value = {
+    ...使用者趨勢職業選擇.value,
+    [副本鍵值]: 職業代碼,
+  };
 }
 
 function 切換使用者職業選單() {
@@ -3673,7 +3685,32 @@ const 使用者分位亮點 = computed(() => {
     .slice(0, 4);
 });
 
-function 建立使用者成績趨勢項(副本, 職能, 成績列表) {
+function 比較使用者趨勢職業預設排序(前一個, 後一個) {
+  // 同副本合併後，預設職業以玩家最常遊玩的紀錄數為主，平手才用近期與最佳成績穩定排序。
+  const 紀錄數差 = 後一個.點列表.length - 前一個.點列表.length;
+  if (紀錄數差 !== 0) {
+    return 紀錄數差;
+  }
+
+  const 最新時間差 =
+    new Date(後一個.最新?.recorded_at_iso || 0).getTime() - new Date(前一個.最新?.recorded_at_iso || 0).getTime();
+  if (最新時間差 !== 0) {
+    return 最新時間差;
+  }
+
+  if (使用者成績是否較佳(前一個.最佳, 後一個.最佳)) {
+    return -1;
+  }
+  if (使用者成績是否較佳(後一個.最佳, 前一個.最佳)) {
+    return 1;
+  }
+
+  const 職能順序差 = 職業類型排序值(前一個.職能?.代碼) - 職業類型排序值(後一個.職能?.代碼);
+  return 職能順序差 || 前一個.job_name.localeCompare(後一個.job_name, "zh-Hant-TW");
+}
+
+function 建立使用者成績趨勢項(副本, 職業代碼, 成績列表) {
+  const 職能 = 職業所屬類型(職業代碼);
   const 數值列表 = 成績列表.map((成績) => 轉為數字(成績.rdps) || 0);
   const 最低 = Math.min(...數值列表);
   const 最高 = Math.max(...數值列表);
@@ -3718,10 +3755,13 @@ function 建立使用者成績趨勢項(副本, 職能, 成績列表) {
   });
 
   return {
-    key: `${副本.encounter_key}::${職能.代碼}`,
+    key: `${副本.encounter_key}::${職業代碼}`,
     encounter_key: 副本.encounter_key,
     encounter_name: 副本.encounter_name,
     encounter_category: 副本.encounter_category,
+    job: 職業代碼,
+    job_name: 顯示職業名稱(職業代碼),
+    job_color: 職業代碼色彩(職業代碼),
     職能,
     最新,
     最佳,
@@ -3737,36 +3777,61 @@ function 建立使用者成績趨勢項(副本, 職能, 成績列表) {
 
 const 使用者成績趨勢 = computed(() => {
   return 使用者副本成績.value
-    .flatMap((副本) => {
-      const 職能成績索引 = new Map();
+    .map((副本) => {
+      const 職業成績索引 = new Map();
       for (const 成績 of 副本.public_entries || []) {
-        const 職能 = 職業所屬類型(成績.job);
-        if (!職能 || 轉為數字(成績.rdps) === null) {
+        const 職業代碼 = 成績.job;
+        if (!職業代碼 || 轉為數字(成績.rdps) === null) {
           continue;
         }
 
-        if (!職能成績索引.has(職能.代碼)) {
-          職能成績索引.set(職能.代碼, {
-            職能,
+        if (!職業成績索引.has(職業代碼)) {
+          職業成績索引.set(職業代碼, {
+            職業代碼,
             成績列表: [],
           });
         }
-        職能成績索引.get(職能.代碼).成績列表.push(成績);
+        職業成績索引.get(職業代碼).成績列表.push(成績);
       }
 
-      return Array.from(職能成績索引.values()).map(({ 職能, 成績列表 }) => {
+      const 職業趨勢列表 = Array.from(職業成績索引.values()).map(({ 職業代碼, 成績列表 }) => {
         const 排序後成績 = 成績列表.sort((前一個, 後一個) => {
           const 時間差 = new Date(前一個.recorded_at_iso || 0).getTime() - new Date(後一個.recorded_at_iso || 0).getTime();
           return 時間差 || (前一個.rdps ?? 0) - (後一個.rdps ?? 0);
         });
 
-        return 建立使用者成績趨勢項(副本, 職能, 排序後成績);
-      });
+        return 建立使用者成績趨勢項(副本, 職業代碼, 排序後成績);
+      }).sort(比較使用者趨勢職業預設排序);
+
+      if (職業趨勢列表.length === 0) {
+        return null;
+      }
+
+      const 已選職業 = 使用者趨勢職業選擇.value[副本.encounter_key];
+      const 目前趨勢 = 職業趨勢列表.find((趨勢) => 趨勢.job === 已選職業) || 職業趨勢列表[0];
+      const 職業選項 = 職業趨勢列表.map((趨勢) => ({
+        代碼: 趨勢.job,
+        名稱: 趨勢.job_name,
+        色彩: 趨勢.job_color,
+        職能: 趨勢.職能,
+        紀錄數: 趨勢.點列表.length,
+        已選取: 趨勢.job === 目前趨勢.job,
+      }));
+
+      return {
+        ...目前趨勢,
+        key: 副本.encounter_key,
+        趨勢key: 目前趨勢.key,
+        職業趨勢列表,
+        職業選項,
+        目前職業代碼: 目前趨勢.job,
+        多職業: 職業趨勢列表.length > 1,
+      };
     })
+    .filter(Boolean)
     .sort((前一個, 後一個) => {
       const 副本順序差 = 取得副本排序值(前一個.encounter_key) - 取得副本排序值(後一個.encounter_key);
-      const 職能順序差 = 職業類型排序值(前一個.職能?.代碼) - 職業類型排序值(後一個.職能?.代碼);
-      return 副本順序差 || 職能順序差 || 前一個.encounter_name.localeCompare(後一個.encounter_name, "zh-Hant-TW");
+      return 副本順序差 || 前一個.encounter_name.localeCompare(後一個.encounter_name, "zh-Hant-TW");
     });
 });
 
@@ -5036,6 +5101,10 @@ watch(使用者伺服器篩選, (伺服器) => {
   }
 });
 
+watch([使用者資料, 使用者伺服器篩選, 使用者職業類型篩選, 使用者職業篩選], () => {
+  使用者趨勢職業選擇.value = {};
+});
+
 watch([使用者資料, 使用者伺服器篩選, 使用者職業類型選項], () => {
   if (使用者職業類型篩選.value && !使用者職業類型選項.value.some((職能) => 職能.代碼 === 使用者職業類型篩選.value)) {
     使用者職業類型篩選.value = "";
@@ -5204,6 +5273,7 @@ onUnmounted(() => {
     使用者職業類型篩選,
     使用者職業篩選,
     使用者職業選單開啟,
+    使用者趨勢職業選擇,
     使用者讀取中,
     使用者錯誤訊息,
     比較角色左輸入,
@@ -5322,6 +5392,7 @@ onUnmounted(() => {
     清除使用者職業篩選,
     選擇使用者職業類型,
     選擇使用者職業,
+    選擇使用者趨勢職業,
     切換使用者職業選單,
     處理使用者職業選單失焦,
     切換副本選單,

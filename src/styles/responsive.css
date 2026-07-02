@@ -243,6 +243,12 @@
   color: var(--錯誤文字);
 }
 
+@media (min-width: 721px) and (max-width: 980px) {
+  .成績趨勢列表 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 720px) {
   .頁面 {
     width: min(100% - 20px, 1120px);
