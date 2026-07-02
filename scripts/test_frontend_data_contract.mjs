@@ -21,6 +21,10 @@ import {
   格式化同職分位,
   格式化排名分位,
 } from "../src/utils/formatters.js";
+import {
+  個人成績代表是否較佳,
+  比較個人成績分位顯示排序,
+} from "../src/utils/userProfileSorting.js";
 import { 建立報告索引Map, 解析Fflogs網址 } from "../src/utils/reportStatus.js";
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -90,6 +94,53 @@ function validatePercentileDisplayFormatting() {
   for (const [score, className] of expectedClasses) {
     assert(取得PR色彩類別(score) === className, `PR ${score} 應套用 ${className} 色彩類別。`);
   }
+}
+
+function validateUserProfilePercentileSorting() {
+  const rankAheadButLowerPr = {
+    job: "Summoner",
+    job_rank: 1,
+    rank: 1,
+    rdps: 1000,
+    performance: {
+      qualified: true,
+      sample_count: 5,
+      rank: 3,
+      top_percent: 60,
+      score_percentile: 60,
+    },
+  };
+  const rankBehindButHigherPr = {
+    job: "Machinist",
+    job_rank: 20,
+    rank: 20,
+    rdps: 900,
+    performance: {
+      qualified: true,
+      sample_count: 200,
+      rank: 10,
+      top_percent: 5,
+      score_percentile: 95.5,
+    },
+  };
+  const fallbackCompare = (candidate, currentBest) => (candidate?.rdps ?? 0) > (currentBest?.rdps ?? 0);
+
+  assert(
+    個人成績代表是否較佳(rankAheadButLowerPr, rankBehindButHigherPr, 分位顯示模式前段, fallbackCompare),
+    "前 N% 模式應保留既有代表列排序：職業 Rank 較前者優先。",
+  );
+  assert(
+    個人成績代表是否較佳(rankBehindButHigherPr, rankAheadButLowerPr, 分位顯示模式PR, fallbackCompare),
+    "PR 模式代表列應以 PR 值較高者優先。",
+  );
+  assert(
+    比較個人成績分位顯示排序(rankBehindButHigherPr, rankAheadButLowerPr, 分位顯示模式PR) < 0,
+    "PR 模式展開列與亮點排序應把 PR 較高者排在前面。",
+  );
+  assert(
+    比較個人成績分位顯示排序(rankBehindButHigherPr, rankAheadButLowerPr, 分位顯示模式前段) < 0,
+    "前 N% 模式的分位亮點仍應依 top_percent 較低者排在前面。",
+  );
 }
 
 function validateGcdCoverageDiagnosticFields() {
@@ -1207,6 +1258,7 @@ async function main() {
   await validateStaticSeoBuildOptions();
   await validateSiteFeatureFlags();
   validatePercentileDisplayFormatting();
+  validateUserProfilePercentileSorting();
   validateGcdCoverageDiagnosticFields();
   validateJobIconCacheKeys();
   await validateEncounterSwitchFilterPersistence();

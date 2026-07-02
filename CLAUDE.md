@@ -80,7 +80,7 @@
 5. 新寫入的 report 不保存 `fflogs_raw`、`master_data` 與 `matched_players`；這些大型 raw 欄位可依 report code 重查，停止落地是為避免 Git repo 容量快速膨脹。
 6. 當 `reports` 分片存在時，`ranking_entries` 只視為衍生索引；重建排行榜必須以 `reports -> fights -> players` 為權威來源，避免重抓單一 report 後舊扁平索引把錯誤高分帶回來。
 7. `report_hidden: true` 的 report 預設不進入一般公開資料；`public/data/all/` 只保存 hidden delta 與額外檢視必要索引，供前端與公開底稿合併後使用。
-8. 個人成績單未套用職業篩選時，副本代表列與分享用代表職業優先選同職 `job_rank` 最前面的有效紀錄；`summary.best_rdps` 仍保留最高 rDPS，避免跨職業 raw rDPS 讓坦補主職被偶爾遊玩的輸出職業蓋掉。
+8. 個人成績單未套用職業篩選時，前 N% 顯示模式的副本代表列與分享用代表職業優先選同職 `job_rank` 最前面的有效紀錄；PR 顯示模式則優先使用 `performance.score_percentile`，缺值時才由 `rank` / `sample_count` 回推 PR。`summary.best_rdps` 仍保留最高 rDPS，避免跨職業 raw rDPS 讓坦補主職被偶爾遊玩的輸出職業蓋掉。
 9. 個人成績單以 `fight_hash + 角色 + 伺服器 + 職業` 合併同一場戰鬥的多份上傳；主檔保留代表成績、`duplicate_count`、`report_detail_path` 與 `report_detail_id`，`report_variants` / `source_reports` 需寫入 `public/data/user-entry-details/` 或 `public/data/all/user-entry-details/`，供報告彈窗按需載入並分頁切換不同 report 來源。`report_variants` 可只保存必要或與主檔代表成績不同的欄位，前端需以主檔成績作為分頁 fallback。
 10. 公開排行榜與所有公開衍生資料遇到同名角色跨伺服器的公開紀錄時，必須以「角色名稱 + 伺服器」拆成不同玩家；不得再用最新公開紀錄所在伺服器自動合併。`canonical_server` 僅保留為既有前端相容欄位，值應等於該份個人成績單自己的伺服器；`server_aliases` 預設為空陣列，不得把另一個同名角色所在伺服器列為 alias。
 

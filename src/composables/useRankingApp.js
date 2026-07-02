@@ -71,6 +71,10 @@ import {
   讀取玩家搜尋歷史,
   讀取使用者資料檔,
 } from "../utils/userData";
+import {
+  個人成績代表是否較佳,
+  比較個人成績分位顯示排序,
+} from "../utils/userProfileSorting";
 import { 建立職業佔比分組, 取得統計範圍計數, 職業範圍類型 } from "../utils/statsDisplay";
 import { 顯示Honey粉絲榜, 顯示Gcd覆蓋率, 顯示作者相關標示 } from "../utils/siteFeatures";
 import { 寫入網址狀態, 讀取目前網址狀態 } from "../utils/urlState";
@@ -3480,59 +3484,34 @@ function 使用者成績是否較佳(候選, 目前最佳) {
   return new Date(候選.recorded_at_iso || 0).getTime() > new Date(目前最佳.recorded_at_iso || 0).getTime();
 }
 
-function 取得有效排名數值(排名) {
-  const 數值 = 轉為數字(排名);
-  return 數值 !== null && 數值 > 0 ? 數值 : null;
-}
-
-function 取得成績職業排名值(成績) {
-  return 取得有效排名數值(成績?.job_rank ?? 成績?.rank);
-}
-
-function 取得成績前段百分位(成績) {
-  const 百分位 = 轉為數字(成績?.performance?.top_percent);
-  return 百分位 !== null && 百分位 >= 0 ? 百分位 : null;
-}
-
 function 使用者代表成績是否較佳(候選, 目前最佳) {
-  // 個人成績單未套用職業篩選時，代表列要優先呈現「同職排名最亮眼」的有效紀錄。
-  // 這避免坦補主職因 raw rDPS 天生低於輸出職業，而被偶爾遊玩的 DPS 紀錄蓋掉履歷預設職業。
-  if (!候選) {
-    return false;
-  }
-  if (!目前最佳) {
-    return true;
+  // 個人成績單未套用職業篩選時，代表列不能直接跨職業比 raw rDPS。
+  // 前 N% 模式保留既有 Rank/top_percent 口徑；PR 模式則改用 score_percentile，
+  // 讓不同職業樣本數差異不會讓「排名較前但 PR 較低」的職業被誤放在第一順位。
+  return 個人成績代表是否較佳(候選, 目前最佳, 分位顯示模式.value, 使用者成績是否較佳);
+}
+
+function 排序使用者公開成績(公開成績) {
+  if (分位顯示模式.value !== 分位顯示模式PR) {
+    return 公開成績;
   }
 
-  const 候選排名 = 取得成績職業排名值(候選);
-  const 目前排名 = 取得成績職業排名值(目前最佳);
-  if (候選排名 !== null || 目前排名 !== null) {
-    if (候選排名 === null) {
-      return false;
-    }
-    if (目前排名 === null) {
-      return true;
-    }
-    if (候選排名 !== 目前排名) {
-      return 候選排名 < 目前排名;
-    }
-  }
-
-  const 候選百分位 = 取得成績前段百分位(候選);
-  const 目前百分位 = 取得成績前段百分位(目前最佳);
-  if (候選百分位 !== null || 目前百分位 !== null) {
-    if (候選百分位 === null) {
-      return false;
-    }
-    if (目前百分位 === null) {
-      return true;
-    }
-    if (候選百分位 !== 目前百分位) {
-      return 候選百分位 < 目前百分位;
-    }
-  }
-
-  return 使用者成績是否較佳(候選, 目前最佳);
+  return 公開成績
+    .map((成績, 原始索引) => ({ 成績, 原始索引 }))
+    .sort((左, 右) => {
+      const 分位差 = 比較個人成績分位顯示排序(左.成績, 右.成績, 分位顯示模式.value);
+      if (分位差 !== 0) {
+        return 分位差;
+      }
+      if (使用者成績是否較佳(左.成績, 右.成績)) {
+        return -1;
+      }
+      if (使用者成績是否較佳(右.成績, 左.成績)) {
+        return 1;
+      }
+      return 左.原始索引 - 右.原始索引;
+    })
+    .map(({ 成績 }) => 成績);
 }
 
 function 取得使用者副本成績(資料, 伺服器 = "", 成績篩選 = () => true, 最佳成績比較 = 使用者成績是否較佳) {
@@ -3540,7 +3519,9 @@ function 取得使用者副本成績(資料, 伺服器 = "", 成績篩選 = () =
 
   return 副本列表
     .map((副本) => {
-      const 公開成績 = (副本.public_entries || []).filter((成績) => (!伺服器 || 成績.server === 伺服器) && 成績篩選(成績));
+      const 公開成績 = 排序使用者公開成績(
+        (副本.public_entries || []).filter((成績) => (!伺服器 || 成績.server === 伺服器) && 成績篩選(成績)),
+      );
       if (公開成績.length === 0) {
         return null;
       }
@@ -3686,7 +3667,7 @@ const 使用者分位亮點 = computed(() => {
     )
     .filter((成績) => 成績?.performance?.qualified)
     .sort((前一個, 後一個) => {
-      const 分位差 = (前一個.performance?.top_percent ?? 100) - (後一個.performance?.top_percent ?? 100);
+      const 分位差 = 比較個人成績分位顯示排序(前一個, 後一個, 分位顯示模式.value);
       return 分位差 || (後一個.rdps ?? 0) - (前一個.rdps ?? 0);
     })
     .slice(0, 4);
