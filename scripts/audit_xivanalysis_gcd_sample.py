@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import random
 import sys
 import time
@@ -26,6 +27,9 @@ DEFAULT_CATEGORIES = ("零式", "極", "幻")
 DEFAULT_REPORT_PATH = PROJECT_ROOT / "docs" / "gcd_xivanalysis_audit_latest.json"
 LOCAL_MODE_STORED = "stored"
 LOCAL_MODE_RECOMPUTE = "recompute"
+SELECTION_MODE_FIGHT_SAMPLE = "fight-sample"
+SELECTION_MODE_PLAYER_SAMPLE = "player-sample"
+SELECTION_MODE_TOP_RANKINGS = "top-rankings"
 DEFAULT_REQUIRED_JOBS = (
     "Paladin",
     "Warrior",
@@ -112,8 +116,25 @@ def current_source(player: dict[str, Any]) -> str | None:
     return str(source) if source else None
 
 
+def js_to_fixed_one_decimal(value: float) -> float:
+    # xivanalysis Checklist 標題用 JS Number.toFixed(1) 顯示；Python round()
+    # 採 bankers rounding，遇到 x.x5 邊界會把少數玩家誤判為 exact mismatch。
+    return math.floor((value * 10) + 0.5) / 10
+
+
 def display_percent(value: float | None) -> float | None:
-    return None if value is None else round(value, 1)
+    return None if value is None else js_to_fixed_one_decimal(value)
+
+
+def display_percent_from_coverage(coverage: dict[str, Any] | None, fallback: float | None) -> float | None:
+    if isinstance(coverage, dict):
+        covered_ms = local_gcd.to_number(coverage.get("covered_time_ms"))
+        denominator_ms = local_gcd.to_number(coverage.get("denominator_ms"))
+        if covered_ms is not None and denominator_ms is not None and denominator_ms > 0:
+            # xivanalysis 頁面直接把原始 covered / denominator 顯示到一位小數；
+            # 若先使用本地保存的兩位小數 percent 再轉一位，98.445% 這類邊界會被誤判。
+            return js_to_fixed_one_decimal(min(100.0, (covered_ms / denominator_ms) * 100))
+    return display_percent(fallback)
 
 
 def collect_fight_groups(
@@ -159,6 +180,63 @@ def collect_fight_groups(
     return fight_groups, rankings_by_key
 
 
+def filter_fights_by_encounter_keys(
+    fights: list[FightGroup],
+    encounter_keys: set[str],
+) -> list[FightGroup]:
+    if not encounter_keys:
+        return fights
+    return [group for group in fights if group.encounter_key in encounter_keys]
+
+
+def ranking_entry_report_codes(entry: dict[str, Any]) -> set[str]:
+    """列出排行榜代表列與所有去重來源 report code。
+
+    top-rankings 稽核是拿公開排行榜前 N 名當權威選樣；同一筆排行榜列可能由多份
+    report 上傳去重而來。若其中任一來源已轉 private / deleted，排除時必須把整個
+    dedupe entry 略過，否則抽樣器會改挑另一個 source variant，導致同一場不可驗證
+    戰鬥反覆回到 formal audit。
+    """
+
+    codes: set[str] = set()
+    for report_code in [entry.get("report_code"), *(entry.get("source_reports") or [])]:
+        if report_code:
+            codes.add(str(report_code))
+    return codes
+
+
+def ranking_entry_report_code_order(entry: dict[str, Any]) -> list[str]:
+    """以穩定順序列出排行榜 entry 的 report code。
+
+    `source_reports` 在公開資料中保留去重來源線索，但 top-rankings 稽核需要
+    可重現的選樣結果。代表列的 `report_code` 是前端實際顯示的來源，應優先使用；
+    只有找不到對應 candidate 時，才依 `source_reports` 的原始順序 fallback。
+    """
+
+    ordered_codes: list[str] = []
+    for report_code in [entry.get("report_code"), *(entry.get("source_reports") or [])]:
+        if not report_code:
+            continue
+        code = str(report_code)
+        if code not in ordered_codes:
+            ordered_codes.append(code)
+    return ordered_codes
+
+
+def candidate_report_codes(candidate: local_gcd.GcdCandidate) -> set[str]:
+    codes = {str(candidate.report_code)} if candidate.report_code else set()
+    for source in (candidate.report, candidate.fight, candidate.player):
+        if not isinstance(source, dict):
+            continue
+        report_code = source.get("report_code")
+        if report_code:
+            codes.add(str(report_code))
+        for source_report_code in source.get("source_reports") or []:
+            if source_report_code:
+                codes.add(str(source_report_code))
+    return codes
+
+
 def apply_candidate_filters(fights: list[FightGroup], args: argparse.Namespace) -> list[FightGroup]:
     excluded_report_codes = {str(code) for code in (args.exclude_report_codes or []) if str(code)}
     if not args.report_code and args.fight_id is None and not args.player_name and not excluded_report_codes:
@@ -174,6 +252,12 @@ def apply_candidate_filters(fights: list[FightGroup], args: argparse.Namespace) 
             continue
 
         candidates = group.candidates
+        if excluded_report_codes:
+            candidates = [
+                candidate
+                for candidate in candidates
+                if not (candidate_report_codes(candidate) & excluded_report_codes)
+            ]
         if args.player_name:
             candidates = [
                 candidate
@@ -209,6 +293,203 @@ def jobs_in_fight(group: FightGroup) -> set[str]:
 def sorted_jobs(jobs: set[str]) -> list[str]:
     known_order = {job: index for index, job in enumerate(DEFAULT_REQUIRED_JOBS)}
     return sorted(jobs, key=lambda job: (known_order.get(job, len(known_order)), job))
+
+
+def candidate_identity(candidate: local_gcd.GcdCandidate) -> tuple[str, str, int | None, int | None, str, str, str]:
+    player = candidate.player
+    return (
+        candidate.encounter_key,
+        candidate.report_code,
+        local_gcd.to_int(candidate.fight.get("fight_id")),
+        local_gcd.to_int(player.get("fflogs_id")),
+        str(player.get("name") or player.get("character_name") or ""),
+        str(player.get("server") or ""),
+        str(player.get("job") or ""),
+    )
+
+
+def ranking_entry_identity(
+    encounter_key: str,
+    entry: dict[str, Any],
+    *,
+    report_code: str | None = None,
+) -> tuple[str, str, int | None, int | None, str, str, str]:
+    return (
+        encounter_key,
+        str(report_code or entry.get("report_code") or ""),
+        local_gcd.to_int(entry.get("fight_id")),
+        local_gcd.to_int(entry.get("fflogs_source_id")),
+        str(entry.get("character_name") or entry.get("name") or ""),
+        str(entry.get("server") or ""),
+        str(entry.get("job") or ""),
+    )
+
+
+def group_selected_candidates(candidates: list[local_gcd.GcdCandidate]) -> list[FightGroup]:
+    groups: dict[tuple[str, str, int], list[local_gcd.GcdCandidate]] = {}
+    for candidate in candidates:
+        fight_id = local_gcd.to_int(candidate.fight.get("fight_id"))
+        if fight_id is None:
+            continue
+        key = (candidate.encounter_key, candidate.report_code, fight_id)
+        groups.setdefault(key, []).append(candidate)
+
+    fight_groups: list[FightGroup] = []
+    for (encounter_key, report_code, fight_id), group_candidates in groups.items():
+        encounter = group_candidates[0].encounter
+        fight_groups.append(
+            FightGroup(
+                encounter_key=encounter_key,
+                encounter_name=str(encounter.get("name") or encounter_key),
+                category=str(encounter.get("category") or ""),
+                report_code=report_code,
+                fight_id=fight_id,
+                candidates=sorted(
+                    group_candidates,
+                    key=lambda candidate: (
+                        local_gcd.to_int(candidate.player.get("fflogs_id")) or 0,
+                        str(candidate.player.get("name") or ""),
+                    ),
+                ),
+            )
+        )
+
+    return sorted(fight_groups, key=lambda group: (group.category, group.encounter_key, group.report_code, group.fight_id))
+
+
+def select_player_samples_by_job(
+    fights: list[FightGroup],
+    *,
+    sample_size: int,
+    seed: str,
+    required_jobs: set[str],
+) -> SampleResult:
+    # 這個模式直接抽「玩家成績」，不是先抽整場戰鬥。用途是驗證每個副本/每個職業
+    # 是否都有足夠實際樣本能用本地演算法重算後對齊 xivanalysis；它比 fight-sample 更貼近
+    # 「每職業 100 筆」的驗算需求，也能避免少數職業在隨機戰鬥樣本中缺席。
+    candidates_by_encounter_job: dict[tuple[str, str], list[local_gcd.GcdCandidate]] = {}
+    selected_candidates: list[local_gcd.GcdCandidate] = []
+    seen_candidates: set[tuple[str, str, int | None, int | None, str, str, str]] = set()
+    for group in fights:
+        for candidate in group.candidates:
+            job = str(candidate.player.get("job") or "")
+            if job not in required_jobs:
+                continue
+            candidates_by_encounter_job.setdefault((group.encounter_key, job), []).append(candidate)
+
+    for (encounter_key, job), candidates in sorted(candidates_by_encounter_job.items()):
+        ordered = sorted(
+            candidates,
+            key=lambda candidate: (
+                candidate.report_code,
+                local_gcd.to_int(candidate.fight.get("fight_id")) or 0,
+                local_gcd.to_int(candidate.player.get("fflogs_id")) or 0,
+                str(candidate.player.get("name") or ""),
+            ),
+        )
+        rng = random.Random(f"{seed}:{encounter_key}:{job}:player-sample")
+        count = min(max(0, sample_size), len(ordered))
+        sampled = ordered if count >= len(ordered) else rng.sample(ordered, count)
+        for candidate in sampled:
+            identity = candidate_identity(candidate)
+            if identity in seen_candidates:
+                continue
+            seen_candidates.add(identity)
+            selected_candidates.append(candidate)
+
+    selected = group_selected_candidates(selected_candidates)
+    return SampleResult(
+        fights=selected,
+        summaries=summarize_sample(
+            fights,
+            selected,
+            sample_size=max(0, sample_size),
+            required_jobs=required_jobs,
+        ),
+    )
+
+
+def select_top_ranking_players_by_job(
+    fights: list[FightGroup],
+    rankings_by_key: dict[str, dict[str, Any]],
+    *,
+    per_job: int,
+    required_jobs: set[str],
+    excluded_report_codes: set[str] | None = None,
+) -> SampleResult:
+    # ranking_entries 是前端排行榜的實際顯示索引；這裡以同一份排序結果取每個
+    # encounter/job 前 N 名，再回到 reports/fights/players 權威來源建立 GcdCandidate。
+    # 這樣後續重算與寫回仍會落在可追溯 report 分片，而不是只修改衍生扁平列。
+    lookup: dict[tuple[str, str, int | None, int | None, str, str, str], local_gcd.GcdCandidate] = {}
+    fallback_lookup: dict[tuple[str, str, int | None, str, str, str], local_gcd.GcdCandidate] = {}
+    selected_candidates: list[local_gcd.GcdCandidate] = []
+    seen_candidates: set[tuple[str, str, int | None, int | None, str, str, str]] = set()
+    available_encounters = {group.encounter_key for group in fights}
+    excluded_report_codes = set(excluded_report_codes or set())
+
+    for group in fights:
+        for candidate in group.candidates:
+            identity = candidate_identity(candidate)
+            lookup.setdefault(identity, candidate)
+            fallback_lookup.setdefault(
+                (
+                    identity[0],
+                    identity[1],
+                    identity[2],
+                    identity[4],
+                    identity[5],
+                    identity[6],
+                ),
+                candidate,
+            )
+
+    for encounter_key in sorted(available_encounters):
+        ranking = rankings_by_key.get(encounter_key) or {}
+        entries = [entry for entry in ranking.get("ranking_entries") or [] if isinstance(entry, dict)]
+        for job in sorted_jobs(required_jobs):
+            job_entries = [entry for entry in entries if str(entry.get("job") or "") == job]
+            selected_for_job = 0
+            for entry in job_entries:
+                report_codes = ranking_entry_report_codes(entry)
+                if excluded_report_codes and (report_codes & excluded_report_codes):
+                    continue
+                candidate = None
+                for report_code in ranking_entry_report_code_order(entry):
+                    candidate = lookup.get(ranking_entry_identity(encounter_key, entry, report_code=report_code))
+                    if candidate is not None:
+                        break
+                    fallback_key = (
+                        encounter_key,
+                        report_code,
+                        local_gcd.to_int(entry.get("fight_id")),
+                        str(entry.get("character_name") or entry.get("name") or ""),
+                        str(entry.get("server") or ""),
+                        str(entry.get("job") or ""),
+                    )
+                    candidate = fallback_lookup.get(fallback_key)
+                    if candidate is not None:
+                        break
+                if candidate is None:
+                    continue
+                identity = candidate_identity(candidate)
+                if identity in seen_candidates:
+                    continue
+                seen_candidates.add(identity)
+                selected_candidates.append(candidate)
+                selected_for_job += 1
+                if selected_for_job >= max(0, per_job):
+                    break
+
+    selected = group_selected_candidates(selected_candidates)
+    return SampleResult(
+        fights=selected,
+        summaries=summarize_sample(
+            fights,
+            selected,
+            sample_size=max(0, per_job),
+            required_jobs=required_jobs,
+        ),
+    )
 
 
 def sample_fights(
@@ -440,6 +721,7 @@ def ensure_xivanalysis_accessible_sample(
         locale="en-US",
         delay_ms=max(0, delay_ms),
         rate_limit_coordinator=rate_limit_coordinator,
+        audit_cache=None,
     ):
         group = group_by_candidate_id[id(fetch_result.candidate)]
         if fetch_result.error is None:
@@ -461,6 +743,7 @@ def ensure_xivanalysis_accessible_sample(
         retries=max(1, retries),
         headful=headful,
         locale="en-US",
+        audit_cache=None,
     ) as client:
         for encounter_key, encounter_fights in sorted(groups_by_encounter.items()):
             target_count = min(max(0, sample_size), len(encounter_fights))
@@ -531,6 +814,9 @@ def compare_candidate(
     apply_all_checked: bool,
     local_mode: str,
     local_fallback: xiv_gcd.LocalGcdFallback | None,
+    audit_cache: xiv_gcd.GcdAuditCache | None,
+    refresh_cache: bool,
+    cache_only: bool,
     fetched_percent: float | None = None,
     fetched_url: str | None = None,
     fetched_error: Exception | None = None,
@@ -579,6 +865,7 @@ def compare_candidate(
         "stored_source": stored_source,
         "local_mode": local_mode,
         "xivanalysis_url": url,
+        "xivanalysis_cache": "miss",
     }
     if local_coverage is not None:
         result["local_coverage"] = {
@@ -595,6 +882,8 @@ def compare_candidate(
                 "fallback_selection",
                 "downtime_selection",
                 "speed_stat_source",
+                "estimated_skill_speed",
+                "estimated_spell_speed",
                 "estimated_speed_below_minimum",
                 "raw_events_percent",
                 "raw_events_denominator_ms",
@@ -602,20 +891,37 @@ def compare_candidate(
                 "casts_graph_denominator_ms",
                 "raw_targetability_percent",
                 "raw_targetability_denominator_ms",
+                "raw_graph_downtime_percent",
+                "raw_graph_downtime_denominator_ms",
                 "raw_next_gcd_capped_percent",
                 "raw_next_gcd_capped_denominator_ms",
+                "raw_next_gcd_uncapped_percent",
+                "raw_next_gcd_uncapped_denominator_ms",
             )
             if key in local_coverage
         }
     try:
         if fetched_error is not None:
             raise fetched_error
+        cached_xivanalysis = None
+        if fetched_percent is None and audit_cache is not None and not refresh_cache:
+            cached_xivanalysis = audit_cache.read_xivanalysis_result(candidate)
+            if cached_xivanalysis is not None:
+                fetched_percent = local_gcd.to_number(cached_xivanalysis.get("percent"))
+                cached_url = cached_xivanalysis.get("url")
+                if cached_url:
+                    url = str(cached_url)
+                result["xivanalysis_cache"] = "hit"
         if fetched_percent is None:
+            if cache_only:
+                raise xiv_gcd.XivanalysisLookupError(f"xivanalysis GCD 答案快取缺漏：{candidate.label}")
             if client is None:
                 raise xiv_gcd.XivanalysisLookupError("缺少 xivanalysis client 或預抓結果，無法讀取頁面百分比。")
             xiv_percent, url = client.fetch_gcd_percent(candidate)
         else:
             xiv_percent = fetched_percent
+        if audit_cache is not None and result.get("xivanalysis_cache") != "hit":
+            audit_cache.write_xivanalysis_result(candidate, percent=xiv_percent, url=url)
     except Exception as error:  # noqa: BLE001
         result["state"] = "error"
         result["error"] = f"{type(error).__name__}: {error}"
@@ -623,8 +929,10 @@ def compare_candidate(
 
     # xivanalysis checklist 頁面只顯示一位小數；audit 應以同樣的顯示精度判斷
     # 是否超出容忍值，避免 73.71 vs 72.7 這類其實顯示為 73.7 的邊界值被誤判。
-    before_display = display_percent(before)
-    stored_display = display_percent(stored_percent)
+    stored_coverage = player.get("gcd_coverage") if isinstance(player.get("gcd_coverage"), dict) else None
+    display_coverage = local_coverage if local_mode == LOCAL_MODE_RECOMPUTE else stored_coverage
+    before_display = display_percent_from_coverage(display_coverage, before)
+    stored_display = display_percent_from_coverage(stored_coverage, stored_percent)
     difference = None if before_display is None else round(before_display - xiv_percent, 2)
     stored_difference = None if stored_display is None else round(stored_display - xiv_percent, 2)
     mismatch = before is None or abs(difference or 0) > tolerance
@@ -632,6 +940,7 @@ def compare_candidate(
         {
             "state": "mismatch" if mismatch else "matched",
             "xivanalysis_percent": round(xiv_percent, 2),
+            "xivanalysis_url": url,
             "current_display_percent": before_display,
             "difference": difference,
             "stored_display_percent": stored_display,
@@ -666,11 +975,124 @@ def write_changed_rankings(
         print(f"已寫入 {key} 的 xivanalysis GCD 稽核修正。")
 
 
+def update_report_summary(
+    report: dict[str, Any],
+    *,
+    matched: int,
+    mismatched: int,
+    errors: int,
+    args: argparse.Namespace,
+    changed_encounter_keys: set[str],
+) -> None:
+    report["summary"] = {
+        "matched": matched,
+        "mismatched": mismatched,
+        "errors": errors,
+        "applied": bool(args.apply),
+        "apply_all_checked": bool(args.apply and args.apply_all_checked),
+        "changed_encounter_keys": sorted(changed_encounter_keys),
+    }
+
+
+def write_audit_report(path: Path, report: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = path.with_name(f".{path.name}.{time.time_ns()}.tmp")
+    temp_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+    temp_path.replace(path)
+
+
+def prefetch_xivanalysis_candidates(
+    candidates: list[local_gcd.GcdCandidate],
+    *,
+    args: argparse.Namespace,
+    audit_cache: xiv_gcd.GcdAuditCache | None,
+    worker_count: int,
+    rate_limit_coordinator: xiv_gcd.XivanalysisRateLimitCoordinator | None,
+) -> dict[int, xiv_gcd.XivanalysisFetchResult]:
+    if worker_count <= 1 or args.cache_only:
+        return {}
+
+    missing_candidates: list[local_gcd.GcdCandidate] = []
+    refresh_xivanalysis_answer = bool(args.refresh_cache or args.refresh_xivanalysis_cache)
+    for candidate in candidates:
+        if audit_cache is not None and not refresh_xivanalysis_answer:
+            cached_xivanalysis = audit_cache.read_xivanalysis_result(candidate)
+            if cached_xivanalysis is not None:
+                continue
+        missing_candidates.append(candidate)
+
+    if not missing_candidates:
+        return {}
+
+    prefetched_results: dict[int, xiv_gcd.XivanalysisFetchResult] = {}
+    for fetch_result in xiv_gcd.fetch_xivanalysis_results_parallel(
+        missing_candidates,
+        workers=worker_count,
+        base_url=xiv_gcd.XIVANALYSIS_BASE_URL,
+        timeout_ms=max(5_000, args.page_timeout_ms),
+        retries=max(1, args.retries),
+        headful=args.headful,
+        locale="en-US",
+        delay_ms=max(0, args.delay_ms),
+        rate_limit_coordinator=rate_limit_coordinator,
+        audit_cache=audit_cache,
+    ):
+        prefetched_results[id(fetch_result.candidate)] = fetch_result
+        player = fetch_result.candidate.player
+        player_label = player.get("name") or player.get("character_name")
+        if fetch_result.error is None:
+            print(
+                f"  [fetch {fetch_result.index}/{fetch_result.total}] "
+                f"{player_label}:{player.get('job')} xiv={fetch_result.percent}"
+            )
+            continue
+
+        if args.abort_on_fetch_error and isinstance(fetch_result.error, xiv_gcd.XivanalysisPermanentError):
+            fight_id = local_gcd.to_int(fetch_result.candidate.fight.get("fight_id"))
+            raise RuntimeError(
+                "xivanalysis fetch error: "
+                f"index={fetch_result.index}/{fetch_result.total} "
+                f"encounter={fetch_result.candidate.encounter_key} "
+                f"report={fetch_result.candidate.report_code} "
+                f"fight={fight_id} "
+                f"player={player_label} "
+                f"job={player.get('job')} "
+                f"error={type(fetch_result.error).__name__}: {fetch_result.error}"
+            ) from fetch_result.error
+        print(
+            f"  [fetch {fetch_result.index}/{fetch_result.total}] "
+            f"{player_label}:{player.get('job')} error={type(fetch_result.error).__name__}: {fetch_result.error}"
+        )
+
+    return prefetched_results
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="隨機抽樣比對本地 GCD 與 xivanalysis Always Be Casting。")
-    parser.add_argument("--sample-size", type=int, default=10, help="每個副本基本抽樣的戰鬥組數；職業覆蓋不足時會自動補抽。")
+    parser.add_argument(
+        "--selection-mode",
+        choices=[SELECTION_MODE_FIGHT_SAMPLE, SELECTION_MODE_PLAYER_SAMPLE, SELECTION_MODE_TOP_RANKINGS],
+        default=SELECTION_MODE_FIGHT_SAMPLE,
+        help=(
+            "fight-sample=每副本抽樣戰鬥並補職業覆蓋；"
+            "player-sample=每副本每職業抽樣玩家；"
+            "top-rankings=每副本每職業取排行榜前 N 名。"
+        ),
+    )
+    parser.add_argument(
+        "--sample-size",
+        type=int,
+        default=10,
+        help="fight-sample 為每副本戰鬥數；player-sample/top-rankings 為每副本每職業玩家數。",
+    )
     parser.add_argument("--seed", default="2026-05-22", help="抽樣 seed，固定後可重現同一批戰鬥。")
     parser.add_argument("--categories", nargs="+", default=list(DEFAULT_CATEGORIES), help="要抽樣的副本分類。")
+    parser.add_argument(
+        "--encounter-keys",
+        nargs="+",
+        default=[],
+        help="只稽核指定 encounter key，方便將全量 player-sample/top-rankings 切成可續跑的小批次。",
+    )
     parser.add_argument(
         "--required-jobs",
         nargs="+",
@@ -710,6 +1132,30 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--error-retry-passes", type=int, default=3, help="主巡檢後，針對讀取錯誤玩家額外重試幾輪。")
     parser.add_argument("--error-retry-delay-ms", type=int, default=1500, help="錯誤重試時每位玩家查詢後的延遲。")
     parser.add_argument("--report-path", default=str(DEFAULT_REPORT_PATH), help="輸出的 JSON 稽核報告路徑。")
+    parser.add_argument("--checkpoint-every-fights", type=int, default=25, help="每處理多少個 fight group 先寫一次稽核報告；0 代表只在結尾寫出。")
+    parser.add_argument(
+        "--audit-fight-start",
+        type=int,
+        help="只稽核本輪選出 fight group 的第 N 筆之後，1-based 且包含 N；用於把外站逐頁驗證切成可續跑批次。",
+    )
+    parser.add_argument(
+        "--audit-fight-end",
+        type=int,
+        help="只稽核本輪選出 fight group 的第 N 筆之前，1-based 且包含 N；需搭配 --audit-fight-start 分批跑長時間外站稽核。",
+    )
+    parser.add_argument(
+        "--cache-dir",
+        default=str(xiv_gcd.DEFAULT_AUDIT_CACHE_DIR),
+        help="FFLogs 戰鬥資料與 xivanalysis GCD 答案的本機快取目錄；預設放在 .cache/，不進 Git。",
+    )
+    parser.add_argument("--no-cache", action="store_true", help="停用本機稽核快取，所有資料都重新抓取。")
+    parser.add_argument("--refresh-cache", action="store_true", help="忽略既有快取並重新抓取，成功後覆寫快取。")
+    parser.add_argument(
+        "--refresh-xivanalysis-cache",
+        action="store_true",
+        help="只重新讀取 xivanalysis 頁面答案並覆寫該快取；FFLogs graph/raw events 仍優先沿用既有快取。",
+    )
+    parser.add_argument("--cache-only", action="store_true", help="只讀取本機稽核快取，缺少 FFLogs payload 或 xivanalysis 答案時直接記錄錯誤。")
     parser.add_argument("--headful", action="store_true", help="以有畫面模式開啟 Chromium，僅供人工除錯。")
     parser.add_argument("--report-code", help="只稽核指定 report code，方便複驗單場差異。")
     parser.add_argument(
@@ -725,20 +1171,45 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
+    audit_cache = None if args.no_cache else xiv_gcd.GcdAuditCache(Path(args.cache_dir))
+    if args.cache_only and audit_cache is None:
+        raise SystemExit("--cache-only 需要啟用快取，不能和 --no-cache 一起使用。")
     categories = {str(category) for category in args.categories}
+    encounter_keys = {str(encounter_key) for encounter_key in args.encounter_keys if str(encounter_key)}
     required_jobs = {str(job) for job in args.required_jobs if str(job)}
     encounters = local_gcd.load_all_encounters()
     fights, rankings_by_key = collect_fight_groups(encounters, categories=categories)
+    fights = filter_fights_by_encounter_keys(fights, encounter_keys)
+    if encounter_keys:
+        rankings_by_key = {key: ranking for key, ranking in rankings_by_key.items() if key in encounter_keys}
     fights = apply_candidate_filters(fights, args)
-    sample = sample_fights(
-        fights,
-        sample_size=max(0, args.sample_size),
-        seed=str(args.seed),
-        required_jobs=required_jobs,
-    )
+    if args.selection_mode == SELECTION_MODE_PLAYER_SAMPLE:
+        sample = select_player_samples_by_job(
+            fights,
+            sample_size=max(0, args.sample_size),
+            seed=str(args.seed),
+            required_jobs=required_jobs,
+        )
+    elif args.selection_mode == SELECTION_MODE_TOP_RANKINGS:
+        sample = select_top_ranking_players_by_job(
+            fights,
+            rankings_by_key,
+            per_job=max(0, args.sample_size),
+            required_jobs=required_jobs,
+            excluded_report_codes={str(code) for code in (args.exclude_report_codes or []) if str(code)},
+        )
+    else:
+        sample = sample_fights(
+            fights,
+            sample_size=max(0, args.sample_size),
+            seed=str(args.seed),
+            required_jobs=required_jobs,
+        )
     selected = sample.fights
     skipped_inaccessible_fights: list[dict[str, Any]] = []
-    if args.require_xivanalysis_accessible:
+    if args.require_xivanalysis_accessible and args.selection_mode != SELECTION_MODE_FIGHT_SAMPLE:
+        print("提醒：--require-xivanalysis-accessible 目前只會替 fight-sample 補抽；本次選樣模式會在逐位比對時記錄不可讀錯誤。")
+    if args.require_xivanalysis_accessible and args.selection_mode == SELECTION_MODE_FIGHT_SAMPLE:
         accessible_sample = ensure_xivanalysis_accessible_sample(
             fights=fights,
             selected=selected,
@@ -753,11 +1224,34 @@ def main() -> int:
         )
         selected = accessible_sample.fights
         skipped_inaccessible_fights = accessible_sample.skipped_fights
-        sample.summaries = summarize_sample(
-            fights,
-            selected,
-            sample_size=max(0, args.sample_size),
-            required_jobs=required_jobs,
+        sample = SampleResult(
+            fights=selected,
+            summaries=summarize_sample(
+                fights,
+                selected,
+                sample_size=max(0, args.sample_size),
+                required_jobs=required_jobs,
+            ),
+        )
+    selected_fight_count_before_range = len(selected)
+    audit_fight_start = max(1, args.audit_fight_start) if args.audit_fight_start else None
+    audit_fight_end = max(1, args.audit_fight_end) if args.audit_fight_end else None
+    if audit_fight_start is not None or audit_fight_end is not None:
+        start_index = (audit_fight_start or 1) - 1
+        end_index = audit_fight_end if audit_fight_end is not None else len(selected)
+        if end_index < start_index + 1:
+            raise SystemExit("--audit-fight-end 必須大於或等於 --audit-fight-start。")
+        # 外站逐頁驗證很容易超過單次工具時間；這裡只切本輪已選出的 fight group，
+        # 不改變抽樣池、排行榜資料或任何正式 data/ 產物。
+        selected = selected[start_index:end_index]
+        sample = SampleResult(
+            fights=selected,
+            summaries=summarize_sample(
+                fights,
+                selected,
+                sample_size=max(0, args.sample_size),
+                required_jobs=required_jobs,
+            ),
         )
     total_players = sum(len(group.candidates) for group in selected)
     selected_by_category: dict[str, int] = {}
@@ -792,9 +1286,21 @@ def main() -> int:
         if summary.unavailable_jobs:
             print(f"    資料內不可用職業：{', '.join(summary.unavailable_jobs)}")
     print(f"本輪需比對玩家數：{total_players}")
+    print(f"選樣模式：{args.selection_mode}")
     print(f"分類：{', '.join(sorted(categories))}")
+    if encounter_keys:
+        print(f"指定副本：{', '.join(sorted(encounter_keys))}")
     print(f"seed：{args.seed}")
-    print(f"每副本基本抽樣：{max(0, args.sample_size)} 場")
+    if args.selection_mode == SELECTION_MODE_FIGHT_SAMPLE:
+        print(f"每副本基本抽樣：{max(0, args.sample_size)} 場")
+    else:
+        print(f"每副本每職業玩家上限：{max(0, args.sample_size)} 位")
+    if audit_fight_start is not None or audit_fight_end is not None:
+        print(
+            "fight group 稽核切片："
+            f"{audit_fight_start or 1}..{audit_fight_end or selected_fight_count_before_range} "
+            f"(原始選樣 {selected_fight_count_before_range} 組)"
+        )
     print(f"職業覆蓋目標：{', '.join(sorted_jobs(required_jobs))}")
     print(f"差異容忍值：±{args.tolerance:.2f} 個百分點")
     print(f"本地值來源：{args.local_mode}")
@@ -803,14 +1309,22 @@ def main() -> int:
     print(f"xivanalysis worker 數：{max(1, args.workers)}")
     print(f"排除不可讀 xivanalysis 頁面：{'是' if args.require_xivanalysis_accessible else '否'}")
     print(f"排除 report code：{', '.join(args.exclude_report_codes) if args.exclude_report_codes else '無'}")
+    print(f"稽核快取：{'停用' if args.no_cache else Path(args.cache_dir)}")
+    print(f"刷新全部快取：{'是' if args.refresh_cache else '否'}")
+    print(f"只刷新 xivanalysis 答案快取：{'是' if args.refresh_xivanalysis_cache else '否'}")
 
     report: dict[str, Any] = {
         "schema_version": 2,
+        "selection_mode": args.selection_mode,
         "seed": args.seed,
         "categories": sorted(categories),
+        "encounter_keys": sorted(encounter_keys),
         "sample_size_per_encounter": max(0, args.sample_size),
         "required_jobs": sorted_jobs(required_jobs),
         "selected_fight_count": len(selected),
+        "selected_fight_count_before_range": selected_fight_count_before_range,
+        "audit_fight_start": audit_fight_start,
+        "audit_fight_end": audit_fight_end,
         "available_fights_by_category": available_by_category,
         "selected_fights_by_category": selected_by_category,
         "available_fights_by_encounter": available_by_encounter,
@@ -825,12 +1339,19 @@ def main() -> int:
         "apply": bool(args.apply),
         "apply_all_checked": bool(args.apply and args.apply_all_checked),
         "require_xivanalysis_accessible": bool(args.require_xivanalysis_accessible),
+        "cache_enabled": not bool(args.no_cache),
+        "cache_dir": None if args.no_cache else str(Path(args.cache_dir)),
+        "refresh_cache": bool(args.refresh_cache),
+        "refresh_xivanalysis_cache": bool(args.refresh_xivanalysis_cache),
+        "cache_only": bool(args.cache_only),
         "excluded_report_codes": list(args.exclude_report_codes or []),
         "skipped_inaccessible_fights": skipped_inaccessible_fights,
         "checked_at_iso": checked_at_iso,
         "fights": [],
         "summary": {},
     }
+    report_path = Path(args.report_path)
+    checkpoint_every_fights = max(0, args.checkpoint_every_fights)
 
     changed_encounter_keys: set[str] = set()
     matched = 0
@@ -838,71 +1359,59 @@ def main() -> int:
     errors = 0
     processed_players = 0
     error_entries: list[dict[str, Any]] = []
-    local_fallback = xiv_gcd.LocalGcdFallback() if args.local_mode == LOCAL_MODE_RECOMPUTE else None
+    local_fallback = (
+        xiv_gcd.LocalGcdFallback(
+            audit_cache=audit_cache,
+            refresh_cache=bool(args.refresh_cache),
+            cache_only=bool(args.cache_only),
+        )
+        if args.local_mode == LOCAL_MODE_RECOMPUTE
+        else None
+    )
 
     if total_players <= 0:
         print("沒有需要比對的玩家，略過 xivanalysis 瀏覽器查詢。")
     else:
         worker_count = max(1, args.workers)
-        prefetched_results: dict[int, xiv_gcd.XivanalysisFetchResult] = {}
-        if worker_count > 1:
-            # 外站稽核的權威仍是 xivanalysis 實際頁面文字。多 worker 只並行讀頁面百分比，
-            # 後續仍照抽樣 fight/player 原順序比對與寫回，讓輸出 JSON 可穩定重現。
-            selected_candidates = [candidate for group in selected for candidate in group.candidates]
-            rate_limit_coordinator = xiv_gcd.XivanalysisRateLimitCoordinator(
+        rate_limit_coordinator = (
+            xiv_gcd.XivanalysisRateLimitCoordinator(
                 cooldown_seconds=xiv_gcd.DEFAULT_RATE_LIMIT_COOLDOWN_SECONDS,
                 max_pauses=xiv_gcd.DEFAULT_MAX_RATE_LIMIT_PAUSES,
             )
-            for fetch_result in xiv_gcd.fetch_xivanalysis_results_parallel(
-                selected_candidates,
-                workers=worker_count,
-                base_url=xiv_gcd.XIVANALYSIS_BASE_URL,
-                timeout_ms=max(5_000, args.page_timeout_ms),
-                retries=max(1, args.retries),
-                headful=args.headful,
-                locale="en-US",
-                delay_ms=max(0, args.delay_ms),
-                rate_limit_coordinator=rate_limit_coordinator,
-            ):
-                prefetched_results[id(fetch_result.candidate)] = fetch_result
-                player = fetch_result.candidate.player
-                player_label = player.get("name") or player.get("character_name")
-                if fetch_result.error is None:
-                    print(
-                        f"  [fetch {fetch_result.index}/{fetch_result.total}] "
-                        f"{player_label}:{player.get('job')} xiv={fetch_result.percent}"
-                    )
-                else:
-                    if args.abort_on_fetch_error and isinstance(fetch_result.error, xiv_gcd.XivanalysisPermanentError):
-                        fight_id = local_gcd.to_int(fetch_result.candidate.fight.get("fight_id"))
-                        raise RuntimeError(
-                            "xivanalysis fetch error: "
-                            f"index={fetch_result.index}/{fetch_result.total} "
-                            f"encounter={fetch_result.candidate.encounter_key} "
-                            f"report={fetch_result.candidate.report_code} "
-                            f"fight={fight_id} "
-                            f"player={player_label} "
-                            f"job={player.get('job')} "
-                            f"error={type(fetch_result.error).__name__}: {fetch_result.error}"
-                        ) from fetch_result.error
-                    print(
-                        f"  [fetch {fetch_result.index}/{fetch_result.total}] "
-                        f"{player_label}:{player.get('job')} error={type(fetch_result.error).__name__}: {fetch_result.error}"
-                    )
+            if worker_count > 1 and not args.cache_only
+            else None
+        )
+        prefetched_results: dict[int, xiv_gcd.XivanalysisFetchResult] = {}
 
         client_context = (
             nullcontext(None)
-            if worker_count > 1
+            if worker_count > 1 or args.cache_only
             else xiv_gcd.XivanalysisPageClient(
                 base_url=xiv_gcd.XIVANALYSIS_BASE_URL,
                 timeout_ms=max(5_000, args.page_timeout_ms),
                 retries=max(1, args.retries),
                 headful=args.headful,
                 locale="en-US",
+                audit_cache=audit_cache,
             )
         )
         with client_context as client:
+            prefetch_batch_fights = checkpoint_every_fights if checkpoint_every_fights > 0 else 25
             for fight_index, group in enumerate(selected, start=1):
+                if (
+                    worker_count > 1
+                    and not args.cache_only
+                    and (fight_index - 1) % max(1, prefetch_batch_fights) == 0
+                ):
+                    batch_groups = selected[fight_index - 1 : fight_index - 1 + max(1, prefetch_batch_fights)]
+                    batch_candidates = [candidate for batch_group in batch_groups for candidate in batch_group.candidates]
+                    prefetched_results = prefetch_xivanalysis_candidates(
+                        batch_candidates,
+                        args=args,
+                        audit_cache=audit_cache,
+                        worker_count=worker_count,
+                        rate_limit_coordinator=rate_limit_coordinator,
+                    )
                 print(f"[{fight_index}/{len(selected)}] 比對 {group.label}，玩家 {len(group.candidates)} 位。")
                 fight_result = {
                     "encounter_key": group.encounter_key,
@@ -924,6 +1433,9 @@ def main() -> int:
                         apply_all_checked=bool(args.apply and args.apply_all_checked),
                         local_mode=args.local_mode,
                         local_fallback=local_fallback,
+                        audit_cache=audit_cache,
+                        refresh_cache=bool(args.refresh_cache or args.refresh_xivanalysis_cache),
+                        cache_only=bool(args.cache_only),
                         fetched_percent=None if fetch_result is None else fetch_result.percent,
                         fetched_url=None if fetch_result is None else fetch_result.url,
                         fetched_error=None if fetch_result is None else fetch_result.error,
@@ -955,12 +1467,35 @@ def main() -> int:
                         f"xiv={player_result.get('xivanalysis_percent')} "
                         f"diff={player_result.get('difference')}"
                     )
-                    if worker_count <= 1 and args.delay_ms > 0 and processed_players < total_players:
+                    if (
+                        worker_count <= 1
+                        and args.delay_ms > 0
+                        and processed_players < total_players
+                        and player_result.get("xivanalysis_cache") != "hit"
+                    ):
                         time.sleep(args.delay_ms / 1000)
                 report["fights"].append(fight_result)
+                if local_fallback is not None:
+                    local_fallback.clear_cached_fight_data()
+                if checkpoint_every_fights and fight_index % checkpoint_every_fights == 0:
+                    update_report_summary(
+                        report,
+                        matched=matched,
+                        mismatched=mismatched,
+                        errors=errors,
+                        args=args,
+                        changed_encounter_keys=changed_encounter_keys,
+                    )
+                    write_audit_report(report_path, report)
+                    print(
+                        f"已寫入稽核 checkpoint：{report_path} "
+                        f"({fight_index}/{len(selected)} fights)"
+                    )
 
     for retry_pass in range(1, max(0, args.error_retry_passes) + 1):
         if not error_entries:
+            break
+        if args.cache_only:
             break
 
         pending_entries = error_entries
@@ -972,6 +1507,7 @@ def main() -> int:
             retries=max(1, args.retries),
             headful=args.headful,
             locale="en-US",
+            audit_cache=audit_cache,
         ) as client:
             for retry_index, entry in enumerate(pending_entries, start=1):
                 candidate = entry["candidate"]
@@ -984,6 +1520,9 @@ def main() -> int:
                     apply_all_checked=bool(args.apply and args.apply_all_checked),
                     local_mode=args.local_mode,
                     local_fallback=local_fallback,
+                    audit_cache=audit_cache,
+                    refresh_cache=bool(args.refresh_cache or args.refresh_xivanalysis_cache),
+                    cache_only=bool(args.cache_only),
                 )
                 entry["fight_result"]["players"][entry["player_index"]] = retry_result
                 if retry_result["state"] == "matched":
@@ -1006,23 +1545,23 @@ def main() -> int:
                     f"xiv={retry_result.get('xivanalysis_percent')} "
                     f"diff={retry_result.get('difference')}"
                 )
+                if local_fallback is not None:
+                    local_fallback.clear_cached_fight_data()
                 if args.error_retry_delay_ms > 0 and retry_index < len(pending_entries):
                     time.sleep(args.error_retry_delay_ms / 1000)
 
     if args.apply:
         write_changed_rankings(changed_encounter_keys, rankings_by_key=rankings_by_key, encounters=encounters)
 
-    report["summary"] = {
-        "matched": matched,
-        "mismatched": mismatched,
-        "errors": errors,
-        "applied": bool(args.apply),
-        "apply_all_checked": bool(args.apply and args.apply_all_checked),
-        "changed_encounter_keys": sorted(changed_encounter_keys),
-    }
-    report_path = Path(args.report_path)
-    report_path.parent.mkdir(parents=True, exist_ok=True)
-    report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+    update_report_summary(
+        report,
+        matched=matched,
+        mismatched=mismatched,
+        errors=errors,
+        args=args,
+        changed_encounter_keys=changed_encounter_keys,
+    )
+    write_audit_report(report_path, report)
     print(f"已輸出稽核報告：{report_path}")
     print(f"比對完成：相符 {matched}，不相符 {mismatched}，錯誤 {errors}。")
     return 0 if errors == 0 and mismatched == 0 else 1

@@ -227,6 +227,31 @@ class FetchFFLogsBatchTest(unittest.TestCase):
         )
         self.assertTrue(all("original_server" not in 條目 for 條目 in 公開排行榜["ranking_entries"]))
 
+    def test_public_ranking_entry_filters_internal_gcd_diagnostics(self) -> None:
+        條目 = {
+            "id": "entry-1",
+            "character_name": "測試角色",
+            "server": "巴哈姆特",
+            "job": "Dancer",
+            "gcd_coverage": {
+                "percent": 98.7,
+                "calculation_version": 20,
+                "source": "fflogs_raw_events",
+                "raw_events_percent": 98.7,
+                "raw_events_denominator_ms": 500000,
+                "raw_graph_downtime_percent": 98.6,
+                "raw_graph_downtime_denominator_ms": 501000,
+            },
+        }
+
+        公開條目 = fflogs.建立公開排行榜條目(條目)
+
+        self.assertEqual(公開條目["gcd_coverage"]["percent"], 98.7)
+        self.assertEqual(公開條目["gcd_coverage"]["raw_events_percent"], 98.7)
+        self.assertNotIn("raw_graph_downtime_percent", 公開條目["gcd_coverage"])
+        self.assertNotIn("raw_graph_downtime_denominator_ms", 公開條目["gcd_coverage"])
+        self.assertIn("raw_graph_downtime_percent", 條目["gcd_coverage"])
+
     def test_reprocessed_report_preserves_existing_gcd_coverage(self) -> None:
         舊報告 = 建立測試排行榜報告("same-report", 有GCD=True)
         新報告 = 建立測試排行榜報告("same-report", 有GCD=False)

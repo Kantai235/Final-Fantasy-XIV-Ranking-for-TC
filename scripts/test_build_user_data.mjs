@@ -119,6 +119,8 @@ async function createFixture(tempRoot) {
                 gcd_cast_count: 220,
                 calculation_version: 1,
                 source: "fflogs_casts_graph",
+                raw_graph_downtime_percent: 94.4,
+                raw_graph_downtime_denominator_ms: 551000,
               },
               gcd_coverage_status: {
                 state: "ok",
@@ -175,6 +177,8 @@ async function createFixture(tempRoot) {
                 gcd_cast_count: 220,
                 calculation_version: 1,
                 source: "fflogs_casts_graph",
+                raw_graph_downtime_percent: 94.4,
+                raw_graph_downtime_denominator_ms: 551000,
               },
               gcd_coverage_status: {
                 state: "ok",
@@ -439,11 +443,16 @@ async function assertFixtureOutput(tempRoot, expectedGlobalStatsText, expectedSe
     mainUserBestDetail?.report_variants?.some((variant) => variant.report_code === "RPT1B" && variant.fight_id === 9),
     "報告分頁資料應包含另一位上傳者的 report 與 fight。",
   );
+  assert(
+    !mainUserBestDetail?.report_variants?.some((variant) => Object.hasOwn(variant.gcd_coverage || {}, "raw_graph_downtime_percent")),
+    "報告分頁資料不應輸出 GCD 內部診斷欄位。",
+  );
   const mainUserBlackMageEntry = mainUserData.encounters[0]?.public_entries?.find((entry) => entry.job === "BlackMage");
   assert(mainUserBlackMageEntry?.job_rank === 2, "fixture 需保留較高 rDPS 但職業 Rank 較低的輸出紀錄。");
   assert(mainUserBlackMageEntry?.fflogs_source_id === 202, "個人成績歷史列應保留 FFLogs sourceID 供外部工具深連結使用。");
   const mainUserEntry = mainUserData.encounters[0]?.public_entries?.[0];
   assert(mainUserEntry?.gcd_coverage?.percent === 94.43, "個人成績單應保留 GCD 覆蓋率。");
+  assert(!Object.hasOwn(mainUserEntry.gcd_coverage || {}, "raw_graph_downtime_percent"), "個人成績單不應輸出 GCD 內部診斷欄位。");
   assert(!Object.hasOwn(mainUserEntry, "gcd_coverage_status"), "個人成績單不應輸出 GCD 診斷狀態，避免首屏 payload 膨脹。");
   assert(mainUserData.frequent_teammates[0]?.character_name === "治療隊友", "測試角色應彙整同場隊友。");
   assert(mainUserData.frequent_teammates[0]?.co_clear_count === 1, "同一場戰鬥的重複 report 不應灌水常同場隊友次數。");
