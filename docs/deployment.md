@@ -34,7 +34,7 @@ npm run build
 工作流程摘要：
 
 1. 以淺層 partial clone checkout 並同步最新分支狀態；workflow 不抓完整 Git 歷史，避免大型資料 repo 的歷史 pack 耗盡 GitHub-hosted runner 磁碟。
-2. 設定 Python 3.11 與 Node.js 20。
+2. 設定 Python 3.11 與 Node.js 24。
 3. 安裝 Python 與 Node.js 依賴。
 4. 若有 Cloudflare secrets，先同步 Cloudflare Cache Rules、Facebook 分享爬蟲例外與 Rate Limiting Rules。
 5. 使用 GitHub Secrets 中的 FFLogs 憑證執行 `python scripts/fetch_fflogs.py`，掃描全部地區候選 report，近期 24 小時完整重查、24-72 小時只選未知 report，並以每輪 1 個 168 小時視窗、最多 600 份深層候選且同一 zone/difficulty 群組最多 150 份的歷史補查檢查更舊時間窗是否有新的公開 logs 可抓取，同時對新落地 fight 即時計算 GCD 覆蓋率。正式排程設定可續跑的抓取時間預算，避免 FFLogs 憑證長冷卻時整個 job 被 runner 取消。
@@ -53,7 +53,7 @@ npm run build
 18. 執行 `npm run audit:pages-payload:strict -- --write-history data/pages_payload_history.jsonl`，讓 artifact 體積超過 target 時在上傳 Pages artifact 前失敗，並在 GitHub Step Summary 顯示本輪與上一筆歷史差異。
 19. 若 `data/pages_payload_history.jsonl` 有變更，另行提交並推送 payload 稽核歷史。
 20. 執行 `npm run cloudflare:estimate` 與 `npm run cloudflare:purge -- --dry-run --summary`，在 Step Summary 顯示 HIT ratio 承載估算與 scoped purge 範圍。
-21. 上傳 `dist/` 並部署到 GitHub Pages。
+21. 上傳 `dist/` 並部署到 GitHub Pages；若 Pages 服務端在 `syncing_files` 階段回報暫時性失敗，workflow 會等待 60 秒後重試一次。
 22. 若有 Cloudflare purge token，部署成功後清除會變動的 CDN 快取。
 
 ## 緊急部署
@@ -69,7 +69,7 @@ npm run build
 3. 選擇 `cloudflare_purge_mode`：
    - `everything`：預設值。適合首頁、`404.html` 或 hashed bundle 仍被 Cloudflare 邊緣節點回舊版本時使用。
    - `scoped`：只清除本專案既有 prefix 與核心檔案，適合一般靜態頁或資料路徑更新。
-4. 執行後確認 workflow 的 `部署 GitHub Pages` 與 `清除 Cloudflare CDN 快取` 步驟完成。
+4. 執行後確認 workflow 的 `記錄 GitHub Pages 部署網址` 與 `清除 Cloudflare CDN 快取` 步驟完成。
 
 緊急部署仍會跑 `npm run build`，因此會重建公開排行榜、個人成績單、排行榜薄索引、Logs 狀態索引、Honey B. Lovely 粉絲榜公開 JSON、SEO/OG 靜態頁、`sitemap.xml`、`robots.txt` 與 `404.html`，並執行 `validate:data`。建置完成後同樣會執行 `npm run prune:pages-user-data`，讓主站 artifact 不重新帶回大型個人成績單 JSON。這是為了確保部署出去的靜態產物與 repo 內資料契約一致；差別在於它只重建已提交資料，不向 FFLogs 取得新資料，也不會同步 users 專用 repo。
 

@@ -4,7 +4,7 @@
 
 ## 需求環境
 
-- Node.js 20+
+- Node.js 20+（GitHub Actions 固定使用 Node.js 24）
 - Python 3.11+
 - FFLogs OAuth Client Credentials
 

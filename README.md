@@ -13,7 +13,7 @@ Final Fantasy XIV 繁中服排行榜是一個以 FFLogs 公開資料為來源的
 
 需求環境：
 
-- Node.js 20+
+- Node.js 20+（GitHub Actions 固定使用 Node.js 24）
 - Python 3.11+
 - FFLogs OAuth Client Credentials
 
@@ -133,6 +133,7 @@ README 只保留入口與最小操作脈絡，完整說明請依主題閱讀：
 - `data/state.json` 會以緊湊 JSON 保存大量 `checked_reports`，避免為了通過 GitHub 100 MiB 單檔限制而刪除跨輪略過依據；正式 workflow 會在資料 commit 前執行 `npm run compact:state -- --max-bytes 104857600`。`processed_at_iso` 不再作為 report checkpoint 必要欄位，因為它可由 `processed_at` 毫秒時間重建。
 - GitHub Actions 的 FFLogs 排行榜抓取步驟預設設定 `FFLOGS_MAX_RUNTIME_SECONDS=6000` 與 `FFLOGS_RUNTIME_GRACE_SECONDS=900`，可由 repo variables 覆寫。這讓 FFLogs 憑證全數進入長冷卻時，`fetch_fflogs.py` 能先保留 `active_scan` 續跑位置並正常進入後續資料建置與 commit，避免 GitHub-hosted runner 直接取消整個 job。
 - GitHub Actions checkout 只抓目前分支的淺層 partial clone；這個資料 repo 的完整歷史 pack 已非常大，正式更新與緊急部署都不應改回 `fetch-depth: 0`，避免 runner 在 checkout 階段耗盡磁碟。
+- GitHub Actions 以 Node.js 24 執行前端與資料建置，官方 actions 也需使用支援 Node 24 的 major 版本；Pages 部署若遇到 `syncing_files` 後的暫時性失敗，workflow 會等待 60 秒後重試一次。
 - 正式 Pages artifact 不保留 `dist/data/users`、`dist/data/user-entry-details` 與 hidden 使用者差量 JSON；`postbuild` 會先用 `public/data/users/index.json` 產生玩家分享頁與 OG 圖，接著由 `npm run prune:pages-user-data` 清掉 artifact 內的大型個人成績單 JSON，前端再從 users 專用 repo 讀取。
 - 若 GitHub Actions 與本機同時產生資料，先跑 `npm run sync:data -- --dry-run`；看到 `REMOVAL` 或 `CONFLICT` 時不可自動套用。
 - 文件或註解變更仍需至少執行 `npm run check` 與 `npm run build:user-data`，若碰到 Honey B. Lovely 粉絲榜流程也要執行 `npm run build:honey-fans`。
