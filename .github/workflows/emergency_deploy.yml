@@ -74,16 +74,18 @@ jobs:
       - name: 建置並驗證 GitHub Pages 靜態網站
         env:
           VITE_GA_MEASUREMENT_ID: ${{ vars.VITE_GA_MEASUREMENT_ID || secrets.VITE_GA_MEASUREMENT_ID }}
+          # 緊急部署同樣避免把上萬個逐玩家分享頁與玩家 OG PNG 放進 Pages artifact。
+          FFXIV_TC_BUILD_USER_SHARE_PAGES: ${{ vars.FFXIV_TC_BUILD_USER_SHARE_PAGES || 'false' }}
         run: |
           # 緊急部署只使用 repo 內已提交的 data/ 與 public/data/ 產物。
           # npm run build 會執行 --rebuild-public、build:user-data 與 validate:data，
           # 但不會呼叫 FFLogs API、推進 state 掃描點或提交任何資料更新。
           npm run build
 
-      - name: 從 Pages artifact 移除個人成績單 JSON
+      - name: 從 Pages artifact 移除個人成績單部署資料
         run: |
           # 緊急部署同樣只讓主站 artifact 保留分享頁、OG 圖與非使用者資料；
-          # 個人成績單 JSON 仍由專用 users repo 提供。
+          # 逐玩家靜態分享頁與個人成績單 JSON 仍由專用 users repo / SPA route 提供。
           npm run prune:pages-user-data
 
       - name: 上傳 GitHub Pages artifact

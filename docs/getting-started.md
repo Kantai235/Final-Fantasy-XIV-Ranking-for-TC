@@ -93,7 +93,7 @@ VITE_GA_ENABLE_IN_DEV=false
 | `npm run test:data-conservation` | 檢查公開資料與 hidden delta 的資料守恆，避免瘦身時漏掉成績或報告來源。 |
 | `npm run audit:pages-payload` | 以 baseline 模式稽核 `dist/`、`dist/data/`、`dist/data/all/`、`dist/data/users/` 與 `dist/og/` 體積，可加 `-- --write-history <path>` 記錄趨勢。 |
 | `npm run audit:pages-payload:strict` | 以與 GitHub Actions 相同的 strict 模式稽核 payload，超過 target 會失敗。Actions 會寫入 `data/pages_payload_history.jsonl`。 |
-| `npm run prune:pages-user-data` | 從 `dist/` 移除個人成績單 JSON，模擬正式 Pages artifact 只保留主站資料、分享頁與 OG 圖。 |
+| `npm run prune:pages-user-data` | 從 `dist/` 移除個人成績單 JSON、逐玩家靜態分享頁與玩家 OG 圖，模擬正式 Pages artifact。 |
 | `npm run check` | 執行 Python 與 Node.js 語法檢查。 |
 | `npm test` | 執行資料管線、GCD、資料建置與前端資料契約測試。 |
 | `npm run build` | 先重建公開資料並驗證，再由 Vite 建置靜態網站到 `dist/`。 |
@@ -138,7 +138,7 @@ npm run prune:pages-user-data
 npm run audit:pages-payload
 ```
 
-正式部署會先把 `public/data/users` 與 `public/data/user-entry-details` 同步到 users 專用 repo，再清掉 `dist/` 內的大型個人成績單 JSON；本機一般驗證仍保留 `public/data/users`，供資料契約、搜尋索引與玩家分享頁產生使用。
+正式部署會先把 `public/data/users` 與 `public/data/user-entry-details` 同步到 users 專用 repo，再清掉 `dist/` 內的大型個人成績單 JSON、逐玩家靜態分享頁與玩家 OG 圖；本機一般驗證仍保留 `public/data/users`，供資料契約、搜尋索引與必要時產生玩家分享頁使用。
 
 ## 同步本機與 GitHub Actions 資料
 

@@ -21,7 +21,7 @@
    這一步會產生 `public/data/users/`、`public/data/user-entry-details/`、`public/data/users/index.json`、`public/data/global_stats.json`、`public/data/activity.json`、`public/data/team_rankings.json` 與 `public/data/server_compare.json`。
    同時會在 `public/data/all/` 產生 hidden delta：有 hidden 成績的個人成績單才輸出差量檔，沒有 hidden 成績的索引項目會直接指回公開成績單。
    指令結束前也會執行 `npm run build:ranking-tables`，由公開排行榜產生 `public/data/ranking-tables/` 薄索引與 `public/data/ranking-details/` 按需載入細節檔，並把 `public/data/all/rankings|ranking-tables|ranking-details` 轉成 hidden delta；接著執行 `npm run build:report-status` 與 `npm run build:public-status`，輸出常見問題頁 FFLogs 檢查工具使用的 `public/data/report_status_index.json`、`public/data/all/report_status_index.json` 與 `public/data/update_status.json`。
-   正式部署會把使用者主檔與個人成績報告細節同步到 users 專用 repo；`public/data/users` 仍是資料建置與驗證的來源產物，不能在 postbuild 前刪除，否則玩家分享頁與 OG 圖會失去本輪最新索引。
+   正式部署會把使用者主檔與個人成績報告細節同步到 users 專用 repo；`public/data/users` 仍是資料建置與驗證的來源產物，不能在 postbuild 前刪除，因為本機抽查或暫時開啟 `FFXIV_TC_BUILD_USER_SHARE_PAGES=true` 時仍需要本輪最新使用者索引。
 
    全域公告內容直接維護在 `public/data/announcements.json`；這一步會把它同步到 `public/data/all/announcements.json`，供 hidden delta 檢視流程使用。
 
@@ -50,7 +50,7 @@
    ```
 
    `npm run build` 會先自動執行 `build:public-rankings`、`build:user-data`、`build:honey-fans` 與 `validate:data`，再由 Vite 建置靜態網站到 `dist/`。
-   GitHub Actions 會在 Vite 與 postbuild 完成後執行 `npm run prune:pages-user-data`，只移除 `dist/data/users`、`dist/data/user-entry-details` 與 hidden 使用者差量 JSON，保留玩家分享頁與 OG 圖。資料 commit/push 後、上傳 Pages artifact 前會再執行 `npm run audit:pages-payload:strict -- --write-history data/pages_payload_history.jsonl`，讓 `dist/`、`dist/data/`、`dist/data/all/`、必要時存在的 `dist/data/users/` 與 `dist/og/` 超過 target 時停止部署；稽核通過時會另行提交 payload 趨勢紀錄。
+   GitHub Actions 會在 Vite 與 postbuild 完成後執行 `npm run prune:pages-user-data`，移除 `dist/data/users`、`dist/data/user-entry-details`、hidden 使用者差量 JSON、逐玩家靜態分享頁與玩家 OG 圖。資料 commit/push 後、上傳 Pages artifact 前會再執行 `npm run audit:pages-payload:strict -- --write-history data/pages_payload_history.jsonl`，讓 `dist/`、`dist/data/`、`dist/data/all/`、必要時存在的 `dist/data/users/`、`dist/user/` 與 `dist/og/` 超過 target 時停止部署；稽核通過時會另行提交 payload 趨勢紀錄。
 
 ## Honey B. Lovely 粉絲榜
 

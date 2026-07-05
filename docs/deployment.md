@@ -46,8 +46,8 @@ npm run build
 11. 執行 `npm run validate:data`，在個人成績單還保留於 `public/data/` 時驗證公開資料契約、來源分片、使用者索引、報告細節、隊伍榜、伺服器對比與 Honey B. Lovely 粉絲榜。
 12. 執行 `node scripts/sync_user_leaderboard_repo.mjs`，把 `public/data/users`、`public/data/user-entry-details` 與 hidden delta 的個人成績單同步到 `Final-Fantasy-XIV-Ranking-for-TC-Users`。這一步只抓專用 users repo 的最新 commit/tree 與上一版 `data/sync-manifest.json`，再用 Git index 直接重建下一個 commit，避免完整 clone 舊資料歷史造成 GitHub runner 磁碟不足。
 13. 由 workflow 寫入 `data/update_status.json`，記錄本輪 GitHub Actions run、資料更新時間與總量摘要，並執行 `npm run build:public-status` 同步刷新 `public/data/update_status.json`。
-14. 執行 `npx vite build` 與 `npm run postbuild`，完成 Vite 建置、route fallback、SEO/OG 靜態頁、OG PNG、`sitemap.xml`、`robots.txt` 與 `404.html`，並把建置秒數寫入後續 payload 稽核。`postbuild` 會讀取 `public/data/users/index.json` 產生玩家分享頁與 OG 圖，因此不可在這一步之前刪除 repo 內的使用者資料。
-15. 執行 `npm run prune:pages-user-data`，只移除 `dist/data/users`、`dist/data/user-entry-details`、`dist/data/all/users` 與 `dist/data/all/user-entry-details`；前端正式讀取個人成績單時會改向 users 專用 repo 取得 JSON。
+14. 執行 `npx vite build` 與 `npm run postbuild`，完成 Vite 建置、route fallback、低基數 SEO/OG 靜態頁、OG PNG、`sitemap.xml`、`robots.txt` 與 `404.html`，並把建置秒數寫入後續 payload 稽核。正式 workflow 會用 `FFXIV_TC_BUILD_USER_SHARE_PAGES=false` 關閉逐玩家靜態分享頁與玩家 OG 圖，避免 Pages 同步上萬個小檔時在 `syncing_files` 階段失敗。
+15. 執行 `npm run prune:pages-user-data`，移除 `dist/data/users`、`dist/data/user-entry-details`、`dist/data/all/users`、`dist/data/all/user-entry-details`，並在本機完整 build 或流程異動曾產生逐玩家靜態分享頁時，一併移除 `dist/user/{玩家}`、`dist/og/users` 與 sitemap 中的玩家細項 URL；前端正式讀取個人成績單時會改向 users 專用 repo 取得 JSON。
 16. 壓縮 `data/state.json`，並檢查 Git 單檔大小是否仍低於 100 MiB。
 17. 若 `data`、`public/data/*.json` 或 `public/data/fun/*.json` 有變更，先提交並推送更新，避免後續 artifact 體積超標時白白丟失本輪 FFLogs 抓取成果。
 18. 執行 `npm run audit:pages-payload:strict -- --write-history data/pages_payload_history.jsonl`，讓 artifact 體積超過 target 時在上傳 Pages artifact 前失敗，並在 GitHub Step Summary 顯示本輪與上一筆歷史差異。
@@ -71,7 +71,7 @@ npm run build
    - `scoped`：只清除本專案既有 prefix 與核心檔案，適合一般靜態頁或資料路徑更新。
 4. 執行後確認 workflow 的 `記錄 GitHub Pages 部署網址` 與 `清除 Cloudflare CDN 快取` 步驟完成。
 
-緊急部署仍會跑 `npm run build`，因此會重建公開排行榜、個人成績單、排行榜薄索引、Logs 狀態索引、Honey B. Lovely 粉絲榜公開 JSON、SEO/OG 靜態頁、`sitemap.xml`、`robots.txt` 與 `404.html`，並執行 `validate:data`。建置完成後同樣會執行 `npm run prune:pages-user-data`，讓主站 artifact 不重新帶回大型個人成績單 JSON。這是為了確保部署出去的靜態產物與 repo 內資料契約一致；差別在於它只重建已提交資料，不向 FFLogs 取得新資料，也不會同步 users 專用 repo。
+緊急部署仍會跑 `npm run build`，因此會重建公開排行榜、個人成績單、排行榜薄索引、Logs 狀態索引、Honey B. Lovely 粉絲榜公開 JSON、低基數 SEO/OG 靜態頁、`sitemap.xml`、`robots.txt` 與 `404.html`，並執行 `validate:data`。建置完成後同樣會執行 `npm run prune:pages-user-data`，讓主站 artifact 不重新帶回大型個人成績單 JSON、逐玩家靜態分享頁或玩家 OG 圖。這是為了確保部署出去的靜態產物與 repo 內資料契約一致；差別在於它只重建已提交資料，不向 FFLogs 取得新資料，也不會同步 users 專用 repo。
 
 ## GitHub Secrets 與 Variables
 

@@ -56,22 +56,20 @@
 
 這些 route 專屬 HTML 可讓不執行 JavaScript 的社群爬蟲讀到各頁預設標題、描述、canonical 與 OG/Twitter meta。
 
-同一個 postbuild 也會依 `public/data/global_stats.json`、`public/data/server_compare.json` 與 `public/data/users/index.json` 產生：
+同一個 postbuild 也會依 `public/data/global_stats.json` 與 `public/data/server_compare.json` 產生：
 
 - `dist/stats/{副本 key}/index.html`
 - `dist/jobs/{職業}/index.html`
 - `dist/servers/{左}/vs/{右}/index.html`
-- `dist/user/{玩家名稱}/index.html`
 - `dist/og/stats/*.png`
 - `dist/og/jobs/*.png`
 - `dist/og/servers/*.png`
-- `dist/og/users/*.png`
 - `dist/sitemap.xml`
 - `dist/robots.txt`
 
-因 LINE、Facebook 與多數 OG 檢查器對 SVG 支援不一致，postbuild 會用 `sharp` 將內部 SVG 模板轉成 1200x630 PNG，讓各頁 `og:image` 與 `twitter:image` 都指向自己的實體預覽圖。玩家頁數會跟收錄角色數同步成長，因此 OG PNG 會使用有限 palette 壓縮，保留 crawler-safe PNG 格式與文字可讀性，同時避免 GitHub Pages artifact 被分享圖撐大。
+因 LINE、Facebook 與多數 OG 檢查器對 SVG 支援不一致，postbuild 會用 `sharp` 將內部 SVG 模板轉成 1200x630 PNG，讓各頁 `og:image` 與 `twitter:image` 都指向自己的實體預覽圖。逐玩家靜態分享頁與 `dist/og/users/*.png` 會跟收錄角色數同步成長，正式 Actions 預設以 `FFXIV_TC_BUILD_USER_SHARE_PAGES=false` 關閉這批高基數產物；本機若需要抽查玩家分享頁，可暫時把此環境變數設為 `true`。
 
-正式 workflow 會在 postbuild 完成後執行 `npm run prune:pages-user-data`，只移除 `dist/data/users` 與 `dist/data/user-entry-details` 這類大型 JSON；`dist/user/{玩家}` 靜態分享頁、`dist/og/users/*.png`、`sitemap.xml` 與其他 SEO 產物會保留。前端開啟玩家頁時，實際個人成績單 JSON 由 users 專用 repo 載入，而不是由主站 `/data/users` 提供。
+正式 workflow 會在 postbuild 完成後執行 `npm run prune:pages-user-data`，移除 `dist/data/users`、`dist/data/user-entry-details` 這類大型 JSON；若逐玩家靜態分享頁曾被產生，也會移除 `dist/user/{玩家}`、`dist/og/users/*.png`，並從 `sitemap.xml` 移除玩家細項 URL。前端開啟玩家頁時，實際個人成績單 JSON 由 users 專用 repo 載入，而不是由主站 `/data/users` 提供。
 
 `dist/robots.txt` 會明確允許 `facebookexternalhit` 與 `Facebot` 抓取分享預覽，首頁仍使用 `public/og-image.png` 作為站台層級預覽圖。
 

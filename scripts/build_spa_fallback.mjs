@@ -17,9 +17,11 @@ const siteName = "FFXIV 繁中服排行榜";
 const defaultDescription =
   "整理 FFLogs 公開報告中的 FFXIV 繁中服零式、極、幻、滅與絕本成績，提供排行榜、全服統計、個人成績單、玩家比較與近期動態。";
 const genericOgImageUrl = new URL("og-image.png", siteUrl).href;
+const buildUserSharePages = process.env.FFXIV_TC_BUILD_USER_SHARE_PAGES !== "false";
 
 // postbuild 只讀取 public/data 的靜態聚合結果，輸出 dist/ 內的 HTML、PNG OG 圖、sitemap 與 robots。
 // 使用者索引在這裡仍由 public/data/users/index.json 提供，因為玩家分享頁與 OG 圖需要本輪最新摘要；
+// 正式 Actions 會關閉逐玩家靜態分享頁，避免 GitHub Pages 在同步上萬個玩家 HTML/OG PNG 時失敗。
 // Pages artifact 的大型使用者 JSON 會在 postbuild 後清掉，前端再從專用 users repo 載入個人成績單。
 // 這一層不得回寫 data/ 或 public/data/，避免 SEO 分享頁生成影響排行榜歷史資料或前端資料契約。
 const jobNames = {
@@ -748,17 +750,19 @@ for (const page of serverComparePages) {
   sitemapUrls.push(writeGeneratedPage(page, rootHtml));
 }
 
-const users = readUserIndex();
 let userPageCount = 0;
-for (const user of users) {
-  if (!user?.character_name) {
-    continue;
-  }
+if (buildUserSharePages) {
+  const users = readUserIndex();
+  for (const user of users) {
+    if (!user?.character_name) {
+      continue;
+    }
 
-  const userPage = buildUserPage(user, rootHtml);
-  writeTextFile(userPage.path, userPage.html);
-  sitemapUrls.push(userPage.url);
-  userPageCount += 1;
+    const userPage = buildUserPage(user, rootHtml);
+    writeTextFile(userPage.path, userPage.html);
+    sitemapUrls.push(userPage.url);
+    userPageCount += 1;
+  }
 }
 
 await writeQueuedOgPngImages();

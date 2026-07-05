@@ -228,6 +228,9 @@ jobs:
         id: build-site
         env:
           VITE_GA_MEASUREMENT_ID: ${{ vars.VITE_GA_MEASUREMENT_ID || secrets.VITE_GA_MEASUREMENT_ID }}
+          # 逐玩家靜態分享頁與 OG PNG 會產生上萬個小檔，GitHub Pages 同步 artifact 時容易在 syncing_files 階段失敗。
+          # 個人成績單仍由 /user route 的 SPA 與 users 專用 repo 提供；副本、職業、伺服器等低基數 SEO 頁仍照常產生。
+          FFXIV_TC_BUILD_USER_SHARE_PAGES: ${{ vars.FFXIV_TC_BUILD_USER_SHARE_PAGES || 'false' }}
         run: |
           START_SECONDS=$SECONDS
           npx vite build
@@ -236,10 +239,11 @@ jobs:
           echo "PAGES_BUILD_SECONDS=${BUILD_SECONDS}" >> "$GITHUB_ENV"
           echo "build_seconds=${BUILD_SECONDS}" >> "$GITHUB_OUTPUT"
 
-      - name: 從 Pages artifact 移除個人成績單 JSON
+      - name: 從 Pages artifact 移除個人成績單部署資料
         run: |
-          # postbuild 需要 public/data/users/index.json 產生玩家分享頁與 OG 圖。
-          # 建置完成後只刪 dist/data 的大型使用者 JSON；前端實際由專用 users repo 載入個人成績單。
+          # postbuild 在本機抽查或開啟逐玩家分享頁時，才需要 public/data/users/index.json 產生玩家頁與 OG 圖。
+          # 正式部署預設不產生逐玩家靜態分享頁；若本機或緊急流程曾產生，prune 也會一併清掉玩家頁與玩家 OG 圖。
+          # 建置完成後刪 dist/data 的大型使用者 JSON；前端實際由專用 users repo 載入個人成績單。
           npm run prune:pages-user-data
 
       - name: 壓縮 state 並檢查 Git 單檔大小

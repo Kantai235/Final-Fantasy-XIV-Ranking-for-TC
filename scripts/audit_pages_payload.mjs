@@ -45,6 +45,13 @@ const payloadBudgets = [
     reason: "正式 Pages artifact 應在 postbuild 後移除這批 JSON，改由專用 users repo 提供；本機完整 build 或緊急流程若保留時仍需監控體積。",
   },
   {
+    label: "逐玩家靜態分享頁",
+    relativePath: "user",
+    targetMiB: 2,
+    hardMiB: Number(process.env.PAGES_PAYLOAD_USER_PAGES_HARD_MIB || 60),
+    reason: "正式 Pages artifact 只保留 /user route 入口；逐玩家 HTML 會造成上萬個小檔同步到 GitHub Pages。",
+  },
+  {
     label: "OG 圖與分享頁媒體",
     relativePath: "og",
     targetMiB: 150,
