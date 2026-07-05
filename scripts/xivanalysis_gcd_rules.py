@@ -4,14 +4,14 @@ from dataclasses import dataclass
 
 
 # 本檔只保存「xivanalysis 明確覆寫、且 XIVAPI Action.csv 無法安全推回」的 GCD 規則。
-# 來源為 xivanalysis/xivanalysis dawntrail 分支 aaa13d4b380f69bf01968c79b78904d9477aa9db：
+# 來源為 xivanalysis/xivanalysis dawntrail 分支 b7c000ae57ae1eb11e6a810dadc3bf46dc45f53f：
 # - src/data/ACTIONS/index.ts 會替 onGcd action 補上預設 castTime=0、cooldown=2500。
 # - src/data/ACTIONS/root/*.ts 與 layers/patch*.ts 的 gcdRecast/cooldown/speedAttribute
 #   決定 Always Be Casting 的 recast；例如 7.01 layer 會把 Tendo Setsugekka 調回 2.5 秒。
 # 這裡不保存完整 xivanalysis action 表，避免把無關職業循環資料複製進本專案；只有當
 # Action.csv 可能把技能本身冷卻誤當 GCD、或 xivanalysis 將該 action 標成非副屬性加速時才列入。
 XIVANALYSIS_SOURCE_REPOSITORY = "https://github.com/xivanalysis/xivanalysis"
-XIVANALYSIS_SOURCE_COMMIT = "aaa13d4b380f69bf01968c79b78904d9477aa9db"
+XIVANALYSIS_SOURCE_COMMIT = "b7c000ae57ae1eb11e6a810dadc3bf46dc45f53f"
 
 
 @dataclass(frozen=True)
@@ -19,13 +19,21 @@ class XivanalysisGcdActionRule:
     gcd_recast_ms: int
     substat_adjusted: bool
     status_speed_adjusted: bool = True
+    cast_ms: int | None = None
 
 
-def rule(recast_ms: int, *, substat: bool, status_speed: bool = True) -> XivanalysisGcdActionRule:
+def rule(
+    recast_ms: int,
+    *,
+    substat: bool,
+    status_speed: bool = True,
+    cast_ms: int | None = None,
+) -> XivanalysisGcdActionRule:
     return XivanalysisGcdActionRule(
         gcd_recast_ms=recast_ms,
         substat_adjusted=substat,
         status_speed_adjusted=status_speed,
+        cast_ms=cast_ms,
     )
 
 
@@ -52,7 +60,7 @@ XIVANALYSIS_GCD_ACTION_RULES: dict[int, XivanalysisGcdActionRule] = {
 
     # 絕槍戰士彈藥與長冷卻 GCD。部分技能在 XIVAPI 具有較長的技能冷卻，
     # 但 xivanalysis 的 ABC 只計入實際 GCD lock。
-    16146: rule(2500, substat=True),   # Gnashing Fang
+    16146: rule(2500, substat=False),  # Gnashing Fang (xivanalysis patch 7.4: speedAttribute removed)
     16153: rule(2500, substat=True),   # Sonic Break
     25760: rule(2500, substat=True),   # Double Down
     36937: rule(2500, substat=True),   # Reign of Beasts
@@ -235,4 +243,90 @@ XIVANALYSIS_GCD_ACTION_RULES: dict[int, XivanalysisGcdActionRule] = {
 
     # 白魔法師 Repose 雖然有詠唱時間，但在 xivanalysis 沒有 speedAttribute。
     128: rule(2500, substat=False),
+}
+
+
+# xivanalysis 的 legacy FFLogs adapter 會在第一個 raw event 前補合成 action：
+# 若它先看到某個 status 的 apply/remove，但尚未看過唯一會套用該 status 的 action，
+# 就會把該 action 放在 `firstEvent - 300ms`。這份對照只保存「唯一 status -> GCD
+# action」的必要子集，來源同上方 commit 的 `src/data/ACTIONS/root/*.ts` 與
+# `src/data/STATUSES/root/*.ts`。多個 GCD action 都會套用的 status 不能安全反推，
+# 需維持 xivanalysis `actions.length !== 1` 時不合成的語意。
+XIVANALYSIS_PREPULL_STATUS_ACTIONS: dict[int, int] = {
+    118: 88,      # Chaos Thrust -> CHAOS_THRUST
+    150: 133,     # Medica II -> MEDICA_II
+    158: 137,     # Regen -> REGEN
+    163: 153,     # Thunder III -> THUNDER_III
+    189: 17865,   # Bio II -> BIO_II
+    815: 3594,    # Benefic -> ENHANCED_BENEFIC_II
+    835: 3595,    # Aspected Benefic -> ASPECTED_BENEFIC
+    836: 3601,    # Aspected Helios -> ASPECTED_HELIOS
+    838: 3599,    # Combust -> COMBUST
+    843: 3608,    # Combust II -> COMBUST_II
+    1200: 7406,   # Caustic Bite -> CAUSTIC_BITE
+    1201: 7407,   # Stormbite -> STORMBITE
+    1205: 7418,   # Flamethrower -> FLAMETHROWER
+    1210: 7420,   # Thunder IV -> THUNDER_IV
+    1228: 7489,   # Higanbana -> HIGANBANA
+    1231: 7497,   # Meditate -> MEDITATE
+    1818: 15997,  # Standard Step -> STANDARD_STEP
+    1819: 15998,  # Technical Step -> TECHNICAL_STEP
+    1821: 16192,  # Double Standard Finish -> STANDARD_FINISH
+    1822: 16196,  # Quadruple Technical Finish -> TECHNICAL_FINISH
+    1837: 16153,  # Sonic Break -> SONIC_BREAK
+    1847: 16192,  # Double Standard Finish -> ESPRIT
+    1848: 16196,  # Quadruple Technical Finish -> ESPRIT_TECHNICAL
+    1865: 7497,   # Meditate -> MEDITATION
+    1866: 16499,  # Bioblaster -> BIOBLASTER
+    # SMN EVERLASTING_FLIGHT 同時可由 Summon Phoenix 與 Phoenix 相關動作套用；
+    # xivanalysis 會因多個 statusesApplied action 而拒絕 prepull status 反推。
+    1871: 16532,  # Dia -> DIA
+    1881: 16554,  # Combust III -> COMBUST_III
+    1895: 16540,  # Biolysis -> BIOLYSIS
+    1898: 16139,  # Brutal Shell -> BRUTAL_SHELL
+    1902: 3539,   # Royal Authority -> ATONEMENT_READY
+    2105: 16192,  # Double Standard Finish -> STANDARD_FINISH_PARTNER
+    2514: 16476,  # Six-sided Star -> SIX_SIDED_STAR
+    2590: 24396,  # Cross Reaping -> ENHANCED_VOID_REAPING
+    2591: 24395,  # Void Reaping -> ENHANCED_CROSS_REAPING
+    2594: 24387,  # Soulsow -> SOULSOW
+    2606: 24290,  # Eukrasia -> EUKRASIA
+    2607: 24291,  # Eukrasian Diagnosis -> EUKRASIAN_DIAGNOSIS
+    2608: 24291,  # Eukrasian Diagnosis -> DIFFERENTIAL_DIAGNOSIS
+    2614: 24293,  # Eukrasian Dosis -> EUKRASIAN_DOSIS
+    2615: 24308,  # Eukrasian Dosis II -> EUKRASIAN_DOSIS_II
+    2616: 24314,  # Eukrasian Dosis III -> EUKRASIAN_DOSIS_III
+    2623: 24318,  # Pneuma -> PNEUMA
+    2690: 2267,   # Raiton -> RAIJU_READY
+    2698: 16196,  # Quadruple Technical Finish -> FLOURISHING_FINISH
+    2706: 25837,  # Slipstream -> SLIPSTREAM
+    2718: 25874,  # Macrocosmos -> MACROCOSMOS
+    2719: 25772,  # Chaotic Spring -> CHAOTIC_SPRING
+    3645: 34613,  # Hindsbane Fang -> FLANKSTUNG_VENOM
+    3646: 34612,  # Hindsting Strike -> FLANKSBANE_VENOM
+    3647: 34610,  # Flanksting Strike -> HINDSTUNG_VENOM
+    3648: 34611,  # Flanksbane Fang -> HINDSBANE_VENOM
+    # VPR 3657-3660 venom 狀態看起來可由 Dreadwinder/Pit 系 GCD 反推，
+    # 但在 xivanalysis 的 ACTIONS/root/VPR.ts 中，同一狀態也會由 Twinfang /
+    # Twinblood 變化技套用。PrepullStatusAdapterStep 遇到多個 statusesApplied
+    # action 時會走 `actions.length !== 1` 並拒絕合成，所以這裡必須刻意不列入。
+    3665: 34633,  # Uncoiled Fury -> POISED_FOR_TWINFANG
+    3670: 34626,  # Reawaken -> REAWAKENED
+    3827: 16460,  # Atonement -> SUPPLICATION_READY
+    3828: 36918,  # Supplication -> SEPULCHRE_READY
+    3831: 25750,  # Blade of Valor -> BLADE_OF_HONOR_READY
+    3833: 3549,   # Fell Cleave -> BURGEONING_FURY
+    3834: 25753,  # Primal Rend -> PRIMAL_RUINATION_READY
+    3859: 24385,  # Plentiful Harvest -> PERFECTIO_OCCULTA
+    3860: 24398,  # Communio -> PERFECTIO_PARATA
+    3865: 25788,  # Chain Saw -> EXCAVATOR_READY
+    3867: 16192,  # Double Standard Finish -> LAST_DANCE_READY
+    3869: 16196,  # Quadruple Technical Finish -> DANCE_OF_THE_DAWN_READY
+    3871: 36986,  # High Thunder -> HIGH_THUNDER
+    3872: 36987,  # High Thunder II -> HIGH_THUNDER_II
+    3880: 37010,  # Medica III -> MEDICA_III
+    3894: 37030,  # Helios Conjunction -> HELIOS_CONJUNCTION
+    3897: 37032,  # Eukrasian Dyskrasia -> EUKRASIAN_DYSKRASIA
+    3901: 3549,   # Fell Cleave -> WRATHFUL
+    3905: 24385,  # Plentiful Harvest -> IDEAL_HOST
 }

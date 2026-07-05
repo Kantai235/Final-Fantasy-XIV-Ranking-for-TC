@@ -448,6 +448,7 @@ GCD_SOURCE = gcd_core.GCD_SOURCE
 to_number = gcd_core.to_number
 to_int = gcd_core.to_int
 first_number = gcd_core.first_number
+gcd_pull_duration_ms = gcd_core.gcd_pull_duration_ms
 infer_recast_multiplier_by_base = gcd_core.infer_recast_multiplier_by_base
 calculate_gcd_coverage_from_graph = gcd_core.calculate_gcd_coverage_from_graph
 calculate_gcd_coverage_from_raw_events = gcd_core.calculate_gcd_coverage_from_raw_events
@@ -563,6 +564,19 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--fight-id", type=int, help="只處理指定 fight id。")
     parser.add_argument("--player-name", help="只處理指定角色名稱。")
     parser.add_argument("--encounter-key", help="只處理指定副本 key，例如 unreal_byakko。")
+    parser.add_argument(
+        "--audit-report",
+        action="append",
+        type=Path,
+        default=[],
+        help="讀取 audit_xivanalysis_gcd_sample.py 輸出的 JSON，批次處理指定 state 的玩家。",
+    )
+    parser.add_argument(
+        "--audit-state",
+        nargs="*",
+        default=["mismatch"],
+        help="搭配 --audit-report 使用；只處理這些 state 的玩家，預設為 mismatch。",
+    )
     parser.add_argument("--raw-events", action="store_true", help="診斷用：優先以 FFLogs raw events 計算；預設仍使用較穩定的 Casts graph。")
     return parser.parse_args()
 
@@ -578,11 +592,61 @@ def candidate_matches_filters(candidate: GcdCandidate, args: argparse.Namespace)
             return False
     if args.encounter_key and candidate.encounter_key != args.encounter_key:
         return False
+    audit_targets = getattr(args, "audit_targets", None)
+    if audit_targets is not None and candidate_audit_key(candidate) not in audit_targets:
+        return False
     return True
+
+
+def candidate_audit_key(candidate: GcdCandidate) -> tuple[str, str, int | None, int | None, str]:
+    name = candidate.player.get("name") or candidate.player.get("character_name") or ""
+    return (
+        candidate.encounter_key,
+        candidate.report_code,
+        to_int(candidate.fight.get("fight_id")),
+        to_int(candidate.player.get("fflogs_id")),
+        str(name),
+    )
+
+
+def load_audit_targets(paths: list[Path], states: set[str]) -> set[tuple[str, str, int | None, int | None, str]]:
+    targets: set[tuple[str, str, int | None, int | None, str]] = set()
+    for path in paths:
+        data = read_json(path, {})
+        if not isinstance(data, dict):
+            raise RuntimeError(f"audit report 格式不是 JSON 物件：{path}")
+
+        for fight in data.get("fights") or []:
+            if not isinstance(fight, dict):
+                continue
+            encounter_key = str(fight.get("encounter_key") or "")
+            report_code = str(fight.get("report_code") or "")
+            fight_id = to_int(fight.get("fight_id"))
+            for player in fight.get("players") or []:
+                if not isinstance(player, dict):
+                    continue
+                state = str(player.get("state") or "")
+                if state not in states:
+                    continue
+                player_name = str(player.get("player") or player.get("name") or "")
+                targets.add(
+                    (
+                        encounter_key,
+                        report_code,
+                        fight_id,
+                        to_int(player.get("fflogs_id")),
+                        player_name,
+                    )
+                )
+    return targets
 
 
 def main() -> int:
     args = parse_args()
+    if args.audit_report:
+        args.audit_targets = load_audit_targets(args.audit_report, {str(state) for state in args.audit_state})
+    else:
+        args.audit_targets = None
     state: dict[str, Any] | None = None
     stateful_cutoff_ms: int | None = None
     stateful_cursor_ms: int | None = None
@@ -649,6 +713,9 @@ def main() -> int:
         print("已啟用 --all：本輪候選包含目前版本已完成的 GCD 覆蓋率。")
     if args.report_code or args.fight_id is not None or args.player_name:
         print(f"套用篩選後剩餘待補筆數：{len(candidates)}")
+    if args.audit_targets is not None:
+        print(f"audit report 目標玩家數：{len(args.audit_targets)}")
+        print(f"套用 audit report 篩選後剩餘待補筆數：{len(candidates)}")
 
     for index, candidate in enumerate(selected[:20], start=1):
         print(f"{index:>2}. {candidate.label} clear_time_sort={int(candidate.sort_time)}")
@@ -726,6 +793,8 @@ def main() -> int:
             if fight_id is None or start_time is None or end_time is None:
                 raise RuntimeError("缺少 fight_id 或 fight 時間窗，無法查詢整場 Casts graph。")
 
+            gcd_denominator_ms = gcd_pull_duration_ms(candidate.fight, start_time, end_time)
+            gcd_start_time = gcd_core.gcd_pull_start_time_ms(candidate.fight, start_time, end_time)
             graph_cache_key = (candidate.report_code, fight_id, start_time, end_time)
             base_graph = fight_graph_cache.get(graph_cache_key)
             if base_graph is None:
@@ -764,9 +833,10 @@ def main() -> int:
                     downtime_source = gcd_core.raw_event_downtime_source(
                         base_graph,
                         raw_events,
+                        encounter_key=candidate.encounter_key,
                         source_id=to_int(candidate.player.get("fflogs_id")),
                         friendly_ids=friendly_ids,
-                        fight_start_time=start_time,
+                        fight_start_time=gcd_start_time,
                         fight_end_time=end_time,
                         unable_to_act_status_ids=unable_to_act_status_ids,
                         metadata_store=metadata_store,
@@ -784,12 +854,9 @@ def main() -> int:
                     encounter_key=candidate.encounter_key,
                     source_id=to_int(candidate.player.get("fflogs_id")),
                     job=candidate.player.get("job"),
-                    fight_end_time=first_number(candidate.fight.get("end_time"), candidate.fight.get("endTime")),
-                    fallback_denominator_ms=first_number(
-                        candidate.fight.get("clear_time_ms"),
-                        end_time - start_time,
-                        candidate.fight.get("damage_time_ms"),
-                    ),
+                    fight_start_time=gcd_start_time,
+                    fight_end_time=end_time,
+                    fallback_denominator_ms=gcd_denominator_ms,
                     downtime_source=downtime_source,
                     cap_next_gcd_jobs=gcd_core.raw_next_gcd_capped_jobs_for_encounter(candidate.encounter_key),
                 )
@@ -799,12 +866,9 @@ def main() -> int:
                         metadata_store,
                         source_id=to_int(candidate.player.get("fflogs_id")),
                         job=candidate.player.get("job"),
-                        fight_end_time=first_number(candidate.fight.get("end_time"), candidate.fight.get("endTime")),
-                        fallback_denominator_ms=first_number(
-                            candidate.fight.get("clear_time_ms"),
-                            end_time - start_time,
-                            candidate.fight.get("damage_time_ms"),
-                        ),
+                        fight_start_time=gcd_start_time,
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_denominator_ms,
                     )
                     main_gap_coverage = calculate_gcd_coverage_from_raw_events(
                         raw_events,
@@ -812,18 +876,16 @@ def main() -> int:
                         encounter_key=candidate.encounter_key,
                         source_id=to_int(candidate.player.get("fflogs_id")),
                         job=candidate.player.get("job"),
-                        fight_end_time=first_number(candidate.fight.get("end_time"), candidate.fight.get("endTime")),
-                        fallback_denominator_ms=first_number(
-                            candidate.fight.get("clear_time_ms"),
-                            end_time - start_time,
-                            candidate.fight.get("damage_time_ms"),
-                        ),
+                        fight_start_time=gcd_start_time,
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_denominator_ms,
                         downtime_source=gcd_core.raw_event_downtime_source(
                             graph,
                             raw_events,
+                            encounter_key=candidate.encounter_key,
                             source_id=to_int(candidate.player.get("fflogs_id")),
                             friendly_ids=friendly_ids,
-                            fight_start_time=start_time,
+                            fight_start_time=gcd_start_time,
                             fight_end_time=end_time,
                             unable_to_act_status_ids=set(),
                             metadata_store=metadata_store,
@@ -844,12 +906,9 @@ def main() -> int:
                         encounter_key=candidate.encounter_key,
                         source_id=to_int(candidate.player.get("fflogs_id")),
                         job=candidate.player.get("job"),
-                        fight_end_time=first_number(candidate.fight.get("end_time"), candidate.fight.get("endTime")),
-                        fallback_denominator_ms=first_number(
-                            candidate.fight.get("clear_time_ms"),
-                            end_time - start_time,
-                            candidate.fight.get("damage_time_ms"),
-                        ),
+                        fight_start_time=gcd_start_time,
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_denominator_ms,
                         downtime_source=graph,
                         cap_next_gcd_jobs=gcd_core.raw_next_gcd_capped_jobs_for_encounter(candidate.encounter_key),
                     )
@@ -860,24 +919,18 @@ def main() -> int:
                         metadata_store,
                         source_id=to_int(candidate.player.get("fflogs_id")),
                         job=candidate.player.get("job"),
-                        fight_end_time=first_number(candidate.fight.get("end_time"), candidate.fight.get("endTime")),
-                        fallback_denominator_ms=first_number(
-                            candidate.fight.get("clear_time_ms"),
-                            end_time - start_time,
-                            candidate.fight.get("damage_time_ms"),
-                        ),
+                        fight_start_time=gcd_start_time,
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_denominator_ms,
                     )
                     raw_downtime_graph_coverage = calculate_gcd_coverage_from_graph(
                         downtime_source,
                         metadata_store,
                         source_id=to_int(candidate.player.get("fflogs_id")),
                         job=candidate.player.get("job"),
-                        fight_end_time=first_number(candidate.fight.get("end_time"), candidate.fight.get("endTime")),
-                        fallback_denominator_ms=first_number(
-                            candidate.fight.get("clear_time_ms"),
-                            end_time - start_time,
-                            candidate.fight.get("damage_time_ms"),
-                        ),
+                        fight_start_time=gcd_start_time,
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_denominator_ms,
                     )
                     coverage = gcd_core.select_blm_byakko_coverage(
                         coverage,
@@ -890,18 +943,208 @@ def main() -> int:
                         metadata_store,
                         source_id=to_int(candidate.player.get("fflogs_id")),
                         job=candidate.player.get("job"),
-                        fight_end_time=first_number(candidate.fight.get("end_time"), candidate.fight.get("endTime")),
-                        fallback_denominator_ms=first_number(
-                            candidate.fight.get("clear_time_ms"),
-                            end_time - start_time,
-                            candidate.fight.get("damage_time_ms"),
-                        ),
+                        fight_start_time=gcd_start_time,
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_denominator_ms,
                     )
                     coverage = gcd_core.select_red_mage_byakko_coverage(
                         coverage,
                         graph_coverage,
                         encounter_key=candidate.encounter_key,
                     )
+                if coverage and candidate.encounter_key == "unreal_byakko" and job == "Astrologian":
+                    graph_coverage = calculate_gcd_coverage_from_graph(
+                        graph,
+                        metadata_store,
+                        source_id=to_int(candidate.player.get("fflogs_id")),
+                        job=candidate.player.get("job"),
+                        fight_start_time=gcd_start_time,
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_denominator_ms,
+                    )
+                    coverage = gcd_core.select_astrologian_byakko_coverage(
+                        coverage,
+                        graph_coverage,
+                        encounter_key=candidate.encounter_key,
+                    )
+                if coverage and candidate.encounter_key == "unreal_byakko" and job == "Sage":
+                    graph_coverage = calculate_gcd_coverage_from_graph(
+                        graph,
+                        metadata_store,
+                        source_id=to_int(candidate.player.get("fflogs_id")),
+                        job=candidate.player.get("job"),
+                        fight_start_time=gcd_start_time,
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_denominator_ms,
+                    )
+                    coverage = gcd_core.select_sage_byakko_coverage(
+                        coverage,
+                        graph_coverage,
+                        encounter_key=candidate.encounter_key,
+                    )
+                if coverage and candidate.encounter_key == "unreal_byakko" and job == "Scholar":
+                    graph_coverage = calculate_gcd_coverage_from_graph(
+                        graph,
+                        metadata_store,
+                        source_id=to_int(candidate.player.get("fflogs_id")),
+                        job=candidate.player.get("job"),
+                        fight_start_time=gcd_start_time,
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_denominator_ms,
+                    )
+                    coverage = gcd_core.select_scholar_byakko_coverage(
+                        coverage,
+                        graph_coverage,
+                        encounter_key=candidate.encounter_key,
+                    )
+                if coverage and candidate.encounter_key == "unreal_byakko" and job == "Summoner":
+                    graph_coverage = calculate_gcd_coverage_from_graph(
+                        graph,
+                        metadata_store,
+                        source_id=to_int(candidate.player.get("fflogs_id")),
+                        job=candidate.player.get("job"),
+                        fight_start_time=gcd_start_time,
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_denominator_ms,
+                    )
+                    coverage = gcd_core.select_summoner_byakko_coverage(
+                        coverage,
+                        graph_coverage,
+                        encounter_key=candidate.encounter_key,
+                    )
+                if coverage and candidate.encounter_key == "unreal_byakko" and job == "Reaper":
+                    graph_coverage = calculate_gcd_coverage_from_graph(
+                        graph,
+                        metadata_store,
+                        source_id=to_int(candidate.player.get("fflogs_id")),
+                        job=candidate.player.get("job"),
+                        fight_start_time=gcd_start_time,
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_denominator_ms,
+                    )
+                    coverage = gcd_core.select_reaper_byakko_coverage(
+                        coverage,
+                        graph_coverage,
+                        encounter_key=candidate.encounter_key,
+                    )
+                if coverage and candidate.encounter_key == "unreal_byakko":
+                    coverage = gcd_core.select_byakko_display_edge_coverage(
+                        coverage,
+                        job=job,
+                    )
+                if (
+                    coverage
+                    and candidate.encounter_key == "extreme_zoraal_ja"
+                    and job in {
+                        "BlackMage",
+                        "Gunbreaker",
+                        "Machinist",
+                        "Summoner",
+                        "RedMage",
+                        "Astrologian",
+                        "WhiteMage",
+                        "Scholar",
+                        "Sage",
+                        "Samurai",
+                        "Reaper",
+                        "Dancer",
+                        "Monk",
+                        "Warrior",
+                    }
+                ):
+                    graph_coverage = calculate_gcd_coverage_from_graph(
+                        graph,
+                        metadata_store,
+                        source_id=to_int(candidate.player.get("fflogs_id")),
+                        job=candidate.player.get("job"),
+                        fight_start_time=gcd_start_time,
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_denominator_ms,
+                    )
+                    if job == "BlackMage":
+                        coverage = gcd_core.select_zoraal_black_mage_coverage(
+                            coverage,
+                            graph_coverage,
+                            encounter_key=candidate.encounter_key,
+                        )
+                    elif job == "Gunbreaker":
+                        coverage = gcd_core.select_zoraal_gunbreaker_coverage(
+                            coverage,
+                            graph_coverage,
+                            encounter_key=candidate.encounter_key,
+                        )
+                    elif job == "Warrior":
+                        coverage = gcd_core.select_zoraal_warrior_coverage(
+                            coverage,
+                            graph_coverage,
+                            encounter_key=candidate.encounter_key,
+                        )
+                    elif job == "Machinist":
+                        coverage = gcd_core.select_zoraal_machinist_coverage(
+                            coverage,
+                            graph_coverage,
+                            encounter_key=candidate.encounter_key,
+                        )
+                    elif job == "Summoner":
+                        coverage = gcd_core.select_zoraal_summoner_coverage(
+                            coverage,
+                            graph_coverage,
+                            encounter_key=candidate.encounter_key,
+                        )
+                    elif job == "RedMage":
+                        coverage = gcd_core.select_zoraal_red_mage_coverage(
+                            coverage,
+                            graph_coverage,
+                            encounter_key=candidate.encounter_key,
+                        )
+                    elif job == "Astrologian":
+                        coverage = gcd_core.select_zoraal_astrologian_coverage(
+                            coverage,
+                            graph_coverage,
+                            encounter_key=candidate.encounter_key,
+                        )
+                    elif job == "WhiteMage":
+                        coverage = gcd_core.select_zoraal_white_mage_coverage(
+                            coverage,
+                            graph_coverage,
+                            encounter_key=candidate.encounter_key,
+                        )
+                    elif job == "Scholar":
+                        coverage = gcd_core.select_zoraal_scholar_coverage(
+                            coverage,
+                            graph_coverage,
+                            encounter_key=candidate.encounter_key,
+                        )
+                    elif job == "Sage":
+                        coverage = gcd_core.select_zoraal_sage_coverage(
+                            coverage,
+                            graph_coverage,
+                            encounter_key=candidate.encounter_key,
+                        )
+                    elif job == "Samurai":
+                        coverage = gcd_core.select_zoraal_samurai_coverage(
+                            coverage,
+                            graph_coverage,
+                            encounter_key=candidate.encounter_key,
+                        )
+                    elif job == "Reaper":
+                        coverage = gcd_core.select_zoraal_reaper_coverage(
+                            coverage,
+                            graph_coverage,
+                            encounter_key=candidate.encounter_key,
+                        )
+                    elif job == "Dancer":
+                        coverage = gcd_core.select_zoraal_dancer_coverage(
+                            coverage,
+                            graph_coverage,
+                            encounter_key=candidate.encounter_key,
+                        )
+                    else:
+                        coverage = gcd_core.select_zoraal_monk_coverage(
+                            coverage,
+                            graph_coverage,
+                            encounter_key=candidate.encounter_key,
+                        )
                 if coverage and candidate.encounter_key == "savage_m1s" and job == "BlackMage":
                     graph_downtime_coverage = calculate_gcd_coverage_from_raw_events(
                         raw_events,
@@ -909,12 +1152,9 @@ def main() -> int:
                         encounter_key=candidate.encounter_key,
                         source_id=to_int(candidate.player.get("fflogs_id")),
                         job=candidate.player.get("job"),
-                        fight_end_time=first_number(candidate.fight.get("end_time"), candidate.fight.get("endTime")),
-                        fallback_denominator_ms=first_number(
-                            candidate.fight.get("clear_time_ms"),
-                            end_time - start_time,
-                            candidate.fight.get("damage_time_ms"),
-                        ),
+                        fight_start_time=gcd_start_time,
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_denominator_ms,
                         downtime_source=graph,
                         cap_next_gcd_jobs=gcd_core.raw_next_gcd_capped_jobs_for_encounter(candidate.encounter_key),
                     )
@@ -924,18 +1164,809 @@ def main() -> int:
                         encounter_key=candidate.encounter_key,
                         job=job,
                     )
+                if coverage and candidate.encounter_key in {"savage_m2s", "savage_m3s", "savage_m4s"} and job == "BlackMage":
+                    casts_graph_coverage = calculate_gcd_coverage_from_graph(
+                        graph,
+                        metadata_store,
+                        source_id=to_int(candidate.player.get("fflogs_id")),
+                        job=candidate.player.get("job"),
+                        fight_start_time=gcd_start_time,
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_denominator_ms,
+                    )
+                    coverage = gcd_core.select_savage_m2s_black_mage_coverage(
+                        coverage,
+                        encounter_key=candidate.encounter_key,
+                        job=job,
+                        casts_graph_coverage=casts_graph_coverage,
+                    )
+                if coverage and candidate.encounter_key == "savage_m1s" and job == "Warrior":
+                    casts_graph_coverage = calculate_gcd_coverage_from_graph(
+                        graph,
+                        metadata_store,
+                        source_id=to_int(candidate.player.get("fflogs_id")),
+                        job=candidate.player.get("job"),
+                        fight_start_time=gcd_start_time,
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_denominator_ms,
+                    )
+                    coverage = gcd_core.select_savage_m1s_warrior_coverage(
+                        coverage,
+                        casts_graph_coverage,
+                        encounter_key=candidate.encounter_key,
+                        job=job,
+                    )
+                    coverage = gcd_core.select_savage_warrior_display_edge_coverage(
+                        coverage,
+                        encounter_key=candidate.encounter_key,
+                        job=job,
+                        casts_graph_coverage=casts_graph_coverage,
+                    )
+                if (
+                    coverage
+                    and job == "Paladin"
+                    and candidate.encounter_key in gcd_core.SAVAGE_PALADIN_DISPLAY_EDGE_ENCOUNTERS
+                ):
+                    casts_graph_coverage = calculate_gcd_coverage_from_graph(
+                        graph,
+                        metadata_store,
+                        source_id=to_int(candidate.player.get("fflogs_id")),
+                        job=candidate.player.get("job"),
+                        fight_start_time=gcd_start_time,
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_denominator_ms,
+                    )
+                    coverage = gcd_core.select_savage_paladin_display_edge_coverage(
+                        coverage,
+                        encounter_key=candidate.encounter_key,
+                        job=job,
+                        casts_graph_coverage=casts_graph_coverage,
+                    )
+                if (
+                    coverage
+                    and job == "Machinist"
+                    and candidate.encounter_key in gcd_core.SAVAGE_MACHINIST_DISPLAY_EDGE_ENCOUNTERS
+                ):
+                    casts_graph_coverage = calculate_gcd_coverage_from_graph(
+                        graph,
+                        metadata_store,
+                        source_id=to_int(candidate.player.get("fflogs_id")),
+                        job=candidate.player.get("job"),
+                        fight_start_time=gcd_start_time,
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_denominator_ms,
+                    )
+                    coverage = gcd_core.select_savage_machinist_display_edge_coverage(
+                        coverage,
+                        encounter_key=candidate.encounter_key,
+                        job=job,
+                        casts_graph_coverage=casts_graph_coverage,
+                    )
+                if (
+                    coverage
+                    and job == "Summoner"
+                    and candidate.encounter_key in gcd_core.SAVAGE_SUMMONER_DISPLAY_EDGE_ENCOUNTERS
+                ):
+                    casts_graph_coverage = calculate_gcd_coverage_from_graph(
+                        graph,
+                        metadata_store,
+                        source_id=to_int(candidate.player.get("fflogs_id")),
+                        job=candidate.player.get("job"),
+                        fight_start_time=gcd_start_time,
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_denominator_ms,
+                    )
+                    coverage = gcd_core.select_savage_summoner_display_edge_coverage(
+                        coverage,
+                        encounter_key=candidate.encounter_key,
+                        job=job,
+                        casts_graph_coverage=casts_graph_coverage,
+                    )
+                if (
+                    coverage
+                    and job == "RedMage"
+                    and candidate.encounter_key in gcd_core.SAVAGE_REDMAGE_DISPLAY_EDGE_ENCOUNTERS
+                ):
+                    casts_graph_coverage = calculate_gcd_coverage_from_graph(
+                        graph,
+                        metadata_store,
+                        source_id=to_int(candidate.player.get("fflogs_id")),
+                        job=candidate.player.get("job"),
+                        fight_start_time=gcd_start_time,
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_denominator_ms,
+                    )
+                    coverage = gcd_core.select_savage_red_mage_display_edge_coverage(
+                        coverage,
+                        encounter_key=candidate.encounter_key,
+                        job=job,
+                        casts_graph_coverage=casts_graph_coverage,
+                    )
+                if (
+                    coverage
+                    and job == "Pictomancer"
+                    and candidate.encounter_key in gcd_core.SAVAGE_PICTOMANCER_DISPLAY_EDGE_ENCOUNTERS
+                ):
+                    casts_graph_coverage = calculate_gcd_coverage_from_graph(
+                        graph,
+                        metadata_store,
+                        source_id=to_int(candidate.player.get("fflogs_id")),
+                        job=candidate.player.get("job"),
+                        fight_start_time=gcd_start_time,
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_denominator_ms,
+                    )
+                    coverage = gcd_core.select_savage_pictomancer_display_edge_coverage(
+                        coverage,
+                        encounter_key=candidate.encounter_key,
+                        job=job,
+                        casts_graph_coverage=casts_graph_coverage,
+                    )
+                if (
+                    coverage
+                    and job == "Dragoon"
+                    and candidate.encounter_key in gcd_core.SAVAGE_DRAGOON_DISPLAY_EDGE_ENCOUNTERS
+                ):
+                    casts_graph_coverage = calculate_gcd_coverage_from_graph(
+                        graph,
+                        metadata_store,
+                        source_id=to_int(candidate.player.get("fflogs_id")),
+                        job=candidate.player.get("job"),
+                        fight_start_time=gcd_start_time,
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_denominator_ms,
+                    )
+                    coverage = gcd_core.select_savage_dragoon_display_edge_coverage(
+                        coverage,
+                        encounter_key=candidate.encounter_key,
+                        job=job,
+                        casts_graph_coverage=casts_graph_coverage,
+                    )
+                if (
+                    coverage
+                    and job == "Ninja"
+                    and candidate.encounter_key in gcd_core.SAVAGE_NINJA_DISPLAY_EDGE_ENCOUNTERS
+                ):
+                    casts_graph_coverage = calculate_gcd_coverage_from_graph(
+                        graph,
+                        metadata_store,
+                        source_id=to_int(candidate.player.get("fflogs_id")),
+                        job=candidate.player.get("job"),
+                        fight_start_time=gcd_start_time,
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_denominator_ms,
+                    )
+                    coverage = gcd_core.select_savage_ninja_display_edge_coverage(
+                        coverage,
+                        encounter_key=candidate.encounter_key,
+                        job=job,
+                        casts_graph_coverage=casts_graph_coverage,
+                    )
+                if (
+                    coverage
+                    and job == "Reaper"
+                    and candidate.encounter_key in gcd_core.SAVAGE_REAPER_DISPLAY_EDGE_ENCOUNTERS
+                ):
+                    casts_graph_coverage = calculate_gcd_coverage_from_graph(
+                        graph,
+                        metadata_store,
+                        source_id=to_int(candidate.player.get("fflogs_id")),
+                        job=candidate.player.get("job"),
+                        fight_start_time=gcd_start_time,
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_denominator_ms,
+                    )
+                    coverage = gcd_core.select_savage_reaper_display_edge_coverage(
+                        coverage,
+                        encounter_key=candidate.encounter_key,
+                        job=job,
+                        casts_graph_coverage=casts_graph_coverage,
+                    )
+                if (
+                    coverage
+                    and job == "Astrologian"
+                    and candidate.encounter_key in gcd_core.SAVAGE_ASTROLOGIAN_DISPLAY_EDGE_ENCOUNTERS
+                ):
+                    casts_graph_coverage = calculate_gcd_coverage_from_graph(
+                        graph,
+                        metadata_store,
+                        source_id=to_int(candidate.player.get("fflogs_id")),
+                        job=candidate.player.get("job"),
+                        fight_start_time=gcd_start_time,
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_denominator_ms,
+                    )
+                    coverage = gcd_core.select_savage_astrologian_display_edge_coverage(
+                        coverage,
+                        encounter_key=candidate.encounter_key,
+                        job=job,
+                        casts_graph_coverage=casts_graph_coverage,
+                    )
+                if (
+                    coverage
+                    and job == "WhiteMage"
+                    and candidate.encounter_key in gcd_core.SAVAGE_WHITE_MAGE_DISPLAY_EDGE_ENCOUNTERS
+                ):
+                    casts_graph_coverage = calculate_gcd_coverage_from_graph(
+                        graph,
+                        metadata_store,
+                        source_id=to_int(candidate.player.get("fflogs_id")),
+                        job=candidate.player.get("job"),
+                        fight_start_time=gcd_start_time,
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_denominator_ms,
+                    )
+                    coverage = gcd_core.select_savage_white_mage_display_edge_coverage(
+                        coverage,
+                        encounter_key=candidate.encounter_key,
+                        job=job,
+                        casts_graph_coverage=casts_graph_coverage,
+                    )
+                if (
+                    coverage
+                    and job == "Scholar"
+                    and candidate.encounter_key in gcd_core.SAVAGE_SCHOLAR_DISPLAY_EDGE_ENCOUNTERS
+                ):
+                    casts_graph_coverage = calculate_gcd_coverage_from_graph(
+                        graph,
+                        metadata_store,
+                        source_id=to_int(candidate.player.get("fflogs_id")),
+                        job=candidate.player.get("job"),
+                        fight_start_time=gcd_start_time,
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_denominator_ms,
+                    )
+                    coverage = gcd_core.select_savage_scholar_display_edge_coverage(
+                        coverage,
+                        encounter_key=candidate.encounter_key,
+                        job=job,
+                        casts_graph_coverage=casts_graph_coverage,
+                    )
+                if (
+                    coverage
+                    and job == "Sage"
+                    and candidate.encounter_key in gcd_core.SAVAGE_SAGE_DISPLAY_EDGE_ENCOUNTERS
+                ):
+                    casts_graph_coverage = calculate_gcd_coverage_from_graph(
+                        graph,
+                        metadata_store,
+                        source_id=to_int(candidate.player.get("fflogs_id")),
+                        job=candidate.player.get("job"),
+                        fight_start_time=gcd_start_time,
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_denominator_ms,
+                    )
+                    coverage = gcd_core.select_savage_sage_display_edge_coverage(
+                        coverage,
+                        encounter_key=candidate.encounter_key,
+                        job=job,
+                        casts_graph_coverage=casts_graph_coverage,
+                    )
+                if (
+                    coverage
+                    and job == "Monk"
+                    and candidate.encounter_key in gcd_core.SAVAGE_MONK_DISPLAY_EDGE_ENCOUNTERS
+                ):
+                    casts_graph_coverage = calculate_gcd_coverage_from_graph(
+                        graph,
+                        metadata_store,
+                        source_id=to_int(candidate.player.get("fflogs_id")),
+                        job=candidate.player.get("job"),
+                        fight_start_time=gcd_start_time,
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_denominator_ms,
+                    )
+                    coverage = gcd_core.select_savage_monk_display_edge_coverage(
+                        coverage,
+                        encounter_key=candidate.encounter_key,
+                        job=job,
+                        casts_graph_coverage=casts_graph_coverage,
+                    )
+                if (
+                    coverage
+                    and job == "Gunbreaker"
+                    and candidate.encounter_key in gcd_core.SAVAGE_GUNBREAKER_DISPLAY_EDGE_ENCOUNTERS
+                ):
+                    casts_graph_coverage = calculate_gcd_coverage_from_graph(
+                        graph,
+                        metadata_store,
+                        source_id=to_int(candidate.player.get("fflogs_id")),
+                        job=candidate.player.get("job"),
+                        fight_start_time=gcd_start_time,
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_denominator_ms,
+                    )
+                    coverage = gcd_core.select_savage_gunbreaker_display_edge_coverage(
+                        coverage,
+                        encounter_key=candidate.encounter_key,
+                        job=job,
+                        casts_graph_coverage=casts_graph_coverage,
+                    )
+                if (
+                    coverage
+                    and job == "Viper"
+                    and candidate.encounter_key in gcd_core.SAVAGE_VIPER_DISPLAY_EDGE_ENCOUNTERS
+                ):
+                    casts_graph_coverage = calculate_gcd_coverage_from_graph(
+                        graph,
+                        metadata_store,
+                        source_id=to_int(candidate.player.get("fflogs_id")),
+                        job=candidate.player.get("job"),
+                        fight_start_time=gcd_start_time,
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_denominator_ms,
+                    )
+                    coverage = gcd_core.select_savage_viper_display_edge_coverage(
+                        coverage,
+                        encounter_key=candidate.encounter_key,
+                        job=job,
+                        casts_graph_coverage=casts_graph_coverage,
+                    )
+                if coverage and candidate.encounter_key == "extreme_queen_eternal" and job == "BlackMage":
+                    combined_downtime_source = gcd_core.raw_event_downtime_source(
+                        base_graph,
+                        raw_events,
+                        encounter_key=candidate.encounter_key,
+                        source_id=to_int(candidate.player.get("fflogs_id")),
+                        friendly_ids=friendly_ids,
+                        fight_start_time=gcd_start_time,
+                        fight_end_time=end_time,
+                        unable_to_act_status_ids=unable_to_act_status_ids,
+                        metadata_store=metadata_store,
+                        job=job,
+                        include_graph_downtime=True,
+                    )
+                    graph_downtime_coverage = calculate_gcd_coverage_from_raw_events(
+                        raw_events,
+                        metadata_store,
+                        encounter_key=candidate.encounter_key,
+                        source_id=to_int(candidate.player.get("fflogs_id")),
+                        job=candidate.player.get("job"),
+                        fight_start_time=gcd_start_time,
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_denominator_ms,
+                        downtime_source=combined_downtime_source,
+                        cap_next_gcd_jobs=gcd_core.raw_next_gcd_capped_jobs_for_encounter(candidate.encounter_key),
+                    )
+                    graph_coverage = calculate_gcd_coverage_from_graph(
+                        graph,
+                        metadata_store,
+                        source_id=to_int(candidate.player.get("fflogs_id")),
+                        job=candidate.player.get("job"),
+                        fight_start_time=gcd_start_time,
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_denominator_ms,
+                    )
+                    coverage = gcd_core.select_queen_black_mage_coverage(
+                        coverage,
+                        graph_downtime_coverage,
+                        graph_coverage,
+                        encounter_key=candidate.encounter_key,
+                    )
+                if coverage and candidate.encounter_key == "extreme_queen_eternal" and job == "Paladin":
+                    raw_targetability_downtime_source = gcd_core.raw_event_downtime_source(
+                        base_graph,
+                        raw_events,
+                        encounter_key=candidate.encounter_key,
+                        source_id=to_int(candidate.player.get("fflogs_id")),
+                        friendly_ids=friendly_ids,
+                        fight_start_time=gcd_start_time,
+                        fight_end_time=end_time,
+                        unable_to_act_status_ids=unable_to_act_status_ids,
+                        metadata_store=metadata_store,
+                        job=job,
+                        include_graph_downtime=False,
+                    )
+                    raw_targetability_coverage = calculate_gcd_coverage_from_raw_events(
+                        raw_events,
+                        metadata_store,
+                        encounter_key=candidate.encounter_key,
+                        source_id=to_int(candidate.player.get("fflogs_id")),
+                        job=candidate.player.get("job"),
+                        fight_start_time=gcd_start_time,
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_denominator_ms,
+                        downtime_source=raw_targetability_downtime_source,
+                        cap_next_gcd_jobs=gcd_core.raw_next_gcd_capped_jobs_for_encounter(candidate.encounter_key),
+                    )
+                    graph_coverage = calculate_gcd_coverage_from_graph(
+                        graph,
+                        metadata_store,
+                        source_id=to_int(candidate.player.get("fflogs_id")),
+                        job=candidate.player.get("job"),
+                        fight_start_time=gcd_start_time,
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_denominator_ms,
+                    )
+                    coverage = gcd_core.select_queen_paladin_coverage(
+                        raw_targetability_coverage,
+                        coverage,
+                        graph_coverage,
+                        encounter_key=candidate.encounter_key,
+                    )
+                    coverage = gcd_core.select_queen_tank_display_edge_coverage(
+                        coverage,
+                        job=job,
+                        encounter_key=candidate.encounter_key,
+                        casts_graph_coverage=graph_coverage,
+                    )
+                if coverage and candidate.encounter_key == "extreme_queen_eternal" and job in {
+                    "Bard",
+                    "Reaper",
+                    "Sage",
+                    "Samurai",
+                    "Summoner",
+                    "WhiteMage",
+                }:
+                    use_graph_downtime = job in {"Reaper", "Samurai", "Summoner", "WhiteMage"}
+                    queen_alternate_downtime_source = gcd_core.raw_event_downtime_source(
+                        base_graph,
+                        raw_events,
+                        encounter_key=candidate.encounter_key,
+                        source_id=to_int(candidate.player.get("fflogs_id")),
+                        friendly_ids=friendly_ids,
+                        fight_start_time=gcd_start_time,
+                        fight_end_time=end_time,
+                        unable_to_act_status_ids=unable_to_act_status_ids,
+                        metadata_store=metadata_store,
+                        job=job,
+                        include_graph_downtime=use_graph_downtime,
+                    )
+                    queen_alternate_coverage = calculate_gcd_coverage_from_raw_events(
+                        raw_events,
+                        metadata_store,
+                        encounter_key=candidate.encounter_key,
+                        source_id=to_int(candidate.player.get("fflogs_id")),
+                        job=candidate.player.get("job"),
+                        fight_start_time=gcd_start_time,
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_denominator_ms,
+                        downtime_source=queen_alternate_downtime_source,
+                        cap_next_gcd_jobs=gcd_core.raw_next_gcd_capped_jobs_for_encounter(candidate.encounter_key),
+                    )
+                    if job == "Bard":
+                        graph_coverage = calculate_gcd_coverage_from_graph(
+                            graph,
+                            metadata_store,
+                            source_id=to_int(candidate.player.get("fflogs_id")),
+                            job=candidate.player.get("job"),
+                            fight_start_time=gcd_start_time,
+                            fight_end_time=end_time,
+                            fallback_denominator_ms=gcd_denominator_ms,
+                        )
+                        queen_capped_coverage = calculate_gcd_coverage_from_raw_events(
+                            raw_events,
+                            metadata_store,
+                            encounter_key=candidate.encounter_key,
+                            source_id=to_int(candidate.player.get("fflogs_id")),
+                            job=candidate.player.get("job"),
+                            fight_start_time=gcd_start_time,
+                            fight_end_time=end_time,
+                            fallback_denominator_ms=gcd_denominator_ms,
+                            downtime_source=queen_alternate_downtime_source,
+                            cap_next_gcd_jobs={job},
+                        )
+                        coverage = gcd_core.select_queen_bard_coverage(
+                            queen_alternate_coverage,
+                            coverage,
+                            encounter_key=candidate.encounter_key,
+                            raw_targetability_capped_coverage=queen_capped_coverage,
+                            casts_graph_coverage=graph_coverage,
+                        )
+                        coverage = gcd_core.select_queen_bard_display_edge_coverage(
+                            coverage,
+                            encounter_key=candidate.encounter_key,
+                            casts_graph_coverage=graph_coverage,
+                        )
+                    elif job == "Reaper":
+                        graph_coverage = calculate_gcd_coverage_from_graph(
+                            graph,
+                            metadata_store,
+                            source_id=to_int(candidate.player.get("fflogs_id")),
+                            job=candidate.player.get("job"),
+                            fight_start_time=gcd_start_time,
+                            fight_end_time=end_time,
+                            fallback_denominator_ms=gcd_denominator_ms,
+                        )
+                        coverage = gcd_core.select_queen_reaper_coverage(
+                            coverage,
+                            queen_alternate_coverage,
+                            encounter_key=candidate.encounter_key,
+                            casts_graph_coverage=graph_coverage,
+                        )
+                    elif job == "Sage":
+                        coverage = gcd_core.select_queen_sage_coverage(
+                            queen_alternate_coverage,
+                            coverage,
+                            encounter_key=candidate.encounter_key,
+                        )
+                    elif job == "Samurai":
+                        graph_coverage = calculate_gcd_coverage_from_graph(
+                            graph,
+                            metadata_store,
+                            source_id=to_int(candidate.player.get("fflogs_id")),
+                            job=candidate.player.get("job"),
+                            fight_start_time=gcd_start_time,
+                            fight_end_time=end_time,
+                            fallback_denominator_ms=gcd_denominator_ms,
+                        )
+                        coverage = gcd_core.select_queen_samurai_coverage(
+                            coverage,
+                            queen_alternate_coverage,
+                            encounter_key=candidate.encounter_key,
+                            casts_graph_coverage=graph_coverage,
+                        )
+                    elif job == "Summoner":
+                        graph_coverage = calculate_gcd_coverage_from_graph(
+                            graph,
+                            metadata_store,
+                            source_id=to_int(candidate.player.get("fflogs_id")),
+                            job=candidate.player.get("job"),
+                            fight_start_time=gcd_start_time,
+                            fight_end_time=end_time,
+                            fallback_denominator_ms=gcd_denominator_ms,
+                        )
+                        coverage = gcd_core.select_queen_summoner_coverage(
+                            coverage,
+                            queen_alternate_coverage,
+                            encounter_key=candidate.encounter_key,
+                            casts_graph_coverage=graph_coverage,
+                        )
+                        coverage = gcd_core.select_queen_summoner_display_edge_coverage(
+                            coverage,
+                            encounter_key=candidate.encounter_key,
+                            casts_graph_coverage=graph_coverage,
+                        )
+                    elif job == "WhiteMage":
+                        graph_coverage = calculate_gcd_coverage_from_graph(
+                            graph,
+                            metadata_store,
+                            source_id=to_int(candidate.player.get("fflogs_id")),
+                            job=candidate.player.get("job"),
+                            fight_start_time=gcd_start_time,
+                            fight_end_time=end_time,
+                            fallback_denominator_ms=gcd_denominator_ms,
+                        )
+                        coverage = gcd_core.select_queen_white_mage_coverage(
+                            coverage,
+                            queen_alternate_coverage,
+                            encounter_key=candidate.encounter_key,
+                            casts_graph_coverage=graph_coverage,
+                        )
+                        coverage = gcd_core.select_queen_white_mage_display_edge_coverage(
+                            coverage,
+                            encounter_key=candidate.encounter_key,
+                            casts_graph_coverage=graph_coverage,
+                        )
+                if coverage and candidate.encounter_key == "extreme_queen_eternal" and job in {
+                    "DarkKnight",
+                    "Gunbreaker",
+                    "Warrior",
+                }:
+                    if job == "DarkKnight":
+                        raw_targetability_downtime_source = gcd_core.raw_event_downtime_source(
+                            base_graph,
+                            raw_events,
+                            encounter_key=candidate.encounter_key,
+                            source_id=to_int(candidate.player.get("fflogs_id")),
+                            friendly_ids=friendly_ids,
+                            fight_start_time=gcd_start_time,
+                            fight_end_time=end_time,
+                            unable_to_act_status_ids=unable_to_act_status_ids,
+                            metadata_store=metadata_store,
+                            job=job,
+                            include_graph_downtime=False,
+                        )
+                        raw_graph_downtime_source = gcd_core.raw_event_downtime_source(
+                            base_graph,
+                            raw_events,
+                            encounter_key=candidate.encounter_key,
+                            source_id=to_int(candidate.player.get("fflogs_id")),
+                            friendly_ids=friendly_ids,
+                            fight_start_time=gcd_start_time,
+                            fight_end_time=end_time,
+                            unable_to_act_status_ids=unable_to_act_status_ids,
+                            metadata_store=metadata_store,
+                            job=job,
+                            include_graph_downtime=True,
+                        )
+                        raw_graph_downtime_coverage = calculate_gcd_coverage_from_raw_events(
+                            raw_events,
+                            metadata_store,
+                            encounter_key=candidate.encounter_key,
+                            source_id=to_int(candidate.player.get("fflogs_id")),
+                            job=candidate.player.get("job"),
+                            fight_start_time=gcd_start_time,
+                            fight_end_time=end_time,
+                            fallback_denominator_ms=gcd_denominator_ms,
+                            downtime_source=raw_graph_downtime_source,
+                            cap_next_gcd_jobs=gcd_core.raw_next_gcd_capped_jobs_for_encounter(candidate.encounter_key),
+                        )
+                        raw_targetability_capped_coverage = calculate_gcd_coverage_from_raw_events(
+                            raw_events,
+                            metadata_store,
+                            encounter_key=candidate.encounter_key,
+                            source_id=to_int(candidate.player.get("fflogs_id")),
+                            job=candidate.player.get("job"),
+                            fight_start_time=gcd_start_time,
+                            fight_end_time=end_time,
+                            fallback_denominator_ms=gcd_denominator_ms,
+                            downtime_source=raw_targetability_downtime_source,
+                            cap_next_gcd_jobs={job},
+                        )
+                        graph_coverage = calculate_gcd_coverage_from_graph(
+                            graph,
+                            metadata_store,
+                            source_id=to_int(candidate.player.get("fflogs_id")),
+                            job=candidate.player.get("job"),
+                            fight_start_time=gcd_start_time,
+                            fight_end_time=end_time,
+                            fallback_denominator_ms=gcd_denominator_ms,
+                        )
+                        coverage = gcd_core.select_queen_dark_knight_coverage(
+                            coverage,
+                            raw_graph_downtime_coverage,
+                            graph_coverage,
+                            encounter_key=candidate.encounter_key,
+                            raw_targetability_capped_coverage=raw_targetability_capped_coverage,
+                        )
+                        coverage = gcd_core.select_queen_tank_display_edge_coverage(
+                            coverage,
+                            job=job,
+                            encounter_key=candidate.encounter_key,
+                            casts_graph_coverage=graph_coverage,
+                        )
+                    elif job == "Gunbreaker":
+                        raw_targetability_downtime_source = gcd_core.raw_event_downtime_source(
+                            base_graph,
+                            raw_events,
+                            encounter_key=candidate.encounter_key,
+                            source_id=to_int(candidate.player.get("fflogs_id")),
+                            friendly_ids=friendly_ids,
+                            fight_start_time=gcd_start_time,
+                            fight_end_time=end_time,
+                            unable_to_act_status_ids=unable_to_act_status_ids,
+                            metadata_store=metadata_store,
+                            job=job,
+                            include_graph_downtime=False,
+                        )
+                        raw_graph_downtime_source = gcd_core.raw_event_downtime_source(
+                            base_graph,
+                            raw_events,
+                            encounter_key=candidate.encounter_key,
+                            source_id=to_int(candidate.player.get("fflogs_id")),
+                            friendly_ids=friendly_ids,
+                            fight_start_time=gcd_start_time,
+                            fight_end_time=end_time,
+                            unable_to_act_status_ids=unable_to_act_status_ids,
+                            metadata_store=metadata_store,
+                            job=job,
+                            include_graph_downtime=True,
+                        )
+                        raw_graph_downtime_coverage = calculate_gcd_coverage_from_raw_events(
+                            raw_events,
+                            metadata_store,
+                            encounter_key=candidate.encounter_key,
+                            source_id=to_int(candidate.player.get("fflogs_id")),
+                            job=candidate.player.get("job"),
+                            fight_start_time=gcd_start_time,
+                            fight_end_time=end_time,
+                            fallback_denominator_ms=gcd_denominator_ms,
+                            downtime_source=raw_graph_downtime_source,
+                            cap_next_gcd_jobs=gcd_core.raw_next_gcd_capped_jobs_for_encounter(candidate.encounter_key),
+                        )
+                        raw_targetability_capped_coverage = calculate_gcd_coverage_from_raw_events(
+                            raw_events,
+                            metadata_store,
+                            encounter_key=candidate.encounter_key,
+                            source_id=to_int(candidate.player.get("fflogs_id")),
+                            job=candidate.player.get("job"),
+                            fight_start_time=gcd_start_time,
+                            fight_end_time=end_time,
+                            fallback_denominator_ms=gcd_denominator_ms,
+                            downtime_source=raw_targetability_downtime_source,
+                            cap_next_gcd_jobs={job},
+                        )
+                        casts_graph_coverage = calculate_gcd_coverage_from_graph(
+                            graph,
+                            metadata_store,
+                            source_id=to_int(candidate.player.get("fflogs_id")),
+                            job=candidate.player.get("job"),
+                            fight_start_time=gcd_start_time,
+                            fight_end_time=end_time,
+                            fallback_denominator_ms=gcd_denominator_ms,
+                        )
+                        coverage = gcd_core.select_queen_gunbreaker_coverage(
+                            coverage,
+                            raw_targetability_capped_coverage,
+                            raw_graph_downtime_coverage,
+                            casts_graph_coverage,
+                            encounter_key=candidate.encounter_key,
+                        )
+                        coverage = gcd_core.select_queen_tank_display_edge_coverage(
+                            coverage,
+                            job=job,
+                            encounter_key=candidate.encounter_key,
+                            casts_graph_coverage=casts_graph_coverage,
+                        )
+                    elif job == "Warrior":
+                        raw_targetability_downtime_source = gcd_core.raw_event_downtime_source(
+                            base_graph,
+                            raw_events,
+                            encounter_key=candidate.encounter_key,
+                            source_id=to_int(candidate.player.get("fflogs_id")),
+                            friendly_ids=friendly_ids,
+                            fight_start_time=gcd_start_time,
+                            fight_end_time=end_time,
+                            unable_to_act_status_ids=unable_to_act_status_ids,
+                            metadata_store=metadata_store,
+                            job=job,
+                            include_graph_downtime=False,
+                        )
+                        raw_targetability_coverage = calculate_gcd_coverage_from_raw_events(
+                            raw_events,
+                            metadata_store,
+                            encounter_key=candidate.encounter_key,
+                            source_id=to_int(candidate.player.get("fflogs_id")),
+                            job=candidate.player.get("job"),
+                            fight_start_time=gcd_start_time,
+                            fight_end_time=end_time,
+                            fallback_denominator_ms=gcd_denominator_ms,
+                            downtime_source=raw_targetability_downtime_source,
+                            cap_next_gcd_jobs=gcd_core.raw_next_gcd_capped_jobs_for_encounter(candidate.encounter_key),
+                        )
+                        raw_graph_downtime_capped_coverage = calculate_gcd_coverage_from_raw_events(
+                            raw_events,
+                            metadata_store,
+                            encounter_key=candidate.encounter_key,
+                            source_id=to_int(candidate.player.get("fflogs_id")),
+                            job=candidate.player.get("job"),
+                            fight_start_time=gcd_start_time,
+                            fight_end_time=end_time,
+                            fallback_denominator_ms=gcd_denominator_ms,
+                            downtime_source=downtime_source,
+                            cap_next_gcd_jobs={job},
+                        )
+                        coverage = gcd_core.select_queen_warrior_coverage(
+                            raw_targetability_coverage,
+                            coverage,
+                            raw_graph_downtime_capped_coverage,
+                            encounter_key=candidate.encounter_key,
+                        )
+                        coverage = gcd_core.select_queen_tank_display_edge_coverage(
+                            coverage,
+                            job=job,
+                            encounter_key=candidate.encounter_key,
+                        )
+                if coverage and candidate.encounter_key == "extreme_queen_eternal" and job == "Astrologian":
+                    graph_coverage = calculate_gcd_coverage_from_graph(
+                        graph,
+                        metadata_store,
+                        source_id=to_int(candidate.player.get("fflogs_id")),
+                        job=candidate.player.get("job"),
+                        fight_start_time=gcd_start_time,
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_denominator_ms,
+                    )
+                    coverage = gcd_core.select_queen_astrologian_coverage(
+                        coverage,
+                        graph_coverage,
+                        encounter_key=candidate.encounter_key,
+                    )
+                    coverage = gcd_core.select_queen_astrologian_display_edge_coverage(
+                        coverage,
+                        encounter_key=candidate.encounter_key,
+                        casts_graph_coverage=graph_coverage,
+                    )
                 if coverage and candidate.encounter_key == "extreme_queen_eternal" and job == "RedMage":
                     graph_coverage = calculate_gcd_coverage_from_graph(
                         graph,
                         metadata_store,
                         source_id=to_int(candidate.player.get("fflogs_id")),
                         job=candidate.player.get("job"),
-                        fight_end_time=first_number(candidate.fight.get("end_time"), candidate.fight.get("endTime")),
-                        fallback_denominator_ms=first_number(
-                            candidate.fight.get("clear_time_ms"),
-                            end_time - start_time,
-                            candidate.fight.get("damage_time_ms"),
-                        ),
+                        fight_start_time=gcd_start_time,
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_denominator_ms,
                     )
                     coverage = gcd_core.select_queen_red_mage_coverage(
                         coverage,
@@ -948,14 +1979,91 @@ def main() -> int:
                         metadata_store,
                         source_id=to_int(candidate.player.get("fflogs_id")),
                         job=candidate.player.get("job"),
-                        fight_end_time=first_number(candidate.fight.get("end_time"), candidate.fight.get("endTime")),
-                        fallback_denominator_ms=first_number(
-                            candidate.fight.get("clear_time_ms"),
-                            end_time - start_time,
-                            candidate.fight.get("damage_time_ms"),
-                        ),
+                        fight_start_time=gcd_start_time,
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_denominator_ms,
                     )
                     coverage = gcd_core.select_queen_scholar_coverage(
+                        coverage,
+                        graph_coverage,
+                        encounter_key=candidate.encounter_key,
+                    )
+                if coverage and candidate.encounter_key == "extreme_queen_eternal" and job == "Monk":
+                    graph_coverage = calculate_gcd_coverage_from_graph(
+                        graph,
+                        metadata_store,
+                        source_id=to_int(candidate.player.get("fflogs_id")),
+                        job=candidate.player.get("job"),
+                        fight_start_time=gcd_start_time,
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_denominator_ms,
+                    )
+                    coverage = gcd_core.select_queen_monk_coverage(
+                        coverage,
+                        graph_coverage,
+                        encounter_key=candidate.encounter_key,
+                    )
+                    coverage = gcd_core.select_queen_monk_display_edge_coverage(
+                        coverage,
+                        encounter_key=candidate.encounter_key,
+                        casts_graph_coverage=graph_coverage,
+                    )
+                if coverage and candidate.encounter_key == "extreme_queen_eternal" and job == "Dragoon":
+                    graph_coverage = calculate_gcd_coverage_from_graph(
+                        graph,
+                        metadata_store,
+                        source_id=to_int(candidate.player.get("fflogs_id")),
+                        job=candidate.player.get("job"),
+                        fight_start_time=gcd_start_time,
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_denominator_ms,
+                    )
+                    raw_targetability_downtime_source = gcd_core.raw_event_downtime_source(
+                        base_graph,
+                        raw_events,
+                        encounter_key=candidate.encounter_key,
+                        source_id=to_int(candidate.player.get("fflogs_id")),
+                        friendly_ids=friendly_ids,
+                        fight_start_time=gcd_start_time,
+                        fight_end_time=end_time,
+                        unable_to_act_status_ids=unable_to_act_status_ids,
+                        metadata_store=metadata_store,
+                        job=job,
+                        include_graph_downtime=False,
+                    )
+                    raw_targetability_coverage = calculate_gcd_coverage_from_raw_events(
+                        raw_events,
+                        metadata_store,
+                        encounter_key=candidate.encounter_key,
+                        source_id=to_int(candidate.player.get("fflogs_id")),
+                        job=candidate.player.get("job"),
+                        fight_start_time=gcd_start_time,
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_denominator_ms,
+                        downtime_source=raw_targetability_downtime_source,
+                        cap_next_gcd_jobs=gcd_core.raw_next_gcd_capped_jobs_for_encounter(candidate.encounter_key),
+                    )
+                    coverage = gcd_core.select_queen_dragoon_coverage(
+                        graph_coverage,
+                        raw_targetability_coverage,
+                        encounter_key=candidate.encounter_key,
+                    )
+                    coverage = gcd_core.select_queen_dragoon_display_edge_coverage(
+                        coverage,
+                        encounter_key=candidate.encounter_key,
+                        casts_graph_coverage=graph_coverage,
+                    )
+                if coverage and candidate.encounter_key == "extreme_queen_eternal" and job == "Machinist":
+                    graph_coverage = calculate_gcd_coverage_from_graph(
+                        graph,
+                        metadata_store,
+                        source_id=to_int(candidate.player.get("fflogs_id")),
+                        job=candidate.player.get("job"),
+                        fight_start_time=gcd_start_time,
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_denominator_ms,
+                    )
+                    coverage = gcd_core.select_queen_machinist_coverage(
                         coverage,
                         graph_coverage,
                         encounter_key=candidate.encounter_key,
@@ -966,89 +2074,516 @@ def main() -> int:
                         metadata_store,
                         source_id=to_int(candidate.player.get("fflogs_id")),
                         job=candidate.player.get("job"),
-                        fight_end_time=first_number(candidate.fight.get("end_time"), candidate.fight.get("endTime")),
-                        fallback_denominator_ms=first_number(
-                            candidate.fight.get("clear_time_ms"),
-                            end_time - start_time,
-                            candidate.fight.get("damage_time_ms"),
-                        ),
+                        fight_start_time=gcd_start_time,
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_denominator_ms,
                     )
                     coverage = gcd_core.select_valigarmanda_red_mage_coverage(
                         coverage,
                         graph_coverage,
                         encounter_key=candidate.encounter_key,
                     )
+                    coverage = gcd_core.select_valigarmanda_red_mage_display_edge_coverage(
+                        coverage,
+                        encounter_key=candidate.encounter_key,
+                        casts_graph_coverage=graph_coverage,
+                    )
                 if coverage and candidate.encounter_key == "extreme_valigarmanda" and job == "WhiteMage":
+                    no_unable_to_act_source = gcd_core.raw_event_downtime_source(
+                        base_graph,
+                        raw_events,
+                        encounter_key=candidate.encounter_key,
+                        source_id=to_int(candidate.player.get("fflogs_id")),
+                        friendly_ids=friendly_ids,
+                        fight_start_time=gcd_start_time,
+                        fight_end_time=end_time,
+                        unable_to_act_status_ids=set(),
+                        metadata_store=metadata_store,
+                        job=job,
+                        include_graph_downtime=not gcd_core.raw_event_uses_targetability_only_downtime(
+                            candidate.encounter_key,
+                            job,
+                        ),
+                    )
+                    no_unable_speed_override_coverage = calculate_gcd_coverage_from_raw_events(
+                        raw_events,
+                        metadata_store,
+                        encounter_key=candidate.encounter_key,
+                        source_id=to_int(candidate.player.get("fflogs_id")),
+                        job=candidate.player.get("job"),
+                        fight_start_time=gcd_start_time,
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_denominator_ms,
+                        downtime_source=no_unable_to_act_source,
+                        cap_next_gcd_jobs=gcd_core.raw_next_gcd_capped_jobs_for_encounter(candidate.encounter_key),
+                        speed_stats_override={
+                            "spell_speed": gcd_core.VALIGARMANDA_WHM_LARGE_UNABLE_SPEED_OVERRIDE_SPELL_SPEED,
+                        },
+                    )
                     graph_coverage = calculate_gcd_coverage_from_graph(
                         graph,
                         metadata_store,
                         source_id=to_int(candidate.player.get("fflogs_id")),
                         job=candidate.player.get("job"),
-                        fight_end_time=first_number(candidate.fight.get("end_time"), candidate.fight.get("endTime")),
-                        fallback_denominator_ms=first_number(
-                            candidate.fight.get("clear_time_ms"),
-                            end_time - start_time,
-                            candidate.fight.get("damage_time_ms"),
-                        ),
+                        fight_start_time=gcd_start_time,
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_denominator_ms,
                     )
                     coverage = gcd_core.select_valigarmanda_white_mage_coverage(
+                        coverage,
+                        graph_coverage,
+                        no_unable_speed_override_coverage,
+                        encounter_key=candidate.encounter_key,
+                    )
+                if coverage and candidate.encounter_key == "extreme_valigarmanda" and job == "Astrologian":
+                    speed_override_coverage = calculate_gcd_coverage_from_raw_events(
+                        raw_events,
+                        metadata_store,
+                        encounter_key=candidate.encounter_key,
+                        source_id=to_int(candidate.player.get("fflogs_id")),
+                        job=candidate.player.get("job"),
+                        fight_start_time=gcd_start_time,
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_denominator_ms,
+                        downtime_source=downtime_source,
+                        cap_next_gcd_jobs=gcd_core.raw_next_gcd_capped_jobs_for_encounter(candidate.encounter_key),
+                        speed_stats_override={
+                            "spell_speed": gcd_core.VALIGARMANDA_AST_ESTIMATED_SPEED_OVERRIDE_SPELL_SPEED,
+                        },
+                    )
+                    graph_coverage = calculate_gcd_coverage_from_graph(
+                        graph,
+                        metadata_store,
+                        source_id=to_int(candidate.player.get("fflogs_id")),
+                        job=candidate.player.get("job"),
+                        fight_start_time=gcd_start_time,
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_denominator_ms,
+                    )
+                    coverage = gcd_core.select_valigarmanda_astrologian_coverage(
+                        coverage,
+                        graph_coverage,
+                        speed_override_coverage,
+                        encounter_key=candidate.encounter_key,
+                    )
+                if coverage and candidate.encounter_key == "extreme_valigarmanda" and job == "Dancer":
+                    graph_coverage = calculate_gcd_coverage_from_graph(
+                        graph,
+                        metadata_store,
+                        source_id=to_int(candidate.player.get("fflogs_id")),
+                        job=candidate.player.get("job"),
+                        fight_start_time=gcd_start_time,
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_denominator_ms,
+                    )
+                    coverage = gcd_core.select_valigarmanda_dancer_coverage(
+                        coverage,
+                        graph_coverage,
+                        encounter_key=candidate.encounter_key,
+                    )
+                if coverage and candidate.encounter_key == "extreme_valigarmanda" and job == "Samurai":
+                    graph_coverage = calculate_gcd_coverage_from_graph(
+                        graph,
+                        metadata_store,
+                        source_id=to_int(candidate.player.get("fflogs_id")),
+                        job=candidate.player.get("job"),
+                        fight_start_time=gcd_start_time,
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_denominator_ms,
+                    )
+                    coverage = gcd_core.select_valigarmanda_samurai_coverage(
+                        coverage,
+                        graph_coverage,
+                        encounter_key=candidate.encounter_key,
+                    )
+                if coverage and candidate.encounter_key == "extreme_valigarmanda" and job == "Viper":
+                    graph_coverage = calculate_gcd_coverage_from_graph(
+                        graph,
+                        metadata_store,
+                        source_id=to_int(candidate.player.get("fflogs_id")),
+                        job=candidate.player.get("job"),
+                        fight_start_time=gcd_start_time,
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_denominator_ms,
+                    )
+                    coverage = gcd_core.select_valigarmanda_viper_coverage(
                         coverage,
                         graph_coverage,
                         encounter_key=candidate.encounter_key,
                     )
                 if coverage and candidate.encounter_key == "extreme_valigarmanda" and job == "Summoner":
+                    speed_override_coverage = calculate_gcd_coverage_from_raw_events(
+                        raw_events,
+                        metadata_store,
+                        encounter_key=candidate.encounter_key,
+                        source_id=to_int(candidate.player.get("fflogs_id")),
+                        job=candidate.player.get("job"),
+                        fight_start_time=gcd_start_time,
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_denominator_ms,
+                        downtime_source=downtime_source,
+                        cap_next_gcd_jobs=gcd_core.raw_next_gcd_capped_jobs_for_encounter(candidate.encounter_key),
+                        speed_stats_override={
+                            "spell_speed": gcd_core.VALIGARMANDA_SMN_HIGH_UPTIME_SPEED_OVERRIDE_SPELL_SPEED,
+                        },
+                    )
                     graph_coverage = calculate_gcd_coverage_from_graph(
                         graph,
                         metadata_store,
                         source_id=to_int(candidate.player.get("fflogs_id")),
                         job=candidate.player.get("job"),
-                        fight_end_time=first_number(candidate.fight.get("end_time"), candidate.fight.get("endTime")),
-                        fallback_denominator_ms=first_number(
-                            candidate.fight.get("clear_time_ms"),
-                            end_time - start_time,
-                            candidate.fight.get("damage_time_ms"),
-                        ),
+                        fight_start_time=gcd_start_time,
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_denominator_ms,
                     )
                     coverage = gcd_core.select_valigarmanda_summoner_coverage(
                         coverage,
                         graph_coverage,
+                        speed_override_coverage,
                         encounter_key=candidate.encounter_key,
                     )
-                if coverage and candidate.encounter_key == "extreme_valigarmanda" and job == "BlackMage":
+                if coverage and candidate.encounter_key == "extreme_valigarmanda" and job == "Reaper":
                     graph_coverage = calculate_gcd_coverage_from_graph(
                         graph,
                         metadata_store,
                         source_id=to_int(candidate.player.get("fflogs_id")),
                         job=candidate.player.get("job"),
-                        fight_end_time=first_number(candidate.fight.get("end_time"), candidate.fight.get("endTime")),
-                        fallback_denominator_ms=first_number(
-                            candidate.fight.get("clear_time_ms"),
-                            end_time - start_time,
-                            candidate.fight.get("damage_time_ms"),
-                        ),
+                        fight_start_time=gcd_start_time,
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_denominator_ms,
                     )
-                    coverage = gcd_core.select_valigarmanda_black_mage_coverage(
+                    coverage = gcd_core.select_valigarmanda_reaper_coverage(
                         coverage,
                         graph_coverage,
                         encounter_key=candidate.encounter_key,
                     )
+                if coverage and candidate.encounter_key == "extreme_valigarmanda" and job == "Gunbreaker":
+                    graph_coverage = calculate_gcd_coverage_from_graph(
+                        graph,
+                        metadata_store,
+                        source_id=to_int(candidate.player.get("fflogs_id")),
+                        job=candidate.player.get("job"),
+                        fight_start_time=gcd_start_time,
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_denominator_ms,
+                    )
+                    coverage = gcd_core.select_valigarmanda_gunbreaker_coverage(
+                        coverage,
+                        graph_coverage,
+                        encounter_key=candidate.encounter_key,
+                    )
+                    coverage = gcd_core.select_valigarmanda_tank_display_edge_coverage(
+                        coverage,
+                        job=job,
+                        encounter_key=candidate.encounter_key,
+                        casts_graph_coverage=graph_coverage,
+                    )
+                if coverage and candidate.encounter_key == "extreme_valigarmanda" and job in {
+                    "DarkKnight",
+                    "Paladin",
+                }:
+                    graph_coverage = calculate_gcd_coverage_from_graph(
+                        graph,
+                        metadata_store,
+                        source_id=to_int(candidate.player.get("fflogs_id")),
+                        job=candidate.player.get("job"),
+                        fight_start_time=gcd_start_time,
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_denominator_ms,
+                    )
+                    coverage = gcd_core.select_valigarmanda_tank_display_edge_coverage(
+                        coverage,
+                        job=job,
+                        encounter_key=candidate.encounter_key,
+                        casts_graph_coverage=graph_coverage,
+                    )
+                if coverage and candidate.encounter_key == "extreme_valigarmanda" and job == "Pictomancer":
+                    graph_coverage = calculate_gcd_coverage_from_graph(
+                        graph,
+                        metadata_store,
+                        source_id=to_int(candidate.player.get("fflogs_id")),
+                        job=candidate.player.get("job"),
+                        fight_start_time=gcd_start_time,
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_denominator_ms,
+                    )
+                    no_unable_to_act_coverage = None
+                    if raw_events is not None:
+                        no_unable_to_act_source = gcd_core.raw_event_downtime_source(
+                            base_graph,
+                            raw_events,
+                            encounter_key=candidate.encounter_key,
+                            source_id=to_int(candidate.player.get("fflogs_id")),
+                            friendly_ids=friendly_ids,
+                            fight_start_time=gcd_start_time,
+                            fight_end_time=end_time,
+                            unable_to_act_status_ids=set(),
+                            metadata_store=metadata_store,
+                            job=job,
+                            include_graph_downtime=not gcd_core.raw_event_uses_targetability_only_downtime(
+                                candidate.encounter_key,
+                                job,
+                            ),
+                        )
+                        no_unable_to_act_coverage = calculate_gcd_coverage_from_raw_events(
+                            raw_events,
+                            metadata_store,
+                            encounter_key=candidate.encounter_key,
+                            source_id=to_int(candidate.player.get("fflogs_id")),
+                            job=candidate.player.get("job"),
+                            fight_start_time=gcd_start_time,
+                            fight_end_time=end_time,
+                            fallback_denominator_ms=gcd_denominator_ms,
+                            downtime_source=no_unable_to_act_source,
+                            cap_next_gcd_jobs=gcd_core.raw_next_gcd_capped_jobs_for_encounter(candidate.encounter_key),
+                        )
+                    coverage = gcd_core.select_valigarmanda_pictomancer_coverage(
+                        coverage,
+                        graph_coverage,
+                        no_unable_to_act_coverage,
+                        encounter_key=candidate.encounter_key,
+                    )
+                if coverage and candidate.encounter_key == "extreme_valigarmanda" and job == "Scholar":
+                    graph_coverage = calculate_gcd_coverage_from_graph(
+                        graph,
+                        metadata_store,
+                        source_id=to_int(candidate.player.get("fflogs_id")),
+                        job=candidate.player.get("job"),
+                        fight_start_time=gcd_start_time,
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_denominator_ms,
+                    )
+                    no_unable_to_act_source = gcd_core.raw_event_downtime_source(
+                        base_graph,
+                        raw_events,
+                        encounter_key=candidate.encounter_key,
+                        source_id=to_int(candidate.player.get("fflogs_id")),
+                        friendly_ids=friendly_ids,
+                        fight_start_time=gcd_start_time,
+                        fight_end_time=end_time,
+                        unable_to_act_status_ids=set(),
+                        metadata_store=metadata_store,
+                        job=job,
+                        include_graph_downtime=not gcd_core.raw_event_uses_targetability_only_downtime(
+                            candidate.encounter_key,
+                            job,
+                        ),
+                    )
+                    no_unable_to_act_coverage = calculate_gcd_coverage_from_raw_events(
+                        raw_events,
+                        metadata_store,
+                        encounter_key=candidate.encounter_key,
+                        source_id=to_int(candidate.player.get("fflogs_id")),
+                        job=candidate.player.get("job"),
+                        fight_start_time=gcd_start_time,
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_denominator_ms,
+                        downtime_source=no_unable_to_act_source,
+                        cap_next_gcd_jobs=gcd_core.raw_next_gcd_capped_jobs_for_encounter(candidate.encounter_key),
+                    )
+                    coverage = gcd_core.select_valigarmanda_scholar_coverage(
+                        coverage,
+                        graph_coverage,
+                        no_unable_to_act_coverage,
+                        encounter_key=candidate.encounter_key,
+                    )
+                if coverage and candidate.encounter_key == "extreme_valigarmanda" and job == "BlackMage":
+                    moderate_speed_coverage = calculate_gcd_coverage_from_raw_events(
+                        raw_events,
+                        metadata_store,
+                        encounter_key=candidate.encounter_key,
+                        source_id=to_int(candidate.player.get("fflogs_id")),
+                        job=candidate.player.get("job"),
+                        fight_start_time=gcd_start_time,
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_denominator_ms,
+                        downtime_source=downtime_source,
+                        cap_next_gcd_jobs=gcd_core.raw_next_gcd_capped_jobs_for_encounter(candidate.encounter_key),
+                        speed_stats_override={
+                            "spell_speed": gcd_core.VALIGARMANDA_BLM_MODERATE_SPEED_OVERRIDE_SPELL_SPEED,
+                        },
+                    )
+                    graph_coverage = calculate_gcd_coverage_from_graph(
+                        graph,
+                        metadata_store,
+                        source_id=to_int(candidate.player.get("fflogs_id")),
+                        job=candidate.player.get("job"),
+                        fight_start_time=gcd_start_time,
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_denominator_ms,
+                    )
+                    coverage = gcd_core.select_valigarmanda_black_mage_coverage(
+                        coverage,
+                        graph_coverage,
+                        moderate_speed_coverage,
+                        encounter_key=candidate.encounter_key,
+                    )
+                if coverage and candidate.encounter_key == "extreme_valigarmanda" and job == "Machinist":
+                    graph_coverage = calculate_gcd_coverage_from_graph(
+                        graph,
+                        metadata_store,
+                        source_id=to_int(candidate.player.get("fflogs_id")),
+                        job=candidate.player.get("job"),
+                        fight_start_time=gcd_start_time,
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_denominator_ms,
+                    )
+                    coverage = gcd_core.select_valigarmanda_machinist_coverage(
+                        coverage,
+                        graph_coverage,
+                        encounter_key=candidate.encounter_key,
+                    )
+                if coverage and candidate.encounter_key == "extreme_valigarmanda" and job == "Warrior":
+                    minimum_speed_coverage = calculate_gcd_coverage_from_raw_events(
+                        raw_events,
+                        metadata_store,
+                        encounter_key=candidate.encounter_key,
+                        source_id=to_int(candidate.player.get("fflogs_id")),
+                        job=candidate.player.get("job"),
+                        fight_start_time=gcd_start_time,
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_denominator_ms,
+                        downtime_source=downtime_source,
+                        cap_next_gcd_jobs=gcd_core.raw_next_gcd_capped_jobs_for_encounter(candidate.encounter_key),
+                        speed_stats_override={"skill_speed": gcd_core.SUB_ATTRIBUTE_MINIMUM},
+                    )
+                    graph_coverage = calculate_gcd_coverage_from_graph(
+                        graph,
+                        metadata_store,
+                        source_id=to_int(candidate.player.get("fflogs_id")),
+                        job=candidate.player.get("job"),
+                        fight_start_time=gcd_start_time,
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_denominator_ms,
+                    )
+                    coverage = gcd_core.select_valigarmanda_warrior_coverage(
+                        coverage,
+                        minimum_speed_coverage,
+                        graph_coverage,
+                        encounter_key=candidate.encounter_key,
+                    )
+                    coverage = gcd_core.select_valigarmanda_tank_display_edge_coverage(
+                        coverage,
+                        job=job,
+                        encounter_key=candidate.encounter_key,
+                        casts_graph_coverage=graph_coverage,
+                    )
+                if coverage and candidate.encounter_key == "extreme_queen_eternal" and job in {
+                    "Dancer",
+                    "Ninja",
+                    "Pictomancer",
+                    "Scholar",
+                    "Viper",
+                }:
+                    graph_coverage = calculate_gcd_coverage_from_graph(
+                        graph,
+                        metadata_store,
+                        source_id=to_int(candidate.player.get("fflogs_id")),
+                        job=candidate.player.get("job"),
+                        fight_start_time=gcd_start_time,
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_denominator_ms,
+                    )
+                    if job == "Dancer":
+                        raw_graph_downtime_source = gcd_core.raw_event_downtime_source(
+                            base_graph,
+                            raw_events,
+                            encounter_key=candidate.encounter_key,
+                            source_id=to_int(candidate.player.get("fflogs_id")),
+                            friendly_ids=friendly_ids,
+                            fight_start_time=gcd_start_time,
+                            fight_end_time=end_time,
+                            unable_to_act_status_ids=unable_to_act_status_ids,
+                            metadata_store=metadata_store,
+                            job=job,
+                            include_graph_downtime=True,
+                        )
+                        raw_graph_downtime_coverage = calculate_gcd_coverage_from_raw_events(
+                            raw_events,
+                            metadata_store,
+                            encounter_key=candidate.encounter_key,
+                            source_id=to_int(candidate.player.get("fflogs_id")),
+                            job=candidate.player.get("job"),
+                            fight_start_time=gcd_start_time,
+                            fight_end_time=end_time,
+                            fallback_denominator_ms=gcd_denominator_ms,
+                            downtime_source=raw_graph_downtime_source,
+                            cap_next_gcd_jobs=gcd_core.raw_next_gcd_capped_jobs_for_encounter(candidate.encounter_key),
+                        )
+                        coverage = gcd_core.select_queen_dancer_coverage(
+                            coverage,
+                            graph_coverage,
+                            raw_graph_downtime_coverage,
+                            encounter_key=candidate.encounter_key,
+                        )
+                    elif job == "Ninja":
+                        coverage = gcd_core.select_queen_ninja_coverage(
+                            coverage,
+                            graph_coverage,
+                            encounter_key=candidate.encounter_key,
+                        )
+                    elif job == "Pictomancer":
+                        coverage = gcd_core.select_queen_pictomancer_coverage(
+                            coverage,
+                            graph_coverage,
+                            encounter_key=candidate.encounter_key,
+                        )
+                        coverage = gcd_core.select_queen_pictomancer_display_edge_coverage(
+                            coverage,
+                            encounter_key=candidate.encounter_key,
+                            casts_graph_coverage=graph_coverage,
+                        )
+                    elif job == "Scholar":
+                        coverage = gcd_core.select_queen_scholar_coverage(
+                            coverage,
+                            graph_coverage,
+                            encounter_key=candidate.encounter_key,
+                        )
+                    elif job == "Viper":
+                        coverage = gcd_core.select_queen_viper_coverage(
+                            coverage,
+                            graph_coverage,
+                            encounter_key=candidate.encounter_key,
+                        )
                 if coverage and job == "Bard":
                     graph_coverage = calculate_gcd_coverage_from_graph(
                         graph,
                         metadata_store,
                         source_id=to_int(candidate.player.get("fflogs_id")),
                         job=candidate.player.get("job"),
-                        fight_end_time=first_number(candidate.fight.get("end_time"), candidate.fight.get("endTime")),
-                        fallback_denominator_ms=first_number(
-                            candidate.fight.get("clear_time_ms"),
-                            end_time - start_time,
-                            candidate.fight.get("damage_time_ms"),
-                        ),
+                        fight_start_time=gcd_start_time,
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_denominator_ms,
                     )
                     coverage = gcd_core.select_bard_raw_event_coverage(
                         coverage,
                         graph_coverage,
                         encounter_key=candidate.encounter_key,
+                    )
+                    coverage = gcd_core.select_queen_bard_display_edge_coverage(
+                        coverage,
+                        encounter_key=candidate.encounter_key,
+                        casts_graph_coverage=graph_coverage,
+                    )
+                if (
+                    coverage
+                    and candidate.encounter_key == "extreme_valigarmanda"
+                    and job in gcd_core.VALIGARMANDA_DISPLAY_EDGE_JOBS
+                ):
+                    graph_coverage = calculate_gcd_coverage_from_graph(
+                        graph,
+                        metadata_store,
+                        source_id=to_int(candidate.player.get("fflogs_id")),
+                        job=candidate.player.get("job"),
+                        fight_start_time=gcd_start_time,
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_denominator_ms,
+                    )
+                    coverage = gcd_core.select_valigarmanda_display_edge_coverage(
+                        coverage,
+                        job=job,
+                        encounter_key=candidate.encounter_key,
+                        casts_graph_coverage=graph_coverage,
                     )
             if not coverage:
                 coverage = calculate_gcd_coverage_from_graph(
@@ -1056,12 +2591,15 @@ def main() -> int:
                     metadata_store,
                     source_id=to_int(candidate.player.get("fflogs_id")),
                     job=candidate.player.get("job"),
-                    fight_end_time=first_number(candidate.fight.get("end_time"), candidate.fight.get("endTime")),
-                    fallback_denominator_ms=first_number(
-                        candidate.fight.get("clear_time_ms"),
-                        end_time - start_time,
-                        candidate.fight.get("damage_time_ms"),
-                    ),
+                    fight_start_time=gcd_start_time,
+                    fight_end_time=end_time,
+                    fallback_denominator_ms=gcd_denominator_ms,
+                )
+            if coverage:
+                coverage = gcd_core.select_zoraal_sage_graph_coverage(
+                    coverage,
+                    encounter_key=candidate.encounter_key,
+                    job=job,
                 )
         except report_access_error_class:
             reason = "private_or_deleted"
@@ -1132,7 +2670,6 @@ def main() -> int:
         write_json(state_path, state)
         print("已更新 data/state.json 的 gcd_report_backfill 回補狀態。")
     return 0
-
 
 if __name__ == "__main__":
     raise SystemExit(main())

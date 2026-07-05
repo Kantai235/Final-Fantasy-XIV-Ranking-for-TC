@@ -293,6 +293,33 @@ def 正規化報告地區範圍(值: Any) -> str:
     "version_status",
     "version_cutoff_iso",
 )
+公開GCD覆蓋率欄位 = (
+    "percent",
+    "covered_time_ms",
+    "denominator_ms",
+    "downtime_ms",
+    "gcd_cast_count",
+    "calculation_version",
+    "source",
+    "xivanalysis_url",
+    "speed_stat_source",
+    "estimated_skill_speed",
+    "estimated_spell_speed",
+    "coverage_downtime_ms",
+    "denominator_downtime_ms",
+    "estimated_speed_below_minimum",
+    "fallback_selection",
+    "previous_fallback_selection",
+    "downtime_selection",
+    "raw_events_percent",
+    "raw_events_denominator_ms",
+    "casts_graph_percent",
+    "casts_graph_denominator_ms",
+    "raw_targetability_percent",
+    "raw_targetability_denominator_ms",
+    "raw_next_gcd_capped_percent",
+    "raw_next_gcd_capped_denominator_ms",
+)
 
 版本紀錄範圍清單 = ("all", "valid", "obsolete")
 報告尚未完整匯出狀態 = "deferred_incomplete_export"
@@ -2538,6 +2565,8 @@ class 即時GCD覆蓋率計算器:
             return
 
         self.已查詢戰鬥數 += 1
+        gcd_denominator_ms = gcd_core.gcd_pull_duration_ms(戰鬥, start_time, end_time)
+        gcd_start_time = gcd_core.gcd_pull_start_time_ms(戰鬥, start_time, end_time)
         graph_cache_key = (報告代碼, fight_id, start_time, end_time)
         try:
             base_graph = self._graph_cache.get(graph_cache_key)
@@ -2587,9 +2616,10 @@ class 即時GCD覆蓋率計算器:
                     downtime_source = gcd_core.raw_event_downtime_source(
                         base_graph,
                         raw_events,
+                        encounter_key=str(副本設定.get("key") or ""),
                         source_id=source_id,
                         friendly_ids=friendly_ids,
-                        fight_start_time=start_time,
+                        fight_start_time=gcd_start_time,
                         fight_end_time=end_time,
                         unable_to_act_status_ids=self._status_store.unable_to_act_status_ids(),
                         metadata_store=self._metadata_store,
@@ -2607,12 +2637,9 @@ class 即時GCD覆蓋率計算器:
                     encounter_key=str(副本設定.get("key") or ""),
                     source_id=source_id,
                     job=玩家.get("job"),
+                    fight_start_time=gcd_start_time,
                     fight_end_time=end_time,
-                    fallback_denominator_ms=gcd_core.first_number(
-                        戰鬥.get("clear_time_ms"),
-                        end_time - start_time,
-                        戰鬥.get("damage_time_ms"),
-                    ),
+                    fallback_denominator_ms=gcd_denominator_ms,
                     downtime_source=downtime_source,
                     cap_next_gcd_jobs=gcd_core.raw_next_gcd_capped_jobs_for_encounter(str(副本設定.get("key") or "")),
                 )
@@ -2623,18 +2650,16 @@ class 即時GCD覆蓋率計算器:
                         encounter_key=str(副本設定.get("key") or ""),
                         source_id=source_id,
                         job=玩家.get("job"),
+                        fight_start_time=gcd_start_time,
                         fight_end_time=end_time,
-                        fallback_denominator_ms=gcd_core.first_number(
-                            戰鬥.get("clear_time_ms"),
-                            end_time - start_time,
-                            戰鬥.get("damage_time_ms"),
-                        ),
+                        fallback_denominator_ms=gcd_denominator_ms,
                         downtime_source=gcd_core.raw_event_downtime_source(
                             graph,
                             raw_events,
+                            encounter_key=str(副本設定.get("key") or ""),
                             source_id=source_id,
                             friendly_ids=friendly_ids,
-                            fight_start_time=start_time,
+                            fight_start_time=gcd_start_time,
                             fight_end_time=end_time,
                             unable_to_act_status_ids=set(),
                             metadata_store=self._metadata_store,
@@ -2650,12 +2675,9 @@ class 即時GCD覆蓋率計算器:
                         encounter_key=str(副本設定.get("key") or ""),
                         source_id=source_id,
                         job=玩家.get("job"),
+                        fight_start_time=gcd_start_time,
                         fight_end_time=end_time,
-                        fallback_denominator_ms=gcd_core.first_number(
-                            戰鬥.get("clear_time_ms"),
-                            end_time - start_time,
-                            戰鬥.get("damage_time_ms"),
-                        ),
+                        fallback_denominator_ms=gcd_denominator_ms,
                         downtime_source=graph,
                         cap_next_gcd_jobs=gcd_core.raw_next_gcd_capped_jobs_for_encounter(str(副本設定.get("key") or "")),
                     )
@@ -2666,24 +2688,18 @@ class 即時GCD覆蓋率計算器:
                         self._metadata_store,
                         source_id=source_id,
                         job=玩家.get("job"),
+                        fight_start_time=gcd_start_time,
                         fight_end_time=end_time,
-                        fallback_denominator_ms=gcd_core.first_number(
-                            戰鬥.get("clear_time_ms"),
-                            end_time - start_time,
-                            戰鬥.get("damage_time_ms"),
-                        ),
+                        fallback_denominator_ms=gcd_denominator_ms,
                     )
                     raw_downtime_graph_coverage = gcd_core.calculate_gcd_coverage_from_graph(
                         downtime_source,
                         self._metadata_store,
                         source_id=source_id,
                         job=玩家.get("job"),
+                        fight_start_time=gcd_start_time,
                         fight_end_time=end_time,
-                        fallback_denominator_ms=gcd_core.first_number(
-                            戰鬥.get("clear_time_ms"),
-                            end_time - start_time,
-                            戰鬥.get("damage_time_ms"),
-                        ),
+                        fallback_denominator_ms=gcd_denominator_ms,
                     )
                     coverage = gcd_core.select_blm_byakko_coverage(
                         coverage,
@@ -2696,12 +2712,9 @@ class 即時GCD覆蓋率計算器:
                         self._metadata_store,
                         source_id=source_id,
                         job=玩家.get("job"),
+                        fight_start_time=gcd_start_time,
                         fight_end_time=end_time,
-                        fallback_denominator_ms=gcd_core.first_number(
-                            戰鬥.get("clear_time_ms"),
-                            end_time - start_time,
-                            戰鬥.get("damage_time_ms"),
-                        ),
+                        fallback_denominator_ms=gcd_denominator_ms,
                     )
                     coverage = gcd_core.select_queen_red_mage_coverage(
                         coverage,
@@ -2714,17 +2727,253 @@ class 即時GCD覆蓋率計算器:
                         self._metadata_store,
                         source_id=source_id,
                         job=玩家.get("job"),
+                        fight_start_time=gcd_start_time,
                         fight_end_time=end_time,
-                        fallback_denominator_ms=gcd_core.first_number(
-                            戰鬥.get("clear_time_ms"),
-                            end_time - start_time,
-                            戰鬥.get("damage_time_ms"),
-                        ),
+                        fallback_denominator_ms=gcd_denominator_ms,
                     )
                     coverage = gcd_core.select_queen_scholar_coverage(
                         coverage,
                         graph_coverage,
                         encounter_key=str(副本設定.get("key") or ""),
+                    )
+                if (
+                    coverage
+                    and str(副本設定.get("key") or "") == "extreme_zoraal_ja"
+                    and job in {
+                        "BlackMage",
+                        "Gunbreaker",
+                        "Machinist",
+                        "Summoner",
+                        "RedMage",
+                        "Astrologian",
+                        "WhiteMage",
+                        "Scholar",
+                        "Sage",
+                        "Samurai",
+                        "Reaper",
+                        "Warrior",
+                    }
+                ):
+                    graph_coverage = gcd_core.calculate_gcd_coverage_from_graph(
+                        graph,
+                        self._metadata_store,
+                        source_id=source_id,
+                        job=玩家.get("job"),
+                        fight_start_time=gcd_start_time,
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_denominator_ms,
+                    )
+                    if job == "BlackMage":
+                        coverage = gcd_core.select_zoraal_black_mage_coverage(
+                            coverage,
+                            graph_coverage,
+                            encounter_key=str(副本設定.get("key") or ""),
+                        )
+                    elif job == "Gunbreaker":
+                        coverage = gcd_core.select_zoraal_gunbreaker_coverage(
+                            coverage,
+                            graph_coverage,
+                            encounter_key=str(副本設定.get("key") or ""),
+                        )
+                    elif job == "Warrior":
+                        coverage = gcd_core.select_zoraal_warrior_coverage(
+                            coverage,
+                            graph_coverage,
+                            encounter_key=str(副本設定.get("key") or ""),
+                        )
+                    elif job == "Machinist":
+                        coverage = gcd_core.select_zoraal_machinist_coverage(
+                            coverage,
+                            graph_coverage,
+                            encounter_key=str(副本設定.get("key") or ""),
+                        )
+                    elif job == "Summoner":
+                        coverage = gcd_core.select_zoraal_summoner_coverage(
+                            coverage,
+                            graph_coverage,
+                            encounter_key=str(副本設定.get("key") or ""),
+                        )
+                    elif job == "RedMage":
+                        coverage = gcd_core.select_zoraal_red_mage_coverage(
+                            coverage,
+                            graph_coverage,
+                            encounter_key=str(副本設定.get("key") or ""),
+                        )
+                    elif job == "Astrologian":
+                        coverage = gcd_core.select_zoraal_astrologian_coverage(
+                            coverage,
+                            graph_coverage,
+                            encounter_key=str(副本設定.get("key") or ""),
+                        )
+                    elif job == "WhiteMage":
+                        coverage = gcd_core.select_zoraal_white_mage_coverage(
+                            coverage,
+                            graph_coverage,
+                            encounter_key=str(副本設定.get("key") or ""),
+                        )
+                    elif job == "Scholar":
+                        coverage = gcd_core.select_zoraal_scholar_coverage(
+                            coverage,
+                            graph_coverage,
+                            encounter_key=str(副本設定.get("key") or ""),
+                        )
+                    elif job == "Sage":
+                        coverage = gcd_core.select_zoraal_sage_coverage(
+                            coverage,
+                            graph_coverage,
+                            encounter_key=str(副本設定.get("key") or ""),
+                        )
+                    elif job == "Samurai":
+                        coverage = gcd_core.select_zoraal_samurai_coverage(
+                            coverage,
+                            graph_coverage,
+                            encounter_key=str(副本設定.get("key") or ""),
+                        )
+                    else:
+                        coverage = gcd_core.select_zoraal_reaper_coverage(
+                            coverage,
+                            graph_coverage,
+                            encounter_key=str(副本設定.get("key") or ""),
+                        )
+                if (
+                    coverage
+                    and job == "Summoner"
+                    and str(副本設定.get("key") or "") in gcd_core.SAVAGE_SUMMONER_DISPLAY_EDGE_ENCOUNTERS
+                ):
+                    graph_coverage = gcd_core.calculate_gcd_coverage_from_graph(
+                        graph,
+                        self._metadata_store,
+                        source_id=source_id,
+                        job=玩家.get("job"),
+                        fight_start_time=gcd_start_time,
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_denominator_ms,
+                    )
+                    coverage = gcd_core.select_savage_summoner_display_edge_coverage(
+                        coverage,
+                        encounter_key=str(副本設定.get("key") or ""),
+                        job=job,
+                        casts_graph_coverage=graph_coverage,
+                    )
+                if (
+                    coverage
+                    and job == "RedMage"
+                    and str(副本設定.get("key") or "") in gcd_core.SAVAGE_REDMAGE_DISPLAY_EDGE_ENCOUNTERS
+                ):
+                    graph_coverage = gcd_core.calculate_gcd_coverage_from_graph(
+                        graph,
+                        self._metadata_store,
+                        source_id=source_id,
+                        job=job,
+                        fight_start_time=gcd_start_time,
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_denominator_ms,
+                    )
+                    coverage = gcd_core.select_savage_red_mage_display_edge_coverage(
+                        coverage,
+                        encounter_key=str(副本設定.get("key") or ""),
+                        job=job,
+                        casts_graph_coverage=graph_coverage,
+                    )
+                if (
+                    coverage
+                    and job == "Pictomancer"
+                    and str(副本設定.get("key") or "") in gcd_core.SAVAGE_PICTOMANCER_DISPLAY_EDGE_ENCOUNTERS
+                ):
+                    graph_coverage = gcd_core.calculate_gcd_coverage_from_graph(
+                        graph,
+                        self._metadata_store,
+                        source_id=source_id,
+                        job=job,
+                        fight_start_time=gcd_start_time,
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_denominator_ms,
+                    )
+                    coverage = gcd_core.select_savage_pictomancer_display_edge_coverage(
+                        coverage,
+                        encounter_key=str(副本設定.get("key") or ""),
+                        job=job,
+                        casts_graph_coverage=graph_coverage,
+                    )
+                if (
+                    coverage
+                    and job == "Sage"
+                    and str(副本設定.get("key") or "") in gcd_core.SAVAGE_SAGE_DISPLAY_EDGE_ENCOUNTERS
+                ):
+                    graph_coverage = gcd_core.calculate_gcd_coverage_from_graph(
+                        graph,
+                        self._metadata_store,
+                        source_id=source_id,
+                        job=job,
+                        fight_start_time=gcd_start_time,
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_denominator_ms,
+                    )
+                    coverage = gcd_core.select_savage_sage_display_edge_coverage(
+                        coverage,
+                        encounter_key=str(副本設定.get("key") or ""),
+                        job=job,
+                        casts_graph_coverage=graph_coverage,
+                    )
+                if (
+                    coverage
+                    and job == "Monk"
+                    and str(副本設定.get("key") or "") in gcd_core.SAVAGE_MONK_DISPLAY_EDGE_ENCOUNTERS
+                ):
+                    graph_coverage = gcd_core.calculate_gcd_coverage_from_graph(
+                        graph,
+                        self._metadata_store,
+                        source_id=source_id,
+                        job=玩家.get("job"),
+                        fight_start_time=gcd_start_time,
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_denominator_ms,
+                    )
+                    coverage = gcd_core.select_savage_monk_display_edge_coverage(
+                        coverage,
+                        encounter_key=str(副本設定.get("key") or ""),
+                        job=job,
+                        casts_graph_coverage=graph_coverage,
+                    )
+                if (
+                    coverage
+                    and job == "Gunbreaker"
+                    and str(副本設定.get("key") or "") in gcd_core.SAVAGE_GUNBREAKER_DISPLAY_EDGE_ENCOUNTERS
+                ):
+                    graph_coverage = gcd_core.calculate_gcd_coverage_from_graph(
+                        graph,
+                        self._metadata_store,
+                        source_id=source_id,
+                        job=玩家.get("job"),
+                        fight_start_time=gcd_start_time,
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_denominator_ms,
+                    )
+                    coverage = gcd_core.select_savage_gunbreaker_display_edge_coverage(
+                        coverage,
+                        encounter_key=str(副本設定.get("key") or ""),
+                        job=job,
+                        casts_graph_coverage=graph_coverage,
+                    )
+                if (
+                    coverage
+                    and job == "Reaper"
+                    and str(副本設定.get("key") or "") in gcd_core.SAVAGE_REAPER_DISPLAY_EDGE_ENCOUNTERS
+                ):
+                    graph_coverage = gcd_core.calculate_gcd_coverage_from_graph(
+                        graph,
+                        self._metadata_store,
+                        source_id=source_id,
+                        job=job,
+                        fight_start_time=gcd_start_time,
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_denominator_ms,
+                    )
+                    coverage = gcd_core.select_savage_reaper_display_edge_coverage(
+                        coverage,
+                        encounter_key=str(副本設定.get("key") or ""),
+                        job=job,
+                        casts_graph_coverage=graph_coverage,
                     )
                 if coverage and str(副本設定.get("key") or "") == "extreme_valigarmanda" and job == "RedMage":
                     graph_coverage = gcd_core.calculate_gcd_coverage_from_graph(
@@ -2732,12 +2981,9 @@ class 即時GCD覆蓋率計算器:
                         self._metadata_store,
                         source_id=source_id,
                         job=玩家.get("job"),
+                        fight_start_time=gcd_start_time,
                         fight_end_time=end_time,
-                        fallback_denominator_ms=gcd_core.first_number(
-                            戰鬥.get("clear_time_ms"),
-                            end_time - start_time,
-                            戰鬥.get("damage_time_ms"),
-                        ),
+                        fallback_denominator_ms=gcd_denominator_ms,
                     )
                     coverage = gcd_core.select_valigarmanda_red_mage_coverage(
                         coverage,
@@ -2750,12 +2996,9 @@ class 即時GCD覆蓋率計算器:
                         self._metadata_store,
                         source_id=source_id,
                         job=玩家.get("job"),
+                        fight_start_time=gcd_start_time,
                         fight_end_time=end_time,
-                        fallback_denominator_ms=gcd_core.first_number(
-                            戰鬥.get("clear_time_ms"),
-                            end_time - start_time,
-                            戰鬥.get("damage_time_ms"),
-                        ),
+                        fallback_denominator_ms=gcd_denominator_ms,
                     )
                     coverage = gcd_core.select_valigarmanda_white_mage_coverage(
                         coverage,
@@ -2768,17 +3011,34 @@ class 即時GCD覆蓋率計算器:
                         self._metadata_store,
                         source_id=source_id,
                         job=玩家.get("job"),
+                        fight_start_time=gcd_start_time,
                         fight_end_time=end_time,
-                        fallback_denominator_ms=gcd_core.first_number(
-                            戰鬥.get("clear_time_ms"),
-                            end_time - start_time,
-                            戰鬥.get("damage_time_ms"),
-                        ),
+                        fallback_denominator_ms=gcd_denominator_ms,
                     )
                     coverage = gcd_core.select_bard_raw_event_coverage(
                         coverage,
                         graph_coverage,
                         encounter_key=str(副本設定.get("key") or ""),
+                    )
+                if (
+                    coverage
+                    and job == "Viper"
+                    and str(副本設定.get("key") or "") in gcd_core.SAVAGE_VIPER_DISPLAY_EDGE_ENCOUNTERS
+                ):
+                    graph_coverage = gcd_core.calculate_gcd_coverage_from_graph(
+                        graph,
+                        self._metadata_store,
+                        source_id=source_id,
+                        job=玩家.get("job"),
+                        fight_start_time=gcd_start_time,
+                        fight_end_time=end_time,
+                        fallback_denominator_ms=gcd_denominator_ms,
+                    )
+                    coverage = gcd_core.select_savage_viper_display_edge_coverage(
+                        coverage,
+                        encounter_key=str(副本設定.get("key") or ""),
+                        job=job,
+                        casts_graph_coverage=graph_coverage,
                     )
             if not coverage:
                 coverage = gcd_core.calculate_gcd_coverage_from_graph(
@@ -2786,12 +3046,15 @@ class 即時GCD覆蓋率計算器:
                     self._metadata_store,
                     source_id=source_id,
                     job=玩家.get("job"),
+                    fight_start_time=gcd_start_time,
                     fight_end_time=end_time,
-                    fallback_denominator_ms=gcd_core.first_number(
-                        戰鬥.get("clear_time_ms"),
-                        end_time - start_time,
-                        戰鬥.get("damage_time_ms"),
-                    ),
+                    fallback_denominator_ms=gcd_denominator_ms,
+                )
+            if coverage:
+                coverage = gcd_core.select_zoraal_sage_graph_coverage(
+                    coverage,
+                    encounter_key=str(副本設定.get("key") or ""),
+                    job=job,
                 )
             if not coverage:
                 continue
@@ -3486,7 +3749,19 @@ def 建立排行榜條目(
 
 
 def 建立公開排行榜條目(條目: dict[str, Any]) -> dict[str, Any]:
-    return {欄位: 條目.get(欄位) for 欄位 in 公開排行榜條目欄位 if 欄位 in 條目}
+    公開條目 = {欄位: 條目.get(欄位) for 欄位 in 公開排行榜條目欄位 if 欄位 in 條目}
+    if "gcd_coverage" in 公開條目:
+        公開條目["gcd_coverage"] = 建立公開GCD覆蓋率(公開條目.get("gcd_coverage"))
+    return 公開條目
+
+
+def 建立公開GCD覆蓋率(覆蓋率: Any) -> Any:
+    if not isinstance(覆蓋率, dict):
+        return 覆蓋率
+
+    # data/rankings 保留完整診斷欄位供 GCD selector 回溯；public/data 只輸出公開契約欄位。
+    # 否則 Queen 等 raw-events selector 的內部比較值會讓公開資料契約隨診斷需求漂移。
+    return {欄位: 覆蓋率.get(欄位) for 欄位 in 公開GCD覆蓋率欄位 if 欄位 in 覆蓋率}
 
 
 def 建立版本排行榜條目(

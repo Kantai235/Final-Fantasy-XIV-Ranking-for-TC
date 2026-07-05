@@ -33,6 +33,33 @@ const jsonWriteRetryDelayMs = 500;
 const jsonWriteChunkBytes = 1024 * 1024;
 const transientWriteErrorCodes = new Set(["EBUSY", "EPERM", "UNKNOWN"]);
 const transientRemoveErrorCodes = new Set(["EBUSY", "EMFILE", "ENFILE", "ENOTEMPTY", "EPERM", "UNKNOWN"]);
+const publicGcdCoverageFields = new Set([
+  "percent",
+  "covered_time_ms",
+  "denominator_ms",
+  "downtime_ms",
+  "gcd_cast_count",
+  "calculation_version",
+  "source",
+  "xivanalysis_url",
+  "speed_stat_source",
+  "estimated_skill_speed",
+  "estimated_spell_speed",
+  "coverage_downtime_ms",
+  "denominator_downtime_ms",
+  "estimated_speed_below_minimum",
+  "fallback_selection",
+  "previous_fallback_selection",
+  "downtime_selection",
+  "raw_events_percent",
+  "raw_events_denominator_ms",
+  "casts_graph_percent",
+  "casts_graph_denominator_ms",
+  "raw_targetability_percent",
+  "raw_targetability_denominator_ms",
+  "raw_next_gcd_capped_percent",
+  "raw_next_gcd_capped_denominator_ms",
+]);
 
 const jobRoleGroups = [
   {
@@ -311,6 +338,22 @@ function resolveGeneratedAtIso(latestRankingUpdatedAt) {
 function toNumber(value) {
   const numberValue = Number(value);
   return Number.isFinite(numberValue) ? numberValue : null;
+}
+
+function sanitizeGcdCoverageForPublic(coverage) {
+  if (coverage === undefined) {
+    return undefined;
+  }
+  if (coverage === null) {
+    return null;
+  }
+  if (!coverage || typeof coverage !== "object" || Array.isArray(coverage)) {
+    return coverage;
+  }
+
+  // data/rankings 會保留 raw-events selector 的診斷值，方便後續追 GCD 與 xivanalysis 差異。
+  // 個人成績單、團隊榜與公開摘要只需要公開契約欄位，避免診斷欄位讓前端 payload 和 schema 漂移。
+  return Object.fromEntries(Object.entries(coverage).filter(([key]) => publicGcdCoverageFields.has(key)));
 }
 
 function isHiddenReport(report) {
@@ -649,7 +692,7 @@ function buildEntrySummary(entry) {
     rdps: entry.rdps,
     adps: entry.adps,
     active_percent: entry.active_percent,
-    gcd_coverage: entry.gcd_coverage,
+    gcd_coverage: sanitizeGcdCoverageForPublic(entry.gcd_coverage),
     gcd_coverage_status: entry.gcd_coverage_status,
     clear_time_seconds: entry.clear_time_seconds,
     recorded_at_iso: entry.recorded_at_iso,
@@ -695,7 +738,7 @@ function buildReportVariant(entry) {
     variant.fflogs_source_id = entry.fflogs_source_id;
   }
   if (Object.hasOwn(entry, "gcd_coverage")) {
-    variant.gcd_coverage = entry.gcd_coverage;
+    variant.gcd_coverage = sanitizeGcdCoverageForPublic(entry.gcd_coverage);
   }
   if (Object.hasOwn(entry, "gcd_coverage_status")) {
     variant.gcd_coverage_status = entry.gcd_coverage_status;
@@ -1248,7 +1291,7 @@ function makePublicEntry({ encounter, report, reportCode, fight, player, fightPl
     total_damage: toNumber(player.total_damage),
     active_time_ms: toNumber(player.active_time_ms),
     active_percent: activePercent,
-    ...(Object.hasOwn(player, "gcd_coverage") ? { gcd_coverage: player.gcd_coverage } : {}),
+    ...(Object.hasOwn(player, "gcd_coverage") ? { gcd_coverage: sanitizeGcdCoverageForPublic(player.gcd_coverage) } : {}),
     ...(Object.hasOwn(player, "gcd_coverage_status") ? { gcd_coverage_status: player.gcd_coverage_status } : {}),
     clear_time_ms: clearTimeMs,
     clear_time_seconds: clearTimeSeconds,
@@ -1388,7 +1431,7 @@ function collectEntriesFromRankingEntries({ ranking, encounter, includeHiddenRep
         total_damage: toNumber(entry.total_damage),
         active_time_ms: toNumber(entry.active_time_ms),
         active_percent: toNumber(entry.active_percent),
-        ...(Object.hasOwn(entry, "gcd_coverage") ? { gcd_coverage: entry.gcd_coverage } : {}),
+        ...(Object.hasOwn(entry, "gcd_coverage") ? { gcd_coverage: sanitizeGcdCoverageForPublic(entry.gcd_coverage) } : {}),
         ...(Object.hasOwn(entry, "gcd_coverage_status") ? { gcd_coverage_status: entry.gcd_coverage_status } : {}),
         clear_time_ms: toNumber(entry.clear_time_ms),
         clear_time_seconds: toNumber(entry.clear_time_seconds),
@@ -1516,7 +1559,7 @@ function summarizeTeamPlayers(players) {
         adps: toNumber(player.adps),
         active_percent: toNumber(player.active_percent),
         ...(fflogsSourceId !== null ? { fflogs_source_id: fflogsSourceId } : {}),
-        ...(Object.hasOwn(player, "gcd_coverage") ? { gcd_coverage: player.gcd_coverage } : {}),
+        ...(Object.hasOwn(player, "gcd_coverage") ? { gcd_coverage: sanitizeGcdCoverageForPublic(player.gcd_coverage) } : {}),
         ...(Object.hasOwn(player, "gcd_coverage_status") ? { gcd_coverage_status: player.gcd_coverage_status } : {}),
       };
     })
@@ -1801,6 +1844,9 @@ function buildEntryPayload(entry, detailContext = null) {
   // 個人成績單主檔會被每位玩家首屏載入；UI 只需要 gcd_coverage 的顯示值，
   // gcd_coverage_status 屬於管線診斷欄位，保留在來源排行榜資料即可，避免每筆歷史成績重複膨脹。
   delete payload.gcd_coverage_status;
+  if (Object.hasOwn(payload, "gcd_coverage")) {
+    payload.gcd_coverage = sanitizeGcdCoverageForPublic(payload.gcd_coverage);
+  }
   const reportVariants = orderReportVariantsForEntry(mergeReportVariants(_reportVariants), entry);
   if (reportVariants.length > 1) {
     const sourceReports = reportVariants.map((variant) => variant.report_code).filter(Boolean);
@@ -1866,13 +1912,14 @@ function compactReportVariantForEntry(variant, baseEntry) {
     if (key === "gcd_coverage_status") {
       continue;
     }
+    const publicValue = key === "gcd_coverage" ? sanitizeGcdCoverageForPublic(value) : value;
     if (key === "report_url" && variant.report_code) {
       continue;
     }
-    if (inheritedReportVariantFields.has(key) && equivalentJsonValue(baseEntry?.[key], value)) {
+    if (inheritedReportVariantFields.has(key) && equivalentJsonValue(baseEntry?.[key], publicValue)) {
       continue;
     }
-    compactVariant[key] = value;
+    compactVariant[key] = publicValue;
   }
 
   return compactVariant;
