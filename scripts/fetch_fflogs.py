@@ -4567,10 +4567,11 @@ def 標記報告處理狀態(
     已檢查報告 = 副本狀態.setdefault("checked_reports", {})
     現在時間戳記 = 現在毫秒()
 
+    # 每份 report checkpoint 會累積到數十萬筆；只保存毫秒時間可維持排序與同步語意，
+    # ISO 字串需要時可由 processed_at 重建，避免 data/state.json 觸碰 GitHub 100 MiB 單檔限制。
     記錄 = {
         "status": 處理狀態,
         "processed_at": 現在時間戳記,
-        "processed_at_iso": 毫秒轉_iso(現在時間戳記),
     }
     if 額外內容:
         記錄.update(額外內容)

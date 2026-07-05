@@ -20,10 +20,12 @@
 
    這一步會產生 `public/data/users/`、`public/data/user-entry-details/`、`public/data/users/index.json`、`public/data/global_stats.json`、`public/data/activity.json`、`public/data/team_rankings.json` 與 `public/data/server_compare.json`。
    同時會在 `public/data/all/` 產生 hidden delta：有 hidden 成績的個人成績單才輸出差量檔，沒有 hidden 成績的索引項目會直接指回公開成績單。
-   指令結束前也會執行 `npm run build:ranking-tables`，由公開排行榜產生 `public/data/ranking-tables/` 薄索引與 `public/data/ranking-details/` 按需載入細節檔，並把 `public/data/all/rankings|ranking-tables|ranking-details` 轉成 hidden delta。
+   指令結束前也會執行 `npm run build:ranking-tables`，由公開排行榜產生 `public/data/ranking-tables/` 薄索引與 `public/data/ranking-details/` 按需載入細節檔，並把 `public/data/all/rankings|ranking-tables|ranking-details` 轉成 hidden delta；接著執行 `npm run build:report-status` 與 `npm run build:public-status`，輸出常見問題頁 FFLogs 檢查工具使用的 `public/data/report_status_index.json`、`public/data/all/report_status_index.json` 與 `public/data/update_status.json`。
    正式部署會把使用者主檔與個人成績報告細節同步到 users 專用 repo；`public/data/users` 仍是資料建置與驗證的來源產物，不能在 postbuild 前刪除，否則玩家分享頁與 OG 圖會失去本輪最新索引。
 
    全域公告內容直接維護在 `public/data/announcements.json`；這一步會把它同步到 `public/data/all/announcements.json`，供 hidden delta 檢視流程使用。
+
+   常見問題頁中的 FFLogs 檢查工具只讀上述靜態索引：`report_status_index.json` 由 `ranking-details` 彙整 report code、fight id、副本、玩家數與紀錄時間，不保存 FFLogs raw payload；`update_status.json` 則只公開最近資料更新、Actions run URL 與排程摘要。若 report 完全不在索引中，前端只能提供排程與常見原因推估，不能在瀏覽器端即時查詢 private/deleted 狀態。
 
 3. 驗證資料完整性：
 
@@ -86,7 +88,7 @@ npm run fetch:honey-fans
 - `FFLOGS_NO_CLEAR_RETRY_HOURS`：`skipped_no_clear` 的近期重試時數，workflow 預設 `24`。
 - `FFLOGS_DELAYED_SCAN_ENABLED`、`FFLOGS_DELAYED_SCAN_RECENT_GAP_HOURS`、`FFLOGS_DELAYED_SCAN_LOOKBACK_HOURS`、`FFLOGS_DELAYED_MAX_DEEP_REPORTS_PER_RUN`：控制 24-72 小時延遲掃描與本輪深查上限。
 - `FFLOGS_HISTORY_SCAN_ENABLED`、`FFLOGS_HISTORY_SCAN_FULL_RUN`、`FFLOGS_HISTORY_SCAN_WINDOW_HOURS`、`FFLOGS_HISTORY_SCAN_WINDOWS_PER_RUN`、`FFLOGS_HISTORY_SCAN_RECENT_GAP_HOURS`、`FFLOGS_HISTORY_MAX_DEEP_REPORTS_PER_RUN`、`FFLOGS_HISTORY_MAX_DEEP_REPORTS_PER_GROUP_PER_RUN`：控制歷史補查輪巡；workflow 預設 `FFLOGS_HISTORY_SCAN_WINDOWS_PER_RUN=1`、`FFLOGS_HISTORY_MAX_DEEP_REPORTS_PER_RUN=600`、`FFLOGS_HISTORY_MAX_DEEP_REPORTS_PER_GROUP_PER_RUN=150`。
-- `FFLOGS_MAX_RUNTIME_SECONDS`、`FFLOGS_RUNTIME_GRACE_SECONDS`：控制 `fetch_fflogs.py` 的可選時間預算；正式 workflow 不設定這組變數，讓所有副本依序推進。人工短時維護若臨時啟用，腳本會在剩餘時間不足時保留 `active_scan` 位置並正常收尾。
+- `FFLOGS_MAX_RUNTIME_SECONDS`、`FFLOGS_RUNTIME_GRACE_SECONDS`：控制 `fetch_fflogs.py` 的可選時間預算；正式 workflow 預設 `6000` / `900`，讓 FFLogs 憑證長冷卻或掃描接近 runner 風險時，腳本保留 `active_scan` 位置並正常收尾，後續資料建置與 commit 仍有時間完成。
 - `FFLOGS_EXISTING_REPORT_STATUS_CHECK_ENABLED`、`FFLOGS_EXISTING_REPORT_STATUS_CHECK_LIMIT`：控制既有 report 狀態巡檢。
 - `FFLOGS_FETCH_GCD_COVERAGE_ENABLED`、`FFLOGS_FETCH_GCD_COVERAGE_MAX_FIGHTS_PER_RUN`：控制新 report 落地時的 GCD 即時計算。
 
@@ -219,4 +221,4 @@ npm run compact:state -- --dry-run
 npm run compact:state
 ```
 
-這個指令只移除和 `checked_reports` 完全相同的 `processed_reports` 重複紀錄，並把狀態檔改寫為無縮排 JSON；`checked_reports` 仍保留 report 狀態，避免破壞掃描略過依據。GitHub Actions 會在資料 commit 前執行 `npm run compact:state -- --max-bytes 104857600`，若壓縮後仍超過 GitHub 100 MiB 單檔限制，就會在 commit/push 前提早失敗並提示需要調整 state 保留策略。
+這個指令只移除和 `checked_reports` 完全相同的 `processed_reports` 重複紀錄，以及可由 `processed_at` 毫秒時間重建的 checkpoint `processed_at_iso` 鏡像欄位，並把狀態檔改寫為無縮排 JSON；`checked_reports` 仍保留 report code、status 與排序時間，避免破壞掃描略過依據。GitHub Actions 會在資料 commit 前執行 `npm run compact:state -- --max-bytes 104857600`，若壓縮後仍超過 GitHub 100 MiB 單檔限制，就會在 commit/push 前提早失敗並提示需要調整 state 保留策略。

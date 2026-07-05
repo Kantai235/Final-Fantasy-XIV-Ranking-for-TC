@@ -14,9 +14,10 @@
 | 伺服器對比 | `./servers/陸行鳥/vs/莫古力` |
 | 職業分析 | `./jobs?jobScope=role:tank`、`./jobs/Paladin` |
 | 近期動態 | `./activity` |
+| 常見問題 | `./faq`、`./faq?report=https%3A%2F%2Fwww.fflogs.com%2Freports%2F...`；舊 `./logs` 保留相容 |
 | Honey B. Lovely 粉絲榜 | `./honey-fans` |
 
-排行榜預設副本與隊伍榜預設副本目前都是 `savage_m4s`（零式 M4S / 狡雷），全服統計的「全部副本」與玩家比較的預設防護職能不會寫入 URL。
+排行榜預設副本目前是 `chaotic_cloud_of_darkness`（滅 黑暗之雲）；隊伍榜預設副本仍是 `savage_m4s`（零式 M4S / 狡雷）。全服統計的「全部副本」與玩家比較的預設防護職能不會寫入 URL。
 
 全服統計的副本、職業分析的單一職業、伺服器對比的左右伺服器會寫入乾淨路徑，讓社群爬蟲可以讀到對應的靜態 SEO/OG。職業分析的職能範圍使用 `jobScope=role:*` query；其他指標、分群、伺服器篩選等細部條件也保留為 query，由前端載入後同步動態 meta。
 
@@ -49,6 +50,8 @@
 - `/servers/`
 - `/jobs/`
 - `/activity/`
+- `/faq/`
+- `/logs/`
 - `/honey-fans/`
 
 這些 route 專屬 HTML 可讓不執行 JavaScript 的社群爬蟲讀到各頁預設標題、描述、canonical 與 OG/Twitter meta。

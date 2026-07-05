@@ -16,6 +16,7 @@ const UserProfilePage = defineAsyncComponent(() => import("./pages/UserProfilePa
 const ComparePage = defineAsyncComponent(() => import("./pages/ComparePage.vue"));
 const TeamRankingsPage = defineAsyncComponent(() => import("./pages/TeamRankingsPage.vue"));
 const ServerComparePage = defineAsyncComponent(() => import("./pages/ServerComparePage.vue"));
+const ReportStatusPage = defineAsyncComponent(() => import("./pages/ReportStatusPage.vue"));
 const HoneyFansFloatingButton = defineAsyncComponent(() => import("./components/HoneyFansFloatingButton.vue"));
 const HoneyFansPage = defineAsyncComponent(() => import("./pages/HoneyFansPage.vue"));
 
@@ -66,6 +67,7 @@ onUnmounted(() => {
     <ComparePage v-else-if="view.頁面模式 === 'compare'" />
     <TeamRankingsPage v-else-if="view.頁面模式 === 'teams'" />
     <ServerComparePage v-else-if="view.頁面模式 === 'servers'" />
+    <ReportStatusPage v-else-if="view.頁面模式 === 'faq' || view.頁面模式 === 'logs'" />
     <HoneyFansPage v-else-if="顯示Honey粉絲榜 && view.頁面模式 === 'honey-fans'" />
 
     <AppFooter />

@@ -44,6 +44,8 @@ GraphQL 查詢字串集中在 `scripts/fflogs_pipeline/graphql_queries.py`；這
 - `public/data/server_compare.json`
 - `public/data/ranking-tables/*.json`
 - `public/data/ranking-details/*.json`
+- `public/data/report_status_index.json`
+- `public/data/update_status.json`
 - `public/data/all/` hidden delta 與額外檢視索引
 
 複雜排序、分位數、隊友統計、職業分布與版本切片應在這一層完成。若新增前端畫面需要新的統計欄位，請先擴充這一層，再讓 Vue 讀取結果。
@@ -90,6 +92,8 @@ GraphQL 查詢字串集中在 `scripts/fflogs_pipeline/graphql_queries.py`；這
 │   ├── backfill_gcd_coverage.py
 │   ├── backfill_gcd_coverage_xivanalysis.py
 │   ├── build_user_data.mjs
+│   ├── build_report_status_index.mjs
+│   ├── build_public_status_data.mjs
 │   ├── validate_data.mjs
 │   ├── compact_ranking_data.py
 │   ├── compact_state.py
@@ -122,6 +126,7 @@ GraphQL 查詢字串集中在 `scripts/fflogs_pipeline/graphql_queries.py`；這
 - 伺服器對比：收錄玩家、副本通關、職能比例、熱門職業與副本落點。
 - 職業分析：各職能與職業的 rDPS 分位、副本分布、伺服器分布與代表紀錄。
 - 近期動態：最新公開成績、刷新個人最佳、新收錄玩家、伺服器活躍、副本活躍，以及由 Data Building Layer 預先去重的 Logs / 通關場次趨勢與副本分類占比。圖表上的台服與國際服改版時間標註屬於前端靜態脈絡，不參與資料管線統計。
+- 常見問題：整理站務常見問答，並內嵌 FFLogs 檢查工具；工具解析使用者貼上的 FFLogs report 網址，只比對 `public/data/report_status_index.json`、`public/data/all/report_status_index.json` 與 `public/data/update_status.json`，回報目前公開索引是否命中與排程推估，不直接呼叫 FFLogs API。正式路徑為 `/faq`，舊 `/logs` 保留為相容入口。
 - Honey B. Lovely 粉絲榜：獨立趣味頁，顯示 M2S 近 7 天 `心醉魂迷：奴役` 粉絲榜、近 7 天報告彈窗、歷史追溯與連續入榜標示，不參與正式排行榜聚合。
 
 ## 功能旗標

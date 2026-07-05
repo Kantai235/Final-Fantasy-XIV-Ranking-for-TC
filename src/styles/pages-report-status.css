@@ -1,0 +1,707 @@
+/* 常見問題頁：FFLogs 檢查工具只讀公開靜態索引，避免前端碰 FFLogs 憑證或即時 API。 */
+
+.常見問題頁,
+.常見問題頁 * {
+  min-width: 0;
+}
+
+.常見問題頁 {
+  display: grid;
+  gap: 22px;
+}
+
+.常見問題前言 {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(280px, 0.9fr);
+  gap: 22px;
+  align-items: end;
+  border-bottom: 1px solid var(--邊框柔和色);
+  padding: 2px 0 20px;
+}
+
+.常見問題前言主文 {
+  display: grid;
+  gap: 8px;
+}
+
+.常見問題眉標,
+.常見問題區塊標題 span,
+.常見問題分類標題 span {
+  color: var(--次要文字);
+  font-size: 0.76rem;
+  font-weight: 820;
+  letter-spacing: 0;
+}
+
+.常見問題前言 h2,
+.常見問題區塊標題 h2,
+.常見問題分類標題 h2 {
+  margin: 0;
+  color: var(--主要文字);
+  line-height: 1.2;
+}
+
+.常見問題前言 h2 {
+  font-size: 1.7rem;
+}
+
+.常見問題前言 p,
+.常見問題區塊標題 p,
+.常見問題分類標題 p {
+  margin: 0;
+  color: var(--次要文字);
+  font-size: 0.94rem;
+  line-height: 1.65;
+}
+
+.常見問題前言 p {
+  max-width: 720px;
+}
+
+.常見問題分類導覽 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.常見問題分類導覽 a {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 10px;
+  align-items: center;
+  border: 1px solid var(--邊框柔和色);
+  border-radius: 8px;
+  padding: 10px 11px;
+  color: inherit;
+  background: color-mix(in srgb, var(--表面背景) 78%, transparent);
+  text-decoration: none;
+}
+
+.常見問題分類導覽 a:hover {
+  border-color: color-mix(in srgb, var(--重點色) 54%, var(--邊框柔和色));
+  background: color-mix(in srgb, var(--重點色) 9%, var(--表面背景));
+}
+
+.常見問題分類導覽 a:focus {
+  outline: 3px solid var(--焦點陰影);
+}
+
+.常見問題分類導覽 small,
+.常見問題分類導覽 span {
+  overflow: hidden;
+  color: var(--次要文字);
+  font-size: 0.72rem;
+  font-weight: 760;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.常見問題分類導覽 small {
+  grid-column: 1 / -1;
+}
+
+.常見問題分類導覽 strong {
+  overflow: hidden;
+  color: var(--主要文字);
+  font-size: 0.88rem;
+  font-weight: 840;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.常見問題分類導覽 span {
+  justify-self: end;
+}
+
+.常見問題內容格 {
+  display: grid;
+  grid-template-columns: minmax(190px, 248px) minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.常見問題側欄 {
+  position: sticky;
+  top: 16px;
+  display: grid;
+  gap: 12px;
+}
+
+.常見問題側欄面板 {
+  display: grid;
+  gap: 12px;
+  border: 1px solid var(--邊框柔和色);
+  border-radius: 8px;
+  padding: 14px;
+  background: var(--表面背景);
+}
+
+.常見問題流程清單 {
+  counter-reset: 回報流程;
+  display: grid;
+  gap: 13px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.常見問題流程清單 li {
+  counter-increment: 回報流程;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 3px 10px;
+}
+
+.常見問題流程清單 li::before {
+  content: counter(回報流程);
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  color: var(--重點文字);
+  background: var(--重點色);
+  font-size: 0.78rem;
+  font-weight: 860;
+}
+
+.常見問題流程清單 strong {
+  align-self: center;
+  color: var(--主要文字);
+  font-size: 0.9rem;
+  font-weight: 840;
+}
+
+.常見問題流程清單 p {
+  grid-column: 2;
+  margin: 0;
+  color: var(--次要文字);
+  font-size: 0.82rem;
+  line-height: 1.55;
+}
+
+.常見問題統計卡 {
+  gap: 4px;
+  border-color: color-mix(in srgb, var(--公告色) 32%, var(--邊框柔和色));
+  background: color-mix(in srgb, var(--公告色) 7%, var(--表面背景));
+}
+
+.常見問題統計卡 small,
+.常見問題統計卡 span {
+  color: var(--次要文字);
+  font-size: 0.78rem;
+  font-weight: 760;
+}
+
+.常見問題統計卡 strong {
+  color: var(--主要文字);
+  font-size: 1.6rem;
+  font-weight: 880;
+  line-height: 1.1;
+}
+
+.常見問題Telegram卡 {
+  gap: 8px;
+  border-color: color-mix(in srgb, var(--Telegram色) 38%, var(--邊框柔和色));
+  background: color-mix(in srgb, var(--Telegram色) 8%, var(--表面背景));
+}
+
+.常見問題Telegram卡 small,
+.常見問題Telegram卡 p {
+  margin: 0;
+  color: var(--次要文字);
+  font-size: 0.82rem;
+  line-height: 1.55;
+}
+
+.常見問題Telegram卡 small {
+  font-weight: 760;
+}
+
+.常見問題Telegram卡 strong {
+  color: var(--主要文字);
+  font-size: 0.98rem;
+  font-weight: 850;
+  line-height: 1.35;
+}
+
+.常見問題Telegram卡 a {
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--Telegram色);
+  border-radius: 8px;
+  padding: 8px 11px;
+  color: var(--Telegram文字);
+  background: var(--Telegram色);
+  font-size: 0.86rem;
+  font-weight: 780;
+  line-height: 1.2;
+  text-decoration: none;
+}
+
+.常見問題Telegram卡 a:hover {
+  border-color: var(--Telegram色深);
+  background: var(--Telegram色深);
+}
+
+.常見問題Telegram卡 a:focus {
+  outline: 3px solid var(--Telegram焦點陰影);
+}
+
+.常見問題主欄,
+.常見問題工具區,
+.常見問題列表區,
+.常見問題分類,
+.常見問題清單 {
+  display: grid;
+}
+
+.常見問題主欄 {
+  gap: 24px;
+}
+
+.常見問題工具區,
+.常見問題列表區 {
+  gap: 14px;
+}
+
+.常見問題區塊標題,
+.常見問題分類標題 {
+  display: grid;
+  gap: 6px;
+}
+
+.常見問題區塊標題 h2,
+.常見問題分類標題 h2 {
+  font-size: 1.12rem;
+}
+
+.常見問題工具區 .常見問題區塊標題 {
+  padding-bottom: 2px;
+}
+
+.Logs檢查工具卡 {
+  overflow: hidden;
+  border: 1px solid var(--邊框色);
+  border-radius: 8px;
+  background: var(--表面背景);
+}
+
+.Logs檢查輸入區 {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: end;
+  border-bottom: 1px solid var(--邊框柔和色);
+  padding: 16px;
+  background: color-mix(in srgb, var(--表面背景柔和) 42%, var(--表面背景));
+}
+
+.Logs檢查輸入欄 {
+  display: grid;
+  gap: 8px;
+}
+
+.Logs檢查輸入欄 span {
+  color: var(--次要文字);
+  font-size: 0.82rem;
+  font-weight: 760;
+}
+
+.Logs檢查輸入欄 textarea {
+  width: 100%;
+  min-height: 78px;
+  resize: vertical;
+  box-sizing: border-box;
+  border: 1px solid var(--輸入邊框);
+  border-radius: 8px;
+  padding: 11px 12px;
+  color: var(--主要文字);
+  background: var(--輸入背景);
+  font: inherit;
+  line-height: 1.45;
+}
+
+.Logs檢查輸入欄 textarea:focus {
+  border-color: var(--重點色);
+  outline: 3px solid var(--焦點陰影);
+}
+
+.Logs檢查操作列 {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.主要連結按鈕 {
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  border: 1px solid var(--重點色);
+  border-radius: 8px;
+  padding: 8px 13px;
+  color: var(--重點文字);
+  background: var(--重點色);
+  font-size: 0.9rem;
+  font-weight: 760;
+  line-height: 1.2;
+  text-decoration: none;
+}
+
+.主要連結按鈕:hover {
+  border-color: var(--重點色深);
+  background: var(--重點色深);
+}
+
+.主要連結按鈕:focus {
+  outline: 3px solid var(--焦點陰影);
+}
+
+.Logs檢查結果 {
+  display: grid;
+  gap: 0;
+}
+
+.Logs檢查結果標頭 {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+  padding: 16px;
+}
+
+.Logs檢查狀態徽章 {
+  min-width: 76px;
+  border-radius: 999px;
+  padding: 7px 10px;
+  color: var(--主要文字);
+  background: var(--表面背景柔和);
+  font-size: 0.78rem;
+  font-weight: 820;
+  text-align: center;
+}
+
+.Logs檢查結果[data-status="found"] .Logs檢查狀態徽章 {
+  color: var(--治療色);
+  background: var(--治療色柔和);
+}
+
+.Logs檢查結果[data-status="fight_missing"] .Logs檢查狀態徽章 {
+  color: var(--公告警示色);
+  background: color-mix(in srgb, var(--公告警示色) 18%, transparent);
+}
+
+.Logs檢查結果[data-status="hidden"] .Logs檢查狀態徽章,
+.Logs檢查結果[data-status="missing"] .Logs檢查狀態徽章,
+.Logs檢查結果[data-status="invalid"] .Logs檢查狀態徽章 {
+  color: var(--錯誤文字);
+  background: color-mix(in srgb, var(--錯誤文字) 14%, transparent);
+}
+
+.Logs檢查結果標頭 h2 {
+  margin: 0;
+  color: var(--主要文字);
+  font-size: 1.18rem;
+  line-height: 1.25;
+}
+
+.Logs檢查結果標頭 p {
+  margin: 6px 0 0;
+  color: var(--次要文字);
+  font-size: 0.92rem;
+  line-height: 1.55;
+}
+
+.Logs檢查摘要列 {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  border-top: 1px solid var(--邊框柔和色);
+  background: var(--邊框柔和色);
+}
+
+.Logs檢查摘要列 > span {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  background: var(--表面背景);
+}
+
+.Logs檢查摘要列 small,
+.Logs檢查副本卡 small,
+.Logs檢查Fight指標列 small {
+  overflow: hidden;
+  color: var(--次要文字);
+  font-size: 0.75rem;
+  font-weight: 720;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.Logs檢查摘要列 strong {
+  color: var(--主要文字);
+  font-size: 0.92rem;
+  font-weight: 820;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.Logs檢查摘要分行值 {
+  display: grid;
+  gap: 2px;
+}
+
+.Logs檢查摘要次值 {
+  color: var(--次要文字);
+  font-size: 0.84rem;
+  font-weight: 760;
+}
+
+.Logs檢查副本卡 strong {
+  overflow: hidden;
+  color: var(--主要文字);
+  font-size: 0.92rem;
+  font-weight: 820;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.Logs檢查資訊格 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  border-top: 1px solid var(--邊框柔和色);
+  background: var(--邊框柔和色);
+}
+
+.Logs檢查資訊格 > .Logs檢查面板:only-child {
+  grid-column: 1 / -1;
+}
+
+.Logs檢查面板 {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+  padding: 16px;
+  background: var(--表面背景);
+}
+
+.Logs檢查面板 .統計面板標題 {
+  padding: 0;
+}
+
+.Logs檢查副本列表 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 8px;
+}
+
+.Logs檢查副本卡,
+.Logs檢查Fight卡 {
+  display: grid;
+  gap: 6px;
+  border: 1px solid var(--邊框柔和色);
+  border-radius: 8px;
+  padding: 11px;
+  background: var(--表面背景柔和);
+}
+
+.Logs檢查副本卡 span,
+.Logs檢查Fight標題 span {
+  color: var(--次要文字);
+  font-size: 0.82rem;
+  font-weight: 720;
+}
+
+.Logs檢查Fight列表 {
+  display: grid;
+  gap: 8px;
+}
+
+.Logs檢查Fight標題 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.Logs檢查Fight標題 strong {
+  color: var(--主要文字);
+  font-size: 0.98rem;
+  font-weight: 840;
+}
+
+.Logs檢查Fight指標列 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.Logs檢查Fight指標列 span {
+  display: grid;
+  gap: 2px;
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: var(--表面背景);
+}
+
+.Logs檢查Fight指標列 strong {
+  overflow: hidden;
+  color: var(--主要文字);
+  font-size: 0.84rem;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.Logs檢查提示列表 {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.Logs檢查提示列表 li {
+  border-left: 3px solid var(--重點色);
+  padding: 3px 0 3px 10px;
+  color: var(--次要文字);
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+
+.常見問題列表區 {
+  gap: 18px;
+}
+
+.常見問題分類 {
+  scroll-margin-top: 20px;
+  gap: 10px;
+  border-top: 1px solid var(--邊框柔和色);
+  padding-top: 18px;
+}
+
+.常見問題分類:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.常見問題分類標題 p {
+  max-width: 760px;
+}
+
+.常見問題清單 {
+  gap: 8px;
+}
+
+.常見問題項目 {
+  border: 1px solid var(--邊框柔和色);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--表面背景) 88%, transparent);
+}
+
+.常見問題項目[open] {
+  border-color: color-mix(in srgb, var(--重點色) 42%, var(--邊框柔和色));
+  background: var(--表面背景);
+}
+
+.常見問題項目 summary {
+  cursor: pointer;
+  padding: 13px 15px;
+  color: var(--主要文字);
+  font-size: 0.96rem;
+  font-weight: 820;
+  line-height: 1.4;
+}
+
+.常見問題項目 summary::marker {
+  color: var(--重點色);
+}
+
+.常見問題回答 {
+  display: grid;
+  gap: 9px;
+  border-top: 1px solid var(--邊框柔和色);
+  padding: 13px 15px 14px;
+}
+
+.常見問題回答 p {
+  margin: 0;
+  color: var(--次要文字);
+  font-size: 0.9rem;
+  line-height: 1.7;
+}
+
+@media (max-width: 960px) {
+  .常見問題前言,
+  .常見問題內容格 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .常見問題側欄 {
+    position: static;
+    grid-template-columns: minmax(0, 1fr) minmax(170px, 0.42fr);
+  }
+}
+
+@media (max-width: 760px) {
+  .常見問題分類導覽,
+  .常見問題側欄,
+  .Logs檢查輸入區,
+  .Logs檢查資訊格 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .Logs檢查操作列 {
+    justify-content: flex-start;
+  }
+
+  .Logs檢查摘要列 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .Logs檢查摘要分行值 {
+    display: inline;
+  }
+
+  .Logs檢查摘要分行值 span + span::before {
+    content: "・";
+  }
+}
+
+@media (max-width: 520px) {
+  .常見問題前言 {
+    gap: 16px;
+    padding-bottom: 16px;
+  }
+
+  .常見問題前言 h2 {
+    font-size: 1.48rem;
+  }
+
+  .常見問題分類導覽 a {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .常見問題分類導覽 span {
+    justify-self: start;
+  }
+
+  .Logs檢查結果標頭 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .Logs檢查狀態徽章 {
+    justify-self: start;
+  }
+
+  .Logs檢查摘要列,
+  .Logs檢查Fight指標列 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

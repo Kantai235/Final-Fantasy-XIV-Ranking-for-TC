@@ -30,11 +30,14 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ github.ref_name }}
-          fetch-depth: 0
+          # 資料 repo 的歷史 pack 已累積到數 GiB；workflow 只需要目前分支內容與後續資料提交，
+          # 不需要完整 Git 歷史。使用淺層 partial clone 可避免 GitHub-hosted runner 在 checkout 階段耗盡磁碟。
+          fetch-depth: 1
+          filter: blob:none
 
       - name: 同步最新分支狀態
         run: |
-          git fetch origin "${{ github.ref_name }}"
+          git fetch --depth=1 origin "${{ github.ref_name }}:refs/remotes/origin/${{ github.ref_name }}"
           git reset --hard "origin/${{ github.ref_name }}"
 
       - name: 設定 Python 環境
@@ -102,8 +105,10 @@ jobs:
           FFLOGS_HISTORY_SCAN_RECENT_GAP_HOURS: ${{ vars.FFLOGS_HISTORY_SCAN_RECENT_GAP_HOURS || '6' }}
           FFLOGS_HISTORY_MAX_DEEP_REPORTS_PER_RUN: ${{ vars.FFLOGS_HISTORY_MAX_DEEP_REPORTS_PER_RUN || '600' }}
           FFLOGS_HISTORY_MAX_DEEP_REPORTS_PER_GROUP_PER_RUN: ${{ vars.FFLOGS_HISTORY_MAX_DEEP_REPORTS_PER_GROUP_PER_RUN || '150' }}
-          # 正式排程不限制 fetch_fflogs.py 執行時間，讓全部副本都能依序推進；
-          # 若未來要做短時維護，可在人工指令另行傳入 FFLOGS_MAX_RUNTIME_SECONDS。
+          # GitHub-hosted runner 有 6 小時硬上限；若 FFLogs 要求長時間憑證冷卻，
+          # 讓 fetch_fflogs.py 主動保留 active_scan 後結束，避免後續資料建置與 commit 被 runner 取消。
+          FFLOGS_MAX_RUNTIME_SECONDS: ${{ vars.FFLOGS_MAX_RUNTIME_SECONDS || '6000' }}
+          FFLOGS_RUNTIME_GRACE_SECONDS: ${{ vars.FFLOGS_RUNTIME_GRACE_SECONDS || '900' }}
           # 每輪由舊到新抽查既有排行榜 report 是否仍可存取，跑完後會從最舊紀錄重新輪巡。
           FFLOGS_EXISTING_REPORT_STATUS_CHECK_ENABLED: ${{ vars.FFLOGS_EXISTING_REPORT_STATUS_CHECK_ENABLED || 'true' }}
           FFLOGS_EXISTING_REPORT_STATUS_CHECK_LIMIT: ${{ vars.FFLOGS_EXISTING_REPORT_STATUS_CHECK_LIMIT || '25' }}
@@ -209,6 +214,7 @@ jobs:
           fs.mkdirSync("data", { recursive: true });
           fs.writeFileSync("data/update_status.json", `${JSON.stringify(status, null, 2)}\n`, "utf8");
           NODE
+          npm run build:public-status
 
       - name: 設定 GitHub Pages
         uses: actions/configure-pages@v5
@@ -274,7 +280,7 @@ jobs:
             exit 1
           fi
           for attempt in 1 2 3; do
-            git fetch origin "${{ github.ref_name }}"
+            git fetch --depth=200 origin "${{ github.ref_name }}:refs/remotes/origin/${{ github.ref_name }}"
             git rebase "origin/${{ github.ref_name }}"
             if git push origin "HEAD:${{ github.ref_name }}"; then
               exit 0
@@ -310,7 +316,7 @@ jobs:
             -m "主要變更：更新 data/pages_payload_history.jsonl，保存 Pages payload 檔案數、大小與趨勢紀錄。" \
             -m "測試/驗證：本 workflow 已完成 npm run audit:pages-payload:strict。"
           for attempt in 1 2 3; do
-            git fetch origin "${{ github.ref_name }}"
+            git fetch --depth=200 origin "${{ github.ref_name }}:refs/remotes/origin/${{ github.ref_name }}"
             git rebase "origin/${{ github.ref_name }}"
             if git push origin "HEAD:${{ github.ref_name }}"; then
               exit 0

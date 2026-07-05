@@ -1,4 +1,4 @@
-export const 預設副本鍵值 = "savage_m4s";
+export const 預設副本鍵值 = "chaotic_cloud_of_darkness";
 export const 預設排序欄位 = "rdps";
 export const 預設排序方向 = "desc";
 export const 預設比較職能 = "role:tank";
@@ -26,7 +26,7 @@ export const 版本紀錄範圍選項 = [
   { value: "valid", label: "有效版本紀錄" },
 ];
 
-export const 副本分類順序 = ["零式", "極", "幻", "絕"];
+export const 副本分類順序 = ["零式", "極", "幻", "滅", "絕"];
 
 export const 排序欄位標籤 = {
   rank: "排名",

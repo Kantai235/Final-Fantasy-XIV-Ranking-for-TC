@@ -71,6 +71,10 @@ import {
   讀取玩家搜尋歷史,
   讀取使用者資料檔,
 } from "../utils/userData";
+import {
+  個人成績代表是否較佳,
+  比較個人成績分位顯示排序,
+} from "../utils/userProfileSorting";
 import { 建立職業佔比分組, 取得統計範圍計數, 職業範圍類型 } from "../utils/statsDisplay";
 import { 顯示Honey粉絲榜, 顯示Gcd覆蓋率, 顯示作者相關標示 } from "../utils/siteFeatures";
 import { 寫入網址狀態, 讀取目前網址狀態 } from "../utils/urlState";
@@ -166,6 +170,11 @@ const activityLogTimelineAnnotations = [
     importance: "secondary",
   },
   {
+    date: "2026-06-23",
+    title: "繁中服 7.15",
+    detail: "滅 黑暗之雲",
+  },
+  {
     date: "2026-07-28",
     title: "國際服 7.55",
     detail: "天際的行路",
@@ -182,6 +191,7 @@ const activityLogCategoryColorClasses = new Map([
   ["零式", "近期日誌分類色彩零式"],
   ["極", "近期日誌分類色彩極"],
   ["幻", "近期日誌分類色彩幻"],
+  ["滅", "近期日誌分類色彩滅"],
   ["絕", "近期日誌分類色彩絕"],
 ]);
 
@@ -242,6 +252,7 @@ const 使用者伺服器篩選 = ref("");
 const 使用者職業類型篩選 = ref("");
 const 使用者職業篩選 = ref("");
 const 使用者職業選單開啟 = ref(false);
+const 使用者趨勢職業選擇 = ref({});
 const 使用者讀取中 = ref(false);
 const 使用者錯誤訊息 = ref("");
 const 比較角色左輸入 = ref("");
@@ -483,7 +494,7 @@ function 目前頁面主色() {
   if (頁面模式.value === "honey-fans") {
     return "honey";
   }
-  if (頁面模式.value === "activity" || 頁面模式.value === "teams" || 頁面模式.value === "servers") {
+  if (頁面模式.value === "activity" || 頁面模式.value === "teams" || 頁面模式.value === "servers" || 頁面模式.value === "faq" || 頁面模式.value === "logs") {
     return "default";
   }
 
@@ -551,6 +562,17 @@ function 選擇使用者職業類型(類型代碼) {
 function 選擇使用者職業(職業代碼) {
   使用者職業篩選.value = 使用者職業篩選.value === 職業代碼 ? "" : 職業代碼;
   使用者職業選單開啟.value = false;
+}
+
+function 選擇使用者趨勢職業(副本鍵值, 職業代碼) {
+  if (!副本鍵值 || !職業代碼) {
+    return;
+  }
+
+  使用者趨勢職業選擇.value = {
+    ...使用者趨勢職業選擇.value,
+    [副本鍵值]: 職業代碼,
+  };
 }
 
 function 切換使用者職業選單() {
@@ -2921,6 +2943,10 @@ const 更新時間文字 = computed(() => {
     return 更新時間 ? `資料更新時間 ${格式化紀錄時間(更新時間)}` : "伺服器對比資料";
   }
 
+  if (頁面模式.value === "faq" || 頁面模式.value === "logs") {
+    return "常見問題";
+  }
+
   if (頁面模式.value === "honey-fans") {
     const 更新時間 = 蜂蜂粉絲榜資料.value?.source_updated_at_iso || 蜂蜂粉絲榜資料.value?.generated_at_iso;
     return 更新時間 ? `資料更新時間 ${格式化紀錄時間(更新時間)}` : "Honey B. Lovely 粉絲榜資料";
@@ -2957,6 +2983,10 @@ const 頁面副標 = computed(() => {
 
   if (頁面模式.value === "servers") {
     return "Final Fantasy XIV 繁中服・伺服器對比";
+  }
+
+  if (頁面模式.value === "faq" || 頁面模式.value === "logs") {
+    return "Final Fantasy XIV 繁中服・常見問題";
   }
 
   if (頁面模式.value === "honey-fans") {
@@ -2996,6 +3026,10 @@ const 頁面標題 = computed(() => {
 
   if (頁面模式.value === "servers") {
     return 伺服器對比已完成.value ? `${伺服器對比左資料.value.server} vs ${伺服器對比右資料.value.server}` : "伺服器對比";
+  }
+
+  if (頁面模式.value === "faq" || 頁面模式.value === "logs") {
+    return "常見問題";
   }
 
   if (頁面模式.value === "honey-fans") {
@@ -3148,6 +3182,9 @@ const 分享描述 = computed(() => {
   }
   if (頁面模式.value === "servers") {
     return 伺服器對比分享描述();
+  }
+  if (頁面模式.value === "faq" || 頁面模式.value === "logs") {
+    return "整理 FFXIV 繁中服排行榜常見問題，並提供 FFLogs report 收錄狀態檢查工具。";
   }
   if (頁面模式.value === "honey-fans") {
     return 蜂蜂粉絲榜分享描述();
@@ -3459,59 +3496,34 @@ function 使用者成績是否較佳(候選, 目前最佳) {
   return new Date(候選.recorded_at_iso || 0).getTime() > new Date(目前最佳.recorded_at_iso || 0).getTime();
 }
 
-function 取得有效排名數值(排名) {
-  const 數值 = 轉為數字(排名);
-  return 數值 !== null && 數值 > 0 ? 數值 : null;
-}
-
-function 取得成績職業排名值(成績) {
-  return 取得有效排名數值(成績?.job_rank ?? 成績?.rank);
-}
-
-function 取得成績前段百分位(成績) {
-  const 百分位 = 轉為數字(成績?.performance?.top_percent);
-  return 百分位 !== null && 百分位 >= 0 ? 百分位 : null;
-}
-
 function 使用者代表成績是否較佳(候選, 目前最佳) {
-  // 個人成績單未套用職業篩選時，代表列要優先呈現「同職排名最亮眼」的有效紀錄。
-  // 這避免坦補主職因 raw rDPS 天生低於輸出職業，而被偶爾遊玩的 DPS 紀錄蓋掉履歷預設職業。
-  if (!候選) {
-    return false;
-  }
-  if (!目前最佳) {
-    return true;
+  // 個人成績單未套用職業篩選時，代表列不能直接跨職業比 raw rDPS。
+  // 前 N% 模式保留既有 Rank/top_percent 口徑；PR 模式則改用 score_percentile，
+  // 讓不同職業樣本數差異不會讓「排名較前但 PR 較低」的職業被誤放在第一順位。
+  return 個人成績代表是否較佳(候選, 目前最佳, 分位顯示模式.value, 使用者成績是否較佳);
+}
+
+function 排序使用者公開成績(公開成績) {
+  if (分位顯示模式.value !== 分位顯示模式PR) {
+    return 公開成績;
   }
 
-  const 候選排名 = 取得成績職業排名值(候選);
-  const 目前排名 = 取得成績職業排名值(目前最佳);
-  if (候選排名 !== null || 目前排名 !== null) {
-    if (候選排名 === null) {
-      return false;
-    }
-    if (目前排名 === null) {
-      return true;
-    }
-    if (候選排名 !== 目前排名) {
-      return 候選排名 < 目前排名;
-    }
-  }
-
-  const 候選百分位 = 取得成績前段百分位(候選);
-  const 目前百分位 = 取得成績前段百分位(目前最佳);
-  if (候選百分位 !== null || 目前百分位 !== null) {
-    if (候選百分位 === null) {
-      return false;
-    }
-    if (目前百分位 === null) {
-      return true;
-    }
-    if (候選百分位 !== 目前百分位) {
-      return 候選百分位 < 目前百分位;
-    }
-  }
-
-  return 使用者成績是否較佳(候選, 目前最佳);
+  return 公開成績
+    .map((成績, 原始索引) => ({ 成績, 原始索引 }))
+    .sort((左, 右) => {
+      const 分位差 = 比較個人成績分位顯示排序(左.成績, 右.成績, 分位顯示模式.value);
+      if (分位差 !== 0) {
+        return 分位差;
+      }
+      if (使用者成績是否較佳(左.成績, 右.成績)) {
+        return -1;
+      }
+      if (使用者成績是否較佳(右.成績, 左.成績)) {
+        return 1;
+      }
+      return 左.原始索引 - 右.原始索引;
+    })
+    .map(({ 成績 }) => 成績);
 }
 
 function 取得使用者副本成績(資料, 伺服器 = "", 成績篩選 = () => true, 最佳成績比較 = 使用者成績是否較佳) {
@@ -3519,7 +3531,9 @@ function 取得使用者副本成績(資料, 伺服器 = "", 成績篩選 = () =
 
   return 副本列表
     .map((副本) => {
-      const 公開成績 = (副本.public_entries || []).filter((成績) => (!伺服器 || 成績.server === 伺服器) && 成績篩選(成績));
+      const 公開成績 = 排序使用者公開成績(
+        (副本.public_entries || []).filter((成績) => (!伺服器 || 成績.server === 伺服器) && 成績篩選(成績)),
+      );
       if (公開成績.length === 0) {
         return null;
       }
@@ -3665,13 +3679,38 @@ const 使用者分位亮點 = computed(() => {
     )
     .filter((成績) => 成績?.performance?.qualified)
     .sort((前一個, 後一個) => {
-      const 分位差 = (前一個.performance?.top_percent ?? 100) - (後一個.performance?.top_percent ?? 100);
+      const 分位差 = 比較個人成績分位顯示排序(前一個, 後一個, 分位顯示模式.value);
       return 分位差 || (後一個.rdps ?? 0) - (前一個.rdps ?? 0);
     })
     .slice(0, 4);
 });
 
-function 建立使用者成績趨勢項(副本, 職能, 成績列表) {
+function 比較使用者趨勢職業預設排序(前一個, 後一個) {
+  // 同副本合併後，預設職業以玩家最常遊玩的紀錄數為主，平手才用近期與最佳成績穩定排序。
+  const 紀錄數差 = 後一個.點列表.length - 前一個.點列表.length;
+  if (紀錄數差 !== 0) {
+    return 紀錄數差;
+  }
+
+  const 最新時間差 =
+    new Date(後一個.最新?.recorded_at_iso || 0).getTime() - new Date(前一個.最新?.recorded_at_iso || 0).getTime();
+  if (最新時間差 !== 0) {
+    return 最新時間差;
+  }
+
+  if (使用者成績是否較佳(前一個.最佳, 後一個.最佳)) {
+    return -1;
+  }
+  if (使用者成績是否較佳(後一個.最佳, 前一個.最佳)) {
+    return 1;
+  }
+
+  const 職能順序差 = 職業類型排序值(前一個.職能?.代碼) - 職業類型排序值(後一個.職能?.代碼);
+  return 職能順序差 || 前一個.job_name.localeCompare(後一個.job_name, "zh-Hant-TW");
+}
+
+function 建立使用者成績趨勢項(副本, 職業代碼, 成績列表) {
+  const 職能 = 職業所屬類型(職業代碼);
   const 數值列表 = 成績列表.map((成績) => 轉為數字(成績.rdps) || 0);
   const 最低 = Math.min(...數值列表);
   const 最高 = Math.max(...數值列表);
@@ -3716,10 +3755,13 @@ function 建立使用者成績趨勢項(副本, 職能, 成績列表) {
   });
 
   return {
-    key: `${副本.encounter_key}::${職能.代碼}`,
+    key: `${副本.encounter_key}::${職業代碼}`,
     encounter_key: 副本.encounter_key,
     encounter_name: 副本.encounter_name,
     encounter_category: 副本.encounter_category,
+    job: 職業代碼,
+    job_name: 顯示職業名稱(職業代碼),
+    job_color: 職業代碼色彩(職業代碼),
     職能,
     最新,
     最佳,
@@ -3735,36 +3777,61 @@ function 建立使用者成績趨勢項(副本, 職能, 成績列表) {
 
 const 使用者成績趨勢 = computed(() => {
   return 使用者副本成績.value
-    .flatMap((副本) => {
-      const 職能成績索引 = new Map();
+    .map((副本) => {
+      const 職業成績索引 = new Map();
       for (const 成績 of 副本.public_entries || []) {
-        const 職能 = 職業所屬類型(成績.job);
-        if (!職能 || 轉為數字(成績.rdps) === null) {
+        const 職業代碼 = 成績.job;
+        if (!職業代碼 || 轉為數字(成績.rdps) === null) {
           continue;
         }
 
-        if (!職能成績索引.has(職能.代碼)) {
-          職能成績索引.set(職能.代碼, {
-            職能,
+        if (!職業成績索引.has(職業代碼)) {
+          職業成績索引.set(職業代碼, {
+            職業代碼,
             成績列表: [],
           });
         }
-        職能成績索引.get(職能.代碼).成績列表.push(成績);
+        職業成績索引.get(職業代碼).成績列表.push(成績);
       }
 
-      return Array.from(職能成績索引.values()).map(({ 職能, 成績列表 }) => {
+      const 職業趨勢列表 = Array.from(職業成績索引.values()).map(({ 職業代碼, 成績列表 }) => {
         const 排序後成績 = 成績列表.sort((前一個, 後一個) => {
           const 時間差 = new Date(前一個.recorded_at_iso || 0).getTime() - new Date(後一個.recorded_at_iso || 0).getTime();
           return 時間差 || (前一個.rdps ?? 0) - (後一個.rdps ?? 0);
         });
 
-        return 建立使用者成績趨勢項(副本, 職能, 排序後成績);
-      });
+        return 建立使用者成績趨勢項(副本, 職業代碼, 排序後成績);
+      }).sort(比較使用者趨勢職業預設排序);
+
+      if (職業趨勢列表.length === 0) {
+        return null;
+      }
+
+      const 已選職業 = 使用者趨勢職業選擇.value[副本.encounter_key];
+      const 目前趨勢 = 職業趨勢列表.find((趨勢) => 趨勢.job === 已選職業) || 職業趨勢列表[0];
+      const 職業選項 = 職業趨勢列表.map((趨勢) => ({
+        代碼: 趨勢.job,
+        名稱: 趨勢.job_name,
+        色彩: 趨勢.job_color,
+        職能: 趨勢.職能,
+        紀錄數: 趨勢.點列表.length,
+        已選取: 趨勢.job === 目前趨勢.job,
+      }));
+
+      return {
+        ...目前趨勢,
+        key: 副本.encounter_key,
+        趨勢key: 目前趨勢.key,
+        職業趨勢列表,
+        職業選項,
+        目前職業代碼: 目前趨勢.job,
+        多職業: 職業趨勢列表.length > 1,
+      };
     })
+    .filter(Boolean)
     .sort((前一個, 後一個) => {
       const 副本順序差 = 取得副本排序值(前一個.encounter_key) - 取得副本排序值(後一個.encounter_key);
-      const 職能順序差 = 職業類型排序值(前一個.職能?.代碼) - 職業類型排序值(後一個.職能?.代碼);
-      return 副本順序差 || 職能順序差 || 前一個.encounter_name.localeCompare(後一個.encounter_name, "zh-Hant-TW");
+      return 副本順序差 || 前一個.encounter_name.localeCompare(後一個.encounter_name, "zh-Hant-TW");
     });
 });
 
@@ -4762,6 +4829,15 @@ function 切換到伺服器對比() {
   讀取伺服器對比資料();
 }
 
+function 切換到常見問題() {
+  頁面模式.value = "faq";
+  更新分享網址("faq", {});
+}
+
+function 切換到Logs檢查() {
+  切換到常見問題();
+}
+
 function 切換到蜂蜂粉絲榜() {
   if (!啟用Honey粉絲榜.value) {
     切換到排行榜();
@@ -4943,6 +5019,8 @@ async function 套用網址狀態(網址狀態 = 讀取目前網址狀態()) {
       await 套用隊伍榜網址狀態(網址狀態);
     } else if (網址狀態.page === "servers") {
       await 套用伺服器對比網址狀態(網址狀態);
+    } else if (網址狀態.page === "faq" || 網址狀態.page === "logs") {
+      頁面模式.value = "faq";
     } else if (網址狀態.page === "honey-fans" && 啟用Honey粉絲榜.value) {
       await 套用蜂蜂粉絲榜網址狀態();
     } else if (網址狀態.page === "honey-fans") {
@@ -5021,6 +5099,10 @@ watch(使用者伺服器篩選, (伺服器) => {
   if (頁面模式.value === "user" && 使用者資料.value?.character_name) {
     更新網址為使用者(使用者資料.value.character_name, 伺服器, { replace: true });
   }
+});
+
+watch([使用者資料, 使用者伺服器篩選, 使用者職業類型篩選, 使用者職業篩選], () => {
+  使用者趨勢職業選擇.value = {};
 });
 
 watch([使用者資料, 使用者伺服器篩選, 使用者職業類型選項], () => {
@@ -5191,6 +5273,7 @@ onUnmounted(() => {
     使用者職業類型篩選,
     使用者職業篩選,
     使用者職業選單開啟,
+    使用者趨勢職業選擇,
     使用者讀取中,
     使用者錯誤訊息,
     比較角色左輸入,
@@ -5309,6 +5392,7 @@ onUnmounted(() => {
     清除使用者職業篩選,
     選擇使用者職業類型,
     選擇使用者職業,
+    選擇使用者趨勢職業,
     切換使用者職業選單,
     處理使用者職業選單失焦,
     切換副本選單,
@@ -5620,6 +5704,8 @@ onUnmounted(() => {
     切換到近期動態,
     切換到隊伍榜,
     切換到伺服器對比,
+    切換到常見問題,
+    切換到Logs檢查,
     切換到蜂蜂粉絲榜,
     切換隊伍榜副本選單,
     處理隊伍榜副本選單失焦,

@@ -21,6 +21,11 @@ import {
   格式化同職分位,
   格式化排名分位,
 } from "../src/utils/formatters.js";
+import {
+  個人成績代表是否較佳,
+  比較個人成績分位顯示排序,
+} from "../src/utils/userProfileSorting.js";
+import { 建立報告索引Map, 解析Fflogs網址 } from "../src/utils/reportStatus.js";
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const srcDir = path.join(rootDir, "src");
@@ -89,6 +94,53 @@ function validatePercentileDisplayFormatting() {
   for (const [score, className] of expectedClasses) {
     assert(取得PR色彩類別(score) === className, `PR ${score} 應套用 ${className} 色彩類別。`);
   }
+}
+
+function validateUserProfilePercentileSorting() {
+  const rankAheadButLowerPr = {
+    job: "Summoner",
+    job_rank: 1,
+    rank: 1,
+    rdps: 1000,
+    performance: {
+      qualified: true,
+      sample_count: 5,
+      rank: 3,
+      top_percent: 60,
+      score_percentile: 60,
+    },
+  };
+  const rankBehindButHigherPr = {
+    job: "Machinist",
+    job_rank: 20,
+    rank: 20,
+    rdps: 900,
+    performance: {
+      qualified: true,
+      sample_count: 200,
+      rank: 10,
+      top_percent: 5,
+      score_percentile: 95.5,
+    },
+  };
+  const fallbackCompare = (candidate, currentBest) => (candidate?.rdps ?? 0) > (currentBest?.rdps ?? 0);
+
+  assert(
+    個人成績代表是否較佳(rankAheadButLowerPr, rankBehindButHigherPr, 分位顯示模式前段, fallbackCompare),
+    "前 N% 模式應保留既有代表列排序：職業 Rank 較前者優先。",
+  );
+  assert(
+    個人成績代表是否較佳(rankBehindButHigherPr, rankAheadButLowerPr, 分位顯示模式PR, fallbackCompare),
+    "PR 模式代表列應以 PR 值較高者優先。",
+  );
+  assert(
+    比較個人成績分位顯示排序(rankBehindButHigherPr, rankAheadButLowerPr, 分位顯示模式PR) < 0,
+    "PR 模式展開列與亮點排序應把 PR 較高者排在前面。",
+  );
+  assert(
+    比較個人成績分位顯示排序(rankBehindButHigherPr, rankAheadButLowerPr, 分位顯示模式前段) < 0,
+    "前 N% 模式的分位亮點仍應依 top_percent 較低者排在前面。",
+  );
 }
 
 function validateGcdCoverageDiagnosticFields() {
@@ -305,6 +357,7 @@ async function validateFrontendFetchBoundary() {
     "utils/announcements.js",
     "utils/fetchJson.js",
     "utils/publicData.js",
+    "utils/reportStatus.js",
     "utils/shareMeta.js",
     "utils/siteFeatures.js",
     "utils/statsDisplay.js",
@@ -385,6 +438,8 @@ async function validatePublicDataForFrontend() {
   const announcements = await readJson(path.join(publicDataDir, "announcements.json"), "public/data/announcements.json");
   const globalStats = await readJson(path.join(publicDataDir, "global_stats.json"), "public/data/global_stats.json");
   const serverCompare = await readJson(path.join(publicDataDir, "server_compare.json"), "public/data/server_compare.json");
+  const reportStatusIndex = await readJson(path.join(publicDataDir, "report_status_index.json"), "public/data/report_status_index.json");
+  const updateStatus = await readJson(path.join(publicDataDir, "update_status.json"), "public/data/update_status.json");
   const honeyFans = await readJson(path.join(publicDataDir, "fun", "honey_b_fans.json"), "public/data/fun/honey_b_fans.json");
   const userIndex = await readJson(path.join(publicDataDir, "users", "index.json"), "public/data/users/index.json");
   const versionedEncounterKeys = new Set((encounters || []).filter((encounter) => encounter?.version_cutoff).map((encounter) => encounter.key));
@@ -406,6 +461,16 @@ async function validatePublicDataForFrontend() {
   assert(Array.isArray(globalStats?.encounters), "public/data/global_stats.json 必須包含 encounters");
   assert(serverCompare?.schema_version === 1, "public/data/server_compare.json schema_version 必須是 1");
   assert(Array.isArray(serverCompare?.servers), "public/data/server_compare.json 必須包含 servers");
+  assert(reportStatusIndex?.format === "report_status_index_v1", "public/data/report_status_index.json format 必須是 report_status_index_v1");
+  assert(Array.isArray(reportStatusIndex?.reports), "public/data/report_status_index.json 必須包含 reports");
+  assert(reportStatusIndex?.report_count === reportStatusIndex?.reports?.length, "public/data/report_status_index.json report_count 必須等於 reports 長度");
+  const normalizedReportStatusReports = Array.from(建立報告索引Map(reportStatusIndex).values());
+  assert(
+    normalizedReportStatusReports.every((report) => report.report_code && Array.isArray(report.fights) && Array.isArray(report.encounters)),
+    "public/data/report_status_index.json 每筆 report 必須保留 fights 與 encounters 摘要",
+  );
+  assert(updateStatus?.format === "public_update_status_v1", "public/data/update_status.json format 必須是 public_update_status_v1");
+  assert(Number.isFinite(updateStatus?.schedule?.interval_minutes), "public/data/update_status.json 必須公開排程摘要");
   assert(honeyFans?.schema_version === 1, "public/data/fun/honey_b_fans.json schema_version 必須是 1");
   assert(honeyFans?.feature === "honey_b_lovely_fans", "public/data/fun/honey_b_fans.json feature 必須是 honey_b_lovely_fans");
   assert(Array.isArray(honeyFans?.top_fans), "public/data/fun/honey_b_fans.json 必須包含 top_fans");
@@ -934,7 +999,38 @@ async function validatePublicDataRouteBase() {
     "Vite base_path 已指定絕對路徑時，公開資料 URL 應優先使用設定值。",
   );
 
+  const directFaqRoute = await loadPublicDataTestModule("https://ranking.init.engineer/faq");
+  assert(
+    directFaqRoute.報告狀態索引網址 === "/data/report_status_index.json",
+    "直接開啟 /faq 時，Logs 狀態索引應讀取部署根目錄的 /data/report_status_index.json。",
+  );
+
+  const directLogsRoute = await loadPublicDataTestModule("https://ranking.init.engineer/logs");
+  assert(
+    directLogsRoute.報告狀態索引網址 === "/data/report_status_index.json",
+    "直接開啟舊版 /logs 時，Logs 狀態索引仍應讀取部署根目錄的 /data/report_status_index.json。",
+  );
+
   delete globalThis.window;
+}
+
+function validateReportStatusUrlParsing() {
+  const hashFight = 解析Fflogs網址("https://www.fflogs.com/reports/BAgFha92HkfQ4vKP#fight=15&type=damage-done");
+  assert(hashFight.valid && hashFight.report_code === "BAgFha92HkfQ4vKP", "Logs 檢查應能解析 hash fight 格式的 FFLogs 網址。");
+  assert(hashFight.fight_id === 15, "Logs 檢查應能解析 hash 中的 fight id。");
+
+  const queryFight = 解析Fflogs網址("https://www.fflogs.com/reports/a:BAgFha92HkfQ4vKP?fight=last");
+  assert(queryFight.valid && queryFight.report_code === "BAgFha92HkfQ4vKP", "Logs 檢查應支援 FFLogs a: report code 格式。");
+  assert(queryFight.fight_id === null && queryFight.fight_text === "last", "fight=last 不應被誤判為數字 fight。");
+
+  const pureCode = 解析Fflogs網址("BAgFha92HkfQ4vKP");
+  assert(pureCode.valid && pureCode.normalized_url.endsWith("/BAgFha92HkfQ4vKP"), "Logs 檢查應支援只貼 report code。");
+
+  const invalidHost = 解析Fflogs網址("https://example.test/reports/BAgFha92HkfQ4vKP");
+  assert(!invalidHost.valid && invalidHost.error.includes("fflogs.com"), "Logs 檢查應拒絕非 FFLogs 網址。");
+
+  const lookalikeHost = 解析Fflogs網址("https://evilfflogs.com/reports/BAgFha92HkfQ4vKP");
+  assert(!lookalikeHost.valid, "Logs 檢查不可接受只是字尾相同的非 FFLogs 主機。");
 }
 
 function installUrlStateWindow(href, events) {
@@ -1052,6 +1148,16 @@ async function validateShareUrlStateCompatibility() {
       href: "https://ranking.init.engineer/honey-fans",
       expected: { page: "honey-fans" },
     },
+    {
+      label: "常見問題乾淨路徑",
+      href: "https://ranking.init.engineer/faq",
+      expected: { page: "faq" },
+    },
+    {
+      label: "舊版 Logs 檢查乾淨路徑",
+      href: "https://ranking.init.engineer/logs",
+      expected: { page: "faq" },
+    },
   ];
 
   const events = [];
@@ -1122,6 +1228,20 @@ async function validateShareUrlStateCompatibility() {
   );
 
   installUrlStateWindow("https://ranking.init.engineer/activity", events);
+  module.writeState({ page: "faq" }, { replace: true });
+  assert(
+    globalThis.window.location.href === "https://ranking.init.engineer/faq",
+    "常見問題分享網址必須寫成 /faq",
+  );
+
+  installUrlStateWindow("https://ranking.init.engineer/activity", events);
+  module.writeState({ page: "logs" }, { replace: true });
+  assert(
+    globalThis.window.location.href === "https://ranking.init.engineer/faq",
+    "舊版 logs 狀態寫入分享網址時應正規化為 /faq",
+  );
+
+  installUrlStateWindow("https://ranking.init.engineer/activity", events);
   module.writeState({ page: "honey-fans" }, { replace: true });
   assert(
     globalThis.window.location.href === "https://ranking.init.engineer/honey-fans",
@@ -1138,12 +1258,14 @@ async function main() {
   await validateStaticSeoBuildOptions();
   await validateSiteFeatureFlags();
   validatePercentileDisplayFormatting();
+  validateUserProfilePercentileSorting();
   validateGcdCoverageDiagnosticFields();
   validateJobIconCacheKeys();
   await validateEncounterSwitchFilterPersistence();
   await validatePublicDataForFrontend();
   await validateHiddenDeltaDataForFrontend();
   validateReportExternalLinks();
+  validateReportStatusUrlParsing();
   validateScopedJobShareRecalculation();
   validateGlobalStatsOverviewDenominator();
   validateAnnouncementRules();

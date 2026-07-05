@@ -381,17 +381,34 @@ export default {
               <div class="趨勢標題文字">
                 <small>{{ 趨勢.encounter_category || "副本" }}</small>
                 <strong>{{ 趨勢.encounter_name }}</strong>
-                <span class="職業標籤 趨勢職能標籤" :class="職業色彩類別(趨勢.職能?.色彩)">
+                <span v-if="!趨勢.多職業" class="職業標籤 趨勢職業標籤" :class="職業色彩類別(趨勢.job_color)">
                   <JobIcon
                     class="職業圖示 職業標籤圖示"
-                    kind="role"
-                    :code="趨勢.職能?.代碼"
+                    :code="趨勢.job"
                   />
-                  <span>{{ 趨勢.職能?.名稱 || "職能" }}</span>
+                  <span>{{ 趨勢.job_name || 顯示職業名稱(趨勢.job) }}</span>
                 </span>
               </div>
               <em :class="{ 上升: 趨勢.變化 > 0, 下降: 趨勢.變化 < 0 }">{{ 格式化帶號整數(趨勢.變化) }}</em>
             </header>
+            <div v-if="趨勢.多職業" class="趨勢職業切換列" role="group" :aria-label="`${趨勢.encounter_name} 職業切換`">
+              <button
+                v-for="選項 in 趨勢.職業選項"
+                :key="`${趨勢.encounter_key}-${選項.代碼}`"
+                class="趨勢職業按鈕"
+                type="button"
+                :class="[職業色彩類別(選項.色彩), { 作用中: 選項.已選取 }]"
+                :aria-pressed="選項.已選取"
+                @click="選擇使用者趨勢職業(趨勢.encounter_key, 選項.代碼)"
+              >
+                <JobIcon
+                  class="職業圖示 職業標籤圖示"
+                  :code="選項.代碼"
+                />
+                <span>{{ 選項.名稱 }}</span>
+                <small>{{ 選項.紀錄數 }} 筆</small>
+              </button>
+            </div>
             <div class="趨勢摘要">
               <span>最新 {{ 格式化傷害數值(趨勢.最新?.rdps) }}</span>
               <span>最佳 {{ 趨勢.最佳 ? 格式化傷害數值(趨勢.最佳?.rdps) : "-" }}</span>

@@ -96,6 +96,16 @@
     "scan_start_date": "2026-04-21"
   },
   {
+    "key": "chaotic_cloud_of_darkness",
+    "name": "滅 黑暗之雲",
+    "category": "滅",
+    "zone_id": 66,
+    "encounter_id": 2061,
+    "difficulty": 100,
+    "enabled": true,
+    "scan_start_date": "2026-06-23T18:00:00+08:00"
+  },
+  {
     "key": "ultimate_bahamut",
     "name": "絕 巴哈姆特",
     "category": "絕",

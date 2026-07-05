@@ -24,7 +24,7 @@ npm run sync:data -- --dry-run
 
 - `key`：內部識別碼，也會對應資料檔名與網址狀態。建立後不得任意改名。
 - `name`：網站顯示名稱。
-- `category`：副本分類，例如 `零式`、`極`、`幻`、`絕`。
+- `category`：副本分類，例如 `零式`、`極`、`幻`、`滅`、`絕`。
 - `zone_id`、`encounter_id`、`difficulty`：FFLogs 查詢用設定。
 - `enabled`：是否啟用下一輪 Python 爬蟲掃描。
 - `scan_start_date`：首次掃描起始日期。
@@ -57,13 +57,15 @@ npm run sync:data -- --dry-run
 - `public/data/activity.json` 的近期動態、活躍分布與 Logs 趨勢。
 - `public/data/team_rankings.json` 的副本、隊伍紀錄與 8 人隊員列。
 - `public/data/server_compare.json` 的伺服器列、副本列、職業/職能統計與傷害分位。
+- `public/data/report_status_index.json` 的 report code、fight、副本與收錄狀態摘要。
+- `public/data/update_status.json` 的最近資料更新與排程摘要。
 - `public/data/fun/honey_b_fans.json` 的 Honey B. Lovely 粉絲榜摘要、頭號粉絲、近期紀錄與完整趣味紀錄。
 
 `public/data/all/` 目前是 hidden delta 產物，不再複製所有公開 JSON；delta 檔也有自己的資料契約，驗證時會先與公開底稿合併再檢查完整資料形狀。新增或移除公開 JSON 欄位時，必須同步更新 `schemas/public_data_contracts.mjs`、資料建置腳本與前端讀取端，讓欄位漂移在 `npm test` 或 `npm run validate:data` 階段被抓到。
 
 正式部署時，`public/data/users`、`public/data/user-entry-details`、`public/data/all/users` 與 `public/data/all/user-entry-details` 會先同步到 `Final-Fantasy-XIV-Ranking-for-TC-Users`。Vite/postbuild 仍會讀本 repo 的 `public/data/users/index.json` 產生玩家分享頁與 OG 圖；建置完成後才由 `npm run prune:pages-user-data` 移除 `dist/` 內的大型使用者 JSON。也就是說，`public/data/users` 仍是 repo 內可驗證的資料契約來源，但正式主站 artifact 不再把它當作前端個人成績單資料來源。
 
-`public/data/activity.json` 的 `log_activity` 由 `scripts/build_user_data.mjs` 讀取 `reports -> fights -> players` 產生，不由 Vue 元件即時計算。`unique_report_count` 以 `report_code` 去重，代表 FFLogs 日誌數；`unique_fight_count` 以 `encounter_key + fight_hash` 去重，代表同場多份上傳合併後的通關場次。每日 bucket 使用台灣日期切分，前端只負責依副本、日期範圍與每日座標顯示這些靜態統計；日期範圍的 UI 初始值依響應式模式決定，桌面預設近 90 天，手機預設近 30 天。`log_activity.category_series` 會以零式、極、幻、絕等副本分類預先彙整同樣的每日數量，供近期動態頁在全部副本曲線下方顯示分類堆疊占比。圖表上的台服與國際服改版標註是前端維護的靜態時間軸脈絡，不屬於 `activity.json` 資料契約，也不影響 Logs 或通關場次統計。
+`public/data/activity.json` 的 `log_activity` 由 `scripts/build_user_data.mjs` 讀取 `reports -> fights -> players` 產生，不由 Vue 元件即時計算。`unique_report_count` 以 `report_code` 去重，代表 FFLogs 日誌數；`unique_fight_count` 以 `encounter_key + fight_hash` 去重，代表同場多份上傳合併後的通關場次。每日 bucket 使用台灣日期切分，前端只負責依副本、日期範圍與每日座標顯示這些靜態統計；日期範圍的 UI 初始值依響應式模式決定，桌面預設近 90 天，手機預設近 30 天。`log_activity.category_series` 會以零式、極、幻、滅、絕等副本分類預先彙整同樣的每日數量，供近期動態頁在全部副本曲線下方顯示分類堆疊占比。圖表上的台服與國際服改版標註是前端維護的靜態時間軸脈絡，不屬於 `activity.json` 資料契約，也不影響 Logs 或通關場次統計。
 
 `gcd_coverage` 是公開資料中可顯示的衍生結果；除了 `percent`、分母與計算版本，也允許保留小型診斷欄位，例如 `estimated_speed_below_minimum`、`fallback_selection`、`downtime_selection`，以及 raw events、Casts graph、raw targetability fallback 的比較百分比與分母。這些欄位只說明本地演算法為什麼選用某個覆蓋率結果，不保存 FFLogs raw events 或 Casts graph payload，因此符合公開 JSON 的瘦身邊界。
 
@@ -94,6 +96,18 @@ Honey B. Lovely 粉絲榜來源在 `data/fun/honey_b_fans.json`，公開檔在 `
 - `detail_path`：指向 `public/data/ranking-details/{key}.json`，使用者點擊「報告」按鈕時才載入。
 
 `public/data/ranking-details/{key}.json` 保存以 entry `id` 為 key 的完整公開排行榜條目，用來組成 FFLogs、xivanalysis 與 ffreplay 外部連結，以及報告彈窗內的追溯欄位。這組檔案是公開 `ranking_entries` 的衍生快取，不是權威來源；重建時仍以 `data/rankings/*.json` 與分片為準。
+
+## Logs 檢查索引
+
+`public/data/report_status_index.json` 是常見問題頁中 FFLogs 檢查工具的輕量查詢索引，由 `scripts/build_report_status_index.mjs` 讀取 `public/data/ranking-details/*.json` 產生。它使用 `report_columns`、`encounter_columns` 與 `fight_columns` 欄位陣列格式壓縮體積，內容只保留：
+
+- report code 與首次/最新紀錄時間。
+- report 命中的副本、fight id、排行列數與玩家數。
+- hidden entry 計數，用來區分一般公開資料與 hidden delta 摘要。
+
+這份索引不保存玩家完整成績、FFLogs raw payload、`masterData` 或掃描 checkpoint，也不是判定 report 是否應入庫的權威來源；權威來源仍是 `data/rankings/*.json` 與分片。`public/data/all/report_status_index.json` 則是 hidden delta，只保存額外檢視必要的 hidden report 摘要並以 `base_path="data/report_status_index.json"` 指回公開底稿。
+
+`public/data/update_status.json` 由 `scripts/build_public_status_data.mjs` 從 `data/update_status.json` 與 `public/data/global_stats.json` 產生，公開最近資料更新時間、Actions run URL、總角色/成績數，以及 workflow 的每小時排程、近期 24 小時重查、24-72 小時延遲掃描與 168 小時歷史補查視窗摘要。前端只能用它推估等待時間；若 report 完全不在公開索引中，仍不能在瀏覽器端即時確認 private、deleted 或 FFLogs 尚未匯出。
 
 `public/data/all/ranking-tables/` 與 `public/data/all/ranking-details/` 輸出 hidden delta：
 

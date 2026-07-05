@@ -1,10 +1,10 @@
 # FFXIV 繁中服排行榜
 
-Final Fantasy XIV 繁中服排行榜是一個以 FFLogs 公開資料為來源的 Vue 3 / Vite 靜態網站，用來整理繁中服玩家在零式、極、幻與絕本中的公開通關成績。
+Final Fantasy XIV 繁中服排行榜是一個以 FFLogs 公開資料為來源的 Vue 3 / Vite 靜態網站，用來整理繁中服玩家在零式、極、幻、滅與絕本中的公開通關成績。
 
 專案由兩個主要部分組成：
 
-- 前端網站：瀏覽排行榜、全服統計、個人成績單、玩家比較、隊伍榜、伺服器對比、職業分析、近期動態與 Honey B. Lovely 粉絲榜趣味頁。
+- 前端網站：瀏覽排行榜、全服統計、個人成績單、玩家比較、隊伍榜、伺服器對比、職業分析、近期動態、常見問題與 Honey B. Lovely 粉絲榜趣味頁。
 - 資料管線：透過 FFLogs GraphQL API 抓取報告，篩選繁中服玩家，建置排行榜與前端需要的靜態 JSON。
 
 > 這是非官方社群工具，資料來自 FFLogs 公開報告；顯示結果不代表遊戲內完整人口或所有通關紀錄。
@@ -62,8 +62,9 @@ npm run dev
 - 玩家搜尋欄支援本機搜尋歷程，下拉顯示最近 8 筆，編輯視窗最多保存 100 筆。
 - 同名角色若分屬不同伺服器，會以「角色名稱 + 伺服器」拆成不同個人成績單；目前不再自動處理轉服合併。
 - 顯示 DPS、rDPS、aDPS、Active、GCD 覆蓋率參考值、通關時間與紀錄時間。
-- 個人成績單可查看各副本最佳紀錄、歷史紀錄、同職分位與常同場隊友；同職分位可由使用者端偏好切換顯示為「前 N%」或整數 PR 值。
-- 玩家比較、隊伍榜、伺服器對比、職業分析與近期動態皆由靜態資料產生；近期動態也提供每日 Logs 曲線、零式、極、幻、絕分類占比，以及台服與國際服改版時間標註，桌面預設近 90 天、手機預設近 30 天，可切換副本、日期範圍與 Logs、通關場次等統計口徑。
+- 個人成績單可查看各副本最佳紀錄、歷史紀錄、同職分位與常同場隊友；同職分位可由使用者端偏好切換顯示為「前 N%」或整數 PR 值，PR 模式會讓代表列、分位亮點與歷史列優先依 PR 值排序。
+- 玩家比較、隊伍榜、伺服器對比、職業分析與近期動態皆由靜態資料產生；近期動態也提供每日 Logs 曲線、零式、極、幻、滅、絕分類占比，以及台服與國際服改版時間標註，桌面預設近 90 天、手機預設近 30 天，可切換副本、日期範圍與 Logs、通關場次等統計口徑。
+- 常見問題頁整理 Telegram 群組常見回報，包含更新時間、過版紀錄、GCD 覆蓋率、同名角色與公開狀態；其中的 FFLogs 檢查工具可貼上 report 網址或 report code，比對 `public/data/report_status_index.json` 與 `public/data/update_status.json`，判斷目前公開資料是否已收錄、指定 fight 是否命中，以及剛上傳或歷史補查紀錄大約會落在哪個排程窗；前端不直接呼叫 FFLogs API。
 - Honey B. Lovely 粉絲榜以獨立趣味資料呈現 M2S `心醉魂迷：奴役` 衍生紀錄；本期榜單、吃心心數、戰鬥次數與報告只計近 7 天，最新收錄紀錄顯示 5 筆、最新加入粉絲顯示 16 筆。頁面可用「超高難度」開關切換為自台灣時間 2026-05-30 00:00:00 起算的通關團隊榜，依單場全隊奴役總次數排序，來源歷史紀錄仍保留用於連續入榜與追溯統計，不混入正式排行榜。
 - 支援深色 / 亮色主題，並依目前頁面的職業或職能篩選切換主色調。
 - 支援全域公告通知，公告內容由 `public/data/announcements.json` 隨 commit 更新，使用者關閉後不再主動顯示。
@@ -91,7 +92,7 @@ README 只保留入口與最小操作脈絡，完整說明請依主題閱讀：
 本專案最重要的邊界是「抓取、建置、呈現」三層分離：
 
 1. `scripts/fetch_fflogs.py` 是 Data Fetching Layer。它是唯一可直接呼叫 FFLogs GraphQL API 的入口，負責 OAuth、限流、重試、繁中服玩家初篩、report 狀態判定，以及 `data/rankings/` 與 `data/state.json` 的可追溯寫入；GraphQL 查詢字串集中在 `scripts/fflogs_pipeline/graphql_queries.py`，避免掃描策略與查詢文本互相纏在同一個巨型檔。
-2. `scripts/build_user_data.mjs` 是 Data Building Layer。它讀取排行榜來源資料，產生個人成績單、個人成績報告細節、全服統計、近期動態、隊伍榜與伺服器對比等 `public/data/` 靜態 JSON；正式部署時，個人成績單 JSON 會先同步到專用 users repo，再從主站 Pages artifact 移除。
+2. `scripts/build_user_data.mjs` 是 Data Building Layer。它讀取排行榜來源資料，產生個人成績單、個人成績報告細節、全服統計、近期動態、隊伍榜與伺服器對比等 `public/data/` 靜態 JSON；`build:user-data` 也會接續產生排行榜薄索引、Logs 狀態索引與公開更新狀態。正式部署時，個人成績單 JSON 會先同步到專用 users repo，再從主站 Pages artifact 移除。
 3. `src/` 是 UI Presentation Layer。Vue 只讀取靜態 JSON 進行呈現、篩選與狀態管理：主站共用資料來自 Pages artifact 的 `/data/`，個人成績單資料來自專用 users repo，不能直接呼叫 FFLogs API；`src/composables/rankingApp/` 承接排行榜預設值、注入 context 與排行列正規化，`src/styles/app.css` 則只作為樣式拆檔入口。
 
 ## 常用指令
@@ -102,9 +103,11 @@ README 只保留入口與最小操作脈絡，完整說明請依主題閱讀：
 | `npm run fetch:honey-fans` | 抓取 Honey B. Lovely 粉絲榜趣味資料，會呼叫 FFLogs API。 |
 | `npm run build:honey-fans` | 由 `data/fun/honey_b_fans.json` 重建公開趣味榜 JSON，不呼叫 FFLogs API。 |
 | `npm run build:ranking-tables` | 由公開排行榜產生前端薄索引與按需載入報告細節檔。 |
-| `npm run build:user-data` | 建置個人成績單、個人成績報告細節、全服統計、近期動態、隊伍榜、伺服器對比與排行榜薄索引。 |
+| `npm run build:report-status` | 由排行榜報告細節檔產生 `public/data/report_status_index.json` 與 hidden delta report 索引，供常見問題頁中的 FFLogs 檢查工具快速比對。 |
+| `npm run build:public-status` | 由 `data/update_status.json` 與 `public/data/global_stats.json` 產生 `public/data/update_status.json`，公開最近資料更新與排程摘要。 |
+| `npm run build:user-data` | 建置個人成績單、個人成績報告細節、全服統計、近期動態、隊伍榜、伺服器對比、排行榜薄索引、Logs 狀態索引與公開更新狀態。 |
 | `npm run validate:data` | 驗證公開資料、schema 契約、分片、全服統計、使用者索引與 Honey B. Lovely 粉絲榜完整性。 |
-| `npm run compact:state` | 壓縮 `data/state.json` 的重複 checkpoint 與 JSON 空白，保留 `checked_reports` 狀態並降低 Git blob 體積。 |
+| `npm run compact:state` | 壓縮 `data/state.json` 的重複 checkpoint、可重建時間鏡像與 JSON 空白，保留 `checked_reports` 狀態並降低 Git blob 體積。 |
 | `npm run audit:gcd:xivanalysis` | 以固定 seed 對零式、極、幻的每個副本各抽樣 10 場，若 10 場未涵蓋全職業會自動補抽缺漏職業所在戰鬥，並將本地 GCD 覆蓋率與 xivanalysis 畫面值比對；100 場外站頁面稽核使用 `--sample-size 100 --local-mode stored --tolerance 0`，必要時可搭配 `--workers`、`--exclude-report-codes` 與 `--apply-all-checked`。 |
 | `npm run test:data-conservation` | 檢查排行榜薄索引、細節檔、使用者檔與 hidden delta 的資料守恆。 |
 | `npm run audit:pages-payload` | 以 baseline 模式稽核 `dist/` 與 GitHub Pages payload 體積，只在超過硬上限時失敗，可用 `-- --write-history <path>` 記錄趨勢。 |
@@ -127,8 +130,9 @@ README 只保留入口與最小操作脈絡，完整說明請依主題閱讀：
 - `.env` 內的 FFLogs 與 Cloudflare 憑證是敏感資訊，不應提交到版本控制，也不要印到 Log。
 - 若新增前端畫面需要新的統計欄位，請先擴充資料建置層，再讓 Vue 讀取新的靜態 JSON。
 - Honey B. Lovely 粉絲榜來源在 `data/fun/honey_b_fans.json`，公開輸出在 `public/data/fun/honey_b_fans.json`；它是獨立趣味資料，不屬於正式 `data/rankings/` schema。公開榜單、粉絲報告與本期 `records` 只計近 7 天，歷史紀錄仍留在來源檔並輸出 `historical_*`、連續入榜週數與自台灣時間 2026-05-30 00:00:00 起算的活動 `team_rankings`；正式 workflow 會執行 `npm run fetch:honey-fans` 抓新資料，再用 `npm run build:honey-fans` 整理公開 JSON。
-- `data/state.json` 會以緊湊 JSON 保存大量 `checked_reports`，避免為了通過 GitHub 100 MiB 單檔限制而刪除跨輪略過依據；正式 workflow 會在資料 commit 前執行 `npm run compact:state -- --max-bytes 104857600`。
-- GitHub Actions 的 FFLogs 抓取步驟預設不設定執行時間預算，讓所有副本、Honey B. Lovely 粉絲榜抓取與既有 report GCD 回補都能依序嘗試執行。主排行榜更新的時間目標是落在 GitHub-hosted runner 6 小時硬上限內完成；`fetch_fflogs.py` 仍保留 `FFLOGS_MAX_RUNTIME_SECONDS` / `FFLOGS_RUNTIME_GRACE_SECONDS` 作為人工短時維護工具，啟用後會保留 `active_scan` 續跑位置，但不適合正式排程，因為會讓後段副本延後到下一輪。
+- `data/state.json` 會以緊湊 JSON 保存大量 `checked_reports`，避免為了通過 GitHub 100 MiB 單檔限制而刪除跨輪略過依據；正式 workflow 會在資料 commit 前執行 `npm run compact:state -- --max-bytes 104857600`。`processed_at_iso` 不再作為 report checkpoint 必要欄位，因為它可由 `processed_at` 毫秒時間重建。
+- GitHub Actions 的 FFLogs 排行榜抓取步驟預設設定 `FFLOGS_MAX_RUNTIME_SECONDS=6000` 與 `FFLOGS_RUNTIME_GRACE_SECONDS=900`，可由 repo variables 覆寫。這讓 FFLogs 憑證全數進入長冷卻時，`fetch_fflogs.py` 能先保留 `active_scan` 續跑位置並正常進入後續資料建置與 commit，避免 GitHub-hosted runner 直接取消整個 job。
+- GitHub Actions checkout 只抓目前分支的淺層 partial clone；這個資料 repo 的完整歷史 pack 已非常大，正式更新與緊急部署都不應改回 `fetch-depth: 0`，避免 runner 在 checkout 階段耗盡磁碟。
 - 正式 Pages artifact 不保留 `dist/data/users`、`dist/data/user-entry-details` 與 hidden 使用者差量 JSON；`postbuild` 會先用 `public/data/users/index.json` 產生玩家分享頁與 OG 圖，接著由 `npm run prune:pages-user-data` 清掉 artifact 內的大型個人成績單 JSON，前端再從 users 專用 repo 讀取。
 - 若 GitHub Actions 與本機同時產生資料，先跑 `npm run sync:data -- --dry-run`；看到 `REMOVAL` 或 `CONFLICT` 時不可自動套用。
 - 文件或註解變更仍需至少執行 `npm run check` 與 `npm run build:user-data`，若碰到 Honey B. Lovely 粉絲榜流程也要執行 `npm run build:honey-fans`。

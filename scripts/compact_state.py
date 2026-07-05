@@ -36,6 +36,39 @@ def stable_json(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
 
+def compact_report_checkpoint_timestamps(state: dict[str, Any]) -> dict[str, Any]:
+    # checked_reports / processed_reports 是跨輪去重與續跑的核心資產；壓縮時不能移除
+    # report code 或 status。processed_at_iso 只是 processed_at 的可重建顯示鏡像，
+    # 在數十萬筆 checkpoint 上會讓 state.json 很快撞到 GitHub 100 MiB 單檔限制。
+    summary = {
+        "records_changed": 0,
+        "removed_redundant_processed_at_iso": 0,
+    }
+    encounters = state.get("encounters")
+    if not isinstance(encounters, dict):
+        return summary
+
+    for encounter_state in encounters.values():
+        if not isinstance(encounter_state, dict):
+            continue
+
+        for field_name in ("checked_reports", "processed_reports"):
+            reports = encounter_state.get(field_name)
+            if not isinstance(reports, dict):
+                continue
+
+            for record in reports.values():
+                if not isinstance(record, dict):
+                    continue
+                if "processed_at" not in record or "processed_at_iso" not in record:
+                    continue
+                record.pop("processed_at_iso", None)
+                summary["records_changed"] += 1
+                summary["removed_redundant_processed_at_iso"] += 1
+
+    return summary
+
+
 def compact_processed_reports(state: dict[str, Any]) -> dict[str, Any]:
     # processed_reports 是單輪 checkpoint；同一筆若已完整保存在 checked_reports，
     # 移除 checkpoint 不會失去 report 狀態，卻能避免中斷或手動補抓後 state.json 永久膨脹。
@@ -100,6 +133,7 @@ def main() -> int:
         raise RuntimeError("data/state.json 必須是 JSON 物件。")
 
     before_bytes = STATE_PATH.stat().st_size if STATE_PATH.exists() else 0
+    timestamp_summary = compact_report_checkpoint_timestamps(state)
     summary = compact_processed_reports(state)
     compacted_bytes = len(compact_json_bytes(state))
 
@@ -114,7 +148,8 @@ def main() -> int:
     print(
         f"State compact {mode}: "
         f"{summary['encounters_changed']} encounters changed, "
-        f"{summary['removed_duplicate_processed_reports']} duplicate processed reports removed."
+        f"{summary['removed_duplicate_processed_reports']} duplicate processed reports removed, "
+        f"{timestamp_summary['removed_redundant_processed_at_iso']} redundant processed_at_iso fields removed."
     )
     print(
         f"processed_reports: {summary['processed_before']:,} -> {summary['processed_after']:,}; "

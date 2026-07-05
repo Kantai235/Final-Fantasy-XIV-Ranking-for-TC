@@ -34,11 +34,13 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ github.ref_name }}
-          fetch-depth: 0
+          # 緊急部署也只需要目前分支的靜態產物；避免完整歷史 checkout 在大型資料 repo 上耗盡 runner 磁碟。
+          fetch-depth: 1
+          filter: blob:none
 
       - name: 同步最新分支狀態
         run: |
-          git fetch origin "${{ github.ref_name }}"
+          git fetch --depth=1 origin "${{ github.ref_name }}:refs/remotes/origin/${{ github.ref_name }}"
           git reset --hard "origin/${{ github.ref_name }}"
 
       - name: 設定 Python 環境

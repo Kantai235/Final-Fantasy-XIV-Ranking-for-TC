@@ -15,7 +15,7 @@ const siteUrl = String(siteConfig.site_url || "https://ranking.init.engineer/").
 const siteBasePath = new URL(siteUrl).pathname || "/";
 const siteName = "FFXIV 繁中服排行榜";
 const defaultDescription =
-  "整理 FFLogs 公開報告中的 FFXIV 繁中服零式、極、幻與絕本成績，提供排行榜、全服統計、個人成績單、玩家比較與近期動態。";
+  "整理 FFLogs 公開報告中的 FFXIV 繁中服零式、極、幻、滅與絕本成績，提供排行榜、全服統計、個人成績單、玩家比較與近期動態。";
 const genericOgImageUrl = new URL("og-image.png", siteUrl).href;
 
 // postbuild 只讀取 public/data 的靜態聚合結果，輸出 dist/ 內的 HTML、PNG OG 圖、sitemap 與 robots。
@@ -119,6 +119,22 @@ const routePages = [
     imageTitle: "近期動態",
     imageSubtitle: "最新公開成績與刷新紀錄",
     imageHighlights: ["最新成績", "個人最佳刷新", "伺服器活躍"],
+  },
+  {
+    path: "faq",
+    title: `常見問題 | ${siteName}`,
+    description: "整理 FFXIV 繁中服排行榜常見問題，包含 FFLogs 收錄檢查、更新時間、過版紀錄、GCD 覆蓋率與角色身分判定。",
+    imageTitle: "常見問題",
+    imageSubtitle: "收錄狀態與站務問答",
+    imageHighlights: ["FFLogs 檢查", "更新時間", "GCD 與過版"],
+  },
+  {
+    path: "logs",
+    title: `常見問題 | ${siteName}`,
+    description: "舊版 Logs 檢查連結會開啟常見問題頁，並保留 FFLogs report 收錄狀態檢查工具。",
+    imageTitle: "常見問題",
+    imageSubtitle: "FFLogs 檢查工具",
+    imageHighlights: ["舊連結相容", "公開索引比對", "排程等待判斷"],
   },
   {
     path: "honey-fans",

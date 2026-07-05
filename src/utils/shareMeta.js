@@ -3,7 +3,7 @@ import { onMounted, onUnmounted, unref, watch } from "vue";
 export const 站台名稱 = "FFXIV 繁中服排行榜";
 export const 預設分享標題 = 站台名稱;
 export const 預設分享描述 =
-  "整理 FFLogs 公開報告中的 FFXIV 繁中服零式、極、幻與絕本成績，提供排行榜、全服統計、個人成績單、玩家比較與近期動態。";
+  "整理 FFLogs 公開報告中的 FFXIV 繁中服零式、極、幻、滅與絕本成績，提供排行榜、全服統計、個人成績單、玩家比較與近期動態。";
 
 const 預設站台網址 = "https://ranking.init.engineer/";
 const 預設分享圖片檔名 = "og-image.png";

@@ -666,14 +666,18 @@ function recordTime(record) {
   return Date.parse(record.processed_at_iso || record.updated_at_iso || record.fetched_at_iso || 0) || 0;
 }
 
+function checkpointSignatureTime(record) {
+  const time = recordTime(record);
+  return time > 0 ? time : "";
+}
+
 function chooseStatusRecord(base, local, remote) {
   const signature = (record) =>
     record === missing
       ? "<missing>"
       : [
           record?.status ?? "",
-          record?.processed_at ?? "",
-          record?.processed_at_iso ?? "",
+          checkpointSignatureTime(record),
           record?.updated_at ?? "",
           record?.updated_at_iso ?? "",
           record?.has_clear ?? "",
