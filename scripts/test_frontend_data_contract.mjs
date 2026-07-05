@@ -160,7 +160,7 @@ function validateGcdCoverageDiagnosticFields() {
       denominator_ms: 600000,
       downtime_ms: 0,
       gcd_cast_count: 240,
-      calculation_version: 5,
+      calculation_version: 1,
       source: "raw_events",
       speed_stat_source: "estimated",
       estimated_speed_below_minimum: true,

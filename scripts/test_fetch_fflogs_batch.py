@@ -70,12 +70,12 @@ def 建立測試排行榜戰鬥(*, 有GCD: bool = False) -> dict[str, Any]:
             "denominator_ms": 600_000,
             "downtime_ms": 10_000,
             "gcd_cast_count": 250,
-            "calculation_version": 20,
+            "calculation_version": 1,
             "source": "fflogs_casts_graph",
         }
         玩家["gcd_coverage_status"] = {
             "state": "ok",
-            "calculation_version": 20,
+            "calculation_version": 1,
             "checked_at_iso": "2026-06-08T00:00:00+00:00",
         }
 
@@ -235,7 +235,7 @@ class FetchFFLogsBatchTest(unittest.TestCase):
             "job": "Dancer",
             "gcd_coverage": {
                 "percent": 98.7,
-                "calculation_version": 20,
+                "calculation_version": 1,
                 "source": "fflogs_raw_events",
                 "raw_events_percent": 98.7,
                 "raw_events_denominator_ms": 500000,
@@ -261,7 +261,7 @@ class FetchFFLogsBatchTest(unittest.TestCase):
 
         玩家 = 排行榜["reports"]["same-report"]["fights"][0]["players"][0]
         self.assertEqual(玩家["gcd_coverage"]["percent"], 99.5)
-        self.assertEqual(玩家["gcd_coverage"]["calculation_version"], 20)
+        self.assertEqual(玩家["gcd_coverage"]["calculation_version"], 1)
         self.assertEqual(玩家["gcd_coverage_status"]["state"], "ok")
 
     def test_duplicate_ranking_entry_uses_gcd_from_any_source_report(self) -> None:
@@ -283,7 +283,7 @@ class FetchFFLogsBatchTest(unittest.TestCase):
         self.assertEqual(排行榜條目[0]["duplicate_count"], 2)
         self.assertEqual(排行榜條目[0]["source_reports"], ["first-upload", "second-upload"])
         self.assertEqual(排行榜條目[0]["gcd_coverage"]["percent"], 99.5)
-        self.assertEqual(排行榜條目[0]["gcd_coverage_status"]["calculation_version"], 20)
+        self.assertEqual(排行榜條目[0]["gcd_coverage_status"]["calculation_version"], 1)
 
     def test_history_scan_deep_report_code_default_keeps_local_runs_conservative(self) -> None:
         self.assertEqual(fflogs.FFLogs執行設定預設值["history_max_deep_reports_per_run"], 200)
@@ -1276,7 +1276,7 @@ class FetchFFLogsBatchTest(unittest.TestCase):
             ) -> None:
                 gcd呼叫.append((報告代碼, 戰鬥["fight_id"], len(玩家列表)))
                 for 玩家 in 玩家列表:
-                    玩家["gcd_coverage"] = {"percent": 97.5, "calculation_version": 5}
+                    玩家["gcd_coverage"] = {"percent": 97.5, "calculation_version": 1}
                     玩家["gcd_coverage_status"] = {"state": "ok"}
 
         with (

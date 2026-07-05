@@ -17,7 +17,7 @@ from xivanalysis_gcd_rules import XIVANALYSIS_GCD_ACTION_RULES, XIVANALYSIS_PREP
 ACTION_CSV_URL = "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/master/csv/en/Action.csv"
 STATUS_CSV_URL = "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/master/csv/en/Status.csv"
 GCD_ACTION_CATEGORY_IDS = {2, 3}  # 2=Spell, 3=Weaponskill
-GCD_CALCULATION_VERSION = 131
+GCD_CALCULATION_VERSION = 1
 GCD_SOURCE_CASTS_GRAPH = "fflogs_casts_graph"
 GCD_SOURCE_RAW_EVENTS = "fflogs_raw_events"
 GCD_SOURCE = GCD_SOURCE_CASTS_GRAPH

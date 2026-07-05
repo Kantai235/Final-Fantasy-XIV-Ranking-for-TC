@@ -4471,7 +4471,7 @@ class GcdCoverageBackfillTest(unittest.TestCase):
                                     "job": "Samurai",
                                     "dps": 80,
                                     "fflogs_id": 12,
-                                    "gcd_coverage": {"percent": 99.0, "calculation_version": 1},
+                                    "gcd_coverage": {"percent": 99.0, "calculation_version": 0},
                                 },
                                 {
                                     "name": "新版角色",
