@@ -39,22 +39,23 @@ npm run build
 4. 若有 Cloudflare secrets，先同步 Cloudflare Cache Rules、Facebook 分享爬蟲例外與 Rate Limiting Rules。
 5. 使用 GitHub Secrets 中的 FFLogs 憑證執行 `python scripts/fetch_fflogs.py`，掃描全部地區候選 report，近期 24 小時完整重查、24-72 小時只選未知 report，並以每輪 1 個 168 小時視窗、最多 600 份深層候選且同一 zone/difficulty 群組最多 150 份的歷史補查檢查更舊時間窗是否有新的公開 logs 可抓取，同時對新落地 fight 即時計算 GCD 覆蓋率。正式排程設定可續跑的抓取時間預算，避免 FFLogs 憑證長冷卻時整個 job 被 runner 取消。
 6. 執行 `npm run fetch:honey-fans`，以同一組 FFLogs 憑證抓取 Honey B. Lovely 粉絲榜趣味資料；workflow 預設掃近 3 天，並從歷史游標最多檢查 200 場未記錄戰鬥。
-7. 執行 `python scripts/backfill_gcd_coverage.py --stateful-report-backfill --report-limit 50`，從固定切點往更舊 report 逐輪追平既有 GCD。
-8. 執行 `python scripts/fetch_fflogs.py --split-rankings`，將完整排行榜資料拆分成適合 Git 追蹤的檔案。
-9. 執行 `npm run build:user-data`，產生個人成績單、個人成績報告細節、全服統計、近期動態、隊伍榜、伺服器對比、排行榜薄索引、Logs 狀態索引與公開更新狀態。
-10. 執行 `npm run build:honey-fans`，由 `data/fun/honey_b_fans.json` 重建 `public/data/fun/honey_b_fans.json`。
-11. 執行 `npm run validate:data`，在個人成績單還保留於 `public/data/` 時驗證公開資料契約、來源分片、使用者索引、報告細節、隊伍榜、伺服器對比與 Honey B. Lovely 粉絲榜。
-12. 執行 `node scripts/sync_user_leaderboard_repo.mjs`，把 `public/data/users`、`public/data/user-entry-details` 與 hidden delta 的個人成績單同步到 `Final-Fantasy-XIV-Ranking-for-TC-Users`。這一步只抓專用 users repo 的最新 commit/tree 與上一版 `data/sync-manifest.json`，再用 Git index 直接重建下一個 commit，避免完整 clone 舊資料歷史造成 GitHub runner 磁碟不足。
-13. 由 workflow 寫入 `data/update_status.json`，記錄本輪 GitHub Actions run、資料更新時間與總量摘要，並執行 `npm run build:public-status` 同步刷新 `public/data/update_status.json`。
-14. 執行 `npx vite build` 與 `npm run postbuild`，完成 Vite 建置、route fallback、低基數 SEO/OG 靜態頁、OG PNG、`sitemap.xml`、`robots.txt` 與 `404.html`，並把建置秒數寫入後續 payload 稽核。正式 workflow 會用 `FFXIV_TC_BUILD_USER_SHARE_PAGES=false` 關閉逐玩家靜態分享頁與玩家 OG 圖，避免 Pages 同步上萬個小檔時在 `syncing_files` 階段失敗。
-15. 執行 `npm run prune:pages-user-data`，移除 `dist/data/users`、`dist/data/user-entry-details`、`dist/data/all/users`、`dist/data/all/user-entry-details`，並在本機完整 build 或流程異動曾產生逐玩家靜態分享頁時，一併移除 `dist/user/{玩家}`、`dist/og/users` 與 sitemap 中的玩家細項 URL；前端正式讀取個人成績單時會改向 users 專用 repo 取得 JSON。
-16. 壓縮 `data/state.json`，並檢查 Git 單檔大小是否仍低於 100 MiB。
-17. 若 `data`、`public/data/*.json` 或 `public/data/fun/*.json` 有變更，先提交並推送更新，避免後續 artifact 體積超標時白白丟失本輪 FFLogs 抓取成果。
-18. 執行 `npm run audit:pages-payload:strict -- --write-history data/pages_payload_history.jsonl`，讓 artifact 體積超過 target 時在上傳 Pages artifact 前失敗，並在 GitHub Step Summary 顯示本輪與上一筆歷史差異。
-19. 若 `data/pages_payload_history.jsonl` 有變更，另行提交並推送 payload 稽核歷史。
-20. 執行 `npm run cloudflare:estimate` 與 `npm run cloudflare:purge -- --dry-run --summary`，在 Step Summary 顯示 HIT ratio 承載估算與 scoped purge 範圍。
-21. 上傳 `dist/` 並部署到 GitHub Pages；若 Pages 服務端在 `syncing_files` 階段回報暫時性失敗，workflow 會等待 60 秒後重試一次。
-22. 若有 Cloudflare purge token，部署成功後清除會變動的 CDN 快取。
+7. 執行 `python scripts/backfill_gcd_coverage.py --report-limit 25`，不套用 stateful cutoff，先補最新候選中缺漏或需要新版重算的 GCD，避免 cutoff 之後的既有 report 長期留空。
+8. 執行 `python scripts/backfill_gcd_coverage.py --stateful-report-backfill --report-limit 50`，從固定切點往更舊 report 逐輪追平既有 GCD。
+9. 執行 `python scripts/fetch_fflogs.py --split-rankings`，將完整排行榜資料拆分成適合 Git 追蹤的檔案。
+10. 執行 `npm run build:user-data`，產生個人成績單、個人成績報告細節、全服統計、近期動態、隊伍榜、伺服器對比、排行榜薄索引、Logs 狀態索引與公開更新狀態。
+11. 執行 `npm run build:honey-fans`，由 `data/fun/honey_b_fans.json` 重建 `public/data/fun/honey_b_fans.json`。
+12. 執行 `npm run validate:data`，在個人成績單還保留於 `public/data/` 時驗證公開資料契約、來源分片、使用者索引、報告細節、隊伍榜、伺服器對比與 Honey B. Lovely 粉絲榜。
+13. 執行 `node scripts/sync_user_leaderboard_repo.mjs`，把 `public/data/users`、`public/data/user-entry-details` 與 hidden delta 的個人成績單同步到 `Final-Fantasy-XIV-Ranking-for-TC-Users`。這一步只抓專用 users repo 的最新 commit/tree 與上一版 `data/sync-manifest.json`，再用 Git index 直接重建下一個 commit，避免完整 clone 舊資料歷史造成 GitHub runner 磁碟不足。
+14. 由 workflow 寫入 `data/update_status.json`，記錄本輪 GitHub Actions run、資料更新時間與總量摘要，並執行 `npm run build:public-status` 同步刷新 `public/data/update_status.json`。
+15. 執行 `npx vite build` 與 `npm run postbuild`，完成 Vite 建置、route fallback、低基數 SEO/OG 靜態頁、OG PNG、`sitemap.xml`、`robots.txt` 與 `404.html`，並把建置秒數寫入後續 payload 稽核。正式 workflow 會用 `FFXIV_TC_BUILD_USER_SHARE_PAGES=false` 關閉逐玩家靜態分享頁與玩家 OG 圖，避免 Pages 同步上萬個小檔時在 `syncing_files` 階段失敗。
+16. 執行 `npm run prune:pages-user-data`，移除 `dist/data/users`、`dist/data/user-entry-details`、`dist/data/all/users`、`dist/data/all/user-entry-details`，並在本機完整 build 或流程異動曾產生逐玩家靜態分享頁時，一併移除 `dist/user/{玩家}`、`dist/og/users` 與 sitemap 中的玩家細項 URL；前端正式讀取個人成績單時會改向 users 專用 repo 取得 JSON。
+17. 壓縮 `data/state.json`，並檢查 Git 單檔大小是否仍低於 100 MiB。
+18. 若 `data`、`public/data/*.json` 或 `public/data/fun/*.json` 有變更，先提交並推送更新，避免後續 artifact 體積超標時白白丟失本輪 FFLogs 抓取成果。
+19. 執行 `npm run audit:pages-payload:strict -- --write-history data/pages_payload_history.jsonl`，讓 artifact 體積超過 target 時在上傳 Pages artifact 前失敗，並在 GitHub Step Summary 顯示本輪與上一筆歷史差異。
+20. 若 `data/pages_payload_history.jsonl` 有變更，另行提交並推送 payload 稽核歷史。
+21. 執行 `npm run cloudflare:estimate` 與 `npm run cloudflare:purge -- --dry-run --summary`，在 Step Summary 顯示 HIT ratio 承載估算與 scoped purge 範圍。
+22. 上傳 `dist/` 並部署到 GitHub Pages；若 Pages 服務端在 `syncing_files` 階段回報暫時性失敗，workflow 會等待 60 秒後重試一次。
+23. 若有 Cloudflare purge token，部署成功後清除會變動的 CDN 快取。
 
 ## 緊急部署
 
@@ -112,6 +113,7 @@ npm run build
 - `FFLOGS_EXISTING_REPORT_STATUS_CHECK_LIMIT`
 - `FFLOGS_FETCH_GCD_COVERAGE_ENABLED`
 - `FFLOGS_FETCH_GCD_COVERAGE_MAX_FIGHTS_PER_RUN`
+- `FFLOGS_RECENT_GCD_BACKFILL_REPORT_LIMIT`
 - `FFLOGS_GCD_BACKFILL_REPORT_LIMIT`
 - `FFLOGS_GCD_BACKFILL_CUTOFF_ISO`
 - `HONEY_FANS_RECENT_DAYS`
@@ -136,7 +138,9 @@ npm run validate:data
 
 ## 既有 report GCD 逐輪回補
 
-`scripts/backfill_gcd_coverage.py --stateful-report-backfill --report-limit 50` 已在 workflow 內啟用，用來從上線切點往舊 report 回補既有 GCD。新 report 的 GCD 仍由 `fetch_fflogs.py` 即時計算；若需要人工追平或重算舊資料，可手動執行：
+workflow 會先執行 `scripts/backfill_gcd_coverage.py --report-limit 25` 補最新候選的 GCD 空洞；這段不使用 `data/state.json` 的 `gcd_report_backfill.cutoff_sort_time`，因此能處理 cutoff 之後才新增、或因 GCD 演算法版本更新而需要重算的既有 report。Repository Variable `FFLOGS_RECENT_GCD_BACKFILL_REPORT_LIMIT` 可調整每輪近期 report 數，設為 `0` 可暫停這段補洞。
+
+`scripts/backfill_gcd_coverage.py --stateful-report-backfill --report-limit 50` 也在 workflow 內啟用，用來從固定切點往舊 report 回補既有 GCD。新 report 的 GCD 仍由 `fetch_fflogs.py` 即時計算；若需要人工追平或重算舊資料，可手動執行：
 
 ```bash
 npm run backfill:gcd -- --dry-run

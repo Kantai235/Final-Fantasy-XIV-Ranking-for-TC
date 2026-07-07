@@ -152,6 +152,24 @@ jobs:
       #     FFLOGS_CLIENT_CREDENTIALS_JSON: ${{ secrets.FFLOGS_CLIENT_CREDENTIALS_JSON }}
       #   run: python scripts/backfill_missing_fflogs_data.py --limit 250
 
+      - name: 補齊近期 report 的 GCD 空洞
+        env:
+          FFLOGS_CLIENT_ID: ${{ secrets.FFLOGS_CLIENT_ID }}
+          FFLOGS_CLIENT_SECRET: ${{ secrets.FFLOGS_CLIENT_SECRET }}
+          FFLOGS_CLIENT_IDS: ${{ secrets.FFLOGS_CLIENT_IDS }}
+          FFLOGS_CLIENT_SECRETS: ${{ secrets.FFLOGS_CLIENT_SECRETS }}
+          FFLOGS_CLIENT_CREDENTIALS_JSON: ${{ secrets.FFLOGS_CLIENT_CREDENTIALS_JSON }}
+          # 不使用 stateful cutoff，專門追最新候選，避免 cutoff 之後才新增或重算版本提升的 report 長期留空。
+          FFLOGS_RECENT_GCD_BACKFILL_REPORT_LIMIT: ${{ vars.FFLOGS_RECENT_GCD_BACKFILL_REPORT_LIMIT || '25' }}
+        run: |
+          RECENT_GCD_LIMIT="${FFLOGS_RECENT_GCD_BACKFILL_REPORT_LIMIT:-25}"
+          if [ "$RECENT_GCD_LIMIT" = "0" ]; then
+            echo "FFLOGS_RECENT_GCD_BACKFILL_REPORT_LIMIT=0，略過近期 GCD 補洞。"
+            exit 0
+          fi
+          python scripts/backfill_gcd_coverage.py \
+            --report-limit "$RECENT_GCD_LIMIT"
+
       - name: 由新往舊補齊既有 report 的 GCD 覆蓋率
         env:
           FFLOGS_CLIENT_ID: ${{ secrets.FFLOGS_CLIENT_ID }}

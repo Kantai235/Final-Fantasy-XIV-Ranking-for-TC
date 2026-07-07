@@ -91,6 +91,7 @@ npm run fetch:honey-fans
 - `FFLOGS_MAX_RUNTIME_SECONDS`、`FFLOGS_RUNTIME_GRACE_SECONDS`：控制 `fetch_fflogs.py` 的可選時間預算；正式 workflow 預設 `6000` / `900`，讓 FFLogs 憑證長冷卻或掃描接近 runner 風險時，腳本保留 `active_scan` 位置並正常收尾，後續資料建置與 commit 仍有時間完成。
 - `FFLOGS_EXISTING_REPORT_STATUS_CHECK_ENABLED`、`FFLOGS_EXISTING_REPORT_STATUS_CHECK_LIMIT`：控制既有 report 狀態巡檢。
 - `FFLOGS_FETCH_GCD_COVERAGE_ENABLED`、`FFLOGS_FETCH_GCD_COVERAGE_MAX_FIGHTS_PER_RUN`：控制新 report 落地時的 GCD 即時計算。
+- `FFLOGS_RECENT_GCD_BACKFILL_REPORT_LIMIT`：控制 workflow 每輪補最新 GCD 空洞的 report 數；這段不套用 stateful cutoff，預設 `25`，設為 `0` 可暫停。
 
 單次 `fetch_fflogs.py` 執行內，report code 是深層檢查去重單位；`masterData.actors` 的繁中服玩家判斷會寫入本輪記憶體快取，避免同一 report code 來自不同掃描來源時重複打 FFLogs API。
 
@@ -139,7 +140,9 @@ npm run backfill:gcd:reports -- --dry-run
 
 `backfill_gcd_coverage.py` 預設依玩家筆數逐批補齊，適合人工追平或抽樣重算。若帶 `--report-limit 50`，則改以 FFLogs report code 為單位，將同一份 report 內所有待更新玩家一起補齊，避免留下半套 GCD 結果。
 
-GitHub Actions 會執行 `python scripts/backfill_gcd_coverage.py --stateful-report-backfill --report-limit 50`，從固定切點往更舊 report 逐輪追平既有 GCD。第一次正式執行時若未設定 `FFLOGS_GCD_BACKFILL_CUTOFF_ISO`，腳本會把當下時間寫入 `data/state.json` 的 `gcd_report_backfill.cutoff_sort_time`；每輪完成後再把本輪最舊 report 的排序時間與 report code 寫入 `cursor_sort_time` / `cursor_report_code`，下一輪從該位置繼續往舊推進。`gcd_report_backfill.calculation_version` 會記錄本輪使用的 GCD 演算法版本；若 state 缺少版本或版本落後目前 `GCD_CALCULATION_VERSION`，腳本會保留固定切點但將 cursor 重設回 cutoff，避免新版重算被上一版已走到底的舊游標略過。
+GitHub Actions 會先執行 `python scripts/backfill_gcd_coverage.py --report-limit 25`，補最新候選中缺少 `gcd_coverage` 或需要目前計算版本重算的 report。這段不使用 `--stateful-report-backfill`，所以不會被 `gcd_report_backfill.cutoff_sort_time` 擋住，專門處理 cutoff 之後才新增或因演算法版本更新而留下的 GCD 空洞。每輪 report 數由 `FFLOGS_RECENT_GCD_BACKFILL_REPORT_LIMIT` 控制，設為 `0` 可暫停。
+
+接著 workflow 會執行 `python scripts/backfill_gcd_coverage.py --stateful-report-backfill --report-limit 50`，從固定切點往更舊 report 逐輪追平既有 GCD。第一次正式執行時若未設定 `FFLOGS_GCD_BACKFILL_CUTOFF_ISO`，腳本會把當下時間寫入 `data/state.json` 的 `gcd_report_backfill.cutoff_sort_time`；每輪完成後再把本輪最舊 report 的排序時間與 report code 寫入 `cursor_sort_time` / `cursor_report_code`，下一輪從該位置繼續往舊推進。`gcd_report_backfill.calculation_version` 會記錄本輪使用的 GCD 演算法版本；若 state 缺少版本或版本落後目前 `GCD_CALCULATION_VERSION`，腳本會保留固定切點但將 cursor 重設回 cutoff，避免新版重算被上一版已走到底的舊游標略過。
 
 若要在本機把既有玩家 GCD 都以目前本地演算法重新計算：
 
