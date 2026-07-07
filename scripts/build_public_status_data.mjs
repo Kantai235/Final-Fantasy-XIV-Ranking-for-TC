@@ -9,8 +9,8 @@ const globalStatsPath = path.join(rootDir, "public", "data", "global_stats.json"
 const publicStatusPath = path.join(rootDir, "public", "data", "update_status.json");
 
 const workflowSchedule = Object.freeze({
-  workflow_cron_utc: "17 * * * *",
-  interval_minutes: 60,
+  workflow_cron_utc: "17,47 * * * *",
+  interval_minutes: 30,
   incremental_lookback_hours: 24,
   no_clear_retry_hours: 24,
   delayed_scan_recent_gap_hours: 24,

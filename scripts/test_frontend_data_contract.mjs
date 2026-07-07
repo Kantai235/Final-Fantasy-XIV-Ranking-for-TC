@@ -25,7 +25,7 @@ import {
   個人成績代表是否較佳,
   比較個人成績分位顯示排序,
 } from "../src/utils/userProfileSorting.js";
-import { 建立報告索引Map, 解析Fflogs網址 } from "../src/utils/reportStatus.js";
+import { 建立報告索引Map, 建立未收錄提示, 取得下一輪排程時間, 解析Fflogs網址 } from "../src/utils/reportStatus.js";
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const srcDir = path.join(rootDir, "src");
@@ -1033,6 +1033,28 @@ function validateReportStatusUrlParsing() {
   assert(!lookalikeHost.valid, "Logs 檢查不可接受只是字尾相同的非 FFLogs 主機。");
 }
 
+function validateReportStatusScheduleParsing() {
+  const halfHourlySchedule = {
+    schedule: {
+      workflow_cron_utc: "17,47 * * * *",
+      interval_minutes: 30,
+    },
+  };
+  const hint = 建立未收錄提示(halfHourlySchedule, new Date("2026-07-07T10:20:00.000Z"));
+  assert(hint.next_run_at_iso === "2026-07-07T10:47:00.000Z", "17,47 cron 應推算同小時第 47 分為下一輪排程。");
+  assert(hint.next_run_wait_text === "約 27 分鐘", "17,47 cron 的等待時間應依下一個觸發分鐘計算。");
+  assert(hint.notes[0].includes("每 30 分鐘排程"), "未收錄提示應顯示目前 workflow 的 30 分鐘排程頻率。");
+
+  const afterSecondRun = 取得下一輪排程時間(new Date("2026-07-07T10:48:00.000Z"), [17, 47]);
+  assert(afterSecondRun.toISOString() === "2026-07-07T11:17:00.000Z", "超過第 47 分後應推到下一小時第 17 分。");
+
+  const stepScheduleHint = 建立未收錄提示(
+    { schedule: { workflow_cron_utc: "*/30 * * * *", interval_minutes: 30 } },
+    new Date("2026-07-07T10:20:00.000Z"),
+  );
+  assert(stepScheduleHint.next_run_at_iso === "2026-07-07T10:30:00.000Z", "*/30 cron 應支援推算下一個半小時排程。");
+}
+
 function installUrlStateWindow(href, events) {
   globalThis.CustomEvent = class CustomEvent {
     constructor(type) {
@@ -1266,6 +1288,7 @@ async function main() {
   await validateHiddenDeltaDataForFrontend();
   validateReportExternalLinks();
   validateReportStatusUrlParsing();
+  validateReportStatusScheduleParsing();
   validateScopedJobShareRecalculation();
   validateGlobalStatsOverviewDenominator();
   validateAnnouncementRules();

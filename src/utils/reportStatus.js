@@ -1,4 +1,5 @@
 const reportCodePattern = /^[A-Za-z0-9]{8,32}$/;
+const 預設排程分鐘列表 = Object.freeze([17, 47]);
 
 function 清理ReportCode(片段) {
   const 文字 = String(片段 || "").trim().replace(/^a:/i, "");
@@ -25,10 +26,67 @@ function 是Fflogs主機(hostname) {
   return 主機 === "fflogs.com" || 主機.endsWith(".fflogs.com");
 }
 
-function 讀取Cron分鐘(cronText) {
+function 建立分鐘數列(起點, 終點, 間隔 = 1) {
+  const 分鐘列表 = [];
+  const safeStep = Number.isInteger(間隔) && 間隔 > 0 ? 間隔 : 1;
+  for (let minute = 起點; minute <= 終點; minute += safeStep) {
+    分鐘列表.push(minute);
+  }
+  return 分鐘列表;
+}
+
+function 解析Cron分鐘片段(片段文字) {
+  const 片段 = String(片段文字 || "").trim();
+  if (!片段) {
+    return [];
+  }
+
+  const stepMatch = 片段.match(/^(.+)\/(\d+)$/);
+  const baseText = stepMatch ? stepMatch[1] : 片段;
+  const step = stepMatch ? Number.parseInt(stepMatch[2], 10) : 1;
+  if (!Number.isInteger(step) || step <= 0) {
+    return [];
+  }
+
+  if (baseText === "*") {
+    return 建立分鐘數列(0, 59, step);
+  }
+
+  const rangeMatch = baseText.match(/^(\d{1,2})-(\d{1,2})$/);
+  if (rangeMatch) {
+    const start = Number.parseInt(rangeMatch[1], 10);
+    const end = Number.parseInt(rangeMatch[2], 10);
+    if (start >= 0 && end <= 59 && start <= end) {
+      return 建立分鐘數列(start, end, step);
+    }
+    return [];
+  }
+
+  const singleMinuteMatch = baseText.match(/^\d{1,2}$/);
+  const minute = singleMinuteMatch ? Number.parseInt(baseText, 10) : null;
+  if (Number.isInteger(minute) && minute >= 0 && minute <= 59) {
+    return stepMatch ? 建立分鐘數列(minute, 59, step) : [minute];
+  }
+
+  return [];
+}
+
+function 正規化排程分鐘列表(分鐘列表) {
+  const 原始列表 = Array.isArray(分鐘列表) ? 分鐘列表 : [分鐘列表];
+  const minutes = Array.from(
+    new Set(
+      原始列表
+        .map((minute) => Number(minute))
+        .filter((minute) => Number.isInteger(minute) && minute >= 0 && minute <= 59),
+    ),
+  ).sort((a, b) => a - b);
+  return minutes.length > 0 ? minutes : [...預設排程分鐘列表];
+}
+
+function 讀取Cron分鐘列表(cronText) {
   const minuteText = String(cronText || "").trim().split(/\s+/)[0];
-  const minute = Number.parseInt(minuteText, 10);
-  return Number.isInteger(minute) && minute >= 0 && minute <= 59 ? minute : 17;
+  const minutes = minuteText.split(",").flatMap((片段) => 解析Cron分鐘片段(片段));
+  return 正規化排程分鐘列表(minutes);
 }
 
 function 解析Fight文字(fightText) {
@@ -211,14 +269,20 @@ export function 建立Report檢查結果({ 解析結果, 公開索引Map, hidden
   return { status: "missing", report: null, fight: null };
 }
 
-export function 取得下一輪排程時間(目前時間 = new Date(), 分鐘 = 17) {
+export function 取得下一輪排程時間(目前時間 = new Date(), 分鐘列表 = 預設排程分鐘列表) {
   const now = new Date(目前時間);
-  const next = new Date(now);
-  const normalizedMinute = Number.isInteger(分鐘) && 分鐘 >= 0 && 分鐘 <= 59 ? 分鐘 : 17;
-  next.setUTCMinutes(normalizedMinute, 0, 0);
-  if (next.getTime() <= now.getTime()) {
-    next.setUTCHours(next.getUTCHours() + 1);
+  const normalizedMinutes = 正規化排程分鐘列表(分鐘列表);
+  for (const minute of normalizedMinutes) {
+    const sameHourRun = new Date(now);
+    sameHourRun.setUTCMinutes(minute, 0, 0);
+    if (sameHourRun.getTime() > now.getTime()) {
+      return sameHourRun;
+    }
   }
+
+  const next = new Date(now);
+  next.setUTCHours(next.getUTCHours() + 1);
+  next.setUTCMinutes(normalizedMinutes[0], 0, 0);
   return next;
 }
 
@@ -240,7 +304,8 @@ export function 格式化相對等待時間(目標時間, 目前時間 = new Dat
 
 export function 建立未收錄提示(更新狀態, 目前時間 = new Date()) {
   const schedule = 更新狀態?.schedule || {};
-  const nextRun = 取得下一輪排程時間(目前時間, 讀取Cron分鐘(schedule.workflow_cron_utc));
+  const nextRun = 取得下一輪排程時間(目前時間, 讀取Cron分鐘列表(schedule.workflow_cron_utc));
+  const workflowIntervalMinutes = Number(schedule.interval_minutes) || 30;
   const delayedStartHours = Number(schedule.delayed_scan_recent_gap_hours) || 24;
   const delayedLookbackHours = Number(schedule.delayed_scan_lookback_hours) || 72;
   const historyWindowHours = Number(schedule.history_scan_window_hours) || 168;
@@ -249,7 +314,7 @@ export function 建立未收錄提示(更新狀態, 目前時間 = new Date()) {
     next_run_at_iso: nextRun.toISOString(),
     next_run_wait_text: 格式化相對等待時間(nextRun, 目前時間),
     notes: [
-      `如果這是剛上傳且已公開的通關紀錄，通常下一次每小時排程後就會被掃到；下一輪約 ${格式化相對等待時間(nextRun, 目前時間)}。`,
+      `如果這是剛上傳且已公開的通關紀錄，通常下一次每 ${workflowIntervalMinutes} 分鐘排程後就會被掃到；下一輪約 ${格式化相對等待時間(nextRun, 目前時間)}。`,
       `如果 FFLogs 還沒匯出通關 fight，近期重查窗會在最近 ${Number(schedule.no_clear_retry_hours) || 24} 小時內反覆補查。`,
       `如果是上傳時間落在 ${delayedStartHours}-${delayedLookbackHours} 小時前、後來才公開或延後出現在 reports 列表的紀錄，延遲掃描會嘗試補抓。`,
       `更舊的歷史戰鬥會進入歷史補查輪巡；目前每輪推進 ${historyWindowHours} 小時視窗，實際等待時間取決於候選量與 FFLogs 回應狀態。`,

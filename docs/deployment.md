@@ -27,7 +27,7 @@ npm run build
 
 ## GitHub Actions 排程
 
-`.github/workflows/update_rankings.yml` 會在每小時第 17 分左右執行一次，也支援 `workflow_dispatch` 手動觸發。排程避開整點執行，降低 GitHub Actions 高峰時段延遲機率。
+`.github/workflows/update_rankings.yml` 會每 30 分鐘執行一次，約在每小時第 17 與 47 分觸發，也支援 `workflow_dispatch` 手動觸發。排程避開整點執行，降低 GitHub Actions 高峰時段延遲機率。
 
 排程會以 GitHub 預設分支上的最新版 workflow 與設定檔執行；本機尚未 commit / push 的 `config/encounters.json` 變更不會被自動更新流程使用。
 

@@ -107,7 +107,7 @@ Honey B. Lovely 粉絲榜來源在 `data/fun/honey_b_fans.json`，公開檔在 `
 
 這份索引不保存玩家完整成績、FFLogs raw payload、`masterData` 或掃描 checkpoint，也不是判定 report 是否應入庫的權威來源；權威來源仍是 `data/rankings/*.json` 與分片。`public/data/all/report_status_index.json` 則是 hidden delta，只保存額外檢視必要的 hidden report 摘要並以 `base_path="data/report_status_index.json"` 指回公開底稿。
 
-`public/data/update_status.json` 由 `scripts/build_public_status_data.mjs` 從 `data/update_status.json` 與 `public/data/global_stats.json` 產生，公開最近資料更新時間、Actions run URL、總角色/成績數，以及 workflow 的每小時排程、近期 24 小時重查、24-72 小時延遲掃描與 168 小時歷史補查視窗摘要。前端只能用它推估等待時間；若 report 完全不在公開索引中，仍不能在瀏覽器端即時確認 private、deleted 或 FFLogs 尚未匯出。
+`public/data/update_status.json` 由 `scripts/build_public_status_data.mjs` 從 `data/update_status.json` 與 `public/data/global_stats.json` 產生，公開最近資料更新時間、Actions run URL、總角色/成績數，以及 workflow 的每 30 分鐘排程、近期 24 小時重查、24-72 小時延遲掃描與 168 小時歷史補查視窗摘要。前端只能用它推估等待時間；若 report 完全不在公開索引中，仍不能在瀏覽器端即時確認 private、deleted 或 FFLogs 尚未匯出。
 
 `public/data/all/ranking-tables/` 與 `public/data/all/ranking-details/` 輸出 hidden delta：
 
