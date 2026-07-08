@@ -50,7 +50,7 @@
    ```
 
    `npm run build` 會先自動執行 `build:public-rankings`、`build:user-data`、`build:honey-fans` 與 `validate:data`，再由 Vite 建置靜態網站到 `dist/`。
-   GitHub Actions 會在 Vite 與 postbuild 完成後執行 `npm run prune:pages-user-data`，移除 `dist/data/users`、`dist/data/user-entry-details`、hidden 使用者差量 JSON、逐玩家靜態分享頁與玩家 OG 圖。資料 commit/push 後、上傳 Pages artifact 前會再執行 `npm run audit:pages-payload:strict -- --write-history data/pages_payload_history.jsonl`，讓 `dist/`、`dist/data/`、`dist/data/all/`、必要時存在的 `dist/data/users/`、`dist/user/` 與 `dist/og/` 超過 target 時停止部署；稽核通過時會另行提交 payload 趨勢紀錄。
+   GitHub Actions 會在 Vite 與 postbuild 完成後執行 `npm run prune:pages-user-data`，保留 `dist/data/users/index.json`，並移除 `dist/data/users` 內的個別玩家檔、`dist/data/user-entry-details`、hidden 使用者差量 JSON、逐玩家靜態分享頁與玩家 OG 圖。資料 commit/push 後、上傳 Pages artifact 前會再執行 `npm run audit:pages-payload:strict -- --write-history data/pages_payload_history.jsonl`，讓 `dist/`、`dist/data/`、`dist/data/all/`、必要時存在的 `dist/data/users/`、`dist/user/` 與 `dist/og/` 超過 target 時停止部署；稽核通過時會另行提交 payload 趨勢紀錄。
 
 ## Honey B. Lovely 粉絲榜
 

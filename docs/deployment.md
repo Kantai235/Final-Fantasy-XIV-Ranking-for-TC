@@ -48,7 +48,7 @@ npm run build
 13. 執行 `node scripts/sync_user_leaderboard_repo.mjs`，把 `public/data/users`、`public/data/user-entry-details` 與 hidden delta 的個人成績單同步到 `Final-Fantasy-XIV-Ranking-for-TC-Users`。這一步只抓專用 users repo 的最新 commit/tree 與上一版 `data/sync-manifest.json`，再用 Git index 直接重建下一個 commit，避免完整 clone 舊資料歷史造成 GitHub runner 磁碟不足。
 14. 由 workflow 寫入 `data/update_status.json`，記錄本輪 GitHub Actions run、資料更新時間與總量摘要，並執行 `npm run build:public-status` 同步刷新 `public/data/update_status.json`。
 15. 執行 `npx vite build` 與 `npm run postbuild`，完成 Vite 建置、route fallback、低基數 SEO/OG 靜態頁、OG PNG、`sitemap.xml`、`robots.txt` 與 `404.html`，並把建置秒數寫入後續 payload 稽核。正式 workflow 會用 `FFXIV_TC_BUILD_USER_SHARE_PAGES=false` 關閉逐玩家靜態分享頁與玩家 OG 圖，避免 Pages 同步上萬個小檔時在 `syncing_files` 階段失敗。
-16. 執行 `npm run prune:pages-user-data`，移除 `dist/data/users`、`dist/data/user-entry-details`、`dist/data/all/users`、`dist/data/all/user-entry-details`，並在本機完整 build 或流程異動曾產生逐玩家靜態分享頁時，一併移除 `dist/user/{玩家}`、`dist/og/users` 與 sitemap 中的玩家細項 URL；前端正式讀取個人成績單時會改向 users 專用 repo 取得 JSON。
+16. 執行 `npm run prune:pages-user-data`，移除 `dist/data/users` 內除了 `index.json` 之外的個別玩家檔、`dist/data/user-entry-details`、`dist/data/all/users`、`dist/data/all/user-entry-details`，並在本機完整 build 或流程異動曾產生逐玩家靜態分享頁時，一併移除 `dist/user/{玩家}`、`dist/og/users` 與 sitemap 中的玩家細項 URL；前端正式讀取個人成績單時，索引走主站 `/data/users/index.json`，個別玩家主檔與報告細節走 users 專用 repo。
 17. 壓縮 `data/state.json`，並檢查 Git 單檔大小是否仍低於 100 MiB。
 18. 若 `data`、`public/data/*.json` 或 `public/data/fun/*.json` 有變更，先提交並推送更新，避免後續 artifact 體積超標時白白丟失本輪 FFLogs 抓取成果。
 19. 執行 `npm run audit:pages-payload:strict -- --write-history data/pages_payload_history.jsonl`，讓 artifact 體積超過 target 時在上傳 Pages artifact 前失敗，並在 GitHub Step Summary 顯示本輪與上一筆歷史差異。
@@ -72,7 +72,7 @@ npm run build
    - `scoped`：只清除本專案既有 prefix 與核心檔案，適合一般靜態頁或資料路徑更新。
 4. 執行後確認 workflow 的 `記錄 GitHub Pages 部署網址` 與 `清除 Cloudflare CDN 快取` 步驟完成。
 
-緊急部署仍會跑 `npm run build`，因此會重建公開排行榜、個人成績單、排行榜薄索引、Logs 狀態索引、Honey B. Lovely 粉絲榜公開 JSON、低基數 SEO/OG 靜態頁、`sitemap.xml`、`robots.txt` 與 `404.html`，並執行 `validate:data`。建置完成後同樣會執行 `npm run prune:pages-user-data`，讓主站 artifact 不重新帶回大型個人成績單 JSON、逐玩家靜態分享頁或玩家 OG 圖。這是為了確保部署出去的靜態產物與 repo 內資料契約一致；差別在於它只重建已提交資料，不向 FFLogs 取得新資料，也不會同步 users 專用 repo。
+緊急部署仍會跑 `npm run build`，因此會重建公開排行榜、個人成績單、排行榜薄索引、Logs 狀態索引、Honey B. Lovely 粉絲榜公開 JSON、低基數 SEO/OG 靜態頁、`sitemap.xml`、`robots.txt` 與 `404.html`，並執行 `validate:data`。建置完成後同樣會執行 `npm run prune:pages-user-data`，讓主站 artifact 只保留 `data/users/index.json`，不重新帶回大型個別玩家成績單 JSON、逐玩家靜態分享頁或玩家 OG 圖。這是為了確保部署出去的靜態產物與 repo 內資料契約一致；差別在於它只重建已提交資料，不向 FFLogs 取得新資料，也不會同步 users 專用 repo。
 
 ## GitHub Secrets 與 Variables
 
@@ -123,6 +123,8 @@ npm run build
 - `CLOUDFLARE_HOSTNAME`
 - `CLOUDFLARE_MANAGE_RATE_LIMIT`
 - `VITE_GA_MEASUREMENT_ID`
+- `VITE_USER_DATA_BASE_URL`
+- `VITE_USER_INDEX_BASE_URL`
 
 workflow 預設掃全部地區候選 report，近期 24 小時完整重查，24-72 小時一般只選未知 report；UCoB 通關規則重判是例外，尚未寫入目前 `clear_rule_revision` 的既有 report 仍會重新深查。歷史補查則以每輪 1 個 168 小時視窗、最多 600 份深層候選且同一 zone/difficulty 群組最多 150 份的設定檢查更舊時間窗是否有新的公開 logs 可抓取，同時對新落地 fight 即時計算 GCD 覆蓋率。主排行榜更新的時間目標是落在 GitHub-hosted runner 6 小時硬上限內；正式排程預設 `FFLOGS_MAX_RUNTIME_SECONDS=6000` 與 `FFLOGS_RUNTIME_GRACE_SECONDS=900`，遇到長冷卻時會保留 `active_scan` 續跑位置並把後續資料建置與 commit 留在同一輪完成。Honey B. Lovely 粉絲榜另以 `HONEY_FANS_*` variables 控制近期掃描天數、每輪歷史檢查上限與查詢切窗，預設為近 3 天、每輪 200 場、24 小時切窗。
 

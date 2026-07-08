@@ -1,5 +1,7 @@
 ﻿// 前端仍維持靜態 JSON 邊界：主站資料由 Pages artifact 的 /data 提供，
-// 個人成績單資料則由專用 users repo 提供，避免大型使用者 JSON 撐大主站 artifact。
+// 個別玩家成績單資料則由專用 users repo 提供，避免大量玩家 JSON 撐大主站 artifact。
+// users/index.json 是所有玩家搜尋共用的高頻入口，保留在主站 /data/users/index.json 才能吃到正式 CDN 快取，
+// 避免每位訪客都直接打 raw.githubusercontent.com 而觸發 GitHub 匿名下載限流。
 // 這裡集中處理兩種資料 URL，避免頁面或 composable 各自拼接路徑時漏掉 base path 或外部 repo 基底。
 const Vite公開基底路徑 = import.meta.env?.BASE_URL ?? "/";
 
@@ -11,6 +13,11 @@ const DEFAULT_USER_DATA_BASE_URL =
 function 取得使用者資料基底() {
   const 自訂網址 = String(import.meta.env?.VITE_USER_DATA_BASE_URL || "").trim();
   return 補結尾斜線(自訂網址 || DEFAULT_USER_DATA_BASE_URL);
+}
+
+function 取得使用者索引基底(預設基底) {
+  const 自訂網址 = String(import.meta.env?.VITE_USER_INDEX_BASE_URL || "").trim();
+  return 補結尾斜線(自訂網址 || 預設基底);
 }
 
 function 補結尾斜線(路徑) {
@@ -75,10 +82,11 @@ function 取得公開資料基底路徑() {
 }
 
 const 公開資料基底路徑 = 取得公開資料基底路徑();
+const 使用者索引基底路徑 = 取得使用者索引基底(公開資料基底路徑);
 const 使用者資料基底路徑 = 取得使用者資料基底();
 
 export const 副本清單網址 = `${公開資料基底路徑}data/encounters.json`;
-export const 使用者索引網址 = `${使用者資料基底路徑}data/users/index.json`;
+export const 使用者索引網址 = `${使用者索引基底路徑}data/users/index.json`;
 export const 全服統計網址 = `${公開資料基底路徑}data/global_stats.json`;
 export const 近期動態網址 = `${公開資料基底路徑}data/activity.json`;
 export const 隊伍榜網址 = `${公開資料基底路徑}data/team_rankings.json`;

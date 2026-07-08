@@ -7,7 +7,7 @@
 ## 官方限制脈絡
 
 - GitHub Pages 官方文件列出每月 100 GB 軟性頻寬上限；若超出，GitHub 可能無法服務站台或建議在前方放第三方 CDN。
-- Cloudflare 預設會依副檔名快取靜態資源，但不會預設快取 HTML 或 JSON。本專案主站最大的流量壓力正是 Pages artifact 內的 `/data/**/*.json`；個人成績單 JSON 會部署到 users 專用 repo，不再由主站 artifact 提供。主站 JSON 仍必須用 Cache Rules 明確設定。
+- Cloudflare 預設會依副檔名快取靜態資源，但不會預設快取 HTML 或 JSON。本專案主站最大的流量壓力正是 Pages artifact 內的 `/data/**/*.json`；個人成績單搜尋索引 `data/users/index.json` 會保留在主站 artifact 以承接高頻搜尋請求，個別玩家成績單 JSON 則部署到 users 專用 repo。主站 JSON 仍必須用 Cache Rules 明確設定。
 - Cloudflare Free 方案可設定 Edge Cache TTL，但最短 Edge TTL 是 2 小時；本專案每 30 分鐘更新資料，因此不能只靠 TTL 自然過期，必須在 GitHub Pages 部署成功後透過 Purge API 主動清除會變動的路徑。
 - Cloudflare Rate Limiting Rules 可在邊緣節點對超量請求回應 429；Free 方案目前只有 1 條規則、10 秒計數週期，因此本專案採用保守的單條全站節流規則。
 - Facebook 分享偵錯工具若回 403，通常不是 GitHub Pages 靜態檔本身，而是 Cloudflare 的 Security Level、Under Attack mode、國家/ASN 自訂規則或節流擋到 Meta 爬蟲；Meta 常用 ASN 為 `AS32934` 與 `AS63293`。
@@ -158,7 +158,7 @@ npm run cloudflare:estimate
 
 `cloudflare:estimate` 會用目前 `dist/` 的 gzip / brotli 大小估算在不同 Cloudflare HIT ratio 下，GitHub Pages 100 GB/月 origin 流量約能承受多少次頁面載入。
 GitHub Actions 會在 payload 稽核與 history commit 後執行這個估算並寫入 Step Summary，和 `data/pages_payload_history.jsonl` 的 artifact 體積趨勢一起作為成本觀測資料。
-正式 workflow 會先執行 `npm run prune:pages-user-data`，因此估算中的個人成績單情境會顯示為「主站殼層；users repo 外部載入」。若本機完整 build 尚未清掉 `dist/data/users`，估算會改列 artifact 內含使用者檔的中位數與前 5% 大檔案情境。
+正式 workflow 會先執行 `npm run prune:pages-user-data`，因此估算中的個人成績單情境會顯示為「主站殼層與搜尋索引；users repo 外部載入」。若本機完整 build 尚未清掉 `dist/data/users` 內的個別玩家檔，估算會改列 artifact 內含使用者檔的中位數與前 5% 大檔案情境。
 
 ## 流量估算公式
 
@@ -176,4 +176,4 @@ GitHub origin 流量 ~= 使用者流量 * (1 - Cloudflare HIT ratio)
 - Cloudflare 快取降低的是 GitHub Pages origin 流量；使用者到 Cloudflare 的邊緣流量仍會存在，需遵守 Cloudflare 方案的服務條款與合理使用。
 - 不要把 `CLOUDFLARE_API_TOKEN` 寫入文件、Log 或 commit。
 - 若排程剛完成但使用者仍看到舊資料，先確認部署後 purge 是否成功，以及瀏覽器端是否仍在 5 分鐘 Browser TTL 內；緊急時可在 Cloudflare Dashboard 對 hostname 或 `/data/` prefix purge cache。
-- 本設定不改變資料管線。FFLogs API 抓取仍只允許由 `scripts/fetch_fflogs.py` 執行；前端仍只讀靜態 JSON，其中主站共用資料來自 `/data/`，個人成績單資料來自 users 專用 repo。
+- 本設定不改變資料管線。FFLogs API 抓取仍只允許由 `scripts/fetch_fflogs.py` 執行；前端仍只讀靜態 JSON，其中主站共用資料與個人成績單搜尋索引來自 `/data/`，個別玩家成績單資料來自 users 專用 repo。

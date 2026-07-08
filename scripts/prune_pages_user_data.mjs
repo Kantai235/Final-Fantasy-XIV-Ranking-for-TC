@@ -50,8 +50,9 @@ if (protectedSourceDirs.some((protectedPath) => isSamePath(distDir, protectedPat
 
 // 只能清理 dist/ 內的部署 artifact。public/data/users 仍是本 repo 的資料契約來源，
 // postbuild 也可能需要它產生玩家分享頁與 OG 圖；提前刪 public/data 會讓本機 SEO 抽查產物缺漏。
+// users/index.json 是所有訪客共用的搜尋入口，部署時刻意留在主站 /data/users/index.json，
+// 讓 Cloudflare/GitHub Pages 快取承接高頻請求；個別玩家 JSON 仍由 users 專用 repo 提供。
 const userDataPaths = [
-  "data/users",
   "data/user-entry-details",
   "data/all/users",
   "data/all/user-entry-details",
@@ -59,6 +60,29 @@ const userDataPaths = [
 ];
 
 let removedCount = 0;
+const usersDir = path.join(distDir, "data", "users");
+if (existsSync(usersDir)) {
+  let removedUserFileCount = 0;
+  for (const entry of readdirSync(usersDir, { withFileTypes: true })) {
+    if (entry.name === "index.json") {
+      continue;
+    }
+
+    const targetPath = path.join(usersDir, entry.name);
+    if (!isInsidePath(usersDir, targetPath)) {
+      throw new Error(`拒絕清理 users 目錄外的路徑：${targetPath}`);
+    }
+
+    rmSync(targetPath, { recursive: true, force: true });
+    removedUserFileCount += 1;
+  }
+
+  if (removedUserFileCount > 0) {
+    removedCount += removedUserFileCount;
+    console.log(`已從 Pages artifact 移除 ${removedUserFileCount} 個個別玩家成績單檔，保留 data/users/index.json。`);
+  }
+}
+
 for (const relativePath of userDataPaths) {
   const targetPath = path.join(distDir, relativePath);
   if (!isInsidePath(distDir, targetPath)) {
@@ -109,5 +133,7 @@ if (existsSync(sitemapPath)) {
 if (removedCount === 0) {
   console.log("Pages artifact 沒有個人成績單部署資料需要移除。");
 } else {
-  console.log("個人成績單 JSON、逐玩家分享頁與玩家 OG 圖由專用資料來源或前端 SPA 補回；主站 artifact 只保留 route 層級入口與非使用者資料。");
+  console.log(
+    "個別玩家成績單 JSON、逐玩家分享頁與玩家 OG 圖由專用資料來源或前端 SPA 補回；主站 artifact 只保留 route 層級入口、共用使用者索引與非使用者資料。",
+  );
 }

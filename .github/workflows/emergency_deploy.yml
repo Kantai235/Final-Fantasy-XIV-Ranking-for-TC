@@ -74,6 +74,8 @@ jobs:
       - name: 建置並驗證 GitHub Pages 靜態網站
         env:
           VITE_GA_MEASUREMENT_ID: ${{ vars.VITE_GA_MEASUREMENT_ID || secrets.VITE_GA_MEASUREMENT_ID }}
+          VITE_USER_DATA_BASE_URL: ${{ vars.VITE_USER_DATA_BASE_URL }}
+          VITE_USER_INDEX_BASE_URL: ${{ vars.VITE_USER_INDEX_BASE_URL }}
           # 緊急部署同樣避免把上萬個逐玩家分享頁與玩家 OG PNG 放進 Pages artifact。
           FFXIV_TC_BUILD_USER_SHARE_PAGES: ${{ vars.FFXIV_TC_BUILD_USER_SHARE_PAGES || 'false' }}
         run: |
@@ -84,8 +86,8 @@ jobs:
 
       - name: 從 Pages artifact 移除個人成績單部署資料
         run: |
-          # 緊急部署同樣只讓主站 artifact 保留分享頁、OG 圖與非使用者資料；
-          # 逐玩家靜態分享頁與個人成績單 JSON 仍由專用 users repo / SPA route 提供。
+          # 緊急部署同樣只讓主站 artifact 保留分享頁、OG 圖、共用使用者索引與非使用者資料；
+          # 逐玩家靜態分享頁與個別玩家成績單 JSON 仍由專用 users repo / SPA route 提供。
           npm run prune:pages-user-data
 
       - name: 上傳 GitHub Pages artifact
