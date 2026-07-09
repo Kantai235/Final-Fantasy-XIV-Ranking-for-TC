@@ -108,7 +108,7 @@ README 只保留入口與最小操作脈絡，完整說明請依主題閱讀：
 | `npm run build:public-status` | 由 `data/update_status.json` 與 `public/data/global_stats.json` 產生 `public/data/update_status.json`，公開最近資料更新與排程摘要。 |
 | `npm run build:user-data` | 建置個人成績單、個人成績報告細節、全服統計、近期動態、隊伍榜、伺服器對比、排行榜薄索引、Logs 狀態索引與公開更新狀態。 |
 | `npm run read:fflogs-refresh-queue` | 讀取 Google Sheet 待收錄名單，輸出本輪會送入 `FFLOGS_RETRY_REPORT_CODES` 的 report code。 |
-| `npm run complete:fflogs-refresh-queue` | 依重新建好的 `public/data/report_status_index.json`，將已收錄的 Google Sheet 待收錄列標記為 `done`。 |
+| `npm run complete:fflogs-refresh-queue` | 依重新建好的 `public/data/report_status_index.json` 與 `data/rankings/*.json` 的 `source_reports`，將已收錄的 Google Sheet 待收錄列標記為 `done`。 |
 | `npm run validate:data` | 驗證公開資料、schema 契約、分片、全服統計、使用者索引與 Honey B. Lovely 粉絲榜完整性。 |
 | `npm run compact:state` | 壓縮 `data/state.json` 的重複 checkpoint、可重建時間鏡像與 JSON 空白，保留 `checked_reports` 狀態並降低 Git blob 體積。 |
 | `npm run audit:gcd:xivanalysis` | 以固定 seed 對零式、極、幻的每個副本各抽樣 10 場，若 10 場未涵蓋全職業會自動補抽缺漏職業所在戰鬥，並將本地 GCD 覆蓋率與 xivanalysis 畫面值比對；100 場外站頁面稽核使用 `--sample-size 100 --local-mode stored --tolerance 0`，必要時可搭配 `--workers`、`--exclude-report-codes` 與 `--apply-all-checked`。 |

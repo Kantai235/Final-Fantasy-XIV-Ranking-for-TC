@@ -51,7 +51,7 @@ npm run build
 16. 執行 `npm run prune:pages-user-data`，移除 `dist/data/users` 內除了 `index.json` 之外的個別玩家檔、`dist/data/user-entry-details`、`dist/data/all/users`、`dist/data/all/user-entry-details`，並在本機完整 build 或流程異動曾產生逐玩家靜態分享頁時，一併移除 `dist/user/{玩家}`、`dist/og/users` 與 sitemap 中的玩家細項 URL；前端正式讀取個人成績單時，索引走主站 `/data/users/index.json`，個別玩家主檔與報告細節走 users 專用 repo。
 17. 壓縮 `data/state.json`，並檢查 Git 單檔大小是否仍低於 100 MiB。
 18. 若 `data`、`public/data/*.json` 或 `public/data/fun/*.json` 有變更，先提交並推送更新，避免後續 artifact 體積超標時白白丟失本輪 FFLogs 抓取成果。
-19. 執行 `npm run complete:fflogs-refresh-queue`，依本輪重新產生並已提交的 `public/data/report_status_index.json`，將 Google Sheet 待收錄名單中已公開收錄的列標記為 `done`。
+19. 執行 `npm run complete:fflogs-refresh-queue`，依本輪重新產生並已提交的 `public/data/report_status_index.json`，以及 `data/rankings/*.json` 中保留的 `source_reports` 去重來源，將 Google Sheet 待收錄名單中已公開收錄的列標記為 `done`。
 20. 執行 `npm run audit:pages-payload:strict -- --write-history data/pages_payload_history.jsonl`，讓 artifact 體積超過 target 時在上傳 Pages artifact 前失敗，並在 GitHub Step Summary 顯示本輪與上一筆歷史差異。
 21. 若 `data/pages_payload_history.jsonl` 有變更，另行提交並推送 payload 稽核歷史。
 22. 執行 `npm run cloudflare:estimate` 與 `npm run cloudflare:purge -- --dry-run --summary`，在 Step Summary 顯示 HIT ratio 承載估算與 scoped purge 範圍。
@@ -136,7 +136,7 @@ npm run build
 
 workflow 預設掃全部地區候選 report，近期 24 小時完整重查，24-72 小時一般只選未知 report；UCoB 通關規則重判是例外，尚未寫入目前 `clear_rule_revision` 的既有 report 仍會重新深查。歷史補查則以每輪 1 個 168 小時視窗、最多 600 份深層候選且同一 zone/difficulty 群組最多 150 份的設定檢查更舊時間窗是否有新的公開 logs 可抓取，同時對新落地 fight 即時計算 GCD 覆蓋率。主排行榜更新的時間目標是落在 GitHub-hosted runner 6 小時硬上限內；正式排程預設 `FFLOGS_MAX_RUNTIME_SECONDS=6000` 與 `FFLOGS_RUNTIME_GRACE_SECONDS=900`，遇到長冷卻時會保留 `active_scan` 續跑位置並把後續資料建置與 commit 留在同一輪完成。Honey B. Lovely 粉絲榜另以 `HONEY_FANS_*` variables 控制近期掃描天數、每輪歷史檢查上限與查詢切窗，預設為近 3 天、每輪 200 場、24 小時切窗。
 
-FFLogs 待收錄名單需要額外設定 Google Sheet 與 service account。Apps Script 會寫入 `FFLOGS_REFRESH_QUEUE_SPREADSHEET_ID` 指定的 Sheet；workflow 會用 `GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON` secret，或 `GOOGLE_SHEETS_CLIENT_EMAIL` + `GOOGLE_SHEETS_PRIVATE_KEY` secrets，透過 Google Sheets API 讀取 `status=queued|pending|retry` 的 report code。資料 commit/push 成功後，workflow 會再依 `public/data/report_status_index.json` 將已收錄列標記為 `done`，因此 service account 必須被分享為該 Sheet 的編輯者；Apps Script 執行者帳號也需要可編輯該 Sheet。
+FFLogs 待收錄名單需要額外設定 Google Sheet 與 service account。Apps Script 會寫入 `FFLOGS_REFRESH_QUEUE_SPREADSHEET_ID` 指定的 Sheet；workflow 會用 `GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON` secret，或 `GOOGLE_SHEETS_CLIENT_EMAIL` + `GOOGLE_SHEETS_PRIVATE_KEY` secrets，透過 Google Sheets API 讀取 `status=queued|pending|retry` 的 report code。資料 commit/push 成功後，workflow 會再依 `public/data/report_status_index.json` 與 `data/rankings/*.json` 的 `source_reports` 將已收錄列標記為 `done`，因此 service account 必須被分享為該 Sheet 的編輯者；Apps Script 執行者帳號也需要可編輯該 Sheet。
 
 ## 暫停的維護步驟
 

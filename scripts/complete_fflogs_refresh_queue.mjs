@@ -1,5 +1,5 @@
 import { appendFileSync, existsSync } from "node:fs";
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -17,6 +17,7 @@ const DEFAULT_SHEET_NAME = "pending";
 const DEFAULT_RANGE_COLUMNS = "A:Z";
 const DEFAULT_STATUS_INDEX_PATH = path.join(rootDir, "public", "data", "report_status_index.json");
 const DEFAULT_HIDDEN_STATUS_INDEX_PATH = path.join(rootDir, "public", "data", "all", "report_status_index.json");
+const DEFAULT_SOURCE_RANKINGS_DIR = path.join(rootDir, "data", "rankings");
 const DEFAULT_MAX_ROWS = 500;
 const REPORT_CODE_PATTERN = /^[A-Za-z0-9]{8,32}$/;
 const QUEUED_STATUSES = new Set(["queued", "pending", "retry"]);
@@ -87,12 +88,66 @@ function addReportStatusIndex(index, indexedReportCodes) {
   }
 }
 
-async function buildIndexedReportSet({ statusIndexPath, hiddenStatusIndexPath, includeHidden }) {
+function addReportCode(indexedReportCodes, value) {
+  const reportCode = normalizeReportCode(value);
+  if (REPORT_CODE_PATTERN.test(reportCode)) {
+    indexedReportCodes.add(reportCode);
+  }
+}
+
+function isHiddenEntry(entry) {
+  return Boolean(entry?.report_hidden || entry?.hidden_report);
+}
+
+function rankingEntryGroups(ranking) {
+  return [
+    ranking?.ranking_entries,
+    ...Object.values(ranking?.version_ranking_entries || {}),
+  ].filter(Array.isArray);
+}
+
+function addSourceReportCodesFromRanking(ranking, indexedReportCodes, { includeHidden }) {
+  for (const entries of rankingEntryGroups(ranking)) {
+    for (const entry of entries) {
+      if (!entry || typeof entry !== "object") {
+        continue;
+      }
+      if (!includeHidden && isHiddenEntry(entry)) {
+        continue;
+      }
+
+      addReportCode(indexedReportCodes, entry.report_code);
+      for (const reportCode of Array.isArray(entry.source_reports) ? entry.source_reports : []) {
+        addReportCode(indexedReportCodes, reportCode);
+      }
+    }
+  }
+}
+
+async function addSourceRankingReportCodes({ sourceRankingsDir, indexedReportCodes, includeHidden }) {
+  if (!sourceRankingsDir || !existsSync(sourceRankingsDir)) {
+    return;
+  }
+
+  const fileNames = (await readdir(sourceRankingsDir))
+    .filter((fileName) => fileName.endsWith(".json"))
+    .sort();
+  for (const fileName of fileNames) {
+    const ranking = await readJsonIfExists(path.join(sourceRankingsDir, fileName));
+    if (!ranking || typeof ranking !== "object") {
+      continue;
+    }
+    addSourceReportCodesFromRanking(ranking, indexedReportCodes, { includeHidden });
+  }
+}
+
+async function buildIndexedReportSet({ statusIndexPath, hiddenStatusIndexPath, sourceRankingsDir, includeHidden }) {
   const indexedReportCodes = new Set();
   addReportStatusIndex(await readJsonIfExists(statusIndexPath), indexedReportCodes);
   if (includeHidden) {
     addReportStatusIndex(await readJsonIfExists(hiddenStatusIndexPath), indexedReportCodes);
   }
+  await addSourceRankingReportCodes({ sourceRankingsDir, indexedReportCodes, includeHidden });
   return indexedReportCodes;
 }
 
@@ -120,8 +175,8 @@ function buildUpdateRanges({ headers, rows, sheetName, nowIso, maxRows }) {
     const lastMessageCell = `${columnNameFromIndex(lastMessageIndex)}${rowNumber}`;
     const requestType = normalizeHeader(row.request_type);
     const message = requestType === "retry_existing"
-      ? "workflow 已送出整份 report 重掃，公開索引已有此 report。"
-      : "workflow 已確認公開索引收錄 report。";
+      ? "workflow 已送出整份 report 重掃，公開資料已收錄此 report。"
+      : "workflow 已確認公開資料收錄 report。";
 
     return [
       {
@@ -149,7 +204,7 @@ function writeStepSummary({ skippedReason, rowsRead, completedRows, includeHidde
   const lines = [
     "### FFLogs 待收錄名單收尾",
     "",
-    skippedReason ? `- 略過：${skippedReason}` : "- 已檢查 Google Sheet 待收錄名單。",
+    skippedReason ? `- 略過：${skippedReason}` : "- 已檢查 Google Sheet 待收錄名單與公開資料來源。",
     `- 讀取列數：${rowsRead}`,
     `- 標記完成列數：${completedRows}`,
     `- 是否納入 hidden delta：${includeHidden ? "是" : "否"}`,
@@ -165,6 +220,7 @@ async function main() {
   const includeHidden = readEnv("FFLOGS_REFRESH_QUEUE_COMPLETE_INCLUDE_HIDDEN").toLowerCase() === "true";
   const statusIndexPath = path.resolve(rootDir, readEnv("FFLOGS_REFRESH_QUEUE_STATUS_INDEX_PATH", DEFAULT_STATUS_INDEX_PATH));
   const hiddenStatusIndexPath = path.resolve(rootDir, readEnv("FFLOGS_REFRESH_QUEUE_HIDDEN_STATUS_INDEX_PATH", DEFAULT_HIDDEN_STATUS_INDEX_PATH));
+  const sourceRankingsDir = path.resolve(rootDir, readEnv("FFLOGS_REFRESH_QUEUE_SOURCE_RANKINGS_DIR", DEFAULT_SOURCE_RANKINGS_DIR));
   const serviceAccount = parseServiceAccountJson();
 
   let skippedReason = "";
@@ -189,7 +245,12 @@ async function main() {
   const values = await readSheetValues({ spreadsheetId, sheetName, columns, accessToken });
   const { headers, rows } = rowsToObjects(values);
   rowsRead = rows.length;
-  const indexedReports = await buildIndexedReportSet({ statusIndexPath, hiddenStatusIndexPath, includeHidden });
+  const indexedReports = await buildIndexedReportSet({
+    statusIndexPath,
+    hiddenStatusIndexPath,
+    sourceRankingsDir,
+    includeHidden,
+  });
   const completed = rows.filter((row) => {
     const status = normalizeHeader(row.status || "queued");
     return QUEUED_STATUSES.has(status) && isRowIndexed(row, indexedReports);

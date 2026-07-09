@@ -31,7 +31,7 @@
 
    若 report 已 Public 且 FFLogs API 可讀，使用者可送出「加入待收錄名單」或「要求重新排查」。Apps Script 會把 report code 寫入 Google Sheet `pending` 工作表；即使使用者貼上的網址含有 `fight` 參數，待收錄名單也只以 report code 為單位。正式 workflow 會在 `fetch_fflogs.py` 前執行 `scripts/read_fflogs_refresh_queue.mjs`，透過 Google Sheets API 讀取 `status=queued|pending|retry` 的列，合併成 `FFLOGS_RETRY_REPORT_CODES`。這會讓下一輪候選穿透已處理快取並完整重掃整份 report；是否真的收錄仍由 `fetch_fflogs.py` 檢查繁中服玩家、支援副本與通關 fight。
 
-   `npm run build:user-data` 重新產生 `public/data/report_status_index.json` 且資料 commit/push 成功後，workflow 會執行 `scripts/complete_fflogs_refresh_queue.mjs`。此腳本不刪除 Sheet 列，而是以 report code 為單位，把公開索引已命中的待收錄列標記為 `status=done`；它不再檢查或等待指定 fight，避免把待收錄名單誤用成單場補抓。
+   `npm run build:user-data` 重新產生 `public/data/report_status_index.json` 且資料 commit/push 成功後，workflow 會執行 `scripts/complete_fflogs_refresh_queue.mjs`。此腳本不刪除 Sheet 列，而是以 report code 為單位，把公開索引已命中，或已出現在 `data/rankings/*.json` 的 `ranking_entries[].source_reports` 去重來源中的待收錄列標記為 `status=done`；它不再檢查或等待指定 fight，避免把待收錄名單誤用成單場補抓。同場戰鬥若由其他 report 作為排行榜代表，原始使用者提交的 report code 仍會保留在 `source_reports`，因此也應視為已收錄並完成收尾。
 
 3. 驗證資料完整性：
 
