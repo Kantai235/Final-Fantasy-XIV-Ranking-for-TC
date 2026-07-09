@@ -18,8 +18,9 @@
 * **意義確認**：確認所有更新皆有具體意義、無多餘程式碼（Clean Code），且每一處複雜邏輯變更都附帶了充分的註解說明。
 
 ## 5. 強制測試與驗證 (Mandatory Testing & Validation)
-* **執行測試**：每次任務執行完畢前，必須進行測試以確保功能正常且無回歸錯誤（Regression）。
-* **測試優先級**：針對 **「FFLogs API 限流與重試機制（Rate Limit & Backoff）」**、**「無效或隱藏報告的例外捕捉」** 與 **「`npm run build:user-data` 資料聚合正確性」**，必須確保腳本能順利執行到底，保證前端依賴的靜態 JSON 檔案完整且準確。
+* **測試範圍按變更風險選擇**：每次任務執行完畢前，必須進行與變更範圍直接相關的測試或檢查，以確保功能正常且無回歸錯誤（Regression）。純公告、文案、文件或不影響資料產物的靜態設定變更，可只做 JSON / Markdown / 語法檢查與 `git diff` 檢視，不需要執行使用者資料相關驗證。
+* **使用者資料驗證限制**：除非任務明確涉及使用者資料、個人成績單、隊伍榜、全服統計、前端資料契約、`scripts/build_user_data.mjs`、`public/data/users/`、`public/data/user-entry-details/` 或相關資料產物，否則不要主動執行 `npm run build:user-data`、`npm run validate:data`、`npm run test:frontend-data`、`npm run test:data-conservation` 等使用者資料或全量資料驗證。
+* **測試優先級**：當任務實際涉及 **「FFLogs API 限流與重試機制（Rate Limit & Backoff）」**、**「無效或隱藏報告的例外捕捉」** 或 **「`npm run build:user-data` 資料聚合正確性」** 時，必須確保對應腳本能順利執行到底，保證前端依賴的靜態 JSON 檔案完整且準確。
 
 ## 6. 文件一致性與可追溯性 (Documentation Consistency)
 * **全面同步**：每次執行完畢前，必須完整檢視 `CLAUDE.md`、`AGENTS.md` 與 `README.md`。
@@ -102,11 +103,11 @@
 15. 混合上傳 report 的 top-level zone 可能只指向其中一種內容；例如 report 主 zone 是幻白虎，但內部同時含零式通關 fight。資料管線不能只依賴 `reports(zoneID)` 的主 zone 分類。當任一 zone 掃到候選 report 並確認含繁中服玩家後，`fetch_fflogs.py` 需查完整 fight list，依 fight 層 `encounterID`、`difficulty` 與通關語意分派到所有啟用副本；同 zone / 同 difficulty 副本仍保留既有 no-clear checkpoint 行為，跨 zone 只處理完整 fight list 實際命中的副本，避免把無關副本寫入 `skipped_no_clear`。
 
 ### E. 驗證與同步
-1. 文件或註解變更仍需至少執行語法檢查與 `npm run build:user-data`，確認資料聚合可完成。
+1. 文件、註解、公告、文案或不影響資料產物的靜態設定變更，不需要執行 `npm run build:user-data` 或使用者資料相關驗證；只需執行與檔案型態相符的最小檢查（例如 JSON / Markdown / 語法檢查）並檢視 `git diff`。只有當變更會影響資料結構、使用者資料、前端資料契約或 workflow 輸出時，才需要執行對應的資料建置或驗證。
 2. `python scripts/fetch_fflogs.py --rebuild-public` 只重建公開排行榜與副本清單，不會呼叫 FFLogs API；適合在沒有憑證或不想推進掃描點時驗證公開產物。
 3. 若本機與 GitHub Actions 都產生資料，必須先執行 `npm run sync:data -- --dry-run`；看到 `REMOVAL` 或 `CONFLICT` 不可自動套用。
 4. 清理既有 ranking raw 欄位時，先跑 `npm run compact:rankings -- --dry-run` 確認只移除 `fflogs_raw`、`master_data`、`matched_players` 與 fight 層 raw payload，再執行正式清理。
-5. `npm run validate:data` 會檢查公開副本是否都有 ranking 檔、來源分片是否存在、raw 欄位是否回流、全服統計、近期動態、隊伍榜、伺服器對比、Honey B. Lovely 粉絲榜與使用者索引是否完整；`npm run build` 會在 Vite 建置前自動執行這個驗證。
+5. `npm run validate:data` 會檢查公開副本是否都有 ranking 檔、來源分片是否存在、raw 欄位是否回流、全服統計、近期動態、隊伍榜、伺服器對比、Honey B. Lovely 粉絲榜與使用者索引是否完整；只應在需要驗證上述資料產物時執行，純公告、文案或文件變更不需要主動執行。`npm run build` 會在 Vite 建置前自動執行這個驗證。
 6. `npm run compact:state` 只可移除已由 `checked_reports` 完整保留的 `processed_reports` 重複 checkpoint，以及可由 `processed_at` 毫秒時間重建的 checkpoint `processed_at_iso` 鏡像欄位；它會把 `data/state.json` 改寫為緊湊 JSON 以避開 GitHub 100 MiB 單檔限制，且不得刪除 report code、status 或排行榜歷史資料。執行正式壓縮前必須先跑 `npm run compact:state -- --dry-run`。
 7. `build_user_data.mjs` 預設以最新 `rankings_updated_at_iso` 作為 `generated_at_iso`，讓同一批排行榜重建時輸出穩定；可用 `FFXIV_TC_GENERATED_AT_ISO` 覆寫，`npm test` 會用 fixture 驗證這個規則。
 8. `npm run test:frontend-data` 會檢查前端資料讀取邊界、`useRankingApp()` 匯出的 shorthand 是否都有定義，以及公開 JSON 是否具備頁面會讀取的必要欄位。
