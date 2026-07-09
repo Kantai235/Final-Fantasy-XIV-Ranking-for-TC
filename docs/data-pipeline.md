@@ -25,7 +25,13 @@
 
    全域公告內容直接維護在 `public/data/announcements.json`；這一步會把它同步到 `public/data/all/announcements.json`，供 hidden delta 檢視流程使用。
 
-   常見問題頁中的 FFLogs 檢查工具只讀上述靜態索引：`report_status_index.json` 由 `ranking-details` 彙整 report code、fight id、副本、玩家數與紀錄時間，不保存 FFLogs raw payload；`update_status.json` 則只公開最近資料更新、Actions run URL 與排程摘要。若 report 完全不在索引中，前端只能提供排程與常見原因推估，不能在瀏覽器端即時查詢 private/deleted 狀態。
+   常見問題頁中的 FFLogs 檢查工具會先讀上述靜態索引：`report_status_index.json` 由 `ranking-details` 彙整 report code、fight id、副本、玩家數與紀錄時間，不保存 FFLogs raw payload；`update_status.json` 則只公開最近資料更新、Actions run URL 與排程摘要。若 report 完全不在索引中，前端仍只能用這些靜態資料提供排程與常見原因推估，不能把未入庫直接解讀為沒有繁中服玩家或沒有通關。
+
+   「查詢公開狀態」按鈕會使用 `apps-script/fflogs-report-status/` 的 Apps Script Web App。它只以受保護的 FFLogs OAuth client 查詢單一 report 的 `visibility` 與 `archiveStatus`，並回傳公開可讀、不可存取或暫時性錯誤；它不判斷 report 是否符合排行榜收錄條件，也不寫入 `data/rankings/`、`data/state.json` 或公開 JSON。
+
+   若 report 已 Public 且 FFLogs API 可讀，使用者可送出「加入待收錄名單」或「要求重新排查」。Apps Script 會把 report code 寫入 Google Sheet `pending` 工作表；正式 workflow 會在 `fetch_fflogs.py` 前執行 `scripts/read_fflogs_refresh_queue.mjs`，透過 Google Sheets API 讀取 `status=queued|pending|retry` 的列，合併成 `FFLOGS_RETRY_REPORT_CODES`。這只提高下一輪候選優先度；是否真的收錄仍由 `fetch_fflogs.py` 檢查繁中服玩家、支援副本與通關 fight。
+
+   `npm run build:user-data` 重新產生 `public/data/report_status_index.json` 且資料 commit/push 成功後，workflow 會執行 `scripts/complete_fflogs_refresh_queue.mjs`。此腳本不刪除 Sheet 列，而是把公開索引已命中的待收錄列標記為 `status=done`；若使用者原本指定 fight，必須該 fight 也出現在公開索引中才會標記完成，避免「同一 report 的其他場次已收錄」誤清掉仍缺漏的指定場次。
 
 3. 驗證資料完整性：
 

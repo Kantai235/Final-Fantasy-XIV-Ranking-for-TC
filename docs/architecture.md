@@ -2,6 +2,8 @@
 
 本專案是靜態化分離架構：Python 負責抓取 FFLogs，Node.js 負責把來源資料建置成網站可讀的統計 JSON，Vue 只負責呈現靜態 JSON。主站共用資料與個人成績單索引部署在 Pages artifact 的 `/data/`；個別玩家成績單 JSON 另外同步到 users 專用 repo，避免主站 artifact 隨玩家數量無限制膨脹。
 
+`apps-script/fflogs-report-status/` 是額外的站務輔助 Web App 範本，用於即時查詢單一 FFLogs report 對站務 OAuth client 是否可讀，並在 report 已 Public 時寫入 Google Sheet 待收錄名單。它不寫入排行榜來源資料，也不是資料管線權威來源；實際收錄仍以 `scripts/fetch_fflogs.py` 下一輪掃描結果為準。
+
 ```mermaid
 flowchart LR
   FFLogs["FFLogs GraphQL API"] --> Fetch["scripts/fetch_fflogs.py"]
@@ -98,6 +100,8 @@ GraphQL 查詢字串集中在 `scripts/fflogs_pipeline/graphql_queries.py`；這
 │   ├── compact_ranking_data.py
 │   ├── compact_state.py
 │   └── build_spa_fallback.mjs
+├── apps-script/
+│   └── fflogs-report-status/
 ├── config/
 │   ├── encounters.json
 │   ├── fflogs.json
@@ -126,7 +130,7 @@ GraphQL 查詢字串集中在 `scripts/fflogs_pipeline/graphql_queries.py`；這
 - 伺服器對比：收錄玩家、副本通關、職能比例、熱門職業與副本落點。
 - 職業分析：各職能與職業的 rDPS 分位、副本分布、伺服器分布與代表紀錄。
 - 近期動態：最新公開成績、刷新個人最佳、新收錄玩家、伺服器活躍、副本活躍，以及由 Data Building Layer 預先去重的 Logs / 通關場次趨勢與副本分類占比。圖表上的台服與國際服改版時間標註屬於前端靜態脈絡，不參與資料管線統計。
-- 常見問題：整理站務常見問答，並內嵌 FFLogs 檢查工具；工具解析使用者貼上的 FFLogs report 網址，只比對 `public/data/report_status_index.json`、`public/data/all/report_status_index.json` 與 `public/data/update_status.json`，回報目前公開索引是否命中與排程推估，不直接呼叫 FFLogs API。正式路徑為 `/faq`，舊 `/logs` 保留為相容入口。
+- 常見問題：整理站務常見問答，並內嵌 FFLogs 檢查工具；工具解析使用者貼上的 FFLogs report 網址，先比對 `public/data/report_status_index.json`、`public/data/all/report_status_index.json` 與 `public/data/update_status.json`，回報目前公開索引是否命中與排程推估。若使用者按下「查詢公開狀態」，前端會以 JSONP 呼叫 Apps Script Web App，確認 FFLogs API 目前是否可讀取該 report；Public 且可讀時可再送出待收錄或重新排查需求，由 Apps Script 寫入 Google Sheet，workflow 下一輪透過 Google Sheets API 讀取後餵給 `FFLOGS_RETRY_REPORT_CODES`。資料成功收錄並提交後，workflow 會依公開索引把已命中的 Sheet 列標記為 `done`，不由前端或 Apps Script 直接判定排行榜收錄結果。前端仍不直接呼叫 FFLogs API，也不接觸 OAuth 或 Sheet API 憑證。正式路徑為 `/faq`，舊 `/logs` 保留為相容入口。
 - Honey B. Lovely 粉絲榜：獨立趣味頁，顯示 M2S 近 7 天 `心醉魂迷：奴役` 粉絲榜、近 7 天報告彈窗、歷史追溯與連續入榜標示，不參與正式排行榜聚合。
 
 ## 功能旗標

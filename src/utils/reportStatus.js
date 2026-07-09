@@ -1,5 +1,9 @@
 const reportCodePattern = /^[A-Za-z0-9]{8,32}$/;
 const 預設排程分鐘列表 = Object.freeze([17, 47]);
+const 預設Fflogs即時狀態查詢網址 = "https://script.google.com/macros/s/AKfycbw_GPuIIrR84Bse1uCiXz1BM2CzgtzvXqhn8dmbbgIQLs-6Etjw6L2BXxerAx5vcXg-zQ/exec";
+const AppsScriptJsonpCallbackRoot = "__ffxivTcFflogsReportStatusCallbacks";
+const AppsScriptJsonp逾時Ms = 12000;
+let AppsScriptJsonp序號 = 0;
 
 function 清理ReportCode(片段) {
   const 文字 = String(片段 || "").trim().replace(/^a:/i, "");
@@ -24,6 +28,36 @@ function 讀取Fight參數(網址) {
 function 是Fflogs主機(hostname) {
   const 主機 = String(hostname || "").toLocaleLowerCase("en-US");
   return 主機 === "fflogs.com" || 主機.endsWith(".fflogs.com");
+}
+
+function 讀取ImportMetaEnv值(key) {
+  try {
+    return String(import.meta.env?.[key] || "").trim();
+  } catch (error) {
+    return "";
+  }
+}
+
+function 建立Jsonp網址(endpoint, params, callbackName) {
+  const 網址 = new URL(endpoint);
+  Object.entries(params || {}).forEach(([key, value]) => {
+    const text = String(value ?? "").trim();
+    if (text) {
+      網址.searchParams.set(key, text);
+    }
+  });
+  網址.searchParams.set("callback", callbackName);
+  return 網址.href;
+}
+
+function 取得全域物件() {
+  if (typeof window !== "undefined") {
+    return window;
+  }
+  if (typeof globalThis !== "undefined") {
+    return globalThis;
+  }
+  return null;
 }
 
 function 建立分鐘數列(起點, 終點, 間隔 = 1) {
@@ -172,6 +206,153 @@ export function 解析Fflogs網址(輸入) {
       error: error instanceof Error ? error.message : "無法解析 FFLogs 網址",
     };
   }
+}
+
+export function 取得Fflogs即時狀態查詢網址() {
+  return 讀取ImportMetaEnv值("VITE_FFLOGS_REPORT_STATUS_WEB_APP_URL") || 預設Fflogs即時狀態查詢網址;
+}
+
+export function 建立Fflogs即時狀態顯示(payload) {
+  if (!payload || typeof payload !== "object") {
+    return {
+      status: "idle",
+      badge: "未查詢",
+      title: "尚未查詢 FFLogs 公開狀態",
+      description: "按下查詢公開狀態後，會透過站務 Apps Script 確認 FFLogs API 目前是否可讀取這份 report。",
+    };
+  }
+
+  if (payload.ok !== true) {
+    const errorCode = String(payload.error_code || "temporary_error");
+    const serverConfigMessage = "即時查詢服務尚未完成設定，請站務確認 Apps Script 的 FFLogs OAuth 憑證。";
+    const rateLimitMessage = "FFLogs 目前回傳限流，請稍後再試。站內排行榜仍會依照既有 workflow 排程更新。";
+    return {
+      status: "error",
+      badge: "查詢失敗",
+      title: errorCode === "server_config_error" ? "即時查詢服務尚未設定完成" : "暫時無法確認 FFLogs 公開狀態",
+      description: errorCode === "server_config_error"
+        ? serverConfigMessage
+        : errorCode === "rate_limited"
+          ? rateLimitMessage
+          : payload.message || "Apps Script 或 FFLogs API 暫時無法回應，請稍後再試。",
+    };
+  }
+
+  const access = String(payload.fflogs_access || "");
+  const visibility = String(payload.visibility || "").toLocaleLowerCase("en-US");
+  if (access === "accessible") {
+    const isPublic = visibility === "public";
+    return {
+      status: isPublic ? "public" : "accessible",
+      badge: isPublic ? "公開" : "可讀",
+      title: isPublic ? "FFLogs 目前是公開可讀" : "FFLogs API 目前可讀取這份 report",
+      description: "這只代表 report 對站務 Apps Script 可讀；是否收錄仍需等待資料管線確認繁中服玩家、支援副本與通關 fight。",
+    };
+  }
+
+  if (access === "private_or_deleted") {
+    return {
+      status: "private",
+      badge: "私人或不可讀",
+      title: "FFLogs 目前不是公開可讀",
+      description: "FFLogs API 無法讀取這份 report。常見原因是 Private、已刪除、不存在，或站務 OAuth client 沒有存取權限。",
+    };
+  }
+
+  if (access === "archived_inaccessible") {
+    return {
+      status: "archived",
+      badge: "封存不可讀",
+      title: "FFLogs 找到 report，但封存狀態不可存取",
+      description: "這份 report 目前無法由 API 讀取完整內容，站內 workflow 也可能無法補抓或重新整理。",
+    };
+  }
+
+  return {
+    status: "unknown",
+    badge: "未知",
+    title: "FFLogs 回傳未知狀態",
+    description: payload.message || "即時查詢已完成，但回傳內容不屬於目前支援的狀態，請稍後再試或回報站務。",
+  };
+}
+
+function 執行FflogsAppsScriptJsonp(params, options = {}) {
+  const endpoint = String(options.endpoint || 取得Fflogs即時狀態查詢網址()).trim();
+  if (!endpoint) {
+    return Promise.reject(new Error("尚未設定 FFLogs 即時狀態查詢 Web App URL。"));
+  }
+
+  const 全域物件 = 取得全域物件();
+  if (!全域物件 || typeof document === "undefined") {
+    return Promise.reject(new Error("即時狀態查詢只能在瀏覽器中執行。"));
+  }
+
+  return new Promise((resolve, reject) => {
+    const callbackKey = `cb${Date.now()}${AppsScriptJsonp序號++}`;
+    const callbackRoot = 全域物件[AppsScriptJsonpCallbackRoot] || {};
+    全域物件[AppsScriptJsonpCallbackRoot] = callbackRoot;
+    const callbackName = `window.${AppsScriptJsonpCallbackRoot}.${callbackKey}`;
+    const script = document.createElement("script");
+    let settled = false;
+
+    function cleanup() {
+      delete callbackRoot[callbackKey];
+      script.remove();
+    }
+
+    function settle(handler, value) {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timeoutId);
+      cleanup();
+      handler(value);
+    }
+
+    callbackRoot[callbackKey] = (payload) => {
+      settle(resolve, payload);
+    };
+
+    const timeoutMs = Number(options.timeoutMs) > 0 ? Number(options.timeoutMs) : AppsScriptJsonp逾時Ms;
+    const timeoutId = setTimeout(() => {
+      settle(reject, new Error("FFLogs Apps Script 查詢逾時，請稍後再試。"));
+    }, timeoutMs);
+
+    try {
+      script.async = true;
+      script.src = 建立Jsonp網址(endpoint, params, callbackName);
+      script.onerror = () => {
+        settle(reject, new Error("無法載入 FFLogs Apps Script 服務。"));
+      };
+      (document.head || document.documentElement).appendChild(script);
+    } catch (error) {
+      settle(reject, error instanceof Error ? error : new Error("FFLogs Apps Script 查詢失敗。"));
+    }
+  });
+}
+
+export function 查詢Fflogs即時狀態(reportCode, options = {}) {
+  const code = 清理ReportCode(reportCode);
+  if (!code) {
+    return Promise.reject(new Error("請先輸入有效的 FFLogs report code。"));
+  }
+  return 執行FflogsAppsScriptJsonp({ report: code }, options);
+}
+
+export function 送出Fflogs待收錄({ reportCode, requestType, siteStatus, fightText } = {}, options = {}) {
+  const code = 清理ReportCode(reportCode);
+  if (!code) {
+    return Promise.reject(new Error("請先輸入有效的 FFLogs report code。"));
+  }
+  return 執行FflogsAppsScriptJsonp({
+    action: "enqueue",
+    report: code,
+    request_type: requestType || "queue_missing",
+    site_status: siteStatus || "missing",
+    fight: fightText || "",
+    source: "faq",
+  }, options);
 }
 
 export function 建立報告索引Map(索引資料) {

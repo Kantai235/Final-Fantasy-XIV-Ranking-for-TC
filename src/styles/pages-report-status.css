@@ -417,6 +417,80 @@
   line-height: 1.55;
 }
 
+.Logs檢查即時狀態 {
+  display: grid;
+  gap: 0;
+  border-top: 1px solid var(--邊框柔和色);
+  background: var(--表面背景);
+}
+
+.Logs檢查即時狀態標頭 {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+  padding: 16px;
+}
+
+.Logs檢查即時狀態徽章 {
+  min-width: 88px;
+  border-radius: 999px;
+  padding: 7px 10px;
+  color: var(--主要文字);
+  background: var(--表面背景柔和);
+  font-size: 0.78rem;
+  font-weight: 820;
+  text-align: center;
+}
+
+.Logs檢查即時狀態[data-status="public"] .Logs檢查即時狀態徽章,
+.Logs檢查即時狀態[data-status="accessible"] .Logs檢查即時狀態徽章 {
+  color: var(--治療色);
+  background: var(--治療色柔和);
+}
+
+.Logs檢查即時狀態[data-status="loading"] .Logs檢查即時狀態徽章,
+.Logs檢查即時狀態[data-status="archived"] .Logs檢查即時狀態徽章,
+.Logs檢查即時狀態[data-status="unknown"] .Logs檢查即時狀態徽章 {
+  color: var(--公告警示色);
+  background: color-mix(in srgb, var(--公告警示色) 18%, transparent);
+}
+
+.Logs檢查即時狀態[data-status="private"] .Logs檢查即時狀態徽章,
+.Logs檢查即時狀態[data-status="error"] .Logs檢查即時狀態徽章 {
+  color: var(--錯誤文字);
+  background: color-mix(in srgb, var(--錯誤文字) 14%, transparent);
+}
+
+.Logs檢查即時狀態標頭 h2 {
+  margin: 0;
+  color: var(--主要文字);
+  font-size: 1.08rem;
+  line-height: 1.25;
+}
+
+.Logs檢查即時狀態標頭 p {
+  margin: 6px 0 0;
+  color: var(--次要文字);
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+
+.Logs檢查即時狀態細節 {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  border-top: 1px solid var(--邊框柔和色);
+  background: var(--邊框柔和色);
+}
+
+.Logs檢查即時狀態細節 > span {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  background: var(--表面背景柔和);
+}
+
 .Logs檢查摘要列 {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -433,6 +507,7 @@
 }
 
 .Logs檢查摘要列 small,
+.Logs檢查即時狀態細節 small,
 .Logs檢查副本卡 small,
 .Logs檢查Fight指標列 small {
   overflow: hidden;
@@ -449,6 +524,16 @@
   font-weight: 820;
   line-height: 1.35;
   overflow-wrap: anywhere;
+}
+
+.Logs檢查即時狀態細節 strong {
+  overflow: hidden;
+  color: var(--主要文字);
+  font-size: 0.88rem;
+  font-weight: 800;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  text-overflow: ellipsis;
 }
 
 .Logs檢查摘要分行值 {
@@ -661,7 +746,8 @@
     justify-content: flex-start;
   }
 
-  .Logs檢查摘要列 {
+  .Logs檢查摘要列,
+  .Logs檢查即時狀態細節 {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -692,15 +778,18 @@
     justify-self: start;
   }
 
-  .Logs檢查結果標頭 {
+  .Logs檢查結果標頭,
+  .Logs檢查即時狀態標頭 {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .Logs檢查狀態徽章 {
+  .Logs檢查狀態徽章,
+  .Logs檢查即時狀態徽章 {
     justify-self: start;
   }
 
   .Logs檢查摘要列,
+  .Logs檢查即時狀態細節,
   .Logs檢查Fight指標列 {
     grid-template-columns: minmax(0, 1fr);
   }

@@ -78,6 +78,18 @@ jobs:
           fi
           npm run cloudflare:apply -- "${CLOUDFLARE_APPLY_ARGS[@]}"
 
+      - name: 讀取 FFLogs 待收錄名單
+        id: fflogs-refresh-queue
+        env:
+          GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON }}
+          GOOGLE_SHEETS_CLIENT_EMAIL: ${{ secrets.GOOGLE_SHEETS_CLIENT_EMAIL }}
+          GOOGLE_SHEETS_PRIVATE_KEY: ${{ secrets.GOOGLE_SHEETS_PRIVATE_KEY }}
+          FFLOGS_REFRESH_QUEUE_SPREADSHEET_ID: ${{ vars.FFLOGS_REFRESH_QUEUE_SPREADSHEET_ID || secrets.FFLOGS_REFRESH_QUEUE_SPREADSHEET_ID }}
+          FFLOGS_REFRESH_QUEUE_SHEET_NAME: ${{ vars.FFLOGS_REFRESH_QUEUE_SHEET_NAME || 'pending' }}
+          FFLOGS_REFRESH_QUEUE_MAX_CODES: ${{ vars.FFLOGS_REFRESH_QUEUE_MAX_CODES || '50' }}
+          FFLOGS_REFRESH_QUEUE_EXTRA_REPORT_CODES: ${{ vars.FFLOGS_RETRY_REPORT_CODES }}
+        run: node scripts/read_fflogs_refresh_queue.mjs
+
       - name: 執行 FFLogs 排行榜抓取腳本
         env:
           FFLOGS_CLIENT_ID: ${{ secrets.FFLOGS_CLIENT_ID }}
@@ -315,6 +327,18 @@ jobs:
           done
           echo "Unable to push ranking data after syncing remote branch."
           exit 1
+
+      - name: 標記已收錄 FFLogs 待收錄名單
+        continue-on-error: true
+        env:
+          GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON }}
+          GOOGLE_SHEETS_CLIENT_EMAIL: ${{ secrets.GOOGLE_SHEETS_CLIENT_EMAIL }}
+          GOOGLE_SHEETS_PRIVATE_KEY: ${{ secrets.GOOGLE_SHEETS_PRIVATE_KEY }}
+          FFLOGS_REFRESH_QUEUE_SPREADSHEET_ID: ${{ vars.FFLOGS_REFRESH_QUEUE_SPREADSHEET_ID || secrets.FFLOGS_REFRESH_QUEUE_SPREADSHEET_ID }}
+          FFLOGS_REFRESH_QUEUE_SHEET_NAME: ${{ vars.FFLOGS_REFRESH_QUEUE_SHEET_NAME || 'pending' }}
+          FFLOGS_REFRESH_QUEUE_COMPLETE_MAX_ROWS: ${{ vars.FFLOGS_REFRESH_QUEUE_COMPLETE_MAX_ROWS || '500' }}
+          FFLOGS_REFRESH_QUEUE_COMPLETE_INCLUDE_HIDDEN: ${{ vars.FFLOGS_REFRESH_QUEUE_COMPLETE_INCLUDE_HIDDEN || 'false' }}
+        run: npm run complete:fflogs-refresh-queue
 
       - name: 稽核 GitHub Pages payload 體積
         env:

@@ -1,13 +1,16 @@
 <script setup>
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { 讀取Json } from "../utils/fetchJson";
 import { 格式化整數, 格式化紀錄時間 } from "../utils/formatters";
 import { 建立公開資料網址, 報告狀態索引網址, 更新狀態網址 } from "../utils/publicData";
 import { 顯示Telegram連結 } from "../utils/siteFeatures";
 import {
+  建立Fflogs即時狀態顯示,
   建立Report檢查結果,
   建立報告索引Map,
   建立未收錄提示,
+  查詢Fflogs即時狀態,
+  送出Fflogs待收錄,
   解析Fflogs網址,
 } from "../utils/reportStatus";
 
@@ -17,13 +20,20 @@ const hidden報告索引 = ref(null);
 const 更新狀態 = ref(null);
 const 讀取中 = ref(false);
 const 錯誤訊息 = ref("");
+const 即時狀態讀取中 = ref(false);
+const 即時狀態Payload = ref(null);
+const 即時狀態錯誤 = ref("");
+const 即時狀態ReportCode = ref("");
+const 待收錄送出中 = ref(false);
+const 待收錄Payload = ref(null);
+const 待收錄錯誤 = ref("");
 
 const Telegram連結 = "https://t.me/ffxiv_tc";
 const hidden報告狀態索引網址 = 建立公開資料網址("data/all/report_status_index.json");
 const 快速處理清單 = Object.freeze([
   {
     title: "先貼 FFLogs",
-    text: "如果問題和收錄有關，先用下方工具確認 report code 與 fight 是否已在公開資料索引中。",
+    text: "如果問題和收錄有關，先用下方工具確認 report code、fight、站內索引命中與 FFLogs 目前公開狀態。",
   },
   {
     title: "再看時間窗",
@@ -52,7 +62,7 @@ const 常見問題分類 = Object.freeze([
         question: "為什麼 FFLogs 網址貼上去，排行榜還是找不到？",
         answer: [
           "常見原因包含 report 沒公開、已刪除或轉 Private、沒有繁中服玩家、不是目前支援的副本、指定 fight 沒有通關、FFLogs 尚未匯出該 fight，或歷史補查還沒輪到。",
-          "下方工具只能比對目前公開靜態索引，不能在瀏覽器端即時確認 FFLogs 的 private/deleted 狀態。若工具顯示尚未入庫，請搭配更新判斷和 report 本身狀態一起看。",
+          "下方工具會先比對目前公開靜態索引，也可以透過站務 Apps Script 即時確認 FFLogs API 目前是否公開可讀。若 FFLogs 可讀但尚未入庫，仍需要等待資料管線下一輪確認繁中服玩家、支援副本與通關 fight。",
         ],
       },
       {
@@ -180,7 +190,7 @@ const 結果標題 = computed(() => {
 
 const 結果說明 = computed(() => {
   if (結果狀態.value === "empty") {
-    return "貼上 FFLogs report 網址後，這裡會比對目前公開資料索引。";
+    return "貼上 FFLogs report 網址後，這裡會比對目前公開資料索引；按下查詢公開狀態可確認 FFLogs 目前是否公開可讀。";
   }
   if (結果狀態.value === "invalid") {
     return 解析結果.value.error || "請確認網址是否為 FFLogs report 頁面。";
@@ -245,8 +255,183 @@ const 狀態徽章文字 = computed(() => {
   return "待查詢";
 });
 
+const 可查詢即時狀態 = computed(() =>
+  解析結果.value.valid
+  && Boolean(解析結果.value.report_code)
+  && !即時狀態讀取中.value,
+);
+
+const 即時狀態顯示 = computed(() => {
+  if (即時狀態讀取中.value) {
+    return {
+      status: "loading",
+      badge: "查詢中",
+      title: "正在確認 FFLogs 公開狀態",
+      description: "正在透過站務 Apps Script 查詢 FFLogs API，通常幾秒內會完成。",
+    };
+  }
+
+  if (即時狀態錯誤.value) {
+    return {
+      status: "error",
+      badge: "查詢失敗",
+      title: "暫時無法確認 FFLogs 公開狀態",
+      description: 即時狀態錯誤.value,
+    };
+  }
+
+  return 建立Fflogs即時狀態顯示(即時狀態Payload.value);
+});
+
+const 即時狀態細節 = computed(() => {
+  const payload = 即時狀態Payload.value;
+  if (!payload || typeof payload !== "object") {
+    return [];
+  }
+
+  return [
+    {
+      label: "FFLogs 判定",
+      value: payload.fflogs_access || payload.error_code || "-",
+    },
+    {
+      label: "Visibility",
+      value: payload.visibility || "-",
+    },
+    {
+      label: "封存可讀",
+      value: payload.archive_accessible === true ? "是" : payload.archive_accessible === false ? "否" : "-",
+    },
+    {
+      label: "查詢時間",
+      value: 格式化紀錄時間(payload.checked_at_iso),
+    },
+  ];
+});
+
+const Fflogs已公開可讀 = computed(() =>
+  即時狀態Payload.value?.ok === true
+  && 即時狀態Payload.value?.fflogs_access === "accessible"
+  && String(即時狀態Payload.value?.visibility || "").toLocaleLowerCase("en-US") === "public",
+);
+
+const 待收錄請求類型 = computed(() =>
+  結果狀態.value === "found" || 結果狀態.value === "fight_missing"
+    ? "retry_existing"
+    : "queue_missing",
+);
+
+const 待收錄按鈕文字 = computed(() =>
+  待收錄請求類型.value === "retry_existing" ? "要求重新排查" : "加入待收錄名單",
+);
+
+const 可送出待收錄 = computed(() =>
+  解析結果.value.valid
+  && Boolean(解析結果.value.report_code)
+  && Fflogs已公開可讀.value
+  && !即時狀態讀取中.value
+  && !待收錄送出中.value,
+);
+
+const 待收錄狀態顯示 = computed(() => {
+  if (待收錄送出中.value) {
+    return {
+      status: "loading",
+      badge: "送出中",
+      title: "正在送出待收錄需求",
+      description: "正在透過 Apps Script 寫入 Google Sheet 待收錄名單。",
+    };
+  }
+
+  if (待收錄錯誤.value) {
+    return {
+      status: "error",
+      badge: "送出失敗",
+      title: "無法送出待收錄需求",
+      description: 待收錄錯誤.value,
+    };
+  }
+
+  const payload = 待收錄Payload.value;
+  if (!payload) {
+    return null;
+  }
+
+  const success = payload.queue_status === "queued" || payload.queue_status === "updated";
+  return {
+    status: success ? "public" : "error",
+    badge: success ? "已排入" : "未排入",
+    title: success ? "已加入待收錄名單" : "未加入待收錄名單",
+    description: payload.message || (success ? "後續 workflow 執行時會嘗試重查這份 report。" : "請確認 report 是否已設為公開。"),
+  };
+});
+
+function 重設即時狀態() {
+  即時狀態讀取中.value = false;
+  即時狀態Payload.value = null;
+  即時狀態錯誤.value = "";
+  即時狀態ReportCode.value = "";
+  待收錄送出中.value = false;
+  待收錄Payload.value = null;
+  待收錄錯誤.value = "";
+}
+
 function 清除輸入() {
   輸入文字.value = "";
+  重設即時狀態();
+}
+
+async function 查詢即時公開狀態() {
+  const reportCode = 解析結果.value.report_code;
+  if (!可查詢即時狀態.value || !reportCode) {
+    return;
+  }
+
+  即時狀態讀取中.value = true;
+  即時狀態Payload.value = null;
+  即時狀態錯誤.value = "";
+  即時狀態ReportCode.value = reportCode;
+  待收錄Payload.value = null;
+  待收錄錯誤.value = "";
+
+  try {
+    const payload = await 查詢Fflogs即時狀態(reportCode);
+    if (即時狀態ReportCode.value === reportCode) {
+      即時狀態Payload.value = payload;
+    }
+  } catch (error) {
+    if (即時狀態ReportCode.value === reportCode) {
+      即時狀態錯誤.value = error instanceof Error ? error.message : "FFLogs 即時狀態查詢失敗。";
+    }
+  } finally {
+    if (即時狀態ReportCode.value === reportCode) {
+      即時狀態讀取中.value = false;
+    }
+  }
+}
+
+async function 送出待收錄需求() {
+  const reportCode = 解析結果.value.report_code;
+  if (!可送出待收錄.value || !reportCode) {
+    return;
+  }
+
+  待收錄送出中.value = true;
+  待收錄Payload.value = null;
+  待收錄錯誤.value = "";
+
+  try {
+    待收錄Payload.value = await 送出Fflogs待收錄({
+      reportCode,
+      requestType: 待收錄請求類型.value,
+      siteStatus: 結果狀態.value,
+      fightText: 解析結果.value.fight_text,
+    });
+  } catch (error) {
+    待收錄錯誤.value = error instanceof Error ? error.message : "待收錄需求送出失敗。";
+  } finally {
+    待收錄送出中.value = false;
+  }
 }
 
 async function 載入Logs檢查資料() {
@@ -283,6 +468,15 @@ onMounted(() => {
   }
   載入Logs檢查資料();
 });
+
+watch(
+  () => 解析結果.value.report_code,
+  (下一個ReportCode, 前一個ReportCode) => {
+    if (下一個ReportCode !== 前一個ReportCode) {
+      重設即時狀態();
+    }
+  },
+);
 </script>
 
 <template>
@@ -331,7 +525,7 @@ onMounted(() => {
           <header class="常見問題區塊標題">
             <span>FFLogs 檢查工具</span>
             <h2>貼上 report 網址，先確認目前收錄狀態</h2>
-            <p>這裡只比對站內已建好的靜態索引，適合判斷 report 是否已收錄、是否只命中部分 fight，以及下一輪資料更新的等待時間。</p>
+            <p>這裡會比對站內已建好的靜態索引，判斷 report 是否已收錄、是否只命中部分 fight，以及下一輪資料更新等待時間；也可按下查詢公開狀態，確認 FFLogs 目前是否公開可讀。</p>
           </header>
 
           <section class="Logs檢查工具卡" aria-label="FFLogs 網址檢查">
@@ -355,6 +549,8 @@ onMounted(() => {
                 >
                   開啟 FFLogs
                 </a>
+                <button type="button" :disabled="!可查詢即時狀態" @click="查詢即時公開狀態">查詢公開狀態</button>
+                <button type="button" :disabled="!可送出待收錄" @click="送出待收錄需求">{{ 待收錄按鈕文字 }}</button>
                 <button type="button" :disabled="!輸入文字" @click="清除輸入">清除</button>
               </div>
             </div>
@@ -383,6 +579,42 @@ onMounted(() => {
                     </strong>
                   </span>
                 </div>
+              </section>
+
+              <section
+                v-if="解析結果.valid"
+                class="Logs檢查即時狀態"
+                :data-status="即時狀態顯示.status"
+                aria-label="FFLogs 公開狀態"
+              >
+                <header class="Logs檢查即時狀態標頭">
+                  <span class="Logs檢查即時狀態徽章">{{ 即時狀態顯示.badge }}</span>
+                  <div>
+                    <h2>{{ 即時狀態顯示.title }}</h2>
+                    <p>{{ 即時狀態顯示.description }}</p>
+                  </div>
+                </header>
+                <div v-if="即時狀態細節.length" class="Logs檢查即時狀態細節" aria-label="FFLogs 即時查詢細節">
+                  <span v-for="項目 in 即時狀態細節" :key="項目.label">
+                    <small>{{ 項目.label }}</small>
+                    <strong>{{ 項目.value }}</strong>
+                  </span>
+                </div>
+              </section>
+
+              <section
+                v-if="待收錄狀態顯示"
+                class="Logs檢查即時狀態 Logs檢查待收錄狀態"
+                :data-status="待收錄狀態顯示.status"
+                aria-label="待收錄名單送出狀態"
+              >
+                <header class="Logs檢查即時狀態標頭">
+                  <span class="Logs檢查即時狀態徽章">{{ 待收錄狀態顯示.badge }}</span>
+                  <div>
+                    <h2>{{ 待收錄狀態顯示.title }}</h2>
+                    <p>{{ 待收錄狀態顯示.description }}</p>
+                  </div>
+                </header>
               </section>
 
               <div class="Logs檢查資訊格">

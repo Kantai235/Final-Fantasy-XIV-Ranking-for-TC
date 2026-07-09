@@ -74,6 +74,25 @@ VITE_GA_ENABLE_IN_DEV=false
 
 `VITE_GA_ENABLE_IN_DEV` 只有在刻意要於 `npm run dev` 送出 GA 事件時才設為 `true`。
 
+常見問題頁的 FFLogs 檢查工具可用唯讀 Apps Script Web App 即時確認 report 是否公開可讀；這是公開 endpoint，不是 FFLogs OAuth secret：
+
+```env
+VITE_FFLOGS_REPORT_STATUS_WEB_APP_URL=https://script.google.com/macros/s/.../exec
+```
+
+若要本機測試 workflow 讀取 Google Sheet 待收錄名單，可設定：
+
+```env
+FFLOGS_REFRESH_QUEUE_SPREADSHEET_ID=google_sheet_id
+FFLOGS_REFRESH_QUEUE_SHEET_NAME=pending
+FFLOGS_REFRESH_QUEUE_MAX_CODES=50
+FFLOGS_REFRESH_QUEUE_COMPLETE_MAX_ROWS=500
+FFLOGS_REFRESH_QUEUE_COMPLETE_INCLUDE_HIDDEN=false
+GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON={"client_email":"...","private_key":"-----BEGIN PRIVATE KEY-----\\n...\\n-----END PRIVATE KEY-----\\n"}
+```
+
+正式 GitHub Actions 請把 Sheet ID 放在 repository variables，service account 放在 repository secrets。workflow 會在資料成功收錄後把 Sheet 列標記為 `done`，因此 service account 需要該 Sheet 的編輯權限。
+
 `.env` 內含敏感資訊，不應提交到版本控制，也不要印到 Log。
 
 ## 常用指令

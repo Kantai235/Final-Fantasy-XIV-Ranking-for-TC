@@ -64,7 +64,7 @@ npm run dev
 - 顯示 DPS、rDPS、aDPS、Active、GCD 覆蓋率參考值、通關時間與紀錄時間。
 - 個人成績單可查看各副本最佳紀錄、歷史紀錄、同職分位與常同場隊友；同職分位可由使用者端偏好切換顯示為「前 N%」或整數 PR 值，PR 模式會讓代表列、分位亮點與歷史列優先依 PR 值排序。
 - 玩家比較、隊伍榜、伺服器對比、職業分析與近期動態皆由靜態資料產生；近期動態也提供每日 Logs 曲線、零式、極、幻、滅、絕分類占比，以及台服與國際服改版時間標註，桌面預設近 90 天、手機預設近 30 天，可切換副本、日期範圍與 Logs、通關場次等統計口徑。
-- 常見問題頁整理 Telegram 群組常見回報，包含更新時間、過版紀錄、GCD 覆蓋率、同名角色與公開狀態；其中的 FFLogs 檢查工具可貼上 report 網址或 report code，比對 `public/data/report_status_index.json` 與 `public/data/update_status.json`，判斷目前公開資料是否已收錄、指定 fight 是否命中，以及剛上傳或歷史補查紀錄大約會落在哪個排程窗；前端不直接呼叫 FFLogs API。
+- 常見問題頁整理 Telegram 群組常見回報，包含更新時間、過版紀錄、GCD 覆蓋率、同名角色與公開狀態；其中的 FFLogs 檢查工具可貼上 report 網址或 report code，比對 `public/data/report_status_index.json` 與 `public/data/update_status.json`，判斷目前公開資料是否已收錄、指定 fight 是否命中，以及剛上傳或歷史補查紀錄大約會落在哪個排程窗；「查詢公開狀態」按鈕會透過 Apps Script Web App 確認 FFLogs API 目前是否可讀，Public 且可讀時可寫入 Google Sheet 待收錄名單，下一輪 workflow 會以 `retry_report_codes` 嘗試重查，收錄成功並提交資料後會把 Sheet 對應列標記為 `done`。
 - Honey B. Lovely 粉絲榜以獨立趣味資料呈現 M2S `心醉魂迷：奴役` 衍生紀錄；本期榜單、吃心心數、戰鬥次數與報告只計近 7 天，最新收錄紀錄顯示 5 筆、最新加入粉絲顯示 16 筆。頁面可用「超高難度」開關切換為自台灣時間 2026-05-30 00:00:00 起算的通關團隊榜，依單場全隊奴役總次數排序，來源歷史紀錄仍保留用於連續入榜與追溯統計，不混入正式排行榜。
 - 支援深色 / 亮色主題，並依目前頁面的職業或職能篩選切換主色調。
 - 支援全域公告通知，公告內容由 `public/data/announcements.json` 隨 commit 更新，使用者關閉後不再主動顯示。
@@ -84,6 +84,7 @@ README 只保留入口與最小操作脈絡，完整說明請依主題閱讀：
 | [docs/routing-and-seo.md](docs/routing-and-seo.md) | 分享網址、乾淨路徑、SEO/OG 靜態頁與社群預覽圖。 |
 | [docs/deployment.md](docs/deployment.md) | GitHub Actions、GitHub Pages、部署需求與 Cloudflare 串接摘要。 |
 | [docs/cloudflare-github-pages.md](docs/cloudflare-github-pages.md) | Cloudflare CDN、Cache Rules、Rate Limiting 與 purge 細節。 |
+| [apps-script/fflogs-report-status/README.md](apps-script/fflogs-report-status/README.md) | FFLogs report 即時可讀狀態查詢用 Apps Script Web App 範本。 |
 | [config/README.md](config/README.md) | `config/` 設定檔欄位判讀。 |
 | [data/rankings/README.md](data/rankings/README.md) | 排行榜完整資料格式與分片說明。 |
 
@@ -106,6 +107,8 @@ README 只保留入口與最小操作脈絡，完整說明請依主題閱讀：
 | `npm run build:report-status` | 由排行榜報告細節檔產生 `public/data/report_status_index.json` 與 hidden delta report 索引，供常見問題頁中的 FFLogs 檢查工具快速比對。 |
 | `npm run build:public-status` | 由 `data/update_status.json` 與 `public/data/global_stats.json` 產生 `public/data/update_status.json`，公開最近資料更新與排程摘要。 |
 | `npm run build:user-data` | 建置個人成績單、個人成績報告細節、全服統計、近期動態、隊伍榜、伺服器對比、排行榜薄索引、Logs 狀態索引與公開更新狀態。 |
+| `npm run read:fflogs-refresh-queue` | 讀取 Google Sheet 待收錄名單，輸出本輪會送入 `FFLOGS_RETRY_REPORT_CODES` 的 report code。 |
+| `npm run complete:fflogs-refresh-queue` | 依重新建好的 `public/data/report_status_index.json`，將已收錄的 Google Sheet 待收錄列標記為 `done`。 |
 | `npm run validate:data` | 驗證公開資料、schema 契約、分片、全服統計、使用者索引與 Honey B. Lovely 粉絲榜完整性。 |
 | `npm run compact:state` | 壓縮 `data/state.json` 的重複 checkpoint、可重建時間鏡像與 JSON 空白，保留 `checked_reports` 狀態並降低 Git blob 體積。 |
 | `npm run audit:gcd:xivanalysis` | 以固定 seed 對零式、極、幻的每個副本各抽樣 10 場，若 10 場未涵蓋全職業會自動補抽缺漏職業所在戰鬥，並將本地 GCD 覆蓋率與 xivanalysis 畫面值比對；100 場外站頁面稽核使用 `--sample-size 100 --local-mode stored --tolerance 0`，必要時可搭配 `--workers`、`--exclude-report-codes` 與 `--apply-all-checked`。 |

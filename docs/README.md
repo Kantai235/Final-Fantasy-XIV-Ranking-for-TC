@@ -5,6 +5,7 @@
 - 第一次接手專案：先讀 [getting-started.md](getting-started.md)，再讀 [architecture.md](architecture.md)。
 - 要調整資料管線：先讀 [data-contracts.md](data-contracts.md)，再讀 [data-pipeline.md](data-pipeline.md)。
 - 要處理分享連結、OG 或部署：讀 [routing-and-seo.md](routing-and-seo.md)、[deployment.md](deployment.md) 與 [cloudflare-github-pages.md](cloudflare-github-pages.md)。
+- 要設定 FFLogs report 即時可讀狀態查詢：讀 [../apps-script/fflogs-report-status/README.md](../apps-script/fflogs-report-status/README.md)。
 - 要改設定檔：搭配 [../config/README.md](../config/README.md)。
 - 要追查排行榜來源資料：搭配 [../data/rankings/README.md](../data/rankings/README.md)。
 
@@ -19,6 +20,7 @@
 | [routing-and-seo.md](routing-and-seo.md) | 前端與部署維護者 | 乾淨路徑、舊 query 相容、SEO/OG fallback、社群預覽圖與 sitemap。 |
 | [deployment.md](deployment.md) | 維運者 | GitHub Actions 排程、GitHub Pages 部署、必要 Secrets 與 Cloudflare 串接摘要。 |
 | [cloudflare-github-pages.md](cloudflare-github-pages.md) | 維運者 | Cloudflare CDN、Cache Rules、Facebook 分享爬蟲例外、Rate Limiting 與 purge 細節。 |
+| [../apps-script/fflogs-report-status/README.md](../apps-script/fflogs-report-status/README.md) | 維運者 | Apps Script Web App 建置、FFLogs OAuth 憑證設定、即時 report 可讀狀態查詢、待收錄名單寫入與 workflow 完成標記。 |
 
 ## 文件維護規則
 

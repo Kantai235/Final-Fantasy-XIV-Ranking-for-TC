@@ -25,7 +25,14 @@ import {
   個人成績代表是否較佳,
   比較個人成績分位顯示排序,
 } from "../src/utils/userProfileSorting.js";
-import { 建立報告索引Map, 建立未收錄提示, 取得下一輪排程時間, 解析Fflogs網址 } from "../src/utils/reportStatus.js";
+import {
+  建立Fflogs即時狀態顯示,
+  建立報告索引Map,
+  建立未收錄提示,
+  取得Fflogs即時狀態查詢網址,
+  取得下一輪排程時間,
+  解析Fflogs網址,
+} from "../src/utils/reportStatus.js";
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const srcDir = path.join(rootDir, "src");
@@ -1140,6 +1147,34 @@ function validateReportStatusUrlParsing() {
   assert(!lookalikeHost.valid, "Logs 檢查不可接受只是字尾相同的非 FFLogs 主機。");
 }
 
+function validateFflogsLiveStatusDisplay() {
+  const endpoint = 取得Fflogs即時狀態查詢網址();
+  assert(endpoint.includes("script.google.com/macros/s/"), "FFLogs 即時狀態查詢應有 Apps Script Web App 預設網址。");
+
+  const publicStatus = 建立Fflogs即時狀態顯示({
+    ok: true,
+    fflogs_access: "accessible",
+    visibility: "public",
+    archive_accessible: true,
+  });
+  assert(publicStatus.status === "public", "FFLogs 即時狀態應把 accessible + public 顯示為公開。");
+  assert(publicStatus.title.includes("公開"), "公開 report 的即時狀態標題應明確告知公開。");
+
+  const privateStatus = 建立Fflogs即時狀態顯示({
+    ok: true,
+    fflogs_access: "private_or_deleted",
+  });
+  assert(privateStatus.status === "private", "FFLogs 即時狀態應把 private_or_deleted 顯示為不可公開讀取。");
+  assert(privateStatus.description.includes("Private"), "不可讀 report 應保留 Private 作為常見原因。");
+
+  const configErrorStatus = 建立Fflogs即時狀態顯示({
+    ok: false,
+    error_code: "server_config_error",
+  });
+  assert(configErrorStatus.status === "error", "Apps Script 設定錯誤應顯示為查詢錯誤。");
+  assert(configErrorStatus.description.includes("Apps Script"), "Apps Script 設定錯誤應提示站務檢查設定。");
+}
+
 function validateReportStatusScheduleParsing() {
   const halfHourlySchedule = {
     schedule: {
@@ -1395,6 +1430,7 @@ async function main() {
   await validateHiddenDeltaDataForFrontend();
   validateReportExternalLinks();
   validateReportStatusUrlParsing();
+  validateFflogsLiveStatusDisplay();
   validateReportStatusScheduleParsing();
   validateScopedJobShareRecalculation();
   validateGlobalStatsOverviewDenominator();
