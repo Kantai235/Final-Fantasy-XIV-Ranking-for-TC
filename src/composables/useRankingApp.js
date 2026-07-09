@@ -52,7 +52,6 @@ import {
   伺服器對比網址,
   蜂蜂粉絲榜網址,
   建立公開資料網址,
-  建立使用者資料網址,
   建立排行榜表格資料網址,
 } from "../utils/publicData";
 import { 建立目前分享網址, 正規化分享描述, 預設分享標題 } from "../utils/shareMeta";
@@ -69,6 +68,7 @@ import {
   刪除玩家搜尋歷史,
   清除玩家搜尋歷史,
   讀取玩家搜尋歷史,
+  讀取使用者資料Json,
   讀取使用者資料檔,
 } from "../utils/userData";
 import {
@@ -4270,7 +4270,7 @@ async function 解析個人成績報告詳細資料格式(資料) {
 
 async function 讀取個人成績報告詳細資料檔(相對路徑) {
   if (!個人成績報告詳細資料快取.has(相對路徑)) {
-    const 讀取Promise = 讀取Json(建立使用者資料網址(相對路徑), "讀取個人成績報告細節失敗")
+    const 讀取Promise = 讀取使用者資料Json(相對路徑, "讀取個人成績報告細節失敗")
       .then(解析個人成績報告詳細資料格式)
       .catch((錯誤) => {
         個人成績報告詳細資料快取.delete(相對路徑);

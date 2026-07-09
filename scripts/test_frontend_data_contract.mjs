@@ -819,7 +819,9 @@ async function loadUserDataTestModule() {
     /import\s*\{[\s\S]*?\}\s*from\s*["']\.\/publicData(?:\.js)?["'];/,
     `
 const 建立使用者資料網址 = (相對路徑) => \`/mock/\${String(相對路徑)}\`;
+const 建立使用者資料網址列表 = (相對路徑) => [\`/mock/\${String(相對路徑)}\`, \`/fallback/\${String(相對路徑)}\`];
 const 建立使用者預設資料網址 = (角色名稱) => \`/mock/data/users/\${String(角色名稱)}.json\`;
+const 建立使用者預設資料網址列表 = (角色名稱) => [\`/mock/data/users/\${String(角色名稱)}.json\`, \`/fallback/data/users/\${String(角色名稱)}.json\`];
 `,
   );
 
@@ -915,6 +917,100 @@ async function validateUserSearchResolution() {
   }
   assert(fetchedUrl === "/mock/data/users/Shibe柴-2.json", "讀取使用者資料檔應保留伺服器條件，避免同名角色讀到第一筆索引。");
 
+  const fallbackFetchedUrls = [];
+  globalThis.fetch = async (url) => {
+    fallbackFetchedUrls.push(String(url));
+    if (fallbackFetchedUrls.length === 1) {
+      return {
+        ok: false,
+        status: 429,
+      };
+    }
+    return {
+      ok: true,
+      async json() {
+        return { fallback_loaded: true };
+      },
+    };
+  };
+  let fallbackData = null;
+  try {
+    fallbackData = await module.讀取使用者資料檔("Shibe柴", users, "巴哈姆特");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+  assert(fallbackData?.fallback_loaded === true, "個別玩家成績單遇到 raw GitHub 429 時，應改讀備援靜態資料來源。");
+  assert(
+    fallbackFetchedUrls.join("|") === "/mock/data/users/Shibe柴-2.json|/fallback/data/users/Shibe柴-2.json",
+    "個別玩家成績單備援讀取應沿用同一個索引 file_path，避免同名跨服角色讀錯檔案。",
+  );
+
+  const notFoundFetchedUrls = [];
+  let notFoundError = "";
+  globalThis.fetch = async (url) => {
+    notFoundFetchedUrls.push(String(url));
+    return {
+      ok: false,
+      status: 404,
+    };
+  };
+  try {
+    await module.讀取使用者資料檔("Shibe柴", users, "巴哈姆特");
+  } catch (error) {
+    notFoundError = error instanceof Error ? error.message : String(error);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+  assert(notFoundFetchedUrls.length === 1, "個別玩家成績單 404 應視為檔案不存在，不應再嘗試其它鏡像。");
+  assert(
+    notFoundError === "找不到「Shibe柴 @ 巴哈姆特」的個人成績單",
+    "個別玩家成績單 404 應維持找不到訊息，避免遮蔽真正的資料缺口。",
+  );
+
+  const rateLimitedFetchedUrls = [];
+  let rateLimitedError = "";
+  globalThis.fetch = async (url) => {
+    rateLimitedFetchedUrls.push(String(url));
+    return {
+      ok: false,
+      status: 429,
+    };
+  };
+  try {
+    await module.讀取使用者資料檔("Shibe柴", users, "巴哈姆特");
+  } catch (error) {
+    rateLimitedError = error instanceof Error ? error.message : String(error);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+  assert(rateLimitedFetchedUrls.length === 2, "所有個人成績單靜態來源都被限流前，應先完整嘗試可用備援。");
+  assert(
+    rateLimitedError.startsWith("暫時無法讀取") && rateLimitedError.includes("HTTP 429"),
+    "所有靜態來源都回 429 時，搜尋錯誤應說明是暫時限流，而不是玩家不存在。",
+  );
+
+  const fallbackUnsyncedFetchedUrls = [];
+  let fallbackUnsyncedError = "";
+  globalThis.fetch = async (url) => {
+    fallbackUnsyncedFetchedUrls.push(String(url));
+    return {
+      ok: false,
+      status: fallbackUnsyncedFetchedUrls.length === 1 ? 429 : 404,
+    };
+  };
+  try {
+    await module.讀取使用者資料檔("Shibe柴", users, "巴哈姆特");
+  } catch (error) {
+    fallbackUnsyncedError = error instanceof Error ? error.message : String(error);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+  assert(fallbackUnsyncedFetchedUrls.length === 2, "raw GitHub 429 後應嘗試備援來源，即使備援來源尚未同步該檔案。");
+  assert(
+    fallbackUnsyncedError.startsWith("暫時無法讀取") && fallbackUnsyncedError.includes("HTTP 429"),
+    "raw GitHub 429 且備援來源 404 時，錯誤仍應維持暫時限流，不應改成找不到玩家。",
+  );
+
   let missingServerError = "";
   let missingServerFetchCalled = false;
   globalThis.fetch = async () => {
@@ -984,6 +1080,14 @@ async function validatePublicDataRouteBase() {
     directUserRoute.建立使用者資料網址("data/users/篝之霧枝-2.json") ===
       "https://raw.githubusercontent.com/Kantai235/Final-Fantasy-XIV-Ranking-for-TC-Users/refs/heads/main/data/users/%E7%AF%9D%E4%B9%8B%E9%9C%A7%E6%9E%9D-2.json",
     "直接開啟 /user/ 時，個別玩家成績單檔案仍應由專用 users repo 載入。",
+  );
+  const userDataUrls = directUserRoute.建立使用者資料網址列表("data/users/篝之霧枝-2.json");
+  assert(
+    userDataUrls[0] ===
+      "https://raw.githubusercontent.com/Kantai235/Final-Fantasy-XIV-Ranking-for-TC-Users/refs/heads/main/data/users/%E7%AF%9D%E4%B9%8B%E9%9C%A7%E6%9E%9D-2.json" &&
+      userDataUrls[1] ===
+        "https://cdn.jsdelivr.net/gh/Kantai235/Final-Fantasy-XIV-Ranking-for-TC-Users@main/data/users/%E7%AF%9D%E4%B9%8B%E9%9C%A7%E6%9E%9D-2.json",
+    "個別玩家成績單應保留 raw GitHub 主來源，並提供 jsDelivr CDN 作為限流備援。",
   );
 
   const subpathRoute = await loadPublicDataTestModule("https://example.test/repo/user/Aa?server=%E5%A5%A7%E6%B1%80");

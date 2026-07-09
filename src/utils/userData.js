@@ -1,4 +1,4 @@
-import { 建立使用者資料網址, 建立使用者預設資料網址 } from "./publicData";
+import { 建立使用者資料網址列表, 建立使用者預設資料網址列表 } from "./publicData";
 
 export const 玩家搜尋歷史儲存鍵 = "ffxiv-tc-rankings-player-search-history";
 export const 玩家搜尋歷史顯示上限 = 8;
@@ -278,18 +278,132 @@ export function 解析使用者搜尋目標(輸入文字, 使用者索引列表,
   };
 }
 
-async function 讀取使用者Json(資料網址, 錯誤訊息) {
-  const 回應 = await fetch(資料網址, {
-    headers: {
-      Accept: "application/json",
-    },
-  });
+const 使用者資料暫時性Http狀態碼 = new Set([403, 408, 409, 425, 429, 500, 502, 503, 504]);
 
-  if (!回應.ok) {
-    throw new Error(錯誤訊息);
+function 正規化資料網址列表(資料網址或列表) {
+  const 網址列表 = Array.isArray(資料網址或列表) ? 資料網址或列表 : [資料網址或列表];
+  const 已收錄 = new Set();
+  const 結果 = [];
+
+  for (const 資料網址 of 網址列表) {
+    const 網址文字 = String(資料網址 || "").trim();
+    if (!網址文字 || 已收錄.has(網址文字)) {
+      continue;
+    }
+    已收錄.add(網址文字);
+    結果.push(網址文字);
   }
 
-  return 回應.json();
+  return 結果;
+}
+
+async function 嘗試讀取使用者Json(資料網址) {
+  let 回應;
+  try {
+    回應 = await fetch(資料網址, {
+      headers: {
+        Accept: "application/json",
+      },
+    });
+  } catch (錯誤) {
+    const 讀取錯誤 = new Error(錯誤 instanceof Error ? 錯誤.message : "資料來源連線失敗");
+    讀取錯誤.isNetworkError = true;
+    讀取錯誤.sourceUrl = 資料網址;
+    throw 讀取錯誤;
+  }
+
+  if (!回應.ok) {
+    const 讀取錯誤 = new Error(`HTTP ${回應.status}`);
+    讀取錯誤.status = 回應.status;
+    讀取錯誤.sourceUrl = 資料網址;
+    throw 讀取錯誤;
+  }
+
+  try {
+    return await 回應.json();
+  } catch (錯誤) {
+    const 讀取錯誤 = new Error(錯誤 instanceof Error ? 錯誤.message : "資料格式不正確");
+    讀取錯誤.isParseError = true;
+    讀取錯誤.sourceUrl = 資料網址;
+    throw 讀取錯誤;
+  }
+}
+
+function 是否暫時性使用者資料錯誤(錯誤) {
+  if (錯誤?.isNetworkError) {
+    return true;
+  }
+
+  const 狀態碼 = Number(錯誤?.status || 0);
+  return 使用者資料暫時性Http狀態碼.has(狀態碼);
+}
+
+function 取得暫時性錯誤訊息前綴(錯誤訊息) {
+  const 訊息 = String(錯誤訊息 || "讀取個人成績單失敗").trim();
+  return 訊息.startsWith("找不到") ? 訊息.replace(/^找不到/, "暫時無法讀取") : 訊息;
+}
+
+function 建立使用者Json錯誤訊息(錯誤訊息, 失敗紀錄列表) {
+  const 狀態碼列表 = 失敗紀錄列表.map((紀錄) => Number(紀錄?.status || 0)).filter(Boolean);
+  const 最後狀態碼 = 狀態碼列表[狀態碼列表.length - 1] || 0;
+  if (最後狀態碼 === 404 && 失敗紀錄列表.length === 1) {
+    return 錯誤訊息;
+  }
+
+  const 暫時訊息前綴 = 取得暫時性錯誤訊息前綴(錯誤訊息);
+  if (狀態碼列表.includes(429)) {
+    return `${暫時訊息前綴}：資料來源暫時限流（HTTP 429），請稍後再試。`;
+  }
+  if (最後狀態碼 === 404) {
+    return `${暫時訊息前綴}：主要資料來源暫時無法讀取，備援來源尚未同步此檔案，請稍後再試。`;
+  }
+  if (狀態碼列表.some((狀態碼) => 狀態碼 >= 500)) {
+    return `${暫時訊息前綴}：資料來源暫時異常（HTTP ${最後狀態碼}），請稍後再試。`;
+  }
+  if (狀態碼列表.length > 0) {
+    return `${暫時訊息前綴}：資料來源暫時無法回應（HTTP ${最後狀態碼}），請稍後再試。`;
+  }
+  if (失敗紀錄列表.some((紀錄) => 紀錄?.isParseError)) {
+    return `${錯誤訊息}：資料格式不正確。`;
+  }
+  if (失敗紀錄列表.some((紀錄) => 紀錄?.isNetworkError)) {
+    return `${暫時訊息前綴}：瀏覽器或網路環境暫時阻擋資料來源，請稍後再試。`;
+  }
+
+  return 錯誤訊息;
+}
+
+async function 讀取使用者Json(資料網址或列表, 錯誤訊息) {
+  const 資料網址列表 = 正規化資料網址列表(資料網址或列表);
+  const 失敗紀錄列表 = [];
+
+  for (let 索引 = 0; 索引 < 資料網址列表.length; 索引 += 1) {
+    const 資料網址 = 資料網址列表[索引];
+    try {
+      return await 嘗試讀取使用者Json(資料網址);
+    } catch (錯誤) {
+      const 暫時性錯誤 = 是否暫時性使用者資料錯誤(錯誤);
+      失敗紀錄列表.push({
+        status: 錯誤?.status,
+        isNetworkError: 錯誤?.isNetworkError,
+        isParseError: 錯誤?.isParseError,
+      });
+
+      // users repo 的個別玩家 JSON 是可公開快取的衍生資料；raw.githubusercontent.com 可能短時間回 429。
+      // 只有暫時性錯誤才嘗試下一個靜態鏡像，404 仍代表這個玩家檔案真的不存在，避免把資料缺口誤蓋掉。
+      if (暫時性錯誤 && 索引 < 資料網址列表.length - 1) {
+        continue;
+      }
+
+      throw new Error(建立使用者Json錯誤訊息(錯誤訊息, 失敗紀錄列表));
+    }
+  }
+
+  throw new Error(建立使用者Json錯誤訊息(錯誤訊息, 失敗紀錄列表));
+}
+
+export async function 讀取使用者資料Json(相對路徑, 錯誤訊息 = "讀取個人成績單資料失敗") {
+  return 讀取使用者Json(建立使用者資料網址列表(相對路徑), 錯誤訊息);
 }
 
 function 複製資料(資料) {
@@ -347,7 +461,7 @@ async function 解析使用者隱藏差量(差量資料) {
   }
 
   const 公開底稿 = 差量資料.base_path
-    ? await 讀取使用者Json(建立使用者資料網址(差量資料.base_path), "找不到公開個人成績單底稿").catch(() => null)
+    ? await 讀取使用者資料Json(差量資料.base_path, "找不到公開個人成績單底稿").catch(() => null)
     : null;
   const 合併後 = {
     ...複製資料(公開底稿),
@@ -407,7 +521,7 @@ export async function 讀取使用者資料檔(角色名稱, 使用者索引列�
     throw new Error(`找不到「${查詢顯示名稱}」的個人成績單`);
   }
 
-  const 資料網址 = 索引條目?.file_path ? 建立使用者資料網址(索引條目.file_path) : 建立使用者預設資料網址(查詢名稱);
-  const 資料 = await 讀取使用者Json(資料網址, `找不到「${查詢顯示名稱 || 查詢名稱}」的個人成績單`);
+  const 資料網址列表 = 索引條目?.file_path ? 建立使用者資料網址列表(索引條目.file_path) : 建立使用者預設資料網址列表(查詢名稱);
+  const 資料 = await 讀取使用者Json(資料網址列表, `找不到「${查詢顯示名稱 || 查詢名稱}」的個人成績單`);
   return 解析使用者隱藏差量(資料);
 }

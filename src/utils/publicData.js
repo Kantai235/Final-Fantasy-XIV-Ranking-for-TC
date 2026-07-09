@@ -9,10 +9,38 @@ const 乾淨路由片段 = new Set(["stats", "user", "compare", "jobs", "activit
 
 const DEFAULT_USER_DATA_BASE_URL =
   "https://raw.githubusercontent.com/Kantai235/Final-Fantasy-XIV-Ranking-for-TC-Users/refs/heads/main/";
+const DEFAULT_USER_DATA_FALLBACK_BASE_URLS = [
+  "https://cdn.jsdelivr.net/gh/Kantai235/Final-Fantasy-XIV-Ranking-for-TC-Users@main/",
+];
 
-function 取得使用者資料基底() {
+function 解析基底列表(設定值) {
+  return String(設定值 || "")
+    .split(/[,\n]/)
+    .map((基底) => 基底.trim())
+    .filter(Boolean);
+}
+
+function 去重基底列表(基底列表) {
+  const 已收錄 = new Set();
+  const 結果 = [];
+
+  for (const 基底 of 基底列表) {
+    const 正規化基底 = 補結尾斜線(基底);
+    if (已收錄.has(正規化基底)) {
+      continue;
+    }
+    已收錄.add(正規化基底);
+    結果.push(正規化基底);
+  }
+
+  return 結果;
+}
+
+function 取得使用者資料基底列表() {
   const 自訂網址 = String(import.meta.env?.VITE_USER_DATA_BASE_URL || "").trim();
-  return 補結尾斜線(自訂網址 || DEFAULT_USER_DATA_BASE_URL);
+  const 自訂備援網址列表 = 解析基底列表(import.meta.env?.VITE_USER_DATA_FALLBACK_BASE_URLS);
+  const 預設備援網址列表 = 自訂網址 ? [] : DEFAULT_USER_DATA_FALLBACK_BASE_URLS;
+  return 去重基底列表([自訂網址 || DEFAULT_USER_DATA_BASE_URL, ...自訂備援網址列表, ...預設備援網址列表]);
 }
 
 function 取得使用者索引基底(預設基底) {
@@ -83,7 +111,8 @@ function 取得公開資料基底路徑() {
 
 const 公開資料基底路徑 = 取得公開資料基底路徑();
 const 使用者索引基底路徑 = 取得使用者索引基底(公開資料基底路徑);
-const 使用者資料基底路徑 = 取得使用者資料基底();
+const 使用者資料基底路徑列表 = 取得使用者資料基底列表();
+const 使用者資料基底路徑 = 使用者資料基底路徑列表[0] || 補結尾斜線(DEFAULT_USER_DATA_BASE_URL);
 
 export const 副本清單網址 = `${公開資料基底路徑}data/encounters.json`;
 export const 使用者索引網址 = `${使用者索引基底路徑}data/users/index.json`;
@@ -104,15 +133,28 @@ export function 建立公開資料網址(相對路徑) {
     .join("/")}`;
 }
 
-export function 建立使用者資料網址(相對路徑) {
-  return `${使用者資料基底路徑}${String(相對路徑)
+function 編碼資料相對路徑(相對路徑) {
+  return String(相對路徑)
     .split("/")
     .map((片段) => encodeURIComponent(片段))
-    .join("/")}`;
+    .join("/");
+}
+
+export function 建立使用者資料網址(相對路徑) {
+  return `${使用者資料基底路徑}${編碼資料相對路徑(相對路徑)}`;
+}
+
+export function 建立使用者資料網址列表(相對路徑) {
+  const 已編碼路徑 = 編碼資料相對路徑(相對路徑);
+  return 使用者資料基底路徑列表.map((基底路徑) => `${基底路徑}${已編碼路徑}`);
 }
 
 export function 建立使用者預設資料網址(角色名稱) {
   return 建立使用者資料網址(`data/users/${角色名稱}.json`);
+}
+
+export function 建立使用者預設資料網址列表(角色名稱) {
+  return 建立使用者資料網址列表(`data/users/${角色名稱}.json`);
 }
 
 export function 建立排行榜表格資料網址(副本鍵值) {
