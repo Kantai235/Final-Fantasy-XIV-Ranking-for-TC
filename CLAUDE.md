@@ -154,3 +154,4 @@
 2. `scripts/build_report_status_index.mjs` 由 `public/data/ranking-details/*.json` 產生 report code / fight / 副本摘要索引，使用欄位陣列格式控制 payload 體積。這份索引是衍生快取，不是判定 report 是否應入庫的權威來源；權威來源仍是 `data/rankings/*.json` 與分片。
 3. `scripts/build_public_status_data.mjs` 只把 `data/update_status.json` 與 `public/data/global_stats.json` 中可公開的更新摘要輸出到 `public/data/update_status.json`，供前端推估每 30 分鐘排程、24 小時近期重查、24-72 小時延遲掃描與歷史補查等待時間。
 4. 若使用者貼上的 report 完全不在公開或 hidden delta 索引中，前端只能回報「尚未在公開索引找到」並列出排程與常見原因；不能宣稱已即時確認 private、deleted、沒有繁中服玩家或沒有通關，這類精確判斷仍只能由資料管線下一輪掃描或站務端受保護診斷工具完成。
+5. 待收錄名單只以 report code 為單位；即使使用者貼上的 FFLogs 網址帶有 `fight` 參數，也不得把 queue 語意改成指定 fight 補抓。workflow 讀取待收錄名單後必須完整重掃整份 report，讓同一 report 內所有支援副本通關戰鬥都能重新判定與分派。

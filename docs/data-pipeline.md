@@ -29,9 +29,9 @@
 
    「查詢公開狀態」按鈕會使用 `apps-script/fflogs-report-status/` 的 Apps Script Web App。它只以受保護的 FFLogs OAuth client 查詢單一 report 的 `visibility` 與 `archiveStatus`，並回傳公開可讀、不可存取或暫時性錯誤；它不判斷 report 是否符合排行榜收錄條件，也不寫入 `data/rankings/`、`data/state.json` 或公開 JSON。
 
-   若 report 已 Public 且 FFLogs API 可讀，使用者可送出「加入待收錄名單」或「要求重新排查」。Apps Script 會把 report code 寫入 Google Sheet `pending` 工作表；正式 workflow 會在 `fetch_fflogs.py` 前執行 `scripts/read_fflogs_refresh_queue.mjs`，透過 Google Sheets API 讀取 `status=queued|pending|retry` 的列，合併成 `FFLOGS_RETRY_REPORT_CODES`。這只提高下一輪候選優先度；是否真的收錄仍由 `fetch_fflogs.py` 檢查繁中服玩家、支援副本與通關 fight。
+   若 report 已 Public 且 FFLogs API 可讀，使用者可送出「加入待收錄名單」或「要求重新排查」。Apps Script 會把 report code 寫入 Google Sheet `pending` 工作表；即使使用者貼上的網址含有 `fight` 參數，待收錄名單也只以 report code 為單位。正式 workflow 會在 `fetch_fflogs.py` 前執行 `scripts/read_fflogs_refresh_queue.mjs`，透過 Google Sheets API 讀取 `status=queued|pending|retry` 的列，合併成 `FFLOGS_RETRY_REPORT_CODES`。這會讓下一輪候選穿透已處理快取並完整重掃整份 report；是否真的收錄仍由 `fetch_fflogs.py` 檢查繁中服玩家、支援副本與通關 fight。
 
-   `npm run build:user-data` 重新產生 `public/data/report_status_index.json` 且資料 commit/push 成功後，workflow 會執行 `scripts/complete_fflogs_refresh_queue.mjs`。此腳本不刪除 Sheet 列，而是把公開索引已命中的待收錄列標記為 `status=done`；若使用者原本指定 fight，必須該 fight 也出現在公開索引中才會標記完成，避免「同一 report 的其他場次已收錄」誤清掉仍缺漏的指定場次。
+   `npm run build:user-data` 重新產生 `public/data/report_status_index.json` 且資料 commit/push 成功後，workflow 會執行 `scripts/complete_fflogs_refresh_queue.mjs`。此腳本不刪除 Sheet 列，而是以 report code 為單位，把公開索引已命中的待收錄列標記為 `status=done`；它不再檢查或等待指定 fight，避免把待收錄名單誤用成單場補抓。
 
 3. 驗證資料完整性：
 

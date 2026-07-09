@@ -362,7 +362,7 @@ const 待收錄狀態顯示 = computed(() => {
     status: success ? "public" : "error",
     badge: success ? "已排入" : "未排入",
     title: success ? "已加入待收錄名單" : "未加入待收錄名單",
-    description: payload.message || (success ? "後續 workflow 執行時會嘗試重查這份 report。" : "請確認 report 是否已設為公開。"),
+    description: payload.message || (success ? "後續 workflow 執行時會完整重查整份 report。" : "請確認 report 是否已設為公開。"),
   };
 });
 
@@ -425,7 +425,6 @@ async function 送出待收錄需求() {
       reportCode,
       requestType: 待收錄請求類型.value,
       siteStatus: 結果狀態.value,
-      fightText: 解析結果.value.fight_text,
     });
   } catch (error) {
     待收錄錯誤.value = error instanceof Error ? error.message : "待收錄需求送出失敗。";

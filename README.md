@@ -64,7 +64,7 @@ npm run dev
 - 顯示 DPS、rDPS、aDPS、Active、GCD 覆蓋率參考值、通關時間與紀錄時間。
 - 個人成績單可查看各副本最佳紀錄、歷史紀錄、同職分位與常同場隊友；同職分位可由使用者端偏好切換顯示為「前 N%」或整數 PR 值，PR 模式會讓代表列、分位亮點與歷史列優先依 PR 值排序。
 - 玩家比較、隊伍榜、伺服器對比、職業分析與近期動態皆由靜態資料產生；近期動態也提供每日 Logs 曲線、零式、極、幻、滅、絕分類占比，以及台服與國際服改版時間標註，桌面預設近 90 天、手機預設近 30 天，可切換副本、日期範圍與 Logs、通關場次等統計口徑。
-- 常見問題頁整理 Telegram 群組常見回報，包含更新時間、過版紀錄、GCD 覆蓋率、同名角色與公開狀態；其中的 FFLogs 檢查工具可貼上 report 網址或 report code，比對 `public/data/report_status_index.json` 與 `public/data/update_status.json`，判斷目前公開資料是否已收錄、指定 fight 是否命中，以及剛上傳或歷史補查紀錄大約會落在哪個排程窗；「查詢公開狀態」按鈕會透過 Apps Script Web App 確認 FFLogs API 目前是否可讀，Public 且可讀時可寫入 Google Sheet 待收錄名單，下一輪 workflow 會以 `retry_report_codes` 嘗試重查，收錄成功並提交資料後會把 Sheet 對應列標記為 `done`。
+- 常見問題頁整理 Telegram 群組常見回報，包含更新時間、過版紀錄、GCD 覆蓋率、同名角色與公開狀態；其中的 FFLogs 檢查工具可貼上 report 網址或 report code，比對 `public/data/report_status_index.json` 與 `public/data/update_status.json`，判斷目前公開資料是否已收錄、指定 fight 是否命中，以及剛上傳或歷史補查紀錄大約會落在哪個排程窗；「查詢公開狀態」按鈕會透過 Apps Script Web App 確認 FFLogs API 目前是否可讀，Public 且可讀時可寫入 Google Sheet 待收錄名單。待收錄名單只保存 report code，不保留指定 fight；下一輪 workflow 會以 `retry_report_codes` 完整重掃整份 report，讓同一 report 內所有支援副本通關戰鬥都有機會被納入。
 - Honey B. Lovely 粉絲榜以獨立趣味資料呈現 M2S `心醉魂迷：奴役` 衍生紀錄；本期榜單、吃心心數、戰鬥次數與報告只計近 7 天，最新收錄紀錄顯示 5 筆、最新加入粉絲顯示 16 筆。頁面可用「超高難度」開關切換為自台灣時間 2026-05-30 00:00:00 起算的通關團隊榜，依單場全隊奴役總次數排序，來源歷史紀錄仍保留用於連續入榜與追溯統計，不混入正式排行榜。
 - 支援深色 / 亮色主題，並依目前頁面的職業或職能篩選切換主色調。
 - 支援全域公告通知，公告內容由 `public/data/announcements.json` 隨 commit 更新，使用者關閉後不再主動顯示。

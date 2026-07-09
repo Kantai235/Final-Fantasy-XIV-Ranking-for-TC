@@ -29,15 +29,6 @@ function normalizeReportCode(value) {
   return String(value || "").trim().replace(/^a:/i, "");
 }
 
-function parsePositiveInteger(value) {
-  const text = String(value || "").trim();
-  if (!/^\d+$/.test(text)) {
-    return null;
-  }
-  const number = Number(text);
-  return Number.isSafeInteger(number) && number > 0 ? number : null;
-}
-
 function columnNameFromIndex(index) {
   let value = index + 1;
   let name = "";
@@ -84,49 +75,30 @@ function rowToObject(row, columns) {
   return Object.fromEntries((columns || []).map((column, index) => [column, row[index]]));
 }
 
-function addReportStatusIndex(index, reportCodeToFights) {
+function addReportStatusIndex(index, indexedReportCodes) {
   const reportColumns = index?.report_columns || [];
-  const fightColumns = index?.fight_columns || [];
   for (const row of index?.reports || []) {
     const report = rowToObject(row, reportColumns);
     const reportCode = normalizeReportCode(report.report_code);
     if (!REPORT_CODE_PATTERN.test(reportCode)) {
       continue;
     }
-    if (!reportCodeToFights.has(reportCode)) {
-      reportCodeToFights.set(reportCode, new Set());
-    }
-    const fightIds = reportCodeToFights.get(reportCode);
-    for (const fightRow of report.fights || []) {
-      const fight = rowToObject(fightRow, fightColumns);
-      const fightId = Number(fight.fight_id);
-      if (Number.isSafeInteger(fightId) && fightId > 0) {
-        fightIds.add(fightId);
-      }
-    }
+    indexedReportCodes.add(reportCode);
   }
 }
 
-async function buildIndexedReportMap({ statusIndexPath, hiddenStatusIndexPath, includeHidden }) {
-  const reportCodeToFights = new Map();
-  addReportStatusIndex(await readJsonIfExists(statusIndexPath), reportCodeToFights);
+async function buildIndexedReportSet({ statusIndexPath, hiddenStatusIndexPath, includeHidden }) {
+  const indexedReportCodes = new Set();
+  addReportStatusIndex(await readJsonIfExists(statusIndexPath), indexedReportCodes);
   if (includeHidden) {
-    addReportStatusIndex(await readJsonIfExists(hiddenStatusIndexPath), reportCodeToFights);
+    addReportStatusIndex(await readJsonIfExists(hiddenStatusIndexPath), indexedReportCodes);
   }
-  return reportCodeToFights;
+  return indexedReportCodes;
 }
 
-function isRowIndexed(row, reportCodeToFights) {
+function isRowIndexed(row, indexedReportCodes) {
   const reportCode = normalizeReportCode(row.report_code);
-  if (!REPORT_CODE_PATTERN.test(reportCode) || !reportCodeToFights.has(reportCode)) {
-    return false;
-  }
-
-  const requestedFightId = parsePositiveInteger(row.fight_text);
-  if (!requestedFightId) {
-    return true;
-  }
-  return reportCodeToFights.get(reportCode).has(requestedFightId);
+  return REPORT_CODE_PATTERN.test(reportCode) && indexedReportCodes.has(reportCode);
 }
 
 function buildUpdateRanges({ headers, rows, sheetName, nowIso, maxRows }) {
@@ -146,9 +118,9 @@ function buildUpdateRanges({ headers, rows, sheetName, nowIso, maxRows }) {
     const statusCell = `${columnNameFromIndex(statusIndex)}${rowNumber}`;
     const updatedAtCell = `${columnNameFromIndex(updatedAtIndex)}${rowNumber}`;
     const lastMessageCell = `${columnNameFromIndex(lastMessageIndex)}${rowNumber}`;
-    const hasRequestedFight = Boolean(parsePositiveInteger(row.fight_text));
-    const message = hasRequestedFight
-      ? "workflow 已確認公開索引收錄指定 fight。"
+    const requestType = normalizeHeader(row.request_type);
+    const message = requestType === "retry_existing"
+      ? "workflow 已送出整份 report 重掃，公開索引已有此 report。"
       : "workflow 已確認公開索引收錄 report。";
 
     return [
@@ -217,7 +189,7 @@ async function main() {
   const values = await readSheetValues({ spreadsheetId, sheetName, columns, accessToken });
   const { headers, rows } = rowsToObjects(values);
   rowsRead = rows.length;
-  const indexedReports = await buildIndexedReportMap({ statusIndexPath, hiddenStatusIndexPath, includeHidden });
+  const indexedReports = await buildIndexedReportSet({ statusIndexPath, hiddenStatusIndexPath, includeHidden });
   const completed = rows.filter((row) => {
     const status = normalizeHeader(row.status || "queued");
     return QUEUED_STATUSES.has(status) && isRowIndexed(row, indexedReports);

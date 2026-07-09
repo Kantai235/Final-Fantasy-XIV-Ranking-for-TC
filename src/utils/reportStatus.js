@@ -340,7 +340,7 @@ export function 查詢Fflogs即時狀態(reportCode, options = {}) {
   return 執行FflogsAppsScriptJsonp({ report: code }, options);
 }
 
-export function 送出Fflogs待收錄({ reportCode, requestType, siteStatus, fightText } = {}, options = {}) {
+export function 送出Fflogs待收錄({ reportCode, requestType, siteStatus } = {}, options = {}) {
   const code = 清理ReportCode(reportCode);
   if (!code) {
     return Promise.reject(new Error("請先輸入有效的 FFLogs report code。"));
@@ -350,7 +350,7 @@ export function 送出Fflogs待收錄({ reportCode, requestType, siteStatus, fig
     report: code,
     request_type: requestType || "queue_missing",
     site_status: siteStatus || "missing",
-    fight: fightText || "",
+    fight: "",
     source: "faq",
   }, options);
 }
