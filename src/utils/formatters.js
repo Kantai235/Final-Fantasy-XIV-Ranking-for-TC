@@ -30,7 +30,7 @@ const 台灣時刻格式 = new Intl.DateTimeFormat("zh-TW", {
 
 export const 分位顯示模式前段 = "topPercent";
 export const 分位顯示模式PR = "pr";
-export const 預設分位顯示模式 = 分位顯示模式前段;
+export const 預設分位顯示模式 = 分位顯示模式PR;
 
 export function 轉為數字(值) {
   const 數值 = Number(值);
@@ -97,7 +97,11 @@ function 轉為分位數字(值) {
 }
 
 export function 正規化分位顯示模式(模式) {
-  return 模式 === 分位顯示模式PR ? 分位顯示模式PR : 預設分位顯示模式;
+  if (模式 === 分位顯示模式前段 || 模式 === 分位顯示模式PR) {
+    return 模式;
+  }
+
+  return 預設分位顯示模式;
 }
 
 export function 計算前段百分位(排名, 總數) {

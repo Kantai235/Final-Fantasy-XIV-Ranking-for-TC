@@ -17,9 +17,11 @@ import { 建立職業佔比分組, 取得統計範圍計數 } from "../src/utils
 import {
   分位顯示模式PR,
   分位顯示模式前段,
+  預設分位顯示模式,
   取得PR色彩類別,
   格式化同職分位,
   格式化排名分位,
+  正規化分位顯示模式,
 } from "../src/utils/formatters.js";
 import {
   個人成績代表是否較佳,
@@ -77,6 +79,9 @@ function validatePercentileDisplayFormatting() {
     score_percentile: 95.4,
   };
 
+  assert(預設分位顯示模式 === 分位顯示模式PR, "尚未設定分位偏好時應預設使用 PR 模式。");
+  assert(正規化分位顯示模式(null) === 分位顯示模式PR, "缺少已儲存偏好時應回退至 PR 模式。");
+  assert(正規化分位顯示模式(分位顯示模式前段) === 分位顯示模式前段, "既有前 N% 偏好應繼續保留。");
   assert(格式化同職分位(performance, 分位顯示模式前段) === "前 6.00%", "前 N% 模式應顯示 top_percent 到小數兩位。");
   assert(格式化同職分位(performance, 分位顯示模式PR) === "PR 95", "PR 模式應四捨五入為整數。");
   assert(格式化排名分位(1, 1, 分位顯示模式PR) === "PR 100", "排名分位 PR 應支援單筆樣本。");
