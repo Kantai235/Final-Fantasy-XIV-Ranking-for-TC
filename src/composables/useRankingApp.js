@@ -2397,16 +2397,6 @@ const 近期刷新紀錄列表 = computed(() => {
   return Array.isArray(近期動態來源.value.personal_bests) ? 近期動態來源.value.personal_bests.slice(0, 12) : [];
 });
 
-const 近期刷新版本說明文字 = computed(() => {
-  const 過版成績 = 近期刷新紀錄列表.value.find((成績) => 成績?.is_obsolete_record);
-  if (!過版成績) {
-    return "";
-  }
-
-  const 說明 = 版本紀錄說明文字(過版成績);
-  return 說明 ? `標示為過版紀錄的刷新項目不參與同職分位。${說明}` : "";
-});
-
 const 近期新角色列表 = computed(() => {
   return Array.isArray(近期動態來源.value.new_characters) ? 近期動態來源.value.new_characters.slice(0, 12) : [];
 });
@@ -5558,7 +5548,6 @@ onUnmounted(() => {
     清除近期動態日誌提示,
     近期動態最新成績列表,
     近期刷新紀錄列表,
-    近期刷新版本說明文字,
     近期新角色列表,
     近期伺服器活躍列表,
     近期副本活躍列表,
