@@ -48,12 +48,12 @@ function setupSecretsOnce() {
 | `site_status` | 前端當下判斷的站內狀態，例如 `missing`、`found`、`fight_missing`。 |
 | `fight_text` | 使用者網址指定的 fight。 |
 | `fflogs_access` / `visibility` / `archive_accessible` | Apps Script 送出時重新確認的 FFLogs 狀態。 |
-| `status` | workflow 會讀取 `queued`、`pending` 或 `retry`；已收錄後會標記為 `done`。 |
+| `status` | workflow 會讀取 `queued`、`pending` 或 `retry`；收尾後依結果標記為 `done`、`not_eligible_no_clear` 或 `not_eligible_no_traditional_chinese_players`。 |
 | `request_count` | 同一 report 重複送出的次數。 |
 | `last_message` | 給站務看的最近處理摘要。 |
 | `source` | 來源，目前主站使用 `faq`。 |
 
-若不想讓某筆繼續被 workflow 讀取，可手動把 `status` 改成 `done`、`ignored` 或其它非 `queued/pending/retry` 的值。正式 workflow 也會在公開索引確認收錄後自動把對應列標記為 `done`，不會刪除列。
+若不想讓某筆繼續被 workflow 讀取，可手動把 `status` 改成 `done`、`ignored` 或其它非 `queued/pending/retry` 的值。正式 workflow 也會在收尾時把已收錄、無通關或無繁中服玩家的列改為對應終止狀態，不會刪除列。
 
 ## 部署 Web App
 
@@ -135,7 +135,7 @@ VITE_FFLOGS_REPORT_STATUS_WEB_APP_URL=https://script.google.com/macros/s/你的�
 
 ## Workflow 讀取待收錄名單
 
-GitHub Actions 使用 `scripts/read_fflogs_refresh_queue.mjs` 透過 Google Sheets API 讀取 `pending` 工作表，將符合條件的 report code 寫入 `FFLOGS_RETRY_REPORT_CODES`。資料成功收錄並提交後，workflow 會執行 `scripts/complete_fflogs_refresh_queue.mjs`，依重新產生的 `public/data/report_status_index.json` 將已收錄列標記為 `done`。需要設定：
+GitHub Actions 使用 `scripts/read_fflogs_refresh_queue.mjs` 透過 Google Sheets API 讀取 `pending` 工作表，將符合條件的 report code 寫入 `FFLOGS_RETRY_REPORT_CODES`。workflow 收尾時會掃描公開狀態索引、排行榜 `source_reports` 與公開 report 分片：已收錄會標記為 `done`；已確認沒有支援副本通關會標記為 `not_eligible_no_clear`；未發現繁中服玩家會標記為 `not_eligible_no_traditional_chinese_players`。後兩者會保留原因文字且不會再次送入強制重掃；資料管線既有的近期 no-clear 重試規則不受影響。需要設定：
 
 - Repository Variable `FFLOGS_REFRESH_QUEUE_SPREADSHEET_ID`
 - Repository Variable `FFLOGS_REFRESH_QUEUE_SHEET_NAME`，預設 `pending`
@@ -144,4 +144,4 @@ GitHub Actions 使用 `scripts/read_fflogs_refresh_queue.mjs` 透過 Google Shee
 - Repository Variable `FFLOGS_REFRESH_QUEUE_COMPLETE_INCLUDE_HIDDEN`，預設 `false`
 - Repository Secret `GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON`，或 `GOOGLE_SHEETS_CLIENT_EMAIL` + `GOOGLE_SHEETS_PRIVATE_KEY`
 
-Service account 必須被分享為該 Google Sheet 的編輯者，因為 workflow 需要把已收錄列標記為 `done`。前端不會接觸 service account 或 Sheet API 憑證。
+Service account 必須被分享為該 Google Sheet 的編輯者，因為 workflow 需要回寫已收錄或不符合收錄條件的終止狀態。前端不會接觸 service account 或 Sheet API 憑證。

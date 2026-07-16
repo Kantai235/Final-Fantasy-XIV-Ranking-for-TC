@@ -328,7 +328,7 @@ jobs:
           echo "Unable to push ranking data after syncing remote branch."
           exit 1
 
-      - name: 標記已收錄 FFLogs 待收錄名單
+      - name: 更新 FFLogs 待收錄名單結果
         continue-on-error: true
         env:
           GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON }}
