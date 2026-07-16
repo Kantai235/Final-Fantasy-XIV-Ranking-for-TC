@@ -25,6 +25,26 @@ const QUEUED_STATUSES = new Set(["queued", "pending", "retry"]);
 const STATE_STATUS_NO_CLEAR = "skipped_no_clear";
 const STATE_STATUS_NO_TRADITIONAL_CHINESE_PLAYERS = "skipped_no_traditional_chinese_players";
 
+// Apps Script 與 workflow 都以這組欄位順序存取同一份 Sheet。工作表可能曾被
+// 手動編修；若標題被覆蓋為重複欄位，依欄位名稱組裝的資料會把值寫進錯誤語意。
+// 因此 workflow 收尾時也會校正 A:N 的既有 schema，但不碰任何歷史資料列。
+export const QUEUE_HEADERS = Object.freeze([
+  "submitted_at_iso",
+  "updated_at_iso",
+  "report_code",
+  "report_url",
+  "requested_action",
+  "site_status",
+  "fight_text",
+  "fflogs_access",
+  "visibility",
+  "archive_accessible",
+  "status",
+  "request_count",
+  "last_message",
+  "source",
+]);
+
 const QUEUE_OUTCOME = {
   COLLECTED: "collected",
   NO_CLEAR: "no_clear",
@@ -50,12 +70,14 @@ function columnNameFromIndex(index) {
   return name;
 }
 
-function rowsToObjects(values) {
-  if (!Array.isArray(values) || values.length < 2) {
+export function rowsToObjects(values, { headersOverride } = {}) {
+  if (!Array.isArray(values) || values.length === 0) {
     return { headers: [], rows: [] };
   }
 
-  const headers = values[0].map(normalizeHeader);
+  const headers = Array.isArray(headersOverride)
+    ? headersOverride.map(normalizeHeader)
+    : values[0].map(normalizeHeader);
   const rows = values.slice(1).map((row, index) => {
     const item = {
       _row_number: index + 2,
@@ -69,6 +91,26 @@ function rowsToObjects(values) {
     return item;
   });
   return { headers, rows };
+}
+
+export function canonicalizeQueueHeaders(headers) {
+  const normalizedHeaders = Array.isArray(headers) ? headers.map(normalizeHeader) : [];
+  return Array.from(
+    { length: Math.max(normalizedHeaders.length, QUEUE_HEADERS.length) },
+    (_value, index) => QUEUE_HEADERS[index] || normalizedHeaders[index] || "",
+  );
+}
+
+export function buildHeaderRepairRanges({ headers, sheetName }) {
+  return QUEUE_HEADERS.flatMap((expectedHeader, index) => {
+    if (normalizeHeader(headers?.[index]) === expectedHeader) {
+      return [];
+    }
+    return [{
+      range: quoteSheetRange(sheetName, `${columnNameFromIndex(index)}1`),
+      values: [[expectedHeader]],
+    }];
+  });
 }
 
 async function readJsonIfExists(filePath) {
@@ -288,7 +330,10 @@ function queueOutcomeStatus(outcome) {
 
 function queueOutcomeMessage(row, outcome) {
   if (outcome === QUEUE_OUTCOME.COLLECTED) {
-    return normalizeHeader(row.request_type) === "retry_existing"
+    // 現行 Apps Script 欄位是 requested_action；保留 request_type fallback，讓舊的
+    // 手動匯入列仍可呈現正確的重掃結果，而不是一律退回首次收錄訊息。
+    const requestedAction = normalizeHeader(row.requested_action || row.request_type);
+    return requestedAction === "retry_existing"
       ? "workflow 已送出整份 report 重掃，公開資料已收錄此 report。"
       : "workflow 已確認公開資料收錄 report。";
   }
@@ -299,6 +344,25 @@ function queueOutcomeMessage(row, outcome) {
     return "workflow 已完成排查：未發現繁中服玩家，因此不符合收錄條件。";
   }
   return "";
+}
+
+function queueOutcomeFromTerminalStatus(status) {
+  switch (normalizeHeader(status)) {
+    case "done":
+      return QUEUE_OUTCOME.COLLECTED;
+    case "not_eligible_no_clear":
+      return QUEUE_OUTCOME.NO_CLEAR;
+    case "not_eligible_no_traditional_chinese_players":
+      return QUEUE_OUTCOME.NO_TRADITIONAL_CHINESE_PLAYERS;
+    default:
+      return null;
+  }
+}
+
+function hasMalformedLastMessage(row) {
+  // last_message 為人工可讀的處理摘要，不應是純數字。這也能修正舊版重複
+  // request_count 標題造成的歷史值，例如 "1"；不改寫非空的人工備註。
+  return /^\d+$/.test(String(row.last_message || "").trim());
 }
 
 export function buildUpdateRanges({ headers, rows, sheetName, nowIso, maxRows, indexedReportCodes, statusesByCode }) {
@@ -340,7 +404,37 @@ export function buildUpdateRanges({ headers, rows, sheetName, nowIso, maxRows, i
   });
 }
 
-function writeStepSummary({ skippedReason, rowsRead, outcomeCounts, includeHidden }) {
+export function buildMalformedMessageRepairRanges({
+  headers,
+  rows,
+  sheetName,
+  indexedReportCodes,
+  statusesByCode,
+  updatedRowNumbers = new Set(),
+}) {
+  const lastMessageIndex = headers.indexOf("last_message");
+  if (lastMessageIndex < 0) {
+    throw new Error("Google Sheet 待收錄名單缺少 last_message 欄位。");
+  }
+
+  return rows.flatMap((row) => {
+    if (updatedRowNumbers.has(row._row_number) || !hasMalformedLastMessage(row)) {
+      return [];
+    }
+    const outcome = queueOutcomeFromTerminalStatus(row.status)
+      || resolveQueueOutcome(row, indexedReportCodes, statusesByCode);
+    if (!outcome) {
+      return [];
+    }
+    const lastMessageCell = `${columnNameFromIndex(lastMessageIndex)}${row._row_number}`;
+    return [{
+      range: quoteSheetRange(sheetName, lastMessageCell),
+      values: [[queueOutcomeMessage(row, outcome)]],
+    }];
+  });
+}
+
+function writeStepSummary({ skippedReason, rowsRead, outcomeCounts, includeHidden, repairedHeaderCount = 0, repairedMessageCount = 0 }) {
   const summaryPath = process.env.GITHUB_STEP_SUMMARY;
   if (!summaryPath) {
     return;
@@ -354,6 +448,8 @@ function writeStepSummary({ skippedReason, rowsRead, outcomeCounts, includeHidde
     `- 已收錄完成列數：${outcomeCounts[QUEUE_OUTCOME.COLLECTED] || 0}`,
     `- 無通關終止列數：${outcomeCounts[QUEUE_OUTCOME.NO_CLEAR] || 0}`,
     `- 無繁中服玩家終止列數：${outcomeCounts[QUEUE_OUTCOME.NO_TRADITIONAL_CHINESE_PLAYERS] || 0}`,
+    `- 修正欄位標題數：${repairedHeaderCount}`,
+    `- 修正錯置訊息列數：${repairedMessageCount}`,
     `- 是否納入 hidden delta：${includeHidden ? "是" : "否"}`,
   ];
   appendFileSync(summaryPath, `${lines.join("\n")}\n`, "utf8");
@@ -391,7 +487,9 @@ async function main() {
 
   const accessToken = await requestAccessToken(serviceAccount, SHEETS_WRITE_SCOPE);
   const values = await readSheetValues({ spreadsheetId, sheetName, columns, accessToken });
-  const { headers, rows } = rowsToObjects(values);
+  const { headers: rawHeaders } = rowsToObjects(values);
+  const headers = canonicalizeQueueHeaders(rawHeaders);
+  const { rows } = rowsToObjects(values, { headersOverride: headers });
   rowsRead = rows.length;
   const indexedReports = await buildIndexedReportSet({
     statusIndexPath,
@@ -410,7 +508,7 @@ async function main() {
   const rowsToUpdate = queuedRows
     .filter((row) => resolveQueueOutcome(row, indexedReports, statusesByCode))
     .slice(0, maxRows);
-  const updates = buildUpdateRanges({
+  const outcomeUpdates = buildUpdateRanges({
     headers,
     rows: rowsToUpdate,
     sheetName,
@@ -419,6 +517,17 @@ async function main() {
     indexedReportCodes: indexedReports,
     statusesByCode,
   });
+  const updatedRowNumbers = new Set(rowsToUpdate.map((row) => row._row_number));
+  const headerUpdates = buildHeaderRepairRanges({ headers: rawHeaders, sheetName });
+  const malformedMessageUpdates = buildMalformedMessageRepairRanges({
+    headers,
+    rows,
+    sheetName,
+    indexedReportCodes: indexedReports,
+    statusesByCode,
+    updatedRowNumbers,
+  });
+  const updates = [...headerUpdates, ...outcomeUpdates, ...malformedMessageUpdates];
 
   if (updates.length > 0) {
     await batchUpdateSheetValues({ spreadsheetId, accessToken, data: updates });
@@ -428,12 +537,19 @@ async function main() {
     const outcome = resolveQueueOutcome(row, indexedReports, statusesByCode);
     outcomeCounts[outcome] = (outcomeCounts[outcome] || 0) + 1;
   }
-  writeStepSummary({ rowsRead, outcomeCounts, includeHidden });
+  writeStepSummary({
+    rowsRead,
+    outcomeCounts,
+    includeHidden,
+    repairedHeaderCount: headerUpdates.length,
+    repairedMessageCount: malformedMessageUpdates.length,
+  });
   console.log(
     "已更新 FFLogs 待收錄列："
       + `已收錄 ${outcomeCounts[QUEUE_OUTCOME.COLLECTED] || 0}、`
       + `無通關 ${outcomeCounts[QUEUE_OUTCOME.NO_CLEAR] || 0}、`
-      + `無繁中服玩家 ${outcomeCounts[QUEUE_OUTCOME.NO_TRADITIONAL_CHINESE_PLAYERS] || 0}`,
+      + `無繁中服玩家 ${outcomeCounts[QUEUE_OUTCOME.NO_TRADITIONAL_CHINESE_PLAYERS] || 0}、`
+      + `修正欄位 ${headerUpdates.length}、修正訊息 ${malformedMessageUpdates.length}`,
   );
 }
 

@@ -299,8 +299,7 @@ function upsertQueueRow_(entry) {
 }
 
 function ensureQueueHeader_(sheet) {
-  const lastColumn = Math.max(sheet.getLastColumn(), QUEUE_HEADERS.length);
-  const headerValues = sheet.getRange(1, 1, 1, lastColumn).getValues()[0];
+  const headerValues = sheet.getRange(1, 1, 1, QUEUE_HEADERS.length).getValues()[0];
   const hasAnyHeader = headerValues.some((value) => String(value || "").trim());
   if (!hasAnyHeader) {
     sheet.getRange(1, 1, 1, QUEUE_HEADERS.length).setValues([QUEUE_HEADERS]);
@@ -308,11 +307,15 @@ function ensureQueueHeader_(sheet) {
     return;
   }
 
-  const existingHeaders = headerValues.map((value) => String(value || "").trim()).filter(Boolean);
-  const missingHeaders = QUEUE_HEADERS.filter((header) => existingHeaders.indexOf(header) < 0);
-  if (missingHeaders.length > 0) {
-    sheet.getRange(1, existingHeaders.length + 1, 1, missingHeaders.length).setValues([missingHeaders]);
+  const normalizedHeaders = headerValues.map((value) => String(value || "").trim());
+  const hasExpectedSchema = QUEUE_HEADERS.every((header, index) => normalizedHeaders[index] === header);
+  if (!hasExpectedSchema) {
+    // 僅回復標題列的 A:N 固定 schema，絕不改寫既有 report 資料。舊版只把缺少
+    // 欄位加在尾端，若有人把 last_message 改成第二個 request_count，後續寫入便會
+    // 把計數值放進訊息欄；以固定位置回復才能保留每列既有欄位語意。
+    sheet.getRange(1, 1, 1, QUEUE_HEADERS.length).setValues([QUEUE_HEADERS]);
   }
+  sheet.setFrozenRows(1);
 }
 
 function buildQueueRowValues_(headers, entry, nowIso, existingRow) {

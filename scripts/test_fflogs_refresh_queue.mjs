@@ -3,9 +3,12 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import {
+  buildHeaderRepairRanges,
   buildIndexedReportSet,
+  buildMalformedMessageRepairRanges,
   buildReportStatusesByCode,
   buildUpdateRanges,
+  canonicalizeQueueHeaders,
 } from "./complete_fflogs_refresh_queue.mjs";
 
 const TEMP_PREFIX = "fflogs-refresh-queue-";
@@ -89,6 +92,64 @@ async function main() {
     assert.match(updateValue(updates, "E4"), /未發現繁中服玩家/);
     assert.equal(updateValue(updates, "C5"), undefined, "尚無終局結果的列必須保留 queued/pending/retry");
     assert.equal(updates.length, 9, "三筆終局結果各應更新 status、時間與訊息");
+
+    const malformedHeaders = [
+      "submitted_at_iso",
+      "updated_at_iso",
+      "report_code",
+      "report_url",
+      "requested_action",
+      "site_status",
+      "fight_text",
+      "fflogs_access",
+      "visibility",
+      "archive_accessible",
+      "status",
+      "request_count",
+      "request_count",
+      "source",
+    ];
+    const repairedHeaders = canonicalizeQueueHeaders(malformedHeaders);
+    const headerUpdates = buildHeaderRepairRanges({ headers: malformedHeaders, sheetName: SHEET_NAME });
+    assert.equal(repairedHeaders[12], "last_message", "重複 request_count 必須回復為 last_message");
+    assert.equal(updateValue(headerUpdates, "M1"), "last_message", "workflow 必須修復錯置的訊息欄標題");
+    assert.equal(headerUpdates.length, 1, "正確 schema 僅應修復錯置欄位");
+
+    const messageUpdates = buildMalformedMessageRepairRanges({
+      headers: repairedHeaders,
+      rows: [
+        {
+          _row_number: 6,
+          report_code: "ShardOnly123",
+          requested_action: "queue_missing",
+          status: "done",
+          request_count: "1",
+          last_message: "1",
+        },
+        {
+          _row_number: 7,
+          report_code: "ShardOnly123",
+          requested_action: "retry_existing",
+          status: "done",
+          request_count: "1",
+          last_message: "1",
+        },
+        {
+          _row_number: 8,
+          report_code: "ShardOnly123",
+          requested_action: "queue_missing",
+          status: "done",
+          request_count: "1",
+          last_message: "站務保留訊息",
+        },
+      ],
+      sheetName: SHEET_NAME,
+      indexedReportCodes,
+      statusesByCode,
+    });
+    assert.equal(updateValue(messageUpdates, "M6"), "workflow 已確認公開資料收錄 report。");
+    assert.equal(updateValue(messageUpdates, "M7"), "workflow 已送出整份 report 重掃，公開資料已收錄此 report。");
+    assert.equal(updateValue(messageUpdates, "M8"), undefined, "非數字的既有訊息不得被覆寫");
 
     console.log("FFLogs 待收錄名單收尾測試通過。");
   } finally {

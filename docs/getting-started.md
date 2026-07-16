@@ -91,7 +91,7 @@ FFLOGS_REFRESH_QUEUE_COMPLETE_INCLUDE_HIDDEN=false
 GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON={"client_email":"...","private_key":"-----BEGIN PRIVATE KEY-----\\n...\\n-----END PRIVATE KEY-----\\n"}
 ```
 
-正式 GitHub Actions 請把 Sheet ID 放在 repository variables，service account 放在 repository secrets。workflow 收尾會回寫已收錄、無通關或無繁中服玩家的終止狀態，因此 service account 需要該 Sheet 的編輯權限。
+正式 GitHub Actions 請把 Sheet ID 放在 repository variables，service account 放在 repository secrets。workflow 收尾會回寫已收錄、無通關或無繁中服玩家的終止狀態，並校正 A:N 的待收錄欄位標題與純數字的錯置訊息，因此 service account 需要該 Sheet 的編輯權限。
 
 `.env` 內含敏感資訊，不應提交到版本控制，也不要印到 Log。
 

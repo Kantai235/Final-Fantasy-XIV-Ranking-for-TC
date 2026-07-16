@@ -36,7 +36,7 @@ function setupSecretsOnce() {
 
 ## 建立待收錄 Google Sheet
 
-建立一份 Google Sheet，並把 Apps Script 執行者帳號設為可編輯。Apps Script 第一次寫入時會自動建立或補齊 `pending` 工作表欄位：
+建立一份 Google Sheet，並把 Apps Script 執行者帳號設為可編輯。Apps Script 第一次寫入時會建立 `pending` 工作表欄位；之後每次寫入都會校正 A:N 的標題順序，但不改寫歷史資料列，避免手動誤改標題後把 `request_count` 寫入 `last_message`：
 
 | 欄位 | 用途 |
 | --- | --- |
