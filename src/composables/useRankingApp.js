@@ -76,9 +76,9 @@ import {
   比較個人成績分位顯示排序,
 } from "../utils/userProfileSorting";
 import {
+  建立個人成績簡表可選版本,
   建立個人成績簡表群組,
   成績符合個人成績簡表版本,
-  個人成績簡表版本選項,
   預設個人成績簡表版本,
   正規化個人成績簡表版本,
 } from "../utils/userProfileClearSummary";
@@ -263,6 +263,7 @@ const 使用者趨勢職業選擇 = ref({});
 const 使用者簡表模式 = ref(false);
 const 使用者簡表版本 = ref(預設個人成績簡表版本);
 const 使用者簡表零式量級 = ref("");
+const 個人成績簡表版本選項 = computed(() => 建立個人成績簡表可選版本());
 const 使用者讀取中 = ref(false);
 const 使用者錯誤訊息 = ref("");
 const 比較角色左輸入 = ref("");

@@ -103,6 +103,36 @@ def 建立測試排行榜報告(報告代碼: str, *, 有GCD: bool = False) -> d
 
 
 class FetchFFLogsBatchTest(unittest.TestCase):
+    def test_scheduled_encounter_waits_until_scan_start_time(self) -> None:
+        副本設定 = {
+            "key": "savage_m5s",
+            "scan_start_date": "2026-07-28T12:00:00+08:00",
+            "scan_end_date": "2026-10-01T10:00:00+08:00",
+        }
+        開放時間戳記 = fflogs.解析日期時間為毫秒(副本設定["scan_start_date"])
+        if 開放時間戳記 is None:
+            self.fail("測試用的 scan_start_date 必須可解析為時間戳記。")
+
+        self.assertFalse(
+            fflogs.副本已達掃描開放時間(副本設定, 目前時間戳記=開放時間戳記 - 1),
+            "排程副本不得在繁中服開放前查詢 FFLogs。",
+        )
+        self.assertTrue(
+            fflogs.副本已達掃描開放時間(副本設定, 目前時間戳記=開放時間戳記),
+            "排程副本應在開放時間當下自動納入掃描。",
+        )
+        關閉時間戳記 = fflogs.解析日期時間為毫秒(副本設定["scan_end_date"])
+        if 關閉時間戳記 is None:
+            self.fail("測試用的 scan_end_date 必須可解析為時間戳記。")
+        self.assertTrue(
+            fflogs.副本已達掃描開放時間(副本設定, 目前時間戳記=關閉時間戳記 - 1),
+            "輪替副本在關閉前仍應納入掃描。",
+        )
+        self.assertFalse(
+            fflogs.副本已達掃描開放時間(副本設定, 目前時間戳記=關閉時間戳記),
+            "輪替副本必須在關閉時間當下停止新增掃描。",
+        )
+
     def test_public_ranking_keeps_same_name_cross_server_players_separate(self) -> None:
         排行榜 = {
             "encounter": {

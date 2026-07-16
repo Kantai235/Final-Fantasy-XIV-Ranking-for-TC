@@ -29,7 +29,9 @@ import {
 } from "../src/utils/userProfileSorting.js";
 import {
   建立個人成績簡表群組,
+  建立個人成績簡表可選版本,
   成績符合個人成績簡表版本,
+  個人成績簡表版本已開放,
   個人成績簡表版本選項,
   副本符合個人成績簡表版本,
   是個人成績簡表目標副本,
@@ -73,6 +75,16 @@ function normalizePath(filePath) {
 function assert(condition, message) {
   if (!condition) {
     reportIssue(message);
+  }
+}
+
+function 暫時固定現在時間(時間戳記, callback) {
+  const 原始DateNow = Date.now;
+  Date.now = () => 時間戳記;
+  try {
+    return callback();
+  } finally {
+    Date.now = 原始DateNow;
   }
 }
 
@@ -455,6 +467,7 @@ async function validateEncounterSwitchFilterPersistence() {
 function validateUserProfileClearSummary() {
   const lightHeavyweight = { key: "light-heavyweight", label: "輕量級", order: 1 };
   const cruiserweight = { key: "cruiserweight", label: "次重量級", order: 2 };
+  const version72OpenedAt = Date.parse("2026-07-28T04:00:00.000Z");
   const encounters = [
     {
       key: "savage_m1s",
@@ -490,43 +503,51 @@ function validateUserProfileClearSummary() {
     },
     {
       key: "savage_m5s",
-      name: "零式 M5S / 測試",
+      name: "零式 M5S / 熱舞綠光",
       category: "零式",
       current_high_end: true,
-      profile_summary_available_from: "7.15",
+      profile_summary_available_from: "7.2",
       profile_summary_savage_tier: { ...cruiserweight, floor: 1 },
     },
     {
       key: "savage_m6s",
-      name: "零式 M6S / 測試",
+      name: "零式 M6S / 狂熱糖潮",
       category: "零式",
       current_high_end: true,
-      profile_summary_available_from: "7.15",
+      profile_summary_available_from: "7.2",
       profile_summary_savage_tier: { ...cruiserweight, floor: 2 },
     },
     {
       key: "savage_m7s",
-      name: "零式 M7S / 測試",
+      name: "零式 M7S / 野蠻恨心",
       category: "零式",
       current_high_end: true,
-      profile_summary_available_from: "7.15",
+      profile_summary_available_from: "7.2",
       profile_summary_savage_tier: { ...cruiserweight, floor: 3 },
     },
     {
       key: "savage_m8s",
-      name: "零式 M8S / 測試",
+      name: "零式 M8S / 劍嚎",
       category: "零式",
       current_high_end: true,
-      profile_summary_available_from: "7.15",
+      profile_summary_available_from: "7.2",
       profile_summary_savage_tier: { ...cruiserweight, floor: 4 },
     },
     { key: "ultimate", name: "絕 測試", category: "絕", profile_summary_available_from: "7.0" },
     { key: "current-extreme", name: "極 測試", category: "極", current_high_end: true, profile_summary_available_from: "7.1" },
-    { key: "current-unreal", name: "幻 測試", category: "幻", current_high_end: true, profile_summary_available_from: "7.1" },
+    {
+      key: "unreal_byakko",
+      name: "幻 白虎",
+      category: "幻",
+      current_high_end: true,
+      profile_summary_available_from: "7.1",
+      profile_summary_available_until: "7.15",
+    },
+    { key: "unreal_suzaku", name: "幻 朱雀", category: "幻", current_high_end: true, profile_summary_available_from: "7.2" },
     { key: "current-chaotic", name: "滅 測試", category: "滅", current_high_end: true, profile_summary_available_from: "7.15" },
     { key: "old-extreme", name: "極 舊副本", category: "極", profile_summary_available_from: "7.0" },
   ];
-  const groups = 建立個人成績簡表群組(encounters, [
+  const groups = 暫時固定現在時間(version72OpenedAt, () => 建立個人成績簡表群組(encounters, [
     {
       encounter_key: "savage_m5s",
       public_entries: [
@@ -540,7 +561,7 @@ function validateUserProfileClearSummary() {
     { encounter_key: "ultimate", public_entries: [{ job: "WhiteMage", is_obsolete_record: true }] },
     { encounter_key: "current-extreme", public_entries: [{ job: "BlackMage" }] },
     { encounter_key: "old-extreme", public_entries: [{ job: "BlackMage", is_obsolete_record: true }] },
-  ]);
+  ], "7.2"));
   const savageGroup = groups.find((group) => group.key === "savage");
   const ultimateGroup = groups.find((group) => group.key === "ultimate");
   const extremeGroup = groups.find((group) => group.key === "extreme");
@@ -549,6 +570,8 @@ function validateUserProfileClearSummary() {
   const ultimateEncounter = encounters.find((encounter) => encounter.key === "ultimate");
   const currentExtremeEncounter = encounters.find((encounter) => encounter.key === "current-extreme");
   const oldExtremeEncounter = encounters.find((encounter) => encounter.key === "old-extreme");
+  const byakkoEncounter = encounters.find((encounter) => encounter.key === "unreal_byakko");
+  const suzakuEncounter = encounters.find((encounter) => encounter.key === "unreal_suzaku");
 
   assert(是個人成績簡表目標副本(ultimateEncounter), "所有絕本都必須成為個人成績簡表目標。");
   assert(是個人成績簡表目標副本(encounters[0]), "current_high_end=true 的副本必須成為個人成績簡表目標。");
@@ -558,16 +581,24 @@ function validateUserProfileClearSummary() {
       && savageGroup.selected_tier_key === "cruiserweight"
       && savageGroup.tiers?.map((tier) => tier.label).join(",") === "輕量級,次重量級"
       && savageGroup.tiers?.find((tier) => tier.key === "cruiserweight")?.is_current_version_complete
-      && savageGroup.encounters.map((encounter) => encounter.name).join(",") === "M5S / 測試,M6S / 測試,M7S / 測試,M8S / 測試",
+      && savageGroup.encounters.map((encounter) => encounter.name).join(",") === "M5S / 熱舞綠光,M6S / 狂熱糖潮,M7S / 野蠻恨心,M8S / 劍嚎",
     "零式簡表必須列出所選版本已開放量級、預設選取最新量級，並在四層皆有效通關時標示完成。",
   );
   assert(ultimateGroup?.encounters.length === 1, "簡表必須保留所有絕本。");
-  assert(extremeGroup?.encounters.length === 2 && unrealGroup?.encounters.length === 1 && chaoticGroup?.encounters.length === 1, "簡表應完整列出極本，並依目前高難列出幻本與滅本。");
+  assert(
+    extremeGroup?.encounters.length === 2
+      && unrealGroup?.encounters.map((encounter) => encounter.name).join(",") === "朱雀"
+      && chaoticGroup?.encounters.length === 1,
+    "7.2 簡表應完整列出極本，並以朱雀取代已關閉的白虎，保留目前高難的滅本。",
+  );
   assert(
     savageGroup?.encounters[0]?.狀態 === "pr" && savageGroup.encounters[0]?.pr_value === 96 && savageGroup.encounters[0]?.job === "BlackMage",
     "有效成績應顯示跨職業最高 PR 與對應職業。",
   );
-  const selectedLightSavage = 建立個人成績簡表群組(encounters, [], "7.15", "light-heavyweight").find((group) => group.key === "savage");
+  const selectedLightSavage = 暫時固定現在時間(
+    version72OpenedAt,
+    () => 建立個人成績簡表群組(encounters, [], "7.2", "light-heavyweight"),
+  ).find((group) => group.key === "savage");
   assert(
     selectedLightSavage?.selected_tier_key === "light-heavyweight"
       && selectedLightSavage.encounters.map((encounter) => encounter.name).join(",") === "M1S / 黑貓,M2S / 蜂蜂小甜心,M3S / 野蠻炸彈,M4S / 狡雷"
@@ -597,7 +628,38 @@ function validateUserProfileClearSummary() {
       && version705Savage.encounters.map((encounter) => encounter.name).join(",") === "M1S / 黑貓,M2S / 蜂蜂小甜心,M3S / 野蠻炸彈,M4S / 狡雷",
     "較新的次重量級尚未開放時，7.05 零式簡表必須只提供輕量級，並以各樓層副本名稱顯示。",
   );
-  assert(個人成績簡表版本選項.find((版本) => 版本.value === "7.2")?.available === false, "未公布開放時間的 7.2 必須標示為待開放，避免錯誤切片歷史資料。");
+  const version715Savage = 建立個人成績簡表群組(encounters, [], "7.15").find((group) => group.key === "savage");
+  assert(
+    version715Savage?.tiers?.map((tier) => tier.key).join(",") === "light-heavyweight"
+      && !副本符合個人成績簡表版本(encounters.find((encounter) => encounter.key === "savage_m5s"), "7.15"),
+    "7.15 簡表不可提早顯示 7.2 的次重量級。",
+  );
+  const version715Unreal = 暫時固定現在時間(
+    version72OpenedAt,
+    () => 建立個人成績簡表群組(encounters, [], "7.15").find((group) => group.key === "unreal"),
+  );
+  assert(
+    version715Unreal?.encounters.map((encounter) => encounter.name).join(",") === "白虎"
+      && 暫時固定現在時間(
+        version72OpenedAt,
+        () => 副本符合個人成績簡表版本(byakkoEncounter, "7.15")
+          && !副本符合個人成績簡表版本(byakkoEncounter, "7.2")
+          && !副本符合個人成績簡表版本(suzakuEncounter, "7.15")
+          && 副本符合個人成績簡表版本(suzakuEncounter, "7.2"),
+      ),
+    "幻白虎只應保留至 7.15 快照，7.2 必須改由幻朱雀呈現。",
+  );
+  assert(成績符合個人成績簡表版本({ recorded_at_iso: "2026-07-28T03:59:59.000Z" }, "7.15"), "7.15 應保留 7.2 開放前的戰鬥。");
+  assert(!成績符合個人成績簡表版本({ recorded_at_iso: "2026-07-28T04:00:00.000Z" }, "7.15"), "7.15 不可混入 7.2 開放後的戰鬥。");
+  const version72 = 個人成績簡表版本選項.find((版本) => 版本.value === "7.2");
+  assert(version72?.available_from_iso === "2026-07-28T04:00:00.000Z", "7.2 必須保存繁中服的預定開放時間。");
+  assert(!個人成績簡表版本已開放(version72, version72OpenedAt - 1), "7.2 在開放前必須維持待開放狀態。");
+  assert(個人成績簡表版本已開放(version72, version72OpenedAt), "7.2 在開放時間當下必須可選取。");
+  assert(
+    建立個人成績簡表可選版本(version72OpenedAt - 1).find((版本) => 版本.value === "7.2")?.available === false
+      && 建立個人成績簡表可選版本(version72OpenedAt).find((版本) => 版本.value === "7.2")?.available === true,
+    "簡表選單必須依 7.2 開放時間自動切換待開放與可選狀態。",
+  );
 }
 
 async function validateSavageProfileSummaryPresentation() {
@@ -633,6 +695,7 @@ async function validatePublicDataForFrontend() {
   const honeyFans = await readJson(path.join(publicDataDir, "fun", "honey_b_fans.json"), "public/data/fun/honey_b_fans.json");
   const userIndex = await readJson(path.join(publicDataDir, "users", "index.json"), "public/data/users/index.json");
   const versionedEncounterKeys = new Set((encounters || []).filter((encounter) => encounter?.version_cutoff).map((encounter) => encounter.key));
+  const profileSummaryVersions = new Set(個人成績簡表版本選項.map((version) => version.value));
 
   assert(Array.isArray(encounters) && encounters.length > 0, "public/data/encounters.json 必須提供前端副本清單");
   const configuredCurrentHighEndKeys = new Set(
@@ -645,16 +708,29 @@ async function validatePublicDataForFrontend() {
   );
   assert(configuredCurrentHighEndKeys.size > 0, "config/encounters.json 必須標記至少一個目前高難副本。");
   for (const key of configuredCurrentHighEndKeys) {
-    assert(publicCurrentHighEndKeys.has(key), `${key} 的 current_high_end 標記必須寫入 public/data/encounters.json。`);
+    const hasRanking = existsSync(path.join(rootDir, "data", "rankings", `${key}.json`))
+      || existsSync(path.join(publicDataDir, "rankings", `${key}.json`));
+    if (hasRanking) {
+      assert(publicCurrentHighEndKeys.has(key), `${key} 的 current_high_end 標記必須寫入 public/data/encounters.json。`);
+    }
   }
   for (const key of publicCurrentHighEndKeys) {
     assert(configuredCurrentHighEndKeys.has(key), `${key} 不可只在 public/data/encounters.json 標記 current_high_end。`);
   }
   for (const encounter of encounterConfig || []) {
     assert(
-      typeof encounter?.profile_summary_available_from === "string",
+      typeof encounter?.profile_summary_available_from === "string" && profileSummaryVersions.has(encounter.profile_summary_available_from),
       `${encounter?.key || "未知副本"} 必須設定個人成績簡表的首次可見版本。`,
     );
+    if (encounter?.profile_summary_available_until !== undefined) {
+      assert(
+        typeof encounter.profile_summary_available_until === "string"
+          && profileSummaryVersions.has(encounter.profile_summary_available_until)
+          && 個人成績簡表版本選項.findIndex((version) => version.value === encounter.profile_summary_available_from)
+            <= 個人成績簡表版本選項.findIndex((version) => version.value === encounter.profile_summary_available_until),
+        `${encounter?.key || "未知副本"} 的個人成績簡表最後可見版本必須是有效且不早於首次可見版本的遊戲版本。`,
+      );
+    }
     if (encounter?.category === "零式") {
       assert(
         typeof encounter?.profile_summary_savage_tier?.key === "string"
@@ -669,9 +745,16 @@ async function validatePublicDataForFrontend() {
   }
   for (const encounter of encounters || []) {
     assert(
-      typeof encounter?.profile_summary_available_from === "string",
+      typeof encounter?.profile_summary_available_from === "string" && profileSummaryVersions.has(encounter.profile_summary_available_from),
       `${encounter?.key || "未知副本"} 的首次可見版本必須寫入 public/data/encounters.json。`,
     );
+    if (encounter?.profile_summary_available_until !== undefined) {
+      assert(
+        typeof encounter.profile_summary_available_until === "string"
+          && profileSummaryVersions.has(encounter.profile_summary_available_until),
+        `${encounter?.key || "未知副本"} 的最後可見版本必須正確寫入 public/data/encounters.json。`,
+      );
+    }
     if (encounter?.category === "零式") {
       assert(
         typeof encounter?.profile_summary_savage_tier?.key === "string"

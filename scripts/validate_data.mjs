@@ -18,7 +18,9 @@ const publicAllRankingDetailsDir = path.join(publicAllDataDir, "ranking-details"
 const publicAllUserEntryDetailsDir = path.join(publicAllDataDir, "user-entry-details");
 const rawFieldNames = new Set(["fflogs_raw", "master_data", "matched_players"]);
 const rawFieldPattern = new RegExp(`"(${[...rawFieldNames].join("|")})"\\s*:`);
-const 個人成績簡表遊戲版本 = new Set(["7.0", "7.05", "7.1", "7.15", "7.2"]);
+const 個人成績簡表遊戲版本順序 = ["7.0", "7.05", "7.1", "7.15", "7.2"];
+const 個人成績簡表遊戲版本 = new Set(個人成績簡表遊戲版本順序);
+const 個人成績簡表遊戲版本索引 = new Map(個人成績簡表遊戲版本順序.map((version, index) => [version, index]));
 
 const issues = [];
 let checkedSourceReports = 0;
@@ -465,6 +467,16 @@ async function validateEncounters() {
       if (!個人成績簡表遊戲版本.has(profileSummaryVersion)) {
         reportIssue(`${encounter?.key || "未知副本"} 的 profile_summary_available_from 必須是受支援的個人成績簡表遊戲版本`);
       }
+      const profileSummaryLastVersion = encounter?.profile_summary_available_until;
+      if (
+        profileSummaryLastVersion !== undefined
+        && (
+          !個人成績簡表遊戲版本.has(profileSummaryLastVersion)
+          || 個人成績簡表遊戲版本索引.get(profileSummaryLastVersion) < 個人成績簡表遊戲版本索引.get(profileSummaryVersion)
+        )
+      ) {
+        reportIssue(`${encounter?.key || "未知副本"} 的 profile_summary_available_until 必須是受支援且不早於首次可見版本的遊戲版本`);
+      }
     }
     configSavageTiers = collectProfileSummarySavageTiers(configEncounters, "config/encounters.json");
   }
@@ -478,7 +490,10 @@ async function validateEncounters() {
   const publicSavageTiers = collectProfileSummarySavageTiers(publicEncounters, "public/data/encounters.json");
   const configProfileSummaryVersions = new Map(
     Array.isArray(configEncounters)
-      ? configEncounters.map((encounter) => [encounter?.key, encounter?.profile_summary_available_from])
+      ? configEncounters.map((encounter) => [encounter?.key, {
+        first: encounter?.profile_summary_available_from,
+        last: encounter?.profile_summary_available_until,
+      }])
       : [],
   );
   for (const encounter of publicEncounters) {
@@ -487,9 +502,17 @@ async function validateEncounters() {
       reportIssue(`${encounter?.key || "未知副本"} 的公開 profile_summary_available_from 必須是受支援的個人成績簡表遊戲版本`);
       continue;
     }
-    if (configProfileSummaryVersions.has(encounter?.key)
-      && configProfileSummaryVersions.get(encounter.key) !== profileSummaryVersion) {
+    const profileSummaryLastVersion = encounter?.profile_summary_available_until;
+    if (profileSummaryLastVersion !== undefined && !個人成績簡表遊戲版本.has(profileSummaryLastVersion)) {
+      reportIssue(`${encounter?.key || "未知副本"} 的公開 profile_summary_available_until 必須是受支援的個人成績簡表遊戲版本`);
+      continue;
+    }
+    const configProfileSummaryVersion = configProfileSummaryVersions.get(encounter?.key);
+    if (configProfileSummaryVersion && configProfileSummaryVersion.first !== profileSummaryVersion) {
       reportIssue(`${encounter.key} 的公開 profile_summary_available_from 必須與 config/encounters.json 一致`);
+    }
+    if (configProfileSummaryVersion && configProfileSummaryVersion.last !== profileSummaryLastVersion) {
+      reportIssue(`${encounter.key} 的公開 profile_summary_available_until 必須與 config/encounters.json 一致`);
     }
     const configSavageTier = configSavageTiers.get(encounter?.key);
     const publicSavageTier = publicSavageTiers.get(encounter?.key);

@@ -1,23 +1,47 @@
 import { 計算PR值 } from "./formatters.js";
 
 // 簡表版本是「當時可看到什麼」的歷史快照，不等同排行榜的 valid/obsolete 分類。
-// cutoff 採下一個版本開放的瞬間，避免剛改版後上傳的戰鬥被錯放回舊版。7.2 尚未有
-// 繁中服公告的開放時間，所以保留選項但不允許選取；開放時只要補上時間即可，不需改歷史資料。
+// cutoff 採下一個版本開放的瞬間，避免剛改版後上傳的戰鬥被錯放回舊版。已知開放時間的
+// 未來版本會保留在選單中，但瀏覽器時間到達前仍不可選取，讓部署可提早完成而不污染歷史快照。
 export const 個人成績簡表版本選項 = Object.freeze([
   { value: "7.0", label: "7.0", record_cutoff_iso: "2026-03-10T10:00:00.000Z" },
   { value: "7.05", label: "7.05", record_cutoff_iso: "2026-04-21T10:00:00.000Z" },
   { value: "7.1", label: "7.1", record_cutoff_iso: "2026-06-23T10:00:00.000Z" },
-  { value: "7.15", label: "7.15", record_cutoff_iso: null },
-  { value: "7.2", label: "7.2", record_cutoff_iso: null, available: false },
+  { value: "7.15", label: "7.15", record_cutoff_iso: "2026-07-28T04:00:00.000Z" },
+  { value: "7.2", label: "7.2", record_cutoff_iso: null, available_from_iso: "2026-07-28T04:00:00.000Z" },
 ]);
 
 export const 預設個人成績簡表版本 = "7.15";
 
 const 個人成績簡表版本索引 = new Map(個人成績簡表版本選項.map((版本, index) => [版本.value, { ...版本, index }]));
 
+function 取得個人成績簡表版本設定(版本) {
+  if (typeof 版本 === "string") {
+    return 個人成績簡表版本索引.get(版本) || null;
+  }
+  return 版本 && typeof 版本 === "object" ? 版本 : null;
+}
+
+export function 個人成績簡表版本已開放(版本, 目前時間戳記 = Date.now()) {
+  const 選項 = 取得個人成績簡表版本設定(版本);
+  if (!選項 || 選項.available === false) {
+    return false;
+  }
+
+  const 開放時間戳記 = new Date(選項.available_from_iso || "").getTime();
+  return !Number.isFinite(開放時間戳記) || 開放時間戳記 <= 目前時間戳記;
+}
+
+export function 建立個人成績簡表可選版本(目前時間戳記 = Date.now()) {
+  return 個人成績簡表版本選項.map((選項) => ({
+    ...選項,
+    available: 個人成績簡表版本已開放(選項, 目前時間戳記),
+  }));
+}
+
 export function 正規化個人成績簡表版本(版本) {
   const 選項 = 個人成績簡表版本索引.get(版本);
-  return 選項?.available !== false ? 選項.value : 預設個人成績簡表版本;
+  return 個人成績簡表版本已開放(選項) ? 選項.value : 預設個人成績簡表版本;
 }
 
 export function 取得個人成績簡表版本選項(版本) {
@@ -27,9 +51,18 @@ export function 取得個人成績簡表版本選項(版本) {
 export function 副本符合個人成績簡表版本(副本, 版本) {
   const 目標版本 = 取得個人成績簡表版本選項(版本);
   const 首次可見版本 = 個人成績簡表版本索引.get(副本?.profile_summary_available_from);
+  const 最後可見版本 = 副本?.profile_summary_available_until
+    ? 個人成績簡表版本索引.get(副本.profile_summary_available_until)
+    : null;
 
   // 未帶欄位的舊快取或未知的新版本必須先隱藏，不能錯把後續副本放進早期版本快照。
-  return Boolean(目標版本 && 首次可見版本 && 首次可見版本.index <= 目標版本.index);
+  // 輪替內容可設定最後可見版本；此欄位只縮小歷史快照的呈現範圍，不會刪除排行榜資料。
+  return Boolean(
+    目標版本
+      && 首次可見版本
+      && 首次可見版本.index <= 目標版本.index
+      && (!副本?.profile_summary_available_until || (最後可見版本 && 目標版本.index <= 最後可見版本.index)),
+  );
 }
 
 export function 成績符合個人成績簡表版本(成績, 版本) {
@@ -75,6 +108,7 @@ const 簡表副本顯示名稱 = {
   ultimate_futures_rewritten: "伊甸",
   extreme_queen_eternal: "永恆女王",
   unreal_byakko: "白虎",
+  unreal_suzaku: "朱雀",
   chaotic_cloud_of_darkness: "黑暗之雲",
 };
 

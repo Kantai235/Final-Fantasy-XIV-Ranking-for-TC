@@ -73,6 +73,7 @@
 3. `key` 是 `data/rankings/{key}.json`、`data/rankings/{key}.reports/`、`state.encounters[key]` 與前端網址狀態的共同主鍵，建立後不得任意改名。
 4. `chaotic_cloud_of_darkness` 對應繁中服 2026-06-23 18:00 維護後開放的 7.15「滅 黑暗之雲」；FFLogs 為 Alliance Raids (Chaotic) `zone_id=66`、Cloud of Darkness `encounter_id=2061`、`difficulty=100`，`scan_start_date` 使用 `2026-06-23T18:00:00+08:00` 對齊開放時間。
 5. `current_high_end: true` 是個人成績單簡表模式的領域標記；所有 `category="絕"` 與 `category="極"` 副本固定列入，其他副本只有標記為 true 才列入。簡表按零式、絕、極、幻、滅橫列分組；有效版本紀錄顯示跨職業最高 PR 與對應職業，只有過版紀錄時只顯示灰色勾勾。「尚未收錄公開通關」只表示本站尚無該角色的公開 FFLogs 成績，不能視為未通關。`fetch_fflogs.py` 寫入公開副本清單時必須轉出此欄位，且不得用公開清單固定為 true 的 `enabled` 推測目前內容。
+6. 7.2 預定於繁中服 2026-07-28 12:00 開放；`extreme_zelenia` 使用 Trials II (Extreme) `zone_id=67`、Zelenia `encounter_id=1080`、`difficulty=100`，`savage_m5s` 至 `savage_m8s` 使用 AAC Cruiserweight `zone_id=68`、`encounter_id=97` 至 `100`、`difficulty=101`，皆以 `scan_start_date="2026-07-28T12:00:00+08:00"` 排程。未到該時間的啟用副本不得查詢 FFLogs，也不得在公開清單出現；公開清單只可列入已有排行榜檔案的副本，以避免前端讀取空路徑。同一時間 `savage_m1s` 至 `savage_m4s` 與 `extreme_queen_eternal` 以 `version_cutoff` 標記過版；`unreal_byakko` 用 `scan_end_date` 停止新增掃描、用 `profile_summary_available_until="7.15"` 僅保留於歷史簡表，而 `unreal_suzaku` 使用 Trials (Unreal) `zone_id=64`、`encounter_id=3010`、`difficulty=100` 自 7.2 起掃。
 
 ### C. 排行榜與去重規則
 1. `data/rankings/*.json` 主檔保留 `ranking_entries`、副本摘要、更新時間與 `report_shards`；report/fight/player 脈絡保存在同名 `*.reports/*.json` 分片。
@@ -135,11 +136,11 @@
 29. `.github/workflows/update_rankings.yml` 與 `.github/workflows/emergency_deploy.yml` 固定使用 Node.js 24，並採用支援 Node 24 runtime 的官方 actions major 版本。GitHub Pages 部署若在 `syncing_files` 階段遇到暫時性失敗，workflow 會等待 60 秒後以同一個 Pages artifact 重試一次；只有部署成功後才會執行 Cloudflare purge。
 
 ### F. 版本切點與過版紀錄
-1. `config/encounters.json` 的 `version_cutoff` 用來描述副本版本有效期限；目前 `極 佐拉加` 與 `極 豔翼蛇鳥` 的過版切點是台灣時間 2026-04-21 18:00，對應 `2026-04-21T10:00:00.000Z`。
+1. `config/encounters.json` 的 `version_cutoff` 用來描述副本版本有效期限；`極 佐拉加` 與 `極 豔翼蛇鳥` 的過版切點是台灣時間 2026-04-21 18:00（`2026-04-21T10:00:00.000Z`），輕量級零式 M1S～M4S 與 `極 永恆女王` 的過版切點是台灣時間 2026-07-28 12:00（`2026-07-28T04:00:00.000Z`）。
 2. `scripts/fetch_fflogs.py --rebuild-public` 會依 `start_time` 標記公開排行榜條目的 `is_obsolete_record`、`version_status` 與 `version_cutoff_iso`，並為支援切點的副本輸出 `version_ranking_entries.all|valid|obsolete`；這是避免前端重新實作排行榜去重與排序規則。
 3. `scripts/build_user_data.mjs` 會在全服統計、個人成績單與隊伍榜輸出 `version_slices.all|valid|obsolete`。同職分位、個人最佳紀錄與職業最佳紀錄只能使用 `valid` 紀錄，過版紀錄只作為歷史資料呈現與追溯。
 4. 前端版本篩選一律使用 `version=all|valid|obsolete` 的網址狀態；若副本沒有 `version_cutoff`，必須自動回到 `all`，避免非過版副本出現無效篩選。
-5. 個人成績簡表另有繁中服遊戲版本快照，和 `version_cutoff` 的 valid／obsolete 語意分離。`profile_summary_available_from` 決定副本首次可見版本，版本選項以「下一版本開放時間」排除後續 `recorded_at_iso`；未公告開放時間的版本只能標示待開放，不能用目前時間或猜測日期切分歷史戰鬥。
+5. 個人成績簡表另有繁中服遊戲版本快照，和 `version_cutoff` 的 valid／obsolete 語意分離。`profile_summary_available_from` 決定副本首次可見版本，選填的 `profile_summary_available_until` 可讓輪替內容只保留至最後一個歷史版本；版本選項以「下一版本開放時間」排除後續 `recorded_at_iso`。已公告的未來版本需保存明確開放時間，並在時間到達前標示待開放、到達後自動可選。未公告開放時間時不得用目前時間或猜測日期切分歷史戰鬥。
 6. 個人成績簡表的零式會列出所選遊戲版本中全部已開放量級，預設選取最新量級，但可切換查看較早量級。`profile_summary_savage_tier` 必須保存量級 key、名稱、遞增順序與量級內 1～4 層；某量級四層皆有該版本有效通關時，量級按鈕顯示彩色勾勾，量級內樓層仍顯示職業與 PR。新增次重量級、重量級時提高 order 即可讓簡表加入新量級，舊量級的排行榜與個人成績仍維持歷史追溯。
 
 ### G. Honey B. Lovely 粉絲榜趣味資料
