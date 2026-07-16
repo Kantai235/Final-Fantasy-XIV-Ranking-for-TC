@@ -145,6 +145,10 @@
   .近期日誌工具列 {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .近期日誌分類圖例 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
