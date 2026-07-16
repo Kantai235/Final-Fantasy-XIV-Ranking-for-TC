@@ -591,6 +591,232 @@
   background: var(--邊框柔和色);
 }
 
+.個人成績簡表 {
+  overflow: hidden;
+  border: 1px solid var(--邊框色);
+  border-radius: 8px;
+  background: var(--表面背景);
+}
+
+.個人成績簡表標題 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px solid var(--邊框柔和色);
+  padding: 13px 14px;
+}
+
+.個人成績簡表標題 > div {
+  display: grid;
+  gap: 4px;
+}
+
+.個人成績簡表標題 h2,
+.個人成績簡表群組 h3 {
+  margin: 0;
+  color: var(--主要文字);
+  font-size: 1rem;
+  font-weight: 840;
+}
+
+.個人成績簡表標題 p {
+  margin: 0;
+  color: var(--次要文字);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.個人成績簡表標題 > strong {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  padding: 6px 9px;
+  color: var(--重點文字);
+  background: var(--重點色);
+  font-size: 0.8rem;
+  font-weight: 850;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.個人成績簡表群組列表 {
+  display: grid;
+  gap: 17px;
+  padding: 15px 14px 17px;
+}
+
+.個人成績簡表群組 {
+  --簡表群組色: var(--輸出色);
+  --簡表群組文字: var(--職業重點文字);
+  display: grid;
+  gap: 8px;
+}
+
+.個人成績簡表群組-ultimate {
+  --簡表群組色: var(--防護色);
+}
+
+.個人成績簡表群組-extreme {
+  --簡表群組色: var(--重點色);
+  --簡表群組文字: var(--重點文字);
+}
+
+.個人成績簡表群組-unreal {
+  --簡表群組色: var(--治療色);
+}
+
+.個人成績簡表群組-chaotic {
+  --簡表群組色: var(--公告色);
+  --簡表群組文字: var(--作者文字);
+}
+
+.個人成績簡表群組 > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 0;
+}
+
+.零式量級切換 {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.零式量級按鈕 {
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--邊框柔和色);
+  border-radius: 999px;
+  padding: 3px 8px 3px 5px;
+  color: var(--次要文字);
+  background: var(--表面背景柔和);
+  font: inherit;
+  font-size: 0.74rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.零式量級按鈕:hover {
+  border-color: color-mix(in srgb, var(--簡表群組色) 52%, var(--邊框色));
+  color: var(--主要文字);
+}
+
+.零式量級按鈕.已選取 {
+  border-color: var(--簡表群組色);
+  color: var(--主要文字);
+  background: color-mix(in srgb, var(--簡表群組色) 13%, var(--表面背景));
+}
+
+.零式量級完成圖示 {
+  width: 18px;
+  height: 18px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid var(--邊框柔和色);
+  border-radius: 50%;
+  color: var(--靜音文字);
+  background: var(--表面背景);
+  font-size: 0.7rem;
+  line-height: 1;
+}
+
+.零式量級按鈕.已完成 {
+  border-color: color-mix(in srgb, var(--簡表群組色) 60%, var(--邊框色));
+}
+
+.零式量級按鈕.已完成 .零式量級完成圖示 {
+  border-color: var(--簡表群組色);
+  color: var(--簡表群組文字);
+  background: var(--簡表群組色);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--簡表群組色) 18%, transparent);
+}
+
+.簡表副本列表 {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.簡表副本項 {
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--邊框柔和色);
+  border-radius: 999px;
+  padding: 4px 7px 4px 10px;
+  background: var(--表面背景柔和);
+}
+
+.簡表副本名稱 {
+  color: var(--主要文字);
+  font-size: 0.8rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.簡表副本職業 {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  border-left: 1px solid var(--邊框柔和色);
+  padding-left: 6px;
+  color: var(--次要文字);
+  font-size: 0.72rem;
+  font-weight: 750;
+  white-space: nowrap;
+}
+
+.簡表副本職業圖示 {
+  width: 16px;
+  height: 16px;
+}
+
+.簡表副本狀態 {
+  min-width: 20px;
+  min-height: 20px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 999px;
+  padding: 2px 5px;
+  color: var(--靜音文字);
+  background: var(--表面背景柔和);
+  font-size: 0.72rem;
+  font-weight: 780;
+  white-space: nowrap;
+}
+
+.簡表副本項.簡表狀態-pr .簡表副本狀態,
+.簡表副本項.簡表狀態-valid-clear .簡表副本狀態 {
+  color: var(--簡表群組文字);
+  background: var(--簡表群組色);
+}
+
+.簡表副本項.簡表狀態-pr,
+.簡表副本項.簡表狀態-valid-clear {
+  border-color: color-mix(in srgb, var(--簡表群組色) 48%, var(--邊框色));
+  background: color-mix(in srgb, var(--簡表群組色) 17%, var(--表面背景));
+}
+
+.簡表副本項.簡表狀態-obsolete-clear .簡表副本狀態 {
+  min-width: 20px;
+  border-radius: 50%;
+  color: var(--靜音文字);
+  background: var(--表面背景柔和);
+}
+
+.簡表副本項.簡表狀態-unrecorded .簡表副本狀態 {
+  background: transparent;
+}
+
 .概要項 {
   display: grid;
   gap: 4px;

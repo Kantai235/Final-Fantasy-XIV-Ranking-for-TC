@@ -700,6 +700,11 @@
     grid-template-columns: 1fr;
   }
 
+  .個人成績簡表標題 {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
   .比較搜尋表單.比較搜尋表單含版本 {
     grid-template-columns: 1fr;
   }

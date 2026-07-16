@@ -207,7 +207,6 @@ export default {
           <h2>刷新個人最佳</h2>
           <span>依 rDPS 提升幅度排序</span>
         </header>
-        <p v-if="近期刷新版本說明文字" class="版本紀錄說明">{{ 近期刷新版本說明文字 }}</p>
         <div class="統計表格外框">
           <table class="統計表格 近期動態表格 近期刷新表格">
             <thead>

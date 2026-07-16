@@ -929,6 +929,7 @@ def 讀取副本設定清單() -> list[dict[str, Any]]:
         raise RuntimeError(f"副本設定檔格式錯誤：{副本設定檔路徑}")
 
     啟用清單: list[dict[str, Any]] = []
+    本輪開始時間戳記 = 現在毫秒()
     for 原始副本 in 設定清單:
         if not isinstance(原始副本, dict):
             continue
@@ -943,6 +944,11 @@ def 讀取副本設定清單() -> list[dict[str, Any]]:
             raise RuntimeError(f"啟用的副本設定缺少 FFLogs ID：{副本}")
         if not 副本.get("scan_start_date"):
             raise RuntimeError(f"啟用的副本設定缺少 scan_start_date：{副本}")
+
+        # 改版副本可預先排程，輪替下架的副本也可保留歷史資料；唯有在設定的掃描期間內
+        # 才能送出 FFLogs 查詢。這讓開放與關閉都能準時生效，無須在改版當下手動切換 enabled。
+        if not 副本已達掃描開放時間(副本, 目前時間戳記=本輪開始時間戳記):
+            continue
 
         副本["zone_id"] = int(副本["zone_id"])
         副本["encounter_id"] = int(副本["encounter_id"])
@@ -983,10 +989,35 @@ def 寫入公開副本清單(副本清單: list[dict[str, Any]]) -> None:
     # public/data/encounters.json 是前端選單，不等同於掃描清單。
     # 已停用掃描但仍有 data/rankings 或 public/data/rankings 的副本，必須保留在前端，
     # 否則歷史排行榜與個人成績單會因為設定暫停掃描而從網站消失。
-    啟用鍵值 = {副本["key"] for 副本 in 副本清單}
     設定清單 = 讀取_json(副本設定檔路徑, [])
     公開清單: list[dict[str, Any]] = []
     已加入鍵值: set[str] = set()
+
+    def 建立公開副本資料(副本: dict[str, Any]) -> dict[str, Any]:
+        # enabled 在公開清單固定為 true，讓已停止掃描但仍有歷史資料的副本可繼續被前端讀取；
+        # 因此「目前高難」必須用獨立的 current_high_end 業務欄位，不可誤用掃描狀態判定。
+        公開副本: dict[str, Any] = {
+            "key": 副本["key"],
+            "name": 副本["name"],
+            "category": 副本.get("category"),
+            "enabled": True,
+            "data_path": f"data/rankings/{副本['key']}.json",
+        }
+        if 副本.get("current_high_end") is True:
+            公開副本["current_high_end"] = True
+        # 個人成績簡表的版本快照需要知道副本首次與最後可見的遊戲版本。
+        # 這些欄位只控制前端呈現範圍，不會影響掃描起點、排行榜資料或歷史 report。
+        if isinstance(副本.get("profile_summary_available_from"), str):
+            公開副本["profile_summary_available_from"] = 副本["profile_summary_available_from"]
+        if isinstance(副本.get("profile_summary_available_until"), str):
+            公開副本["profile_summary_available_until"] = 副本["profile_summary_available_until"]
+        # 零式量級讓個人成績簡表列出同版本已開放量級並切換查看各組四層，預設最新量級。
+        # 它同樣只是呈現中繼資料，不能參與 FFLogs 掃描或覆寫既有排行榜紀錄。
+        if isinstance(副本.get("profile_summary_savage_tier"), dict):
+            公開副本["profile_summary_savage_tier"] = dict(副本["profile_summary_savage_tier"])
+        if isinstance(副本.get("version_cutoff"), dict):
+            公開副本["version_cutoff"] = 副本["version_cutoff"]
+        return 公開副本
 
     for 原始副本 in 設定清單 if isinstance(設定清單, list) else []:
         if not isinstance(原始副本, dict):
@@ -998,34 +1029,20 @@ def 寫入公開副本清單(副本清單: list[dict[str, Any]]) -> None:
 
         副本 = dict(原始副本)
         已有排行榜檔案 = 排行榜檔案路徑(副本).exists() or 排行榜檔案路徑(副本, public=True).exists()
-        if 副本鍵值 not in 啟用鍵值 and not 已有排行榜檔案:
+        # 公開清單內每個副本都必須有可讀的排行榜檔。特別是預先排程的改版內容，
+        # 在首份有效 report 尚未落地前不能提早出現在選單並造成前端 404。
+        if not 已有排行榜檔案:
             continue
 
-        公開副本 = {
-            "key": 副本鍵值,
-            "name": 副本["name"],
-            "category": 副本.get("category"),
-            "enabled": True,
-            "data_path": f"data/rankings/{副本鍵值}.json",
-        }
-        if isinstance(副本.get("version_cutoff"), dict):
-            公開副本["version_cutoff"] = 副本["version_cutoff"]
-        公開清單.append(公開副本)
+        公開清單.append(建立公開副本資料(副本))
         已加入鍵值.add(副本鍵值)
 
     for 副本 in 副本清單:
         if 副本["key"] in 已加入鍵值:
             continue
-        公開副本 = {
-            "key": 副本["key"],
-            "name": 副本["name"],
-            "category": 副本.get("category"),
-            "enabled": True,
-            "data_path": f"data/rankings/{副本['key']}.json",
-        }
-        if isinstance(副本.get("version_cutoff"), dict):
-            公開副本["version_cutoff"] = 副本["version_cutoff"]
-        公開清單.append(公開副本)
+        if not (排行榜檔案路徑(副本).exists() or 排行榜檔案路徑(副本, public=True).exists()):
+            continue
+        公開清單.append(建立公開副本資料(副本))
 
     寫入_json(公開副本清單路徑, 公開清單)
     # 副本清單本身不分資料視圖；鏡像檔必須存在，才能讓所有靜態 JSON 使用相同路徑結構。
@@ -1038,6 +1055,30 @@ def 取得副本掃描起始時間戳記(副本設定: dict[str, Any], *欄位�
         if isinstance(值, str) and 值.strip():
             return 解析日期時間為毫秒(值)
     return None
+
+
+def 副本已達掃描開放時間(
+    副本設定: dict[str, Any],
+    *,
+    目前時間戳記: int | None = None,
+) -> bool:
+    """回傳副本目前是否位於可掃描的繁中服期間。
+
+    scan_start_date 除了界定第一次歷史補查的下限，也作為預先排程副本的開關；
+    scan_end_date 則讓輪替下架的副本在關閉瞬間停止新增掃描，但既有歷史資料仍由
+    公開資料重建流程保留。兩者皆未設定的舊副本維持既有持續掃描行為。
+    """
+    開放時間戳記 = 取得副本掃描起始時間戳記(
+        副本設定,
+        "scan_start_date",
+        "initial_scan_start_date",
+    )
+    比較時間戳記 = 現在毫秒() if 目前時間戳記 is None else 目前時間戳記
+    if 開放時間戳記 is not None and 比較時間戳記 < 開放時間戳記:
+        return False
+
+    關閉時間戳記 = 取得副本掃描起始時間戳記(副本設定, "scan_end_date")
+    return 關閉時間戳記 is None or 比較時間戳記 < 關閉時間戳記
 
 
 def 取得狀態時間戳記(狀態: dict[str, Any], 副本設定: dict[str, Any]) -> int:
@@ -4208,14 +4249,18 @@ def 重建公開排行榜檔案() -> None:
     # 因此這裡不能只看 enabled=true：停掃的副本若仍有歷史排行榜，也必須同步重建公開檔案，
     # 否則 public/data/encounters.json 會列出副本，但前端讀不到對應 data/rankings/{key}.json。
     全部副本清單 = 讀取全部有效副本設定清單()
-    啟用副本清單 = [副本 for 副本 in 全部副本清單 if 副本.get("enabled")]
-    啟用鍵值 = {副本["key"] for 副本 in 啟用副本清單}
+    本輪開始時間戳記 = 現在毫秒()
+    啟用副本清單 = [
+        副本
+        for 副本 in 全部副本清單
+        if 副本.get("enabled") and 副本已達掃描開放時間(副本, 目前時間戳記=本輪開始時間戳記)
+    ]
     寫入公開副本清單(啟用副本清單)
     排行榜索引: dict[str, dict[str, Any]] = {}
 
     for 副本設定 in 全部副本清單:
         已有排行榜檔案 = 排行榜檔案路徑(副本設定).exists() or 排行榜檔案路徑(副本設定, public=True).exists()
-        if 副本設定["key"] not in 啟用鍵值 and not 已有排行榜檔案:
+        if not 已有排行榜檔案:
             continue
 
         排行榜 = 讀取排行榜檔案(副本設定)

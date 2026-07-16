@@ -193,7 +193,11 @@ export default {
 
 <template>
   <section class="使用者搜尋區" aria-label="個人成績單查詢">
-    <form class="使用者搜尋表單 個人成績搜尋表單" @submit.prevent="提交使用者搜尋">
+    <form
+      class="使用者搜尋表單 個人成績搜尋表單"
+      :class="{ 個人成績搜尋表單簡表模式: 使用者簡表模式 }"
+      @submit.prevent="提交使用者搜尋"
+    >
       <div class="欄位 使用者搜尋欄位" @focusout="處理玩家搜尋歷史失焦($event, 'user')">
         <label for="個人成績玩家搜尋">玩家 / 伺服器</label>
         <div class="玩家搜尋輸入組">
@@ -219,7 +223,7 @@ export default {
         </datalist>
       </div>
 
-      <div class="欄位 職業選單欄位" @focusout="處理使用者職業選單失焦">
+      <div v-if="!使用者簡表模式" class="欄位 職業選單欄位" @focusout="處理使用者職業選單失焦">
         <span>職業</span>
         <div class="職業選單">
           <button
@@ -289,7 +293,34 @@ export default {
         </div>
       </div>
 
+      <div v-if="使用者簡表模式" class="欄位 簡表版本欄位">
+        <label for="個人成績簡表版本">遊戲版本</label>
+        <select
+          id="個人成績簡表版本"
+          :value="使用者簡表版本"
+          @change="設定使用者簡表版本($event.target.value)"
+        >
+          <option
+            v-for="版本 in 個人成績簡表版本選項"
+            :key="版本.value"
+            :value="版本.value"
+            :disabled="版本.available === false"
+          >
+            {{ 版本.label }}{{ 版本.available === false ? "（待開放）" : "" }}
+          </option>
+        </select>
+      </div>
+
       <button type="submit">查詢</button>
+      <button
+        class="簡表模式按鈕"
+        type="button"
+        :aria-pressed="使用者簡表模式"
+        @click="切換使用者簡表模式"
+      >
+        <span>簡表模式</span>
+        <strong>{{ 使用者簡表模式 ? "開啟" : "關閉" }}</strong>
+      </button>
     </form>
   </section>
 
@@ -297,9 +328,90 @@ export default {
     <div v-if="使用者讀取中" class="狀態列">讀取個人成績單中</div>
     <div v-else-if="使用者錯誤訊息" class="狀態列 錯誤">{{ 使用者錯誤訊息 }}</div>
     <div v-else-if="!使用者資料" class="狀態列">輸入玩家名稱後即可查看個人成績單</div>
-    <div v-else-if="使用者副本成績.length === 0" class="狀態列">目前沒有符合篩選條件的公開成績</div>
+    <div v-else-if="!使用者簡表模式 && 使用者副本成績.length === 0" class="狀態列">目前沒有符合篩選條件的公開成績</div>
 
     <template v-else>
+      <section v-if="使用者簡表模式" class="個人成績簡表" aria-label="高難副本通關簡表">
+        <header class="個人成績簡表標題">
+          <div>
+            <h2>高難副本通關簡表 · {{ 使用者簡表版本 }}</h2>
+            <p>只顯示此版本已開放副本；零式可切換已開放量級。已結束版本不含後續改版的戰鬥；量級四層皆有效通關時會亮起完成勾勾。</p>
+          </div>
+          <strong>{{ 使用者簡表已收錄通關數 }} / {{ 使用者簡表目標副本數 }} 已收錄</strong>
+        </header>
+
+        <div class="個人成績簡表群組列表">
+          <section
+            v-for="群組 in 使用者簡表群組"
+            :key="群組.key"
+            class="個人成績簡表群組"
+            :class="`個人成績簡表群組-${群組.key}`"
+          >
+            <header>
+              <h3>{{ 群組.name }}</h3>
+            </header>
+            <div
+              v-if="群組.key === 'savage' && 群組.tiers?.length"
+              class="零式量級切換"
+              role="group"
+              aria-label="零式量級"
+            >
+              <button
+                v-for="量級 in 群組.tiers"
+                :key="量級.key"
+                class="零式量級按鈕"
+                :class="{
+                  已選取: 群組.selected_tier_key === 量級.key,
+                  已完成: 量級.is_current_version_complete,
+                }"
+                type="button"
+                :aria-pressed="群組.selected_tier_key === 量級.key"
+                :aria-label="量級.is_current_version_complete
+                  ? `${量級.label}：當版本四層全通關`
+                  : `${量級.label}：尚未完成當版本四層通關`"
+                @click="設定使用者簡表零式量級(量級.key)"
+              >
+                <span class="零式量級完成圖示" aria-hidden="true">{{ 量級.is_current_version_complete ? "✓" : "○" }}</span>
+                <span>{{ 量級.label }}</span>
+              </button>
+            </div>
+            <ul class="簡表副本列表">
+              <li
+                v-for="副本 in 群組.encounters"
+                :key="副本.key"
+                class="簡表副本項"
+                :class="`簡表狀態-${副本.狀態}`"
+              >
+                <strong class="簡表副本名稱">{{ 副本.name }}</strong>
+                <span v-if="副本.job" class="簡表副本職業">
+                  <JobIcon
+                    class="職業圖示 簡表副本職業圖示"
+                    :code="副本.job"
+                    alt=""
+                  />
+                  <span>{{ 顯示職業名稱(副本.job) }}</span>
+                </span>
+                <span
+                  class="簡表副本狀態"
+                  :aria-label="副本.狀態 === 'pr'
+                    ? `${副本.name}：${顯示職業名稱(副本.job)}，${格式化PR值(副本.pr_value)}`
+                    : 副本.狀態 === 'valid-clear'
+                      ? `${副本.name}：已收錄有效版本通關，尚無 PR`
+                      : 副本.狀態 === 'obsolete-clear'
+                        ? `${副本.name}：僅收錄過版通關`
+                        : `${副本.name}：尚未收錄公開通關`"
+                >
+                  <template v-if="副本.狀態 === 'pr'">{{ 格式化PR值(副本.pr_value) }}</template>
+                  <template v-else-if="副本.已收錄通關">✓</template>
+                  <template v-else>—</template>
+                </span>
+              </li>
+            </ul>
+          </section>
+        </div>
+      </section>
+
+      <template v-else>
       <section class="個人成績概要" aria-label="個人成績概要">
         <div class="概要項 概要項計數">
           <span>副本數</span>
@@ -774,6 +886,7 @@ export default {
           </div>
         </details>
       </section>
+      </template>
     </template>
   </section>
 

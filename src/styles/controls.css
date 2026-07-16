@@ -458,7 +458,44 @@ button:disabled {
 }
 
 .個人成績搜尋表單 {
-  grid-template-columns: minmax(260px, 1.35fr) minmax(220px, 0.9fr) auto;
+  grid-template-columns: minmax(260px, 1.35fr) minmax(220px, 0.9fr) auto auto;
+}
+
+.個人成績搜尋表單.個人成績搜尋表單簡表模式 {
+  grid-template-columns: minmax(260px, 1fr) minmax(128px, 0.4fr) auto auto;
+}
+
+.簡表版本欄位 select {
+  min-width: 128px;
+}
+
+.簡表模式按鈕 {
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.簡表模式按鈕 strong {
+  border-radius: 999px;
+  padding: 2px 6px;
+  color: var(--靜音文字);
+  background: var(--表面背景柔和);
+  font-size: 0.72rem;
+  font-weight: 820;
+}
+
+.簡表模式按鈕[aria-pressed="true"] {
+  border-color: var(--重點色);
+  color: var(--重點文字);
+  background: var(--重點色);
+}
+
+.簡表模式按鈕[aria-pressed="true"] strong {
+  color: var(--重點文字);
+  background: color-mix(in srgb, var(--表面背景) 34%, transparent);
 }
 
 .比較搜尋表單 {

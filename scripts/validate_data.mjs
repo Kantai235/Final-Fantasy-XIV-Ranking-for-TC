@@ -18,6 +18,9 @@ const publicAllRankingDetailsDir = path.join(publicAllDataDir, "ranking-details"
 const publicAllUserEntryDetailsDir = path.join(publicAllDataDir, "user-entry-details");
 const rawFieldNames = new Set(["fflogs_raw", "master_data", "matched_players"]);
 const rawFieldPattern = new RegExp(`"(${[...rawFieldNames].join("|")})"\\s*:`);
+const 個人成績簡表遊戲版本順序 = ["7.0", "7.05", "7.1", "7.15", "7.2"];
+const 個人成績簡表遊戲版本 = new Set(個人成績簡表遊戲版本順序);
+const 個人成績簡表遊戲版本索引 = new Map(個人成績簡表遊戲版本順序.map((version, index) => [version, index]));
 
 const issues = [];
 let checkedSourceReports = 0;
@@ -104,6 +107,55 @@ function ensureUniqueKeys(items, keyName, label) {
     }
     seen.add(key);
   }
+}
+
+function collectProfileSummarySavageTiers(encounters, label) {
+  const tiersByEncounter = new Map();
+  const tiersByKey = new Map();
+  const tierKeysByOrder = new Map();
+  const floors = new Set();
+
+  for (const encounter of Array.isArray(encounters) ? encounters : []) {
+    if (encounter?.category !== "零式") {
+      continue;
+    }
+
+    const tier = encounter?.profile_summary_savage_tier;
+    const encounterLabel = `${label} ${encounter?.key || "未知零式副本"}`;
+    if (
+      !tier
+      || typeof tier.key !== "string"
+      || typeof tier.label !== "string"
+      || !Number.isInteger(tier.order)
+      || tier.order < 1
+      || !Number.isInteger(tier.floor)
+      || tier.floor < 1
+      || tier.floor > 4
+    ) {
+      reportIssue(`${encounterLabel} 的 profile_summary_savage_tier 必須包含 key、label、正整數 order 與 1 至 4 的 floor`);
+      continue;
+    }
+
+    const knownTier = tiersByKey.get(tier.key);
+    if (knownTier && (knownTier.label !== tier.label || knownTier.order !== tier.order)) {
+      reportIssue(`${encounterLabel} 的零式量級 label 與 order 必須和同一 key 的其他副本一致`);
+    }
+    const knownTierKey = tierKeysByOrder.get(tier.order);
+    if (knownTierKey && knownTierKey !== tier.key) {
+      reportIssue(`${encounterLabel} 的零式量級 order 不可與 ${knownTierKey} 重複`);
+    }
+    const floorKey = `${tier.key}:${tier.floor}`;
+    if (floors.has(floorKey)) {
+      reportIssue(`${encounterLabel} 的零式量級 floor 不可在同一量級重複`);
+    }
+
+    tiersByEncounter.set(encounter.key, tier);
+    tiersByKey.set(tier.key, tier);
+    tierKeysByOrder.set(tier.order, tier.key);
+    floors.add(floorKey);
+  }
+
+  return tiersByEncounter;
 }
 
 function hasRankingData(ranking) {
@@ -405,10 +457,28 @@ async function validateEncounters() {
   const configEncounters = await readJson(configPath, "config/encounters.json");
   const publicEncounters = await readJson(publicPath, "public/data/encounters.json");
 
+  let configSavageTiers = new Map();
   if (!Array.isArray(configEncounters)) {
     reportIssue("config/encounters.json 必須是陣列");
   } else {
     ensureUniqueKeys(configEncounters, "key", "config/encounters.json");
+    for (const encounter of configEncounters) {
+      const profileSummaryVersion = encounter?.profile_summary_available_from;
+      if (!個人成績簡表遊戲版本.has(profileSummaryVersion)) {
+        reportIssue(`${encounter?.key || "未知副本"} 的 profile_summary_available_from 必須是受支援的個人成績簡表遊戲版本`);
+      }
+      const profileSummaryLastVersion = encounter?.profile_summary_available_until;
+      if (
+        profileSummaryLastVersion !== undefined
+        && (
+          !個人成績簡表遊戲版本.has(profileSummaryLastVersion)
+          || 個人成績簡表遊戲版本索引.get(profileSummaryLastVersion) < 個人成績簡表遊戲版本索引.get(profileSummaryVersion)
+        )
+      ) {
+        reportIssue(`${encounter?.key || "未知副本"} 的 profile_summary_available_until 必須是受支援且不早於首次可見版本的遊戲版本`);
+      }
+    }
+    configSavageTiers = collectProfileSummarySavageTiers(configEncounters, "config/encounters.json");
   }
 
   if (!Array.isArray(publicEncounters)) {
@@ -417,6 +487,48 @@ async function validateEncounters() {
   }
 
   ensureUniqueKeys(publicEncounters, "key", "public/data/encounters.json");
+  const publicSavageTiers = collectProfileSummarySavageTiers(publicEncounters, "public/data/encounters.json");
+  const configProfileSummaryVersions = new Map(
+    Array.isArray(configEncounters)
+      ? configEncounters.map((encounter) => [encounter?.key, {
+        first: encounter?.profile_summary_available_from,
+        last: encounter?.profile_summary_available_until,
+      }])
+      : [],
+  );
+  for (const encounter of publicEncounters) {
+    const profileSummaryVersion = encounter?.profile_summary_available_from;
+    if (!個人成績簡表遊戲版本.has(profileSummaryVersion)) {
+      reportIssue(`${encounter?.key || "未知副本"} 的公開 profile_summary_available_from 必須是受支援的個人成績簡表遊戲版本`);
+      continue;
+    }
+    const profileSummaryLastVersion = encounter?.profile_summary_available_until;
+    if (profileSummaryLastVersion !== undefined && !個人成績簡表遊戲版本.has(profileSummaryLastVersion)) {
+      reportIssue(`${encounter?.key || "未知副本"} 的公開 profile_summary_available_until 必須是受支援的個人成績簡表遊戲版本`);
+      continue;
+    }
+    const configProfileSummaryVersion = configProfileSummaryVersions.get(encounter?.key);
+    if (configProfileSummaryVersion && configProfileSummaryVersion.first !== profileSummaryVersion) {
+      reportIssue(`${encounter.key} 的公開 profile_summary_available_from 必須與 config/encounters.json 一致`);
+    }
+    if (configProfileSummaryVersion && configProfileSummaryVersion.last !== profileSummaryLastVersion) {
+      reportIssue(`${encounter.key} 的公開 profile_summary_available_until 必須與 config/encounters.json 一致`);
+    }
+    const configSavageTier = configSavageTiers.get(encounter?.key);
+    const publicSavageTier = publicSavageTiers.get(encounter?.key);
+    if (
+      configSavageTier
+      && (
+        !publicSavageTier
+        || configSavageTier.key !== publicSavageTier.key
+        || configSavageTier.label !== publicSavageTier.label
+        || configSavageTier.order !== publicSavageTier.order
+        || configSavageTier.floor !== publicSavageTier.floor
+      )
+    ) {
+      reportIssue(`${encounter.key} 的公開 profile_summary_savage_tier 必須與 config/encounters.json 一致`);
+    }
+  }
   return publicEncounters;
 }
 
