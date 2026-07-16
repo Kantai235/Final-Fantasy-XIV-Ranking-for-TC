@@ -188,6 +188,18 @@ const activityLogTimelineAnnotations = [
     importance: "secondary",
   },
   {
+    date: "2026-07-28",
+    title: "繁中服 7.2",
+    detail: "極 澤蓮尼亞、次重量級",
+    importance: "secondary",
+  },
+  {
+    date: "2026-08-04",
+    title: "繁中服 7.2",
+    detail: "零式 次重量級",
+    importance: "secondary",
+  },
+  {
     date: "2026-09-08",
     title: "國際服 7.56",
     detail: "天際的行路",
