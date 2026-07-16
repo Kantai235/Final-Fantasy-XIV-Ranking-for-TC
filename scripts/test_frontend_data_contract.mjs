@@ -28,6 +28,10 @@ import {
   比較個人成績分位顯示排序,
 } from "../src/utils/userProfileSorting.js";
 import {
+  建立個人成績簡表群組,
+  是個人成績簡表目標副本,
+} from "../src/utils/userProfileClearSummary.js";
+import {
   建立Fflogs即時狀態顯示,
   建立報告索引Map,
   建立未收錄提示,
@@ -445,8 +449,52 @@ async function validateEncounterSwitchFilterPersistence() {
   );
 }
 
+function validateUserProfileClearSummary() {
+  const encounters = [
+    { key: "savage_m1s", name: "零式 M1S / 黑貓", category: "零式", current_high_end: true },
+    { key: "ultimate", name: "絕 測試", category: "絕" },
+    { key: "current-extreme", name: "極 測試", category: "極", current_high_end: true },
+    { key: "current-unreal", name: "幻 測試", category: "幻", current_high_end: true },
+    { key: "current-chaotic", name: "滅 測試", category: "滅", current_high_end: true },
+    { key: "old-extreme", name: "極 舊副本", category: "極" },
+  ];
+  const groups = 建立個人成績簡表群組(encounters, [
+    {
+      encounter_key: "savage_m1s",
+      public_entries: [
+        { job: "WhiteMage", performance: { score_percentile: 82 } },
+        { job: "BlackMage", performance: { score_percentile: 96 } },
+      ],
+    },
+    { encounter_key: "ultimate", public_entries: [{ job: "WhiteMage", is_obsolete_record: true }] },
+    { encounter_key: "current-extreme", public_entries: [{ job: "BlackMage" }] },
+    { encounter_key: "old-extreme", public_entries: [{ job: "BlackMage", is_obsolete_record: true }] },
+  ]);
+  const savageGroup = groups.find((group) => group.key === "savage");
+  const ultimateGroup = groups.find((group) => group.key === "ultimate");
+  const extremeGroup = groups.find((group) => group.key === "extreme");
+  const unrealGroup = groups.find((group) => group.key === "unreal");
+  const chaoticGroup = groups.find((group) => group.key === "chaotic");
+
+  assert(是個人成績簡表目標副本(encounters[1]), "所有絕本都必須成為個人成績簡表目標。");
+  assert(是個人成績簡表目標副本(encounters[0]), "current_high_end=true 的副本必須成為個人成績簡表目標。");
+  assert(是個人成績簡表目標副本(encounters[5]), "極本即使不是目前高難也必須保留在個人成績簡表。");
+  assert(savageGroup?.name === "零式" && savageGroup.encounters[0]?.name === "輕量級 1", "零式簡表應橫列顯示輕量級副本。");
+  assert(ultimateGroup?.encounters.length === 1, "簡表必須保留所有絕本。");
+  assert(extremeGroup?.encounters.length === 2 && unrealGroup?.encounters.length === 1 && chaoticGroup?.encounters.length === 1, "簡表應完整列出極本，並依目前高難列出幻本與滅本。");
+  assert(
+    savageGroup?.encounters[0]?.狀態 === "pr" && savageGroup.encounters[0]?.pr_value === 96 && savageGroup.encounters[0]?.job === "BlackMage",
+    "有效成績應顯示跨職業最高 PR 與對應職業。",
+  );
+  assert(ultimateGroup?.encounters[0]?.狀態 === "obsolete-clear", "僅有過版成績時應改顯示灰色通關勾勾。");
+  assert(extremeGroup?.encounters[0]?.狀態 === "valid-clear", "有效通關缺少 PR 時仍應保留有效通關勾勾。");
+  assert(extremeGroup?.encounters[1]?.狀態 === "obsolete-clear", "過版極本有公開成績時應顯示灰色通關勾勾。");
+  assert(!unrealGroup?.encounters[0]?.已收錄通關 && !chaoticGroup?.encounters[0]?.已收錄通關, "沒有公開成績的目標副本應標示為尚未收錄。");
+}
+
 async function validatePublicDataForFrontend() {
   const encounters = await readJson(path.join(publicDataDir, "encounters.json"), "public/data/encounters.json");
+  const encounterConfig = await readJson(path.join(rootDir, "config", "encounters.json"), "config/encounters.json");
   const announcements = await readJson(path.join(publicDataDir, "announcements.json"), "public/data/announcements.json");
   const globalStats = await readJson(path.join(publicDataDir, "global_stats.json"), "public/data/global_stats.json");
   const serverCompare = await readJson(path.join(publicDataDir, "server_compare.json"), "public/data/server_compare.json");
@@ -457,6 +505,21 @@ async function validatePublicDataForFrontend() {
   const versionedEncounterKeys = new Set((encounters || []).filter((encounter) => encounter?.version_cutoff).map((encounter) => encounter.key));
 
   assert(Array.isArray(encounters) && encounters.length > 0, "public/data/encounters.json 必須提供前端副本清單");
+  const configuredCurrentHighEndKeys = new Set(
+    (Array.isArray(encounterConfig) ? encounterConfig : [])
+      .filter((encounter) => encounter?.current_high_end === true)
+      .map((encounter) => encounter.key),
+  );
+  const publicCurrentHighEndKeys = new Set(
+    (encounters || []).filter((encounter) => encounter?.current_high_end === true).map((encounter) => encounter.key),
+  );
+  assert(configuredCurrentHighEndKeys.size > 0, "config/encounters.json 必須標記至少一個目前高難副本。");
+  for (const key of configuredCurrentHighEndKeys) {
+    assert(publicCurrentHighEndKeys.has(key), `${key} 的 current_high_end 標記必須寫入 public/data/encounters.json。`);
+  }
+  for (const key of publicCurrentHighEndKeys) {
+    assert(configuredCurrentHighEndKeys.has(key), `${key} 不可只在 public/data/encounters.json 標記 current_high_end。`);
+  }
   assert(announcements?.schema_version === 1, "public/data/announcements.json schema_version 必須是 1");
   assert(Array.isArray(announcements?.announcements), "public/data/announcements.json 必須包含 announcements");
   for (const announcement of announcements?.announcements || []) {
@@ -1428,6 +1491,7 @@ async function main() {
   await validateSiteFeatureFlags();
   validatePercentileDisplayFormatting();
   validateUserProfilePercentileSorting();
+  validateUserProfileClearSummary();
   validateGcdCoverageDiagnosticFields();
   validateJobIconCacheKeys();
   await validateEncounterSwitchFilterPersistence();

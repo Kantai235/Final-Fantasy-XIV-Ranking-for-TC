@@ -7,6 +7,7 @@
     "encounter_id": 93,
     "difficulty": 101,
     "enabled": true,
+    "current_high_end": true,
     "scan_start_date": "2026-02-01"
   },
   {
@@ -17,6 +18,7 @@
     "encounter_id": 94,
     "difficulty": 101,
     "enabled": true,
+    "current_high_end": true,
     "scan_start_date": "2026-02-01"
   },
   {
@@ -27,6 +29,7 @@
     "encounter_id": 95,
     "difficulty": 101,
     "enabled": true,
+    "current_high_end": true,
     "scan_start_date": "2026-02-01"
   },
   {
@@ -37,6 +40,7 @@
     "encounter_id": 96,
     "difficulty": 101,
     "enabled": true,
+    "current_high_end": true,
     "scan_start_date": "2026-02-01"
   },
   {
@@ -83,6 +87,7 @@
     "encounter_id": 1078,
     "difficulty": 100,
     "enabled": true,
+    "current_high_end": true,
     "scan_start_date": "2026-04-21"
   },
   {
@@ -93,6 +98,7 @@
     "encounter_id": 3009,
     "difficulty": 100,
     "enabled": true,
+    "current_high_end": true,
     "scan_start_date": "2026-04-21"
   },
   {
@@ -103,6 +109,7 @@
     "encounter_id": 2061,
     "difficulty": 100,
     "enabled": true,
+    "current_high_end": true,
     "scan_start_date": "2026-06-23T18:00:00+08:00"
   },
   {

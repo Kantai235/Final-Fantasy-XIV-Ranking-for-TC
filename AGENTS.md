@@ -72,6 +72,7 @@
 2. `public/data/encounters.json` 是前端選單來源。只要副本已有 `data/rankings/` 或 `public/data/rankings/` 歷史資料，即使 `enabled=false`，仍應保留在公開清單中，避免歷史排行榜與個人成績單消失。
 3. `key` 是 `data/rankings/{key}.json`、`data/rankings/{key}.reports/`、`state.encounters[key]` 與前端網址狀態的共同主鍵，建立後不得任意改名。
 4. `chaotic_cloud_of_darkness` 對應繁中服 2026-06-23 18:00 維護後開放的 7.15「滅 黑暗之雲」；FFLogs 為 Alliance Raids (Chaotic) `zone_id=66`、Cloud of Darkness `encounter_id=2061`、`difficulty=100`，`scan_start_date` 使用 `2026-06-23T18:00:00+08:00` 對齊開放時間。
+5. `current_high_end: true` 是個人成績單簡表模式的領域標記；所有 `category="絕"` 與 `category="極"` 副本固定列入，其他副本只有標記為 true 才列入。簡表按零式、絕、極、幻、滅橫列分組；有效版本紀錄顯示跨職業最高 PR 與對應職業，只有過版紀錄時只顯示灰色勾勾。「尚未收錄公開通關」只表示本站尚無該角色的公開 FFLogs 成績，不能視為未通關。`fetch_fflogs.py` 寫入公開副本清單時必須轉出此欄位，且不得用公開清單固定為 true 的 `enabled` 推測目前內容。
 
 ### C. 排行榜與去重規則
 1. `data/rankings/*.json` 主檔保留 `ranking_entries`、副本摘要、更新時間與 `report_shards`；report/fight/player 脈絡保存在同名 `*.reports/*.json` 分片。

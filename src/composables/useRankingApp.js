@@ -75,6 +75,7 @@ import {
   個人成績代表是否較佳,
   比較個人成績分位顯示排序,
 } from "../utils/userProfileSorting";
+import { 建立個人成績簡表群組 } from "../utils/userProfileClearSummary";
 import { 建立職業佔比分組, 取得統計範圍計數, 職業範圍類型 } from "../utils/statsDisplay";
 import { 顯示Honey粉絲榜, 顯示Gcd覆蓋率, 顯示作者相關標示 } from "../utils/siteFeatures";
 import { 寫入網址狀態, 讀取目前網址狀態 } from "../utils/urlState";
@@ -253,6 +254,7 @@ const 使用者職業類型篩選 = ref("");
 const 使用者職業篩選 = ref("");
 const 使用者職業選單開啟 = ref(false);
 const 使用者趨勢職業選擇 = ref({});
+const 使用者簡表模式 = ref(false);
 const 使用者讀取中 = ref(false);
 const 使用者錯誤訊息 = ref("");
 const 比較角色左輸入 = ref("");
@@ -573,6 +575,10 @@ function 選擇使用者趨勢職業(副本鍵值, 職業代碼) {
     ...使用者趨勢職業選擇.value,
     [副本鍵值]: 職業代碼,
   };
+}
+
+function 切換使用者簡表模式() {
+  使用者簡表模式.value = !使用者簡表模式.value;
 }
 
 function 切換使用者職業選單() {
@@ -3543,6 +3549,23 @@ const 使用者完整副本成績 = computed(() => {
   return 取得使用者副本成績(使用者資料.value, 使用者伺服器篩選.value, () => true, 使用者代表成績是否較佳);
 });
 
+const 使用者簡表群組 = computed(() => {
+  // 簡表的問題是角色是否有已收錄通關，而不是某個職業是否有成績；
+  // 因此必須使用未套職業篩選的完整副本成績，避免切換職業後把既有通關誤標為未收錄。
+  return 建立個人成績簡表群組(副本清單.value, 使用者完整副本成績.value);
+});
+
+const 使用者簡表目標副本數 = computed(() => {
+  return 使用者簡表群組.value.reduce((總數, 群組) => 總數 + 群組.encounters.length, 0);
+});
+
+const 使用者簡表已收錄通關數 = computed(() => {
+  return 使用者簡表群組.value.reduce(
+    (總數, 群組) => 總數 + 群組.encounters.filter((副本) => 副本.已收錄通關).length,
+    0,
+  );
+});
+
 const 使用者可用職業列表 = computed(() => {
   const 職業集合 = new Set(
     使用者完整副本成績.value
@@ -5264,6 +5287,7 @@ onUnmounted(() => {
     使用者職業篩選,
     使用者職業選單開啟,
     使用者趨勢職業選擇,
+    使用者簡表模式,
     使用者讀取中,
     使用者錯誤訊息,
     比較角色左輸入,
@@ -5383,6 +5407,7 @@ onUnmounted(() => {
     選擇使用者職業類型,
     選擇使用者職業,
     選擇使用者趨勢職業,
+    切換使用者簡表模式,
     切換使用者職業選單,
     處理使用者職業選單失焦,
     切換副本選單,
@@ -5622,6 +5647,9 @@ onUnmounted(() => {
     有效比較版本範圍,
     取得使用者副本成績,
     使用者完整副本成績,
+    使用者簡表群組,
+    使用者簡表目標副本數,
+    使用者簡表已收錄通關數,
     使用者可用職業列表,
     使用者職業類型選項,
     使用者職業選項,

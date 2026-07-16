@@ -988,6 +988,22 @@ def 寫入公開副本清單(副本清單: list[dict[str, Any]]) -> None:
     公開清單: list[dict[str, Any]] = []
     已加入鍵值: set[str] = set()
 
+    def 建立公開副本資料(副本: dict[str, Any]) -> dict[str, Any]:
+        # enabled 在公開清單固定為 true，讓已停止掃描但仍有歷史資料的副本可繼續被前端讀取；
+        # 因此「目前高難」必須用獨立的 current_high_end 業務欄位，不可誤用掃描狀態判定。
+        公開副本: dict[str, Any] = {
+            "key": 副本["key"],
+            "name": 副本["name"],
+            "category": 副本.get("category"),
+            "enabled": True,
+            "data_path": f"data/rankings/{副本['key']}.json",
+        }
+        if 副本.get("current_high_end") is True:
+            公開副本["current_high_end"] = True
+        if isinstance(副本.get("version_cutoff"), dict):
+            公開副本["version_cutoff"] = 副本["version_cutoff"]
+        return 公開副本
+
     for 原始副本 in 設定清單 if isinstance(設定清單, list) else []:
         if not isinstance(原始副本, dict):
             continue
@@ -1001,31 +1017,13 @@ def 寫入公開副本清單(副本清單: list[dict[str, Any]]) -> None:
         if 副本鍵值 not in 啟用鍵值 and not 已有排行榜檔案:
             continue
 
-        公開副本 = {
-            "key": 副本鍵值,
-            "name": 副本["name"],
-            "category": 副本.get("category"),
-            "enabled": True,
-            "data_path": f"data/rankings/{副本鍵值}.json",
-        }
-        if isinstance(副本.get("version_cutoff"), dict):
-            公開副本["version_cutoff"] = 副本["version_cutoff"]
-        公開清單.append(公開副本)
+        公開清單.append(建立公開副本資料(副本))
         已加入鍵值.add(副本鍵值)
 
     for 副本 in 副本清單:
         if 副本["key"] in 已加入鍵值:
             continue
-        公開副本 = {
-            "key": 副本["key"],
-            "name": 副本["name"],
-            "category": 副本.get("category"),
-            "enabled": True,
-            "data_path": f"data/rankings/{副本['key']}.json",
-        }
-        if isinstance(副本.get("version_cutoff"), dict):
-            公開副本["version_cutoff"] = 副本["version_cutoff"]
-        公開清單.append(公開副本)
+        公開清單.append(建立公開副本資料(副本))
 
     寫入_json(公開副本清單路徑, 公開清單)
     # 副本清單本身不分資料視圖；鏡像檔必須存在，才能讓所有靜態 JSON 使用相同路徑結構。
