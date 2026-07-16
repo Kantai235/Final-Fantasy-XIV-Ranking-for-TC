@@ -8,6 +8,13 @@
     "difficulty": 101,
     "enabled": true,
     "current_high_end": true,
+    "profile_summary_available_from": "7.05",
+    "profile_summary_savage_tier": {
+      "key": "light-heavyweight",
+      "label": "輕量級",
+      "order": 1,
+      "floor": 1
+    },
     "scan_start_date": "2026-02-01"
   },
   {
@@ -19,6 +26,13 @@
     "difficulty": 101,
     "enabled": true,
     "current_high_end": true,
+    "profile_summary_available_from": "7.05",
+    "profile_summary_savage_tier": {
+      "key": "light-heavyweight",
+      "label": "輕量級",
+      "order": 1,
+      "floor": 2
+    },
     "scan_start_date": "2026-02-01"
   },
   {
@@ -30,6 +44,13 @@
     "difficulty": 101,
     "enabled": true,
     "current_high_end": true,
+    "profile_summary_available_from": "7.05",
+    "profile_summary_savage_tier": {
+      "key": "light-heavyweight",
+      "label": "輕量級",
+      "order": 1,
+      "floor": 3
+    },
     "scan_start_date": "2026-02-01"
   },
   {
@@ -41,6 +62,13 @@
     "difficulty": 101,
     "enabled": true,
     "current_high_end": true,
+    "profile_summary_available_from": "7.05",
+    "profile_summary_savage_tier": {
+      "key": "light-heavyweight",
+      "label": "輕量級",
+      "order": 1,
+      "floor": 4
+    },
     "scan_start_date": "2026-02-01"
   },
   {
@@ -51,6 +79,7 @@
     "encounter_id": 1071,
     "difficulty": 100,
     "enabled": true,
+    "profile_summary_available_from": "7.0",
     "scan_start_date": "2025-11-27",
     "version_cutoff": {
       "patch": "7.1",
@@ -69,6 +98,7 @@
     "encounter_id": 1072,
     "difficulty": 100,
     "enabled": true,
+    "profile_summary_available_from": "7.0",
     "scan_start_date": "2025-11-27",
     "version_cutoff": {
       "patch": "7.1",
@@ -88,6 +118,7 @@
     "difficulty": 100,
     "enabled": true,
     "current_high_end": true,
+    "profile_summary_available_from": "7.1",
     "scan_start_date": "2026-04-21"
   },
   {
@@ -99,6 +130,7 @@
     "difficulty": 100,
     "enabled": true,
     "current_high_end": true,
+    "profile_summary_available_from": "7.1",
     "scan_start_date": "2026-04-21"
   },
   {
@@ -110,6 +142,7 @@
     "difficulty": 100,
     "enabled": true,
     "current_high_end": true,
+    "profile_summary_available_from": "7.15",
     "scan_start_date": "2026-06-23T18:00:00+08:00"
   },
   {
@@ -120,6 +153,7 @@
     "encounter_id": 1073,
     "difficulty": 100,
     "enabled": true,
+    "profile_summary_available_from": "7.0",
     "scan_start_date": "2025-11-27"
   },
   {
@@ -130,6 +164,7 @@
     "encounter_id": 1074,
     "difficulty": 100,
     "enabled": true,
+    "profile_summary_available_from": "7.0",
     "scan_start_date": "2025-11-27"
   },
   {
@@ -140,6 +175,7 @@
     "encounter_id": 1075,
     "difficulty": 100,
     "enabled": true,
+    "profile_summary_available_from": "7.0",
     "scan_start_date": "2025-11-27"
   },
   {
@@ -150,6 +186,7 @@
     "encounter_id": 1076,
     "difficulty": 100,
     "enabled": true,
+    "profile_summary_available_from": "7.0",
     "scan_start_date": "2025-11-27"
   },
   {
@@ -160,6 +197,7 @@
     "encounter_id": 1077,
     "difficulty": 100,
     "enabled": true,
+    "profile_summary_available_from": "7.0",
     "scan_start_date": "2025-11-27"
   },
   {
@@ -170,6 +208,7 @@
     "encounter_id": 1079,
     "difficulty": 100,
     "enabled": true,
+    "profile_summary_available_from": "7.1",
     "scan_start_date": "2026-05-26"
   }
 ]

@@ -29,6 +29,9 @@ import {
 } from "../src/utils/userProfileSorting.js";
 import {
   建立個人成績簡表群組,
+  成績符合個人成績簡表版本,
+  個人成績簡表版本選項,
+  副本符合個人成績簡表版本,
   是個人成績簡表目標副本,
 } from "../src/utils/userProfileClearSummary.js";
 import {
@@ -450,22 +453,90 @@ async function validateEncounterSwitchFilterPersistence() {
 }
 
 function validateUserProfileClearSummary() {
+  const lightHeavyweight = { key: "light-heavyweight", label: "輕量級", order: 1 };
+  const cruiserweight = { key: "cruiserweight", label: "次重量級", order: 2 };
   const encounters = [
-    { key: "savage_m1s", name: "零式 M1S / 黑貓", category: "零式", current_high_end: true },
-    { key: "ultimate", name: "絕 測試", category: "絕" },
-    { key: "current-extreme", name: "極 測試", category: "極", current_high_end: true },
-    { key: "current-unreal", name: "幻 測試", category: "幻", current_high_end: true },
-    { key: "current-chaotic", name: "滅 測試", category: "滅", current_high_end: true },
-    { key: "old-extreme", name: "極 舊副本", category: "極" },
+    {
+      key: "savage_m1s",
+      name: "零式 M1S / 黑貓",
+      category: "零式",
+      current_high_end: true,
+      profile_summary_available_from: "7.05",
+      profile_summary_savage_tier: { ...lightHeavyweight, floor: 1 },
+    },
+    {
+      key: "savage_m2s",
+      name: "零式 M2S / 蜂蜂小甜心",
+      category: "零式",
+      current_high_end: true,
+      profile_summary_available_from: "7.05",
+      profile_summary_savage_tier: { ...lightHeavyweight, floor: 2 },
+    },
+    {
+      key: "savage_m3s",
+      name: "零式 M3S / 野蠻炸彈",
+      category: "零式",
+      current_high_end: true,
+      profile_summary_available_from: "7.05",
+      profile_summary_savage_tier: { ...lightHeavyweight, floor: 3 },
+    },
+    {
+      key: "savage_m4s",
+      name: "零式 M4S / 狡雷",
+      category: "零式",
+      current_high_end: true,
+      profile_summary_available_from: "7.05",
+      profile_summary_savage_tier: { ...lightHeavyweight, floor: 4 },
+    },
+    {
+      key: "savage_m5s",
+      name: "零式 M5S / 測試",
+      category: "零式",
+      current_high_end: true,
+      profile_summary_available_from: "7.15",
+      profile_summary_savage_tier: { ...cruiserweight, floor: 1 },
+    },
+    {
+      key: "savage_m6s",
+      name: "零式 M6S / 測試",
+      category: "零式",
+      current_high_end: true,
+      profile_summary_available_from: "7.15",
+      profile_summary_savage_tier: { ...cruiserweight, floor: 2 },
+    },
+    {
+      key: "savage_m7s",
+      name: "零式 M7S / 測試",
+      category: "零式",
+      current_high_end: true,
+      profile_summary_available_from: "7.15",
+      profile_summary_savage_tier: { ...cruiserweight, floor: 3 },
+    },
+    {
+      key: "savage_m8s",
+      name: "零式 M8S / 測試",
+      category: "零式",
+      current_high_end: true,
+      profile_summary_available_from: "7.15",
+      profile_summary_savage_tier: { ...cruiserweight, floor: 4 },
+    },
+    { key: "ultimate", name: "絕 測試", category: "絕", profile_summary_available_from: "7.0" },
+    { key: "current-extreme", name: "極 測試", category: "極", current_high_end: true, profile_summary_available_from: "7.1" },
+    { key: "current-unreal", name: "幻 測試", category: "幻", current_high_end: true, profile_summary_available_from: "7.1" },
+    { key: "current-chaotic", name: "滅 測試", category: "滅", current_high_end: true, profile_summary_available_from: "7.15" },
+    { key: "old-extreme", name: "極 舊副本", category: "極", profile_summary_available_from: "7.0" },
   ];
   const groups = 建立個人成績簡表群組(encounters, [
     {
-      encounter_key: "savage_m1s",
+      encounter_key: "savage_m5s",
       public_entries: [
         { job: "WhiteMage", performance: { score_percentile: 82 } },
         { job: "BlackMage", performance: { score_percentile: 96 } },
       ],
     },
+    { encounter_key: "savage_m6s", public_entries: [{ job: "WhiteMage" }] },
+    { encounter_key: "savage_m7s", public_entries: [{ job: "BlackMage", performance: { score_percentile: 91 } }] },
+    { encounter_key: "savage_m8s", public_entries: [{ job: "WhiteMage" }] },
     { encounter_key: "ultimate", public_entries: [{ job: "WhiteMage", is_obsolete_record: true }] },
     { encounter_key: "current-extreme", public_entries: [{ job: "BlackMage" }] },
     { encounter_key: "old-extreme", public_entries: [{ job: "BlackMage", is_obsolete_record: true }] },
@@ -475,21 +546,80 @@ function validateUserProfileClearSummary() {
   const extremeGroup = groups.find((group) => group.key === "extreme");
   const unrealGroup = groups.find((group) => group.key === "unreal");
   const chaoticGroup = groups.find((group) => group.key === "chaotic");
+  const ultimateEncounter = encounters.find((encounter) => encounter.key === "ultimate");
+  const currentExtremeEncounter = encounters.find((encounter) => encounter.key === "current-extreme");
+  const oldExtremeEncounter = encounters.find((encounter) => encounter.key === "old-extreme");
 
-  assert(是個人成績簡表目標副本(encounters[1]), "所有絕本都必須成為個人成績簡表目標。");
+  assert(是個人成績簡表目標副本(ultimateEncounter), "所有絕本都必須成為個人成績簡表目標。");
   assert(是個人成績簡表目標副本(encounters[0]), "current_high_end=true 的副本必須成為個人成績簡表目標。");
-  assert(是個人成績簡表目標副本(encounters[5]), "極本即使不是目前高難也必須保留在個人成績簡表。");
-  assert(savageGroup?.name === "零式" && savageGroup.encounters[0]?.name === "輕量級 1", "零式簡表應橫列顯示輕量級副本。");
+  assert(是個人成績簡表目標副本(oldExtremeEncounter), "極本即使不是目前高難也必須保留在個人成績簡表。");
+  assert(
+    savageGroup?.name === "零式"
+      && savageGroup.selected_tier_key === "cruiserweight"
+      && savageGroup.tiers?.map((tier) => tier.label).join(",") === "輕量級,次重量級"
+      && savageGroup.tiers?.find((tier) => tier.key === "cruiserweight")?.is_current_version_complete
+      && savageGroup.encounters.map((encounter) => encounter.name).join(",") === "M5S / 測試,M6S / 測試,M7S / 測試,M8S / 測試",
+    "零式簡表必須列出所選版本已開放量級、預設選取最新量級，並在四層皆有效通關時標示完成。",
+  );
   assert(ultimateGroup?.encounters.length === 1, "簡表必須保留所有絕本。");
   assert(extremeGroup?.encounters.length === 2 && unrealGroup?.encounters.length === 1 && chaoticGroup?.encounters.length === 1, "簡表應完整列出極本，並依目前高難列出幻本與滅本。");
   assert(
     savageGroup?.encounters[0]?.狀態 === "pr" && savageGroup.encounters[0]?.pr_value === 96 && savageGroup.encounters[0]?.job === "BlackMage",
     "有效成績應顯示跨職業最高 PR 與對應職業。",
   );
+  const selectedLightSavage = 建立個人成績簡表群組(encounters, [], "7.15", "light-heavyweight").find((group) => group.key === "savage");
+  assert(
+    selectedLightSavage?.selected_tier_key === "light-heavyweight"
+      && selectedLightSavage.encounters.map((encounter) => encounter.name).join(",") === "M1S / 黑貓,M2S / 蜂蜂小甜心,M3S / 野蠻炸彈,M4S / 狡雷"
+      && !selectedLightSavage.tiers?.find((tier) => tier.key === "light-heavyweight")?.is_current_version_complete,
+    "手動選擇已開放的舊量級時，零式簡表必須切換對應四層，且不能把未完成量級誤標為全通。",
+  );
   assert(ultimateGroup?.encounters[0]?.狀態 === "obsolete-clear", "僅有過版成績時應改顯示灰色通關勾勾。");
   assert(extremeGroup?.encounters[0]?.狀態 === "valid-clear", "有效通關缺少 PR 時仍應保留有效通關勾勾。");
   assert(extremeGroup?.encounters[1]?.狀態 === "obsolete-clear", "過版極本有公開成績時應顯示灰色通關勾勾。");
   assert(!unrealGroup?.encounters[0]?.已收錄通關 && !chaoticGroup?.encounters[0]?.已收錄通關, "沒有公開成績的目標副本應標示為尚未收錄。");
+
+  const version70Groups = 建立個人成績簡表群組(encounters, [
+    { encounter_key: "old-extreme", public_entries: [{ job: "BlackMage", recorded_at_iso: "2026-03-09T23:59:59.000Z" }] },
+    { encounter_key: "current-extreme", public_entries: [{ job: "BlackMage", recorded_at_iso: "2026-03-09T23:59:59.000Z" }] },
+  ], "7.0");
+  assert(version70Groups.some((group) => group.key === "extreme") && !version70Groups.some((group) => group.key === "savage"), "7.0 簡表只能列出 7.0 時已開放的副本。");
+  assert(!副本符合個人成績簡表版本(encounters[0], "7.0"), "7.05 才開放的零式不可出現在 7.0 簡表。");
+  assert(!副本符合個人成績簡表版本(currentExtremeEncounter, "7.0"), "7.1 才開放的極本不可出現在 7.0 簡表。");
+  assert(成績符合個人成績簡表版本({ recorded_at_iso: "2026-03-10T09:59:59.000Z" }, "7.0"), "7.0 應保留 7.05 開放前的戰鬥。");
+  assert(!成績符合個人成績簡表版本({ recorded_at_iso: "2026-03-10T10:00:00.000Z" }, "7.0"), "7.0 不可混入 7.05 開放後的戰鬥。");
+  const version705Savage = 建立個人成績簡表群組(encounters, [], "7.05").find((group) => group.key === "savage");
+  assert(
+    version705Savage?.name === "零式"
+      && version705Savage.selected_tier_key === "light-heavyweight"
+      && version705Savage.tiers?.length === 1
+      && version705Savage.encounters.length === 4
+      && version705Savage.encounters.map((encounter) => encounter.name).join(",") === "M1S / 黑貓,M2S / 蜂蜂小甜心,M3S / 野蠻炸彈,M4S / 狡雷",
+    "較新的次重量級尚未開放時，7.05 零式簡表必須只提供輕量級，並以各樓層副本名稱顯示。",
+  );
+  assert(個人成績簡表版本選項.find((版本) => 版本.value === "7.2")?.available === false, "未公布開放時間的 7.2 必須標示為待開放，避免錯誤切片歷史資料。");
+}
+
+async function validateSavageProfileSummaryPresentation() {
+  const source = await readText(path.join(srcDir, "pages", "UserProfilePage.vue"));
+
+  assert(
+    source.includes('v-if="副本.job"') && !source.includes("群組.key !== 'savage' && 副本.job"),
+    "零式量級內各樓層有職業時，必須和其他副本一樣顯示職業。",
+  );
+  assert(
+    source.includes('<template v-if="副本.狀態 === \'pr\'">{{ 格式化PR值(副本.pr_value) }}</template>'),
+    "零式量級內各樓層有有效 PR 時，必須顯示 PR。",
+  );
+  assert(
+    source.includes("量級.is_current_version_complete") && source.includes("零式量級完成圖示"),
+    "四層全通的彩色勾勾必須保留在零式量級大項目。",
+  );
+  assert(
+    source.includes("</header>\n            <div\n              v-if=\"群組.key === 'savage' && 群組.tiers?.length\"")
+      && source.includes("</div>\n            <ul class=\"簡表副本列表\">"),
+    "零式量級大項目必須位於零式標題下方、樓層小項目上方。",
+  );
 }
 
 async function validatePublicDataForFrontend() {
@@ -519,6 +649,38 @@ async function validatePublicDataForFrontend() {
   }
   for (const key of publicCurrentHighEndKeys) {
     assert(configuredCurrentHighEndKeys.has(key), `${key} 不可只在 public/data/encounters.json 標記 current_high_end。`);
+  }
+  for (const encounter of encounterConfig || []) {
+    assert(
+      typeof encounter?.profile_summary_available_from === "string",
+      `${encounter?.key || "未知副本"} 必須設定個人成績簡表的首次可見版本。`,
+    );
+    if (encounter?.category === "零式") {
+      assert(
+        typeof encounter?.profile_summary_savage_tier?.key === "string"
+          && typeof encounter.profile_summary_savage_tier.label === "string"
+          && Number.isInteger(encounter.profile_summary_savage_tier.order)
+          && Number.isInteger(encounter.profile_summary_savage_tier.floor)
+          && encounter.profile_summary_savage_tier.floor >= 1
+          && encounter.profile_summary_savage_tier.floor <= 4,
+        `${encounter?.key || "未知副本"} 必須設定完整的個人成績簡表零式量級。`,
+      );
+    }
+  }
+  for (const encounter of encounters || []) {
+    assert(
+      typeof encounter?.profile_summary_available_from === "string",
+      `${encounter?.key || "未知副本"} 的首次可見版本必須寫入 public/data/encounters.json。`,
+    );
+    if (encounter?.category === "零式") {
+      assert(
+        typeof encounter?.profile_summary_savage_tier?.key === "string"
+          && typeof encounter.profile_summary_savage_tier.label === "string"
+          && Number.isInteger(encounter.profile_summary_savage_tier.order)
+          && Number.isInteger(encounter.profile_summary_savage_tier.floor),
+        `${encounter?.key || "未知副本"} 的零式量級必須寫入 public/data/encounters.json。`,
+      );
+    }
   }
   assert(announcements?.schema_version === 1, "public/data/announcements.json schema_version 必須是 1");
   assert(Array.isArray(announcements?.announcements), "public/data/announcements.json 必須包含 announcements");
@@ -1492,6 +1654,7 @@ async function main() {
   validatePercentileDisplayFormatting();
   validateUserProfilePercentileSorting();
   validateUserProfileClearSummary();
+  await validateSavageProfileSummaryPresentation();
   validateGcdCoverageDiagnosticFields();
   validateJobIconCacheKeys();
   await validateEncounterSwitchFilterPersistence();

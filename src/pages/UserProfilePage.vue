@@ -293,6 +293,24 @@ export default {
         </div>
       </div>
 
+      <div v-if="使用者簡表模式" class="欄位 簡表版本欄位">
+        <label for="個人成績簡表版本">遊戲版本</label>
+        <select
+          id="個人成績簡表版本"
+          :value="使用者簡表版本"
+          @change="設定使用者簡表版本($event.target.value)"
+        >
+          <option
+            v-for="版本 in 個人成績簡表版本選項"
+            :key="版本.value"
+            :value="版本.value"
+            :disabled="版本.available === false"
+          >
+            {{ 版本.label }}{{ 版本.available === false ? "（待開放）" : "" }}
+          </option>
+        </select>
+      </div>
+
       <button type="submit">查詢</button>
       <button
         class="簡表模式按鈕"
@@ -316,8 +334,8 @@ export default {
       <section v-if="使用者簡表模式" class="個人成績簡表" aria-label="高難副本通關簡表">
         <header class="個人成績簡表標題">
           <div>
-            <h2>高難副本通關簡表</h2>
-            <p>有效紀錄顯示最高 PR；灰色勾勾表示僅有過版公開紀錄。</p>
+            <h2>高難副本通關簡表 · {{ 使用者簡表版本 }}</h2>
+            <p>只顯示此版本已開放副本；零式可切換已開放量級。已結束版本不含後續改版的戰鬥；量級四層皆有效通關時會亮起完成勾勾。</p>
           </div>
           <strong>{{ 使用者簡表已收錄通關數 }} / {{ 使用者簡表目標副本數 }} 已收錄</strong>
         </header>
@@ -332,6 +350,31 @@ export default {
             <header>
               <h3>{{ 群組.name }}</h3>
             </header>
+            <div
+              v-if="群組.key === 'savage' && 群組.tiers?.length"
+              class="零式量級切換"
+              role="group"
+              aria-label="零式量級"
+            >
+              <button
+                v-for="量級 in 群組.tiers"
+                :key="量級.key"
+                class="零式量級按鈕"
+                :class="{
+                  已選取: 群組.selected_tier_key === 量級.key,
+                  已完成: 量級.is_current_version_complete,
+                }"
+                type="button"
+                :aria-pressed="群組.selected_tier_key === 量級.key"
+                :aria-label="量級.is_current_version_complete
+                  ? `${量級.label}：當版本四層全通關`
+                  : `${量級.label}：尚未完成當版本四層通關`"
+                @click="設定使用者簡表零式量級(量級.key)"
+              >
+                <span class="零式量級完成圖示" aria-hidden="true">{{ 量級.is_current_version_complete ? "✓" : "○" }}</span>
+                <span>{{ 量級.label }}</span>
+              </button>
+            </div>
             <ul class="簡表副本列表">
               <li
                 v-for="副本 in 群組.encounters"

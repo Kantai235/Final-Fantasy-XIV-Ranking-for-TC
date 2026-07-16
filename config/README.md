@@ -4,7 +4,7 @@
 
 非敏感設定集中在這個目錄：
 
-- `encounters.json`：副本名稱、FFLogs ID、啟用狀態、目前高難標記與起掃日期。
+- `encounters.json`：副本名稱、FFLogs ID、啟用狀態、目前高難標記、個人成績簡表版本與起掃日期。
 - `fflogs.json`：FFLogs 爬蟲的掃描、限流、重試與手動補抓參數。
 - `site.json`：正式站台網址、Vite base path 與本機開發/預覽允許的 host。Cloudflare 規則腳本也會以 `site_url` 推導預設 hostname。
 
@@ -14,6 +14,8 @@
 - `enabled` 只控制下一輪 Python 爬蟲是否掃描該副本，不代表前端是否顯示該副本。
 - 前端實際讀取的是 `public/data/encounters.json`。只要某副本已有 `data/rankings/` 或 `public/data/rankings/` 歷史資料，即使 `enabled=false`，公開清單仍會保留它，避免既有排行榜與個人成績單消失。
 - `current_high_end=true` 是個人成績單「簡表模式」的目前高難標記；所有 `category="絕"` 與 `category="極"` 副本固定列入，其他副本僅在此欄位為 `true` 時列入。它和 `enabled` 的掃描語意無關，公開清單會保留此欄位供前端判定。
+- `profile_summary_available_from` 是副本首次出現在個人成績簡表的繁中服遊戲版本；它只控制簡表版本快照的可見範圍，不能取代 `scan_start_date` 或影響 Python 掃描。版本交界的戰鬥時間上限由前端簡表版本規則集中管理；未公告開放時間的未來版本不可啟用，避免把後續戰鬥誤列入舊版。
+- 零式必須額外設定 `profile_summary_savage_tier` 的 `key`、`label`、`order` 與 `floor`（1～4）。簡表會列出所選版本中已開放的所有量級，預設選取 `order` 最新者，並可切換查看各量級的第 1～4 層；某量級四層皆為該版本有效通關時，量級按鈕會亮起彩色勾勾。量級按鈕只表示四層完成狀態，量級內各樓層仍保留職業與 PR 顯示。新增次重量級、重量級時只要填入新量級與較大的 `order`，舊量級的歷史排行榜與玩家成績不會被刪除。
 - 新增副本時先確認 `zone_id`、`encounter_id`、`difficulty` 與 `scan_start_date`，再執行資料更新流程。
 - `ultimate_futures_rewritten` 對應繁中服 2026-05-26 開放的 7.11「絕 伊甸」；FFLogs v2 `worldData.zones` 顯示 Futures Rewritten 的 `zone_id=65`、`encounter_id=1079`、`difficulty=100`。
 - `chaotic_cloud_of_darkness` 對應繁中服 2026-06-23 18:00 維護後開放的 7.15「滅 黑暗之雲」；FFLogs 排行榜頁顯示 Alliance Raids (Chaotic) 的 `zone_id=66`、Cloud of Darkness 的 `encounter_id=2061`，本專案沿用非零式高難度的 `difficulty=100`。`scan_start_date` 使用 `2026-06-23T18:00:00+08:00`，避免維護前候選 report 進入新分類掃描窗。

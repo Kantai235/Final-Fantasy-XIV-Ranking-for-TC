@@ -1000,6 +1000,14 @@ def 寫入公開副本清單(副本清單: list[dict[str, Any]]) -> None:
         }
         if 副本.get("current_high_end") is True:
             公開副本["current_high_end"] = True
+        # 個人成績簡表的版本快照需要知道副本首次可見的遊戲版本。
+        # 這個欄位只控制前端呈現範圍，不會影響掃描起點、排行榜資料或歷史 report。
+        if isinstance(副本.get("profile_summary_available_from"), str):
+            公開副本["profile_summary_available_from"] = 副本["profile_summary_available_from"]
+        # 零式量級讓個人成績簡表列出同版本已開放量級並切換查看各組四層，預設最新量級。
+        # 它同樣只是呈現中繼資料，不能參與 FFLogs 掃描或覆寫既有排行榜紀錄。
+        if isinstance(副本.get("profile_summary_savage_tier"), dict):
+            公開副本["profile_summary_savage_tier"] = dict(副本["profile_summary_savage_tier"])
         if isinstance(副本.get("version_cutoff"), dict):
             公開副本["version_cutoff"] = 副本["version_cutoff"]
         return 公開副本

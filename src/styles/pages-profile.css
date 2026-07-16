@@ -673,7 +673,67 @@
 .個人成績簡表群組 > header {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
   padding: 0;
+}
+
+.零式量級切換 {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.零式量級按鈕 {
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--邊框柔和色);
+  border-radius: 999px;
+  padding: 3px 8px 3px 5px;
+  color: var(--次要文字);
+  background: var(--表面背景柔和);
+  font: inherit;
+  font-size: 0.74rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.零式量級按鈕:hover {
+  border-color: color-mix(in srgb, var(--簡表群組色) 52%, var(--邊框色));
+  color: var(--主要文字);
+}
+
+.零式量級按鈕.已選取 {
+  border-color: var(--簡表群組色);
+  color: var(--主要文字);
+  background: color-mix(in srgb, var(--簡表群組色) 13%, var(--表面背景));
+}
+
+.零式量級完成圖示 {
+  width: 18px;
+  height: 18px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid var(--邊框柔和色);
+  border-radius: 50%;
+  color: var(--靜音文字);
+  background: var(--表面背景);
+  font-size: 0.7rem;
+  line-height: 1;
+}
+
+.零式量級按鈕.已完成 {
+  border-color: color-mix(in srgb, var(--簡表群組色) 60%, var(--邊框色));
+}
+
+.零式量級按鈕.已完成 .零式量級完成圖示 {
+  border-color: var(--簡表群組色);
+  color: var(--簡表群組文字);
+  background: var(--簡表群組色);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--簡表群組色) 18%, transparent);
 }
 
 .簡表副本列表 {
