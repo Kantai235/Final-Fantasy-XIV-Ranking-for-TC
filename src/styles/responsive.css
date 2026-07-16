@@ -696,17 +696,94 @@
     font-size: 0.74rem;
   }
 
-  .使用者搜尋表單 {
-    display: grid;
+  /* 簡表模式會額外套用第二個 class，必須以相同權重覆寫桌面版四欄設定。 */
+  .使用者搜尋表單,
+  .個人成績搜尋表單.個人成績搜尋表單簡表模式 {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
   }
 
-  .使用者搜尋表單 {
-    grid-template-columns: 1fr;
+  .個人成績搜尋表單 > * {
+    min-width: 0;
+  }
+
+  .個人成績搜尋表單 > button {
+    width: 100%;
+    min-width: 0;
+    min-height: 44px;
   }
 
   .個人成績簡表標題 {
     align-items: flex-start;
     flex-direction: column;
+    gap: 10px;
+    padding: 12px;
+  }
+
+  .個人成績簡表標題 > div {
+    min-width: 0;
+  }
+
+  .個人成績簡表標題 > strong {
+    max-width: 100%;
+    white-space: normal;
+  }
+
+  .個人成績簡表群組列表 {
+    gap: 14px;
+    padding: 12px;
+  }
+
+  .零式量級切換 {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+    gap: 8px;
+  }
+
+  .零式量級按鈕 {
+    min-width: 0;
+    min-height: 44px;
+    justify-content: center;
+    padding: 6px 10px;
+  }
+
+  /* 手機上的副本名稱可能比一顆膠囊還長，改為可換行的單列，避免把頁面撐出水平捲軸。 */
+  .簡表副本列表 {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+  }
+
+  .簡表副本項 {
+    min-width: 0;
+    min-height: 44px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    align-items: center;
+    gap: 8px;
+    border-radius: 8px;
+    padding: 7px 9px;
+  }
+
+  .簡表副本名稱 {
+    min-width: 0;
+    line-height: 1.35;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .簡表副本職業 {
+    min-width: 0;
+  }
+
+  .簡表副本職業 > span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .簡表副本狀態 {
+    justify-self: end;
   }
 
   .比較搜尋表單.比較搜尋表單含版本 {

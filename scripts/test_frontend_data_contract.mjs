@@ -684,6 +684,48 @@ async function validateSavageProfileSummaryPresentation() {
   );
 }
 
+async function validateMobileProfileSummaryLayout() {
+  const source = await readText(path.join(srcDir, "styles", "responsive.css"));
+  const mobileStyleStart = source.indexOf("@media (max-width: 720px)");
+  const mobileStyles = source.slice(mobileStyleStart);
+
+  assert(mobileStyleStart >= 0, "responsive.css 必須保留手機版斷點。");
+  assert(
+    mobileStyles.includes(".個人成績簡表標題 > div {\n    min-width: 0;")
+      && mobileStyles.includes(".個人成績簡表標題 > strong {\n    max-width: 100%;\n    white-space: normal;"),
+    "手機版簡表標題與通關數摘要必須可以在窄寬度內收縮與換行。",
+  );
+  assert(
+    mobileStyles.includes(".零式量級切換 {\n    display: grid;")
+      && mobileStyles.includes(".零式量級按鈕 {\n    min-width: 0;\n    min-height: 44px;"),
+    "手機版零式量級切換必須使用可收縮欄位，且保留足夠的觸控高度。",
+  );
+  assert(
+    mobileStyles.includes(".簡表副本列表 {\n    display: grid;")
+      && mobileStyles.includes(".簡表副本項 {\n    min-width: 0;\n    min-height: 44px;\n    display: grid;")
+      && mobileStyles.includes(".簡表副本名稱 {\n    min-width: 0;\n    line-height: 1.35;\n    white-space: normal;\n    overflow-wrap: anywhere;"),
+    "手機版簡表副本必須改為可換行的單列，避免長副本名稱造成水平溢出。",
+  );
+}
+
+async function validateMobileUserSearchFormLayout() {
+  const source = await readText(path.join(srcDir, "styles", "responsive.css"));
+  const mobileStyleStart = source.indexOf("@media (max-width: 720px)");
+  const mobileStyles = source.slice(mobileStyleStart);
+
+  assert(
+    mobileStyles.includes(
+      ".使用者搜尋表單,\n  .個人成績搜尋表單.個人成績搜尋表單簡表模式 {\n    grid-template-columns: minmax(0, 1fr);",
+    ),
+    "手機版簡表搜尋表單必須以同等權重覆寫桌面四欄設定，改為可收縮的單欄。",
+  );
+  assert(
+    mobileStyles.includes(".個人成績搜尋表單 > * {\n    min-width: 0;")
+      && mobileStyles.includes(".個人成績搜尋表單 > button {\n    width: 100%;\n    min-width: 0;\n    min-height: 44px;"),
+    "手機版個人成績搜尋表單的欄位與按鈕必須可收縮，並保留足夠的觸控高度。",
+  );
+}
+
 async function validatePublicDataForFrontend() {
   const encounters = await readJson(path.join(publicDataDir, "encounters.json"), "public/data/encounters.json");
   const encounterConfig = await readJson(path.join(rootDir, "config", "encounters.json"), "config/encounters.json");
@@ -1738,6 +1780,8 @@ async function main() {
   validateUserProfilePercentileSorting();
   validateUserProfileClearSummary();
   await validateSavageProfileSummaryPresentation();
+  await validateMobileProfileSummaryLayout();
+  await validateMobileUserSearchFormLayout();
   validateGcdCoverageDiagnosticFields();
   validateJobIconCacheKeys();
   await validateEncounterSwitchFilterPersistence();
