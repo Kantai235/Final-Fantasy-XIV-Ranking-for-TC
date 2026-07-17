@@ -1,5 +1,6 @@
 <script>
 import { ref } from "vue";
+import EncounterMenu from "../components/EncounterMenu.vue";
 import JobIcon from "../components/JobIcon.vue";
 import ReportDetailDialog from "../components/ReportDetailDialog.vue";
 import { injectRankingApp } from "../composables/useRankingApp";
@@ -7,6 +8,7 @@ import { injectRankingApp } from "../composables/useRankingApp";
 export default {
   name: "TeamRankingsPage",
   components: {
+    EncounterMenu,
     JobIcon,
     ReportDetailDialog,
   },
@@ -106,21 +108,13 @@ export default {
           <span class="選單箭頭">▾</span>
         </button>
 
-        <div v-if="隊伍榜副本選單開啟" class="副本選單面板" role="menu" aria-label="隊伍榜副本">
-          <section v-for="分組 in 隊伍榜副本分組" :key="分組.分類" class="副本分類群">
-            <p class="副本分類標題">{{ 分組.分類 }}</p>
-            <button
-              v-for="副本 in 分組.副本列表"
-              :key="副本.encounter_key"
-              class="副本選單項"
-              type="button"
-              :class="{ 已選取: 隊伍榜副本鍵值 === 副本.encounter_key }"
-              @click="選擇隊伍榜副本(副本.encounter_key)"
-            >
-              {{ 副本.encounter_name }}
-            </button>
-          </section>
-        </div>
+        <EncounterMenu
+          v-if="隊伍榜副本選單開啟"
+          :分組="隊伍榜副本分組"
+          :選取鍵值="隊伍榜副本鍵值"
+          標籤="選擇隊伍榜副本"
+          @選擇="選擇隊伍榜副本($event.鍵值)"
+        />
       </div>
     </div>
     <label v-if="顯示隊伍榜版本篩選" class="欄位">

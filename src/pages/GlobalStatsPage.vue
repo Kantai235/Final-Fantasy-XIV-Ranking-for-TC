@@ -1,10 +1,12 @@
 <script>
+import EncounterMenu from "../components/EncounterMenu.vue";
 import JobIcon from "../components/JobIcon.vue";
 import { injectRankingApp } from "../composables/useRankingApp";
 
 export default {
   name: "GlobalStatsPage",
   components: {
+    EncounterMenu,
     JobIcon,
   },
   setup() {
@@ -29,32 +31,13 @@ export default {
           <span class="選單箭頭">▾</span>
         </button>
 
-        <div v-if="統計副本選單開啟" class="副本選單面板" role="menu" aria-label="統計範圍">
-          <section class="副本分類群">
-            <p class="副本分類標題">全部</p>
-            <button
-              class="副本選單項"
-              type="button"
-              :class="{ 已選取: 統計副本鍵值 === 'all' }"
-              @click="選擇統計副本(null)"
-            >
-              全部副本
-            </button>
-          </section>
-          <section v-for="分組 in 副本分組" :key="分組.分類" class="副本分類群">
-            <p class="副本分類標題">{{ 分組.分類 }}</p>
-            <button
-              v-for="副本 in 分組.副本列表"
-              :key="副本.key"
-              class="副本選單項"
-              type="button"
-              :class="{ 已選取: 統計副本鍵值 === 副本.key }"
-              @click="選擇統計副本(副本)"
-            >
-              {{ 副本.name }}
-            </button>
-          </section>
-        </div>
+        <EncounterMenu
+          v-if="統計副本選單開啟"
+          :分組="統計副本分組"
+          :選取鍵值="統計副本鍵值"
+          標籤="選擇統計範圍"
+          @選擇="選擇統計副本($event.原始資料)"
+        />
       </div>
     </div>
     <label v-if="顯示統計版本篩選" class="欄位">

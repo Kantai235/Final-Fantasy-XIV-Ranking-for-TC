@@ -817,6 +817,17 @@
     padding: 8px;
   }
 
+  .副本階層選單面板 {
+    grid-template-columns: minmax(104px, 0.72fr) minmax(0, 1fr);
+    gap: 6px;
+    padding: 8px;
+  }
+
+  .副本選單內容欄 {
+    max-height: min(502px, calc(100vh - 178px));
+    padding-left: 6px;
+  }
+
   .工具列 .職業選單面板 {
     left: auto;
     right: 0;
@@ -848,6 +859,13 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .副本選單項 {
+    min-width: 0;
+    min-height: 38px;
+    padding-inline: 8px;
+    font-size: 0.82rem;
   }
 
   .個人成績概要 {

@@ -16,6 +16,7 @@ import {
   職業類型色彩,
   顯示職業名稱,
 } from "../domain/jobs";
+import { 建立副本選單分組 } from "../domain/encounters";
 import { 讀取Json } from "../utils/fetchJson";
 import {
   解析紀錄日期,
@@ -446,28 +447,30 @@ function 版本紀錄說明文字(副本) {
   return `全部版本紀錄會納入所有的紀錄資訊，因此排名可能並不準確。過時版本紀錄為 ${改版文字} 的紀錄；因玩家裝備品級提升，可能存在跳過機制的可能性，較難準確反映玩家當時的副本實力。有效版本紀錄為 ${規則?.patch || "改版"} 改版前的紀錄。`;
 }
 
-const 副本分組 = computed(() => {
-  const 分組索引 = new Map();
+const 副本清單索引 = computed(() => new Map(副本清單.value.map((副本) => [副本.key, 副本])));
 
-  for (const 分類 of 副本分類順序) {
-    分組索引.set(分類, []);
-  }
+function 取得零式量級(副本, 副本鍵值) {
+  return 副本?.profile_summary_savage_tier
+    || 副本清單索引.value.get(副本鍵值)?.profile_summary_savage_tier
+    || null;
+}
 
-  for (const 副本 of 副本清單.value) {
-    const 分類 = 副本.category || "其他";
-    if (!分組索引.has(分類)) {
-      分組索引.set(分類, []);
-    }
-    分組索引.get(分類).push(副本);
-  }
+function 建立公開副本選單分組({ 包含全部 = false } = {}) {
+  const 選項 = 包含全部
+    ? [{ key: "all", name: "全部副本", category: "全部" }, ...副本清單.value]
+    : 副本清單.value;
 
-  return Array.from(分組索引.entries())
-    .map(([分類, 副本列表]) => ({
-      分類,
-      副本列表,
-    }))
-    .filter((分組) => 分組.副本列表.length > 0);
-});
+  return 建立副本選單分組(選項, {
+    取鍵值: (副本) => 副本.key,
+    取名稱: (副本) => 副本.name,
+    取分類: (副本) => 副本.category,
+    取零式量級: (副本) => 取得零式量級(副本, 副本.key),
+  });
+}
+
+const 副本分組 = computed(() => 建立公開副本選單分組());
+const 統計副本分組 = computed(() => 建立公開副本選單分組({ 包含全部: true }));
+const 比較副本分組 = computed(() => 建立公開副本選單分組({ 包含全部: true }));
 
 const 副本選單文字 = computed(() => {
   return 目前副本.value?.name || "選擇副本";
@@ -2168,26 +2171,12 @@ const 近期動態日誌副本選項 = computed(() => {
 });
 
 const 近期動態日誌副本分組 = computed(() => {
-  const 分組索引 = new Map();
-
-  for (const 分類 of ["全部", ...副本分類順序]) {
-    分組索引.set(分類, []);
-  }
-
-  for (const 選項 of 近期動態日誌副本選項.value) {
-    const 分類 = 選項.value === "all" ? "全部" : 選項.category || "其他";
-    if (!分組索引.has(分類)) {
-      分組索引.set(分類, []);
-    }
-    分組索引.get(分類).push(選項);
-  }
-
-  return Array.from(分組索引.entries())
-    .map(([分類, 副本列表]) => ({
-      分類,
-      副本列表,
-    }))
-    .filter((分組) => 分組.副本列表.length > 0);
+  return 建立副本選單分組(近期動態日誌副本選項.value, {
+    取鍵值: (選項) => 選項.value,
+    取名稱: (選項) => 選項.label,
+    取分類: (選項) => (選項.value === "all" ? "全部" : 選項.category),
+    取零式量級: (選項) => 取得零式量級(選項, 選項.value),
+  });
 });
 
 const 近期動態日誌指標選項 = computed(() => {
@@ -2588,26 +2577,12 @@ const 隊伍榜副本列表 = computed(() => {
 });
 
 const 隊伍榜副本分組 = computed(() => {
-  const 分組索引 = new Map();
-
-  for (const 分類 of 副本分類順序) {
-    分組索引.set(分類, []);
-  }
-
-  for (const 副本 of 隊伍榜副本列表.value) {
-    const 分類 = 副本.encounter_category || "其他";
-    if (!分組索引.has(分類)) {
-      分組索引.set(分類, []);
-    }
-    分組索引.get(分類).push(副本);
-  }
-
-  return Array.from(分組索引.entries())
-    .map(([分類, 副本列表]) => ({
-      分類,
-      副本列表,
-    }))
-    .filter((分組) => 分組.副本列表.length > 0);
+  return 建立副本選單分組(隊伍榜副本列表.value, {
+    取鍵值: (副本) => 副本.encounter_key,
+    取名稱: (副本) => 副本.encounter_name,
+    取分類: (副本) => 副本.encounter_category,
+    取零式量級: (副本) => 取得零式量級(副本, 副本.encounter_key),
+  });
 });
 
 const 目前隊伍榜副本 = computed(() => {
@@ -5420,6 +5395,8 @@ onUnmounted(() => {
     個人成績簡表版本選項,
     副本分類順序,
     副本分組,
+    統計副本分組,
+    比較副本分組,
     副本選單文字,
     顯示排行榜版本篩選,
     有效排行榜版本範圍,

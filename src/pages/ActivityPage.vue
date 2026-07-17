@@ -1,10 +1,12 @@
 <script>
+import EncounterMenu from "../components/EncounterMenu.vue";
 import JobIcon from "../components/JobIcon.vue";
 import { injectRankingApp } from "../composables/useRankingApp";
 
 export default {
   name: "ActivityPage",
   components: {
+    EncounterMenu,
     JobIcon,
   },
   setup() {
@@ -48,21 +50,13 @@ export default {
                   <span class="選單箭頭">▾</span>
                 </button>
 
-                <div v-if="近期動態日誌副本選單開啟" class="副本選單面板" role="menu" aria-label="近期日誌副本">
-                  <section v-for="分組 in 近期動態日誌副本分組" :key="分組.分類" class="副本分類群">
-                    <p class="副本分類標題">{{ 分組.分類 }}</p>
-                    <button
-                      v-for="副本 in 分組.副本列表"
-                      :key="副本.value"
-                      class="副本選單項"
-                      type="button"
-                      :class="{ 已選取: 近期動態日誌有效副本鍵值 === 副本.value }"
-                      @click="選擇近期動態日誌副本(副本.value)"
-                    >
-                      {{ 副本.label }}
-                    </button>
-                  </section>
-                </div>
+                <EncounterMenu
+                  v-if="近期動態日誌副本選單開啟"
+                  :分組="近期動態日誌副本分組"
+                  :選取鍵值="近期動態日誌有效副本鍵值"
+                  標籤="選擇近期日誌副本"
+                  @選擇="選擇近期動態日誌副本($event.鍵值)"
+                />
               </div>
             </div>
             <div class="欄位 近期日誌時間範圍欄位">

@@ -1,5 +1,6 @@
 <script>
 import { ref } from "vue";
+import EncounterMenu from "../components/EncounterMenu.vue";
 import JobIcon from "../components/JobIcon.vue";
 import PlayerSearchHistoryPanel from "../components/PlayerSearchHistoryPanel.vue";
 import ReportDetailDialog from "../components/ReportDetailDialog.vue";
@@ -8,6 +9,7 @@ import { injectRankingApp } from "../composables/useRankingApp";
 export default {
   name: "RankingPage",
   components: {
+    EncounterMenu,
     JobIcon,
     PlayerSearchHistoryPanel,
     ReportDetailDialog,
@@ -171,21 +173,13 @@ export default {
         <span class="選單箭頭">▾</span>
       </button>
 
-      <div v-if="副本選單開啟" class="副本選單面板" role="menu" aria-label="副本">
-        <section v-for="分組 in 副本分組" :key="分組.分類" class="副本分類群">
-          <p class="副本分類標題">{{ 分組.分類 }}</p>
-          <button
-            v-for="副本 in 分組.副本列表"
-            :key="副本.key"
-            class="副本選單項"
-            type="button"
-            :class="{ 已選取: 副本鍵值 === 副本.key }"
-            @click="選擇副本(副本)"
-          >
-            {{ 副本.name }}
-          </button>
-        </section>
-      </div>
+      <EncounterMenu
+        v-if="副本選單開啟"
+        :分組="副本分組"
+        :選取鍵值="副本鍵值"
+        標籤="選擇副本"
+        @選擇="選擇副本($event.原始資料)"
+      />
     </div>
   </div>
 
