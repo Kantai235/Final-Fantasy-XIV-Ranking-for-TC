@@ -281,7 +281,15 @@
     "enabled": true,
     "current_high_end": true,
     "profile_summary_available_from": "7.15",
-    "scan_start_date": "2026-06-23T18:00:00+08:00"
+    "scan_start_date": "2026-06-23T18:00:00+08:00",
+    "version_cutoff": {
+      "patch": "7.2",
+      "obsolete_after_iso": "2026-07-28T04:00:00.000Z",
+      "obsolete_after_local": "2026-07-28 12:00",
+      "timezone": "Asia/Taipei",
+      "valid_label": "7.2 改版前",
+      "obsolete_label": "7.2 改版後"
+    }
   },
   {
     "key": "ultimate_bahamut",
