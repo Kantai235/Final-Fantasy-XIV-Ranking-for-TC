@@ -393,6 +393,7 @@ export default {
                 </span>
                 <span
                   class="簡表副本狀態"
+                  :class="副本.狀態 === 'pr' ? 簡表PR色彩類別(副本.pr_value) : ''"
                   :aria-label="副本.狀態 === 'pr'
                     ? `${副本.name}：${顯示職業名稱(副本.job)}，${格式化PR值(副本.pr_value)}`
                     : 副本.狀態 === 'valid-clear'

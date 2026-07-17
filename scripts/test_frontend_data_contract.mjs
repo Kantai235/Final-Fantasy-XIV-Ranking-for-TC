@@ -664,6 +664,9 @@ function validateUserProfileClearSummary() {
 
 async function validateSavageProfileSummaryPresentation() {
   const source = await readText(path.join(srcDir, "pages", "UserProfilePage.vue"));
+  const composableSource = await readText(path.join(srcDir, "composables", "useRankingApp.js"));
+  const profileStyles = await readText(path.join(srcDir, "styles", "pages-profile.css"));
+  const percentileStyles = await readText(path.join(srcDir, "styles", "tables-dialogs.css"));
 
   assert(
     source.includes('v-if="副本.job"') && !source.includes("群組.key !== 'savage' && 副本.job"),
@@ -672,6 +675,20 @@ async function validateSavageProfileSummaryPresentation() {
   assert(
     source.includes('<template v-if="副本.狀態 === \'pr\'">{{ 格式化PR值(副本.pr_value) }}</template>'),
     "零式量級內各樓層有有效 PR 時，必須顯示 PR。",
+  );
+  assert(
+    source.includes("簡表PR色彩類別(副本.pr_value)")
+      && composableSource.includes("function 簡表PR色彩類別(PR值)")
+      && composableSource.includes("return 取得PR色彩類別(PR值);"),
+    "簡表顯示 PR 時必須直接套用全站 PR 色彩分級，不受前 N% 顯示偏好影響。",
+  );
+  assert(
+    profileStyles.includes("var(--分位PR色, var(--簡表群組文字))")
+      && profileStyles.includes("var(--分位PR色, var(--簡表群組色))")
+      && percentileStyles.includes("--分位PR色: #ff8000;")
+      && percentileStyles.includes("--分位PR色: #e268a8;")
+      && percentileStyles.includes("--分位PR色: #e5cc80;"),
+    "簡表 PR 徽章必須重用 PR 95、99、100 等既有色彩，而非另建不同色票。",
   );
   assert(
     source.includes("量級.is_current_version_complete") && source.includes("零式量級完成圖示"),

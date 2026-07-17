@@ -794,7 +794,11 @@
   white-space: nowrap;
 }
 
-.簡表副本項.簡表狀態-pr .簡表副本狀態,
+.簡表副本項.簡表狀態-pr .簡表副本狀態 {
+  color: var(--分位PR色, var(--簡表群組文字));
+  background: color-mix(in srgb, var(--分位PR色, var(--簡表群組色)) 18%, var(--表面背景));
+}
+
 .簡表副本項.簡表狀態-valid-clear .簡表副本狀態 {
   color: var(--簡表群組文字);
   background: var(--簡表群組色);
