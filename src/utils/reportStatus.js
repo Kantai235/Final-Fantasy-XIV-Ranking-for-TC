@@ -241,12 +241,29 @@ export function 建立Fflogs即時狀態顯示(payload) {
   const access = String(payload.fflogs_access || "");
   const visibility = String(payload.visibility || "").toLocaleLowerCase("en-US");
   if (access === "accessible") {
-    const isPublic = visibility === "public";
+    if (visibility === "public") {
+      return {
+        status: "public",
+        badge: "公開",
+        title: "FFLogs 目前是公開可讀",
+        description: "是否收錄仍需等待伺服器確認繁中服玩家、支援副本與通關紀錄。",
+      };
+    }
+
+    if (visibility) {
+      return {
+        status: "private",
+        badge: "非公開",
+        title: "FFLogs 目前不是公開可讀",
+        description: "站務 Apps Script 仍可讀取摘要，但 FFLogs visibility 不是 Public。若本站已收錄這份 report，可要求重新確認公開狀態。",
+      };
+    }
+
     return {
-      status: isPublic ? "public" : "accessible",
-      badge: isPublic ? "公開" : "可讀",
-      title: isPublic ? "FFLogs 目前是公開可讀" : "FFLogs API 目前可讀取這份 report",
-      description: "這只代表 report 對站務 Apps Script 可讀；是否收錄仍需等待資料管線確認繁中服玩家、支援副本與通關 fight。",
+      status: "accessible",
+      badge: "可讀",
+      title: "FFLogs 目前可讀取這份報告",
+      description: "FFLogs 沒有回傳 visibility，無法確認是否公開；請稍後再查一次。",
     };
   }
 
@@ -255,7 +272,7 @@ export function 建立Fflogs即時狀態顯示(payload) {
       status: "private",
       badge: "私人或不可讀",
       title: "FFLogs 目前不是公開可讀",
-      description: "FFLogs API 無法讀取這份 report。常見原因是 Private、已刪除、不存在，或站務 OAuth client 沒有存取權限。",
+      description: "無法讀取這份 report，常見原因是它已設為 Private、已刪除、不存在，或站務 OAuth client 沒有存取權限。",
     };
   }
 
@@ -263,8 +280,8 @@ export function 建立Fflogs即時狀態顯示(payload) {
     return {
       status: "archived",
       badge: "封存不可讀",
-      title: "FFLogs 找到 report，但封存狀態不可存取",
-      description: "這份 report 目前無法由 API 讀取完整內容，站內 workflow 也可能無法補抓或重新整理。",
+      title: "FFLogs 找到報告，但封存狀態不可存取",
+      description: "這份報告目前無法讀取完整內容，站內伺服器也可能無法補抓或重新整理。",
     };
   }
 
@@ -274,6 +291,29 @@ export function 建立Fflogs即時狀態顯示(payload) {
     title: "FFLogs 回傳未知狀態",
     description: payload.message || "即時查詢已完成，但回傳內容不屬於目前支援的狀態，請稍後再試或回報站務。",
   };
+}
+
+// 待處理名單的兩種用途不同：新 report 必須已公開才能補抓；但已收錄 report
+// 若 FFLogs 明確回報不可公開，則要允許使用者要求重新確認，讓資料管線有機會
+// 依實際存取結果將既有來源標記為 hidden。未知或暫時性錯誤不可視為隱藏依據。
+export function Fflogs目前公開可讀(payload) {
+  return payload?.ok === true
+    && payload?.fflogs_access === "accessible"
+    && String(payload?.visibility || "").toLocaleLowerCase("en-US") === "public";
+}
+
+export function Fflogs目前明確不可公開(payload) {
+  if (payload?.ok !== true) {
+    return false;
+  }
+
+  const access = String(payload?.fflogs_access || "");
+  if (access === "private_or_deleted" || access === "archived_inaccessible") {
+    return true;
+  }
+
+  const visibility = String(payload?.visibility || "").toLocaleLowerCase("en-US");
+  return access === "accessible" && Boolean(visibility) && visibility !== "public";
 }
 
 function 執行FflogsAppsScriptJsonp(params, options = {}) {

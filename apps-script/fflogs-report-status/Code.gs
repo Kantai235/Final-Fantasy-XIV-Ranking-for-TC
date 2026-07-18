@@ -1,4 +1,4 @@
-const SCRIPT_VERSION = "fflogs-report-status-v3";
+const SCRIPT_VERSION = "fflogs-report-status-v4";
 const FFLOGS_TOKEN_URL = "https://www.fflogs.com/oauth/token";
 const FFLOGS_API_URL = "https://www.fflogs.com/api/v2/client";
 const REPORT_CODE_PATTERN = /^[A-Za-z0-9]{8,32}$/;
@@ -199,20 +199,29 @@ function enqueueReportRefresh_(reportCode, params, startedAt) {
 
   const fflogsResult = fetchReportStatusFromFflogs_(reportCode);
   const statusResult = normalizeFflogsReportResult_(reportCode, fflogsResult, startedAt);
+  const requestedAction = normalizeRequestedAction_(params.request_type || params.requested_action);
+  const siteStatus = normalizeSiteStatus_(params.site_status);
+  const isVisibilityReview = requestedAction === "review_existing_visibility"
+    && (siteStatus === "found" || siteStatus === "fight_missing");
+  const isPublicReadable = statusResult.ok === true
+    && statusResult.fflogs_access === "accessible"
+    && String(statusResult.visibility || "").toLowerCase() === "public";
+
+  // 新收錄與一般重查都只能處理 Public report，避免把目前無權存取的內容送進
+  // 補抓管線。唯一例外是本站已收錄、且前端剛確認 FFLogs 不再公開可讀的紀錄：
+  // 此時把 report code 送進既有重查入口，讓下一輪 fetch_fflogs.py 再以受保護的
+  // client 確認；若仍不可存取，資料管線才會在來源分片加上 hidden 標記。
   if (
-    statusResult.ok !== true
-    || statusResult.fflogs_access !== "accessible"
-    || String(statusResult.visibility || "").toLowerCase() !== "public"
+    !isPublicReadable
+    && !isVisibilityReview
   ) {
     return {
       ...statusResult,
       queue_status: "rejected_not_public",
-      message: "這份 FFLogs 目前不是 Public 且可讀狀態，請先將 report 轉為公開後再送出待收錄。",
+      message: "這份 FFLogs 目前不是 Public 且可讀狀態；只有本站已收錄的 report 才可要求重新確認公開狀態。",
     };
   }
 
-  const requestedAction = normalizeRequestedAction_(params.request_type || params.requested_action);
-  const siteStatus = normalizeSiteStatus_(params.site_status);
   const fightText = normalizeFightText_(params.fight || params.fight_text);
   const source = normalizeSource_(params.source);
   let queueResult = null;
@@ -249,8 +258,12 @@ function enqueueReportRefresh_(reportCode, params, startedAt) {
     requested_action: requestedAction,
     site_status: siteStatus,
     message: queueResult.created
-      ? "已加入待收錄名單，會在後續 GitHub Actions workflow 執行時嘗試抓取。"
-      : "這份 report 已在待收錄名單中，已更新送出時間與重查次數。",
+      ? (isVisibilityReview
+        ? "已加入公開狀態重新排查名單；後續 workflow 會確認 report 是否仍不可公開讀取。"
+        : "已加入待收錄名單，會在後續 GitHub Actions workflow 執行時嘗試抓取。")
+      : (isVisibilityReview
+        ? "這份 report 已在公開狀態重新排查名單中，已更新送出時間與重查次數。"
+        : "這份 report 已在待收錄名單中，已更新送出時間與重查次數。"),
   };
 }
 
@@ -470,7 +483,10 @@ function normalizeAction_(action) {
 
 function normalizeRequestedAction_(action) {
   const text = String(action || "").trim().toLowerCase();
-  return text === "retry_existing" ? "retry_existing" : "queue_missing";
+  if (text === "retry_existing" || text === "review_existing_visibility") {
+    return text;
+  }
+  return "queue_missing";
 }
 
 function normalizeSiteStatus_(status) {

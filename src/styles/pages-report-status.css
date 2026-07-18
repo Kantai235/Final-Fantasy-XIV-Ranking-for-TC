@@ -476,6 +476,18 @@
   line-height: 1.55;
 }
 
+.Logs檢查公開狀態重查提示 {
+  margin: 0 16px 16px;
+  border: 1px solid color-mix(in srgb, var(--公告警示色) 42%, var(--邊框柔和色));
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: var(--主要文字);
+  background: color-mix(in srgb, var(--公告警示色) 9%, var(--表面背景柔和));
+  font-size: 0.88rem;
+  font-weight: 720;
+  line-height: 1.55;
+}
+
 .Logs檢查即時狀態細節 {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));

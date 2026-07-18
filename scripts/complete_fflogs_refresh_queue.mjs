@@ -47,9 +47,11 @@ export const QUEUE_HEADERS = Object.freeze([
 
 const QUEUE_OUTCOME = {
   COLLECTED: "collected",
+  HIDDEN: "hidden",
   NO_CLEAR: "no_clear",
   NO_TRADITIONAL_CHINESE_PLAYERS: "no_traditional_chinese_players",
 };
+const VISIBILITY_REVIEW_ACTION = "review_existing_visibility";
 
 function normalizeHeader(value) {
   return String(value || "").trim().toLowerCase();
@@ -258,6 +260,16 @@ export async function buildIndexedReportSet({
   return indexedReportCodes;
 }
 
+export async function buildHiddenReportSet({ hiddenStatusIndexPath }) {
+  // 公開狀態重新排查只會由「本站已收錄」的 report 發起。workflow 已在本步驟前
+  // 重建 hidden delta 索引，因此只需讀取它就能確認這次重查是否真的把 report
+  // 從一般公開資料移除；不能用 FFLogs 即時查詢結果直接結束 queue，以免暫時性
+  // 錯誤或前端偽造參數就被當成隱藏成功。
+  const hiddenReportCodes = new Set();
+  addReportStatusIndex(await readJsonIfExists(hiddenStatusIndexPath), hiddenReportCodes);
+  return hiddenReportCodes;
+}
+
 export function isRowIndexed(row, indexedReportCodes) {
   const reportCode = normalizeReportCode(row.report_code);
   return REPORT_CODE_PATTERN.test(reportCode) && indexedReportCodes.has(reportCode);
@@ -298,7 +310,15 @@ export function buildReportStatusesByCode(state, reportCodes) {
   return statusesByCode;
 }
 
-export function resolveQueueOutcome(row, indexedReportCodes, statusesByCode) {
+function isVisibilityReviewRequest(row) {
+  return normalizeHeader(row?.requested_action || row?.request_type) === VISIBILITY_REVIEW_ACTION;
+}
+
+export function resolveQueueOutcome(row, indexedReportCodes, statusesByCode, hiddenReportCodes = new Set()) {
+  if (isVisibilityReviewRequest(row) && isRowIndexed(row, hiddenReportCodes)) {
+    return QUEUE_OUTCOME.HIDDEN;
+  }
+
   if (isRowIndexed(row, indexedReportCodes)) {
     return QUEUE_OUTCOME.COLLECTED;
   }
@@ -319,6 +339,8 @@ function queueOutcomeStatus(outcome) {
   switch (outcome) {
     case QUEUE_OUTCOME.COLLECTED:
       return "done";
+    case QUEUE_OUTCOME.HIDDEN:
+      return "hidden";
     case QUEUE_OUTCOME.NO_CLEAR:
       return "not_eligible_no_clear";
     case QUEUE_OUTCOME.NO_TRADITIONAL_CHINESE_PLAYERS:
@@ -329,6 +351,9 @@ function queueOutcomeStatus(outcome) {
 }
 
 function queueOutcomeMessage(row, outcome) {
+  if (outcome === QUEUE_OUTCOME.HIDDEN) {
+    return "workflow 已重新確認 FFLogs 不可公開讀取，既有公開紀錄已標記為 hidden。";
+  }
   if (outcome === QUEUE_OUTCOME.COLLECTED) {
     // 現行 Apps Script 欄位是 requested_action；保留 request_type fallback，讓舊的
     // 手動匯入列仍可呈現正確的重掃結果，而不是一律退回首次收錄訊息。
@@ -350,6 +375,8 @@ function queueOutcomeFromTerminalStatus(status) {
   switch (normalizeHeader(status)) {
     case "done":
       return QUEUE_OUTCOME.COLLECTED;
+    case "hidden":
+      return QUEUE_OUTCOME.HIDDEN;
     case "not_eligible_no_clear":
       return QUEUE_OUTCOME.NO_CLEAR;
     case "not_eligible_no_traditional_chinese_players":
@@ -365,7 +392,16 @@ function hasMalformedLastMessage(row) {
   return /^\d+$/.test(String(row.last_message || "").trim());
 }
 
-export function buildUpdateRanges({ headers, rows, sheetName, nowIso, maxRows, indexedReportCodes, statusesByCode }) {
+export function buildUpdateRanges({
+  headers,
+  rows,
+  sheetName,
+  nowIso,
+  maxRows,
+  indexedReportCodes,
+  statusesByCode,
+  hiddenReportCodes,
+}) {
   if (!Array.isArray(rows) || rows.length === 0) {
     return [];
   }
@@ -382,7 +418,7 @@ export function buildUpdateRanges({ headers, rows, sheetName, nowIso, maxRows, i
     const statusCell = `${columnNameFromIndex(statusIndex)}${rowNumber}`;
     const updatedAtCell = `${columnNameFromIndex(updatedAtIndex)}${rowNumber}`;
     const lastMessageCell = `${columnNameFromIndex(lastMessageIndex)}${rowNumber}`;
-    const outcome = resolveQueueOutcome(row, indexedReportCodes, statusesByCode);
+    const outcome = resolveQueueOutcome(row, indexedReportCodes, statusesByCode, hiddenReportCodes);
     if (!outcome) {
       return [];
     }
@@ -410,6 +446,7 @@ export function buildMalformedMessageRepairRanges({
   sheetName,
   indexedReportCodes,
   statusesByCode,
+  hiddenReportCodes,
   updatedRowNumbers = new Set(),
 }) {
   const lastMessageIndex = headers.indexOf("last_message");
@@ -422,7 +459,7 @@ export function buildMalformedMessageRepairRanges({
       return [];
     }
     const outcome = queueOutcomeFromTerminalStatus(row.status)
-      || resolveQueueOutcome(row, indexedReportCodes, statusesByCode);
+      || resolveQueueOutcome(row, indexedReportCodes, statusesByCode, hiddenReportCodes);
     if (!outcome) {
       return [];
     }
@@ -446,6 +483,7 @@ function writeStepSummary({ skippedReason, rowsRead, outcomeCounts, includeHidde
     skippedReason ? `- 略過：${skippedReason}` : "- 已檢查 Google Sheet 待收錄名單與公開資料來源。",
     `- 讀取列數：${rowsRead}`,
     `- 已收錄完成列數：${outcomeCounts[QUEUE_OUTCOME.COLLECTED] || 0}`,
+    `- 已隱藏完成列數：${outcomeCounts[QUEUE_OUTCOME.HIDDEN] || 0}`,
     `- 無通關終止列數：${outcomeCounts[QUEUE_OUTCOME.NO_CLEAR] || 0}`,
     `- 無繁中服玩家終止列數：${outcomeCounts[QUEUE_OUTCOME.NO_TRADITIONAL_CHINESE_PLAYERS] || 0}`,
     `- 修正欄位標題數：${repairedHeaderCount}`,
@@ -497,6 +535,7 @@ async function main() {
     sourceRankingsDir,
     includeHidden,
   });
+  const hiddenReportCodes = await buildHiddenReportSet({ hiddenStatusIndexPath });
   const queuedRows = rows.filter((row) => {
     const status = normalizeHeader(row.status || "queued");
     return QUEUED_STATUSES.has(status);
@@ -506,7 +545,7 @@ async function main() {
     queuedRows.map((row) => row.report_code),
   );
   const rowsToUpdate = queuedRows
-    .filter((row) => resolveQueueOutcome(row, indexedReports, statusesByCode))
+    .filter((row) => resolveQueueOutcome(row, indexedReports, statusesByCode, hiddenReportCodes))
     .slice(0, maxRows);
   const outcomeUpdates = buildUpdateRanges({
     headers,
@@ -516,6 +555,7 @@ async function main() {
     maxRows,
     indexedReportCodes: indexedReports,
     statusesByCode,
+    hiddenReportCodes,
   });
   const updatedRowNumbers = new Set(rowsToUpdate.map((row) => row._row_number));
   const headerUpdates = buildHeaderRepairRanges({ headers: rawHeaders, sheetName });
@@ -525,6 +565,7 @@ async function main() {
     sheetName,
     indexedReportCodes: indexedReports,
     statusesByCode,
+    hiddenReportCodes,
     updatedRowNumbers,
   });
   const updates = [...headerUpdates, ...outcomeUpdates, ...malformedMessageUpdates];
@@ -534,7 +575,7 @@ async function main() {
   }
 
   for (const row of rowsToUpdate) {
-    const outcome = resolveQueueOutcome(row, indexedReports, statusesByCode);
+    const outcome = resolveQueueOutcome(row, indexedReports, statusesByCode, hiddenReportCodes);
     outcomeCounts[outcome] = (outcomeCounts[outcome] || 0) + 1;
   }
   writeStepSummary({
@@ -547,6 +588,7 @@ async function main() {
   console.log(
     "已更新 FFLogs 待收錄列："
       + `已收錄 ${outcomeCounts[QUEUE_OUTCOME.COLLECTED] || 0}、`
+      + `已隱藏 ${outcomeCounts[QUEUE_OUTCOME.HIDDEN] || 0}、`
       + `無通關 ${outcomeCounts[QUEUE_OUTCOME.NO_CLEAR] || 0}、`
       + `無繁中服玩家 ${outcomeCounts[QUEUE_OUTCOME.NO_TRADITIONAL_CHINESE_PLAYERS] || 0}、`
       + `修正欄位 ${headerUpdates.length}、修正訊息 ${malformedMessageUpdates.length}`,

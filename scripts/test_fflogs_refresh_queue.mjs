@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import {
   buildHeaderRepairRanges,
+  buildHiddenReportSet,
   buildIndexedReportSet,
   buildMalformedMessageRepairRanges,
   buildReportStatusesByCode,
@@ -55,6 +56,13 @@ async function main() {
     assert(indexedReportCodes.has("ShardOnly123"), "公開 report 分片必須能完成待收錄列");
     assert(!indexedReportCodes.has("HiddenOnly123"), "未啟用 hidden delta 時不得把隱藏 report 視為公開收錄");
 
+    const hiddenStatusIndexPath = path.join(repositoryRoot, "public", "data", "all", "report_status_index.json");
+    await writeJson(hiddenStatusIndexPath, {
+      reports: [{ report_code: "HiddenOnly123" }],
+    });
+    const hiddenReportCodes = await buildHiddenReportSet({ hiddenStatusIndexPath });
+    assert(hiddenReportCodes.has("HiddenOnly123"), "hidden delta 索引必須能結束公開狀態重新排查列");
+
     const statusesByCode = buildReportStatusesByCode({
       encounters: {
         savage_m1s: {
@@ -92,6 +100,23 @@ async function main() {
     assert.match(updateValue(updates, "E4"), /未發現繁中服玩家/);
     assert.equal(updateValue(updates, "C5"), undefined, "尚無終局結果的列必須保留 queued/pending/retry");
     assert.equal(updates.length, 9, "三筆終局結果各應更新 status、時間與訊息");
+
+    const visibilityReviewUpdates = buildUpdateRanges({
+      headers: ["report_code", "requested_action", "status", "updated_at_iso", "last_message"],
+      rows: [
+        { _row_number: 6, report_code: "HiddenOnly123", requested_action: "review_existing_visibility" },
+        { _row_number: 7, report_code: "HiddenOnly123", requested_action: "queue_missing" },
+      ],
+      sheetName: SHEET_NAME,
+      nowIso: NOW_ISO,
+      maxRows: 500,
+      indexedReportCodes,
+      statusesByCode,
+      hiddenReportCodes,
+    });
+    assert.equal(updateValue(visibilityReviewUpdates, "C6"), "hidden");
+    assert.match(updateValue(visibilityReviewUpdates, "E6"), /標記為 hidden/);
+    assert.equal(updateValue(visibilityReviewUpdates, "C7"), undefined, "只有公開狀態重新排查可因 hidden delta 結束列");
 
     const malformedHeaders = [
       "submitted_at_iso",
@@ -146,6 +171,7 @@ async function main() {
       sheetName: SHEET_NAME,
       indexedReportCodes,
       statusesByCode,
+      hiddenReportCodes,
     });
     assert.equal(updateValue(messageUpdates, "M6"), "workflow 已確認公開資料收錄 report。");
     assert.equal(updateValue(messageUpdates, "M7"), "workflow 已送出整份 report 重掃，公開資料已收錄此 report。");

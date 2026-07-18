@@ -154,8 +154,8 @@
 8. 公開 `team_rankings` 使用來源檔中自台灣時間 2026-05-30 00:00:00 起的通關場次，依單場全隊 `心醉魂迷：奴役` 總次數排序，並沿用戰鬥時間軸去重合併同一場的多份 FFLogs 上傳；來源檔仍保留全歷史紀錄與 `summary.historical_*` 追溯欄位。前端 Honey 頁面的「超高難度」開關開啟時，顯示此活動團隊榜而非近 7 天粉絲榜。
 
 ### H. 常見問題與 Logs 檢查
-1. `src/pages/ReportStatusPage.vue` 是常見問題頁，正式路徑為 `/faq`，舊 `/logs` 只作為相容入口。頁面中的 FFLogs 檢查工具只能讀取 `public/data/report_status_index.json`、`public/data/all/report_status_index.json` 與 `public/data/update_status.json` 這三類靜態資料；不得在前端呼叫 FFLogs API，也不得把 OAuth 憑證或 `data/state.json` 掃描 checkpoint 暴露到瀏覽器。
+1. `src/pages/ReportStatusPage.vue` 是常見問題頁，正式路徑為 `/faq`，舊 `/logs` 只作為相容入口。頁面中的站內收錄判定只能讀取 `public/data/report_status_index.json`、`public/data/all/report_status_index.json` 與 `public/data/update_status.json` 這三類靜態資料；FFLogs 即時公開狀態與待處理申請只能透過 `apps-script/fflogs-report-status/` 的受保護 Web App，不得在前端直接呼叫 FFLogs API，也不得把 OAuth 憑證或 `data/state.json` 掃描 checkpoint 暴露到瀏覽器。
 2. `scripts/build_report_status_index.mjs` 由 `public/data/ranking-details/*.json` 產生 report code / fight / 副本摘要索引，使用欄位陣列格式控制 payload 體積。這份索引是衍生快取，不是判定 report 是否應入庫的權威來源；權威來源仍是 `data/rankings/*.json` 與分片。
 3. `scripts/build_public_status_data.mjs` 只把 `data/update_status.json` 與 `public/data/global_stats.json` 中可公開的更新摘要輸出到 `public/data/update_status.json`，供前端推估每 30 分鐘排程、24 小時近期重查、24-72 小時延遲掃描與歷史補查等待時間。
 4. 若使用者貼上的 report 完全不在公開或 hidden delta 索引中，前端只能回報「尚未在公開索引找到」並列出排程與常見原因；不能宣稱已即時確認 private、deleted、沒有繁中服玩家或沒有通關，這類精確判斷仍只能由資料管線下一輪掃描或站務端受保護診斷工具完成。
-5. 待收錄名單只以 report code 為單位；即使使用者貼上的 FFLogs 網址帶有 `fight` 參數，也不得把 queue 語意改成指定 fight 補抓。workflow 讀取待收錄名單後必須完整重掃整份 report，讓同一 report 內所有支援副本通關戰鬥都能重新判定與分派。
+5. 待處理名單只以 report code 為單位；即使使用者貼上的 FFLogs 網址帶有 `fight` 參數，也不得把 queue 語意改成指定 fight 補抓。Public 且可讀的 report 可使用一般待收錄或重查；只有本站公開索引已命中且 Apps Script 明確確認 FFLogs 非 Public 或不可讀時，才可使用 `review_existing_visibility` 重新確認公開狀態。workflow 仍須完整重掃整份 report；只有重建後的 hidden delta 真的命中時，收尾才可把該列標為 `hidden`，避免暫時性錯誤或前端參數直接隱藏資料。

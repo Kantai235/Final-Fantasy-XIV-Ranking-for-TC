@@ -4,7 +4,7 @@
 
 - 使用 FFLogs OAuth Client Credentials 向 FFLogs GraphQL API 查詢單一 report。
 - 回答「目前 FFLogs API 是否可讀取這份 report」。
-- 當 report 已 Public 且可讀時，可把 report code 寫入 Google Sheet 待收錄名單。
+- 當 report 已 Public 且可讀時，可把 report code 寫入 Google Sheet 待收錄名單；若本站已收錄的 report 明確變為不可公開，也可寫入公開狀態重新排查。
 - 不判斷是否應收錄排行榜，因為收錄仍必須由 `scripts/fetch_fflogs.py` 檢查繁中服玩家、支援副本、通關 fight 與 FFLogs 匯出完整度。
 
 ## 建立 Apps Script 專案
@@ -44,11 +44,11 @@ function setupSecretsOnce() {
 | `updated_at_iso` | 最近一次送出或要求重查的時間。 |
 | `report_code` | FFLogs report code，workflow 會讀這欄。 |
 | `report_url` | FFLogs report URL。 |
-| `requested_action` | `queue_missing` 或 `retry_existing`。 |
+| `requested_action` | `queue_missing`、`retry_existing`，或僅限已收錄且不可公開 report 的 `review_existing_visibility`。 |
 | `site_status` | 前端當下判斷的站內狀態，例如 `missing`、`found`、`fight_missing`。 |
 | `fight_text` | 使用者網址指定的 fight。 |
 | `fflogs_access` / `visibility` / `archive_accessible` | Apps Script 送出時重新確認的 FFLogs 狀態。 |
-| `status` | workflow 會讀取 `queued`、`pending` 或 `retry`；收尾後依結果標記為 `done`、`not_eligible_no_clear` 或 `not_eligible_no_traditional_chinese_players`。 |
+| `status` | workflow 會讀取 `queued`、`pending` 或 `retry`；收尾後依結果標記為 `done`、`hidden`、`not_eligible_no_clear` 或 `not_eligible_no_traditional_chinese_players`。 |
 | `request_count` | 同一 report 重複送出的次數。 |
 | `last_message` | 給站務看的最近處理摘要。 |
 | `source` | 來源，目前主站使用 `faq`。 |
@@ -64,6 +64,8 @@ function setupSecretsOnce() {
 5. 部署後複製 `/exec` 結尾的 Web App URL。
 
 `/dev` URL 只適合站務測試，正式前端應使用 `/exec` URL。
+
+更新 `Code.gs` 後，必須在 Apps Script 選擇「部署」>「管理部署作業」>「編輯」，建立新版本並重新部署既有 Web App；否則正式 `/exec` 仍會執行舊版邏輯。
 
 ## 手動測試
 
@@ -106,7 +108,7 @@ curl -L "https://script.google.com/macros/s/你的部署ID/exec?report=FFLOGS_RE
 <script src="https://script.google.com/macros/s/你的部署ID/exec?report=FFLOGS_REPORT_CODE&callback=handleFflogsStatus"></script>
 ```
 
-JSONP 會用於公開狀態查詢，以及在 report 已 Public 且可讀時送出待收錄需求；回傳內容不能包含 FFLogs OAuth token、client secret、Apps Script 設定值或站務用內部狀態。
+JSONP 會用於公開狀態查詢，以及在 report 已 Public 且可讀時送出待收錄需求。若前端索引已顯示 report 收錄、但 FFLogs 明確不可公開，前端也可用 `request_type=review_existing_visibility` 送出公開狀態重新排查；Apps Script 不直接隱藏資料，只把 report code 交給 workflow 後續確認。回傳內容不能包含 FFLogs OAuth token、client secret、Apps Script 設定值或站務用內部狀態。
 
 ## 串接主站常見問題頁
 
@@ -128,14 +130,14 @@ VITE_FFLOGS_REPORT_STATUS_WEB_APP_URL=https://script.google.com/macros/s/你的�
 | `error_code=rate_limited` | FFLogs OAuth 或 GraphQL API 回傳 429。 |
 | `error_code=temporary_error` | FFLogs 或 Apps Script 暫時性錯誤。 |
 | `error_code=server_config_error` | Apps Script 憑證未設定或 FFLogs OAuth 設定錯誤。 |
-| `error_code=queue_write_error` | FFLogs 已確認可讀，但 Google Sheet 寫入失敗；檢查 `FFLOGS_QUEUE_SPREADSHEET_ID`、Apps Script 是否已重新授權 Sheets 權限，以及 Web App 是否以 `Execute as: Me` 部署。 |
+| `error_code=queue_write_error` | Google Sheet 寫入失敗；檢查 `FFLOGS_QUEUE_SPREADSHEET_ID`、Apps Script 是否已重新授權 Sheets 權限，以及 Web App 是否以 `Execute as: Me` 部署。 |
 | `error_code=invalid_report_code` | 使用者輸入的 report code 或網址格式不合法。 |
 
 `accessible` 只代表 FFLogs API 可讀，不代表已收錄排行榜。排行榜資料仍會等 GitHub Actions 執行 `fetch_fflogs.py` 時處理。
 
 ## Workflow 讀取待收錄名單
 
-GitHub Actions 使用 `scripts/read_fflogs_refresh_queue.mjs` 透過 Google Sheets API 讀取 `pending` 工作表，將符合條件的 report code 寫入 `FFLOGS_RETRY_REPORT_CODES`。workflow 收尾時會掃描公開狀態索引、排行榜 `source_reports` 與公開 report 分片：已收錄會標記為 `done`；已確認沒有支援副本通關會標記為 `not_eligible_no_clear`；未發現繁中服玩家會標記為 `not_eligible_no_traditional_chinese_players`。後兩者會保留原因文字且不會再次送入強制重掃；資料管線既有的近期 no-clear 重試規則不受影響。需要設定：
+GitHub Actions 使用 `scripts/read_fflogs_refresh_queue.mjs` 透過 Google Sheets API 讀取 `pending` 工作表，將符合條件的 report code 寫入 `FFLOGS_RETRY_REPORT_CODES`。workflow 收尾時會掃描公開狀態索引、排行榜 `source_reports` 與公開 report 分片：已收錄會標記為 `done`；`review_existing_visibility` 只有在 hidden delta 索引確實命中時才標記為 `hidden`；已確認沒有支援副本通關會標記為 `not_eligible_no_clear`；未發現繁中服玩家會標記為 `not_eligible_no_traditional_chinese_players`。後兩者會保留原因文字且不會再次送入強制重掃；資料管線既有的近期 no-clear 重試規則不受影響。需要設定：
 
 - Repository Variable `FFLOGS_REFRESH_QUEUE_SPREADSHEET_ID`
 - Repository Variable `FFLOGS_REFRESH_QUEUE_SHEET_NAME`，預設 `pending`

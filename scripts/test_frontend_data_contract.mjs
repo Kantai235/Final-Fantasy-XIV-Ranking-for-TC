@@ -40,6 +40,8 @@ import {
   建立Fflogs即時狀態顯示,
   建立報告索引Map,
   建立未收錄提示,
+  Fflogs目前公開可讀,
+  Fflogs目前明確不可公開,
   取得Fflogs即時狀態查詢網址,
   取得下一輪排程時間,
   解析Fflogs網址,
@@ -1531,6 +1533,11 @@ function validateFflogsLiveStatusDisplay() {
   });
   assert(publicStatus.status === "public", "FFLogs 即時狀態應把 accessible + public 顯示為公開。");
   assert(publicStatus.title.includes("公開"), "公開 report 的即時狀態標題應明確告知公開。");
+  assert(Fflogs目前公開可讀({
+    ok: true,
+    fflogs_access: "accessible",
+    visibility: "public",
+  }), "只有 accessible + public 可送出一般待收錄需求。");
 
   const privateStatus = 建立Fflogs即時狀態顯示({
     ok: true,
@@ -1538,6 +1545,26 @@ function validateFflogsLiveStatusDisplay() {
   });
   assert(privateStatus.status === "private", "FFLogs 即時狀態應把 private_or_deleted 顯示為不可公開讀取。");
   assert(privateStatus.description.includes("Private"), "不可讀 report 應保留 Private 作為常見原因。");
+  assert(Fflogs目前明確不可公開({
+    ok: true,
+    fflogs_access: "private_or_deleted",
+  }), "private_or_deleted 可觸發已收錄 report 的公開狀態重新排查。");
+
+  const unlistedStatus = 建立Fflogs即時狀態顯示({
+    ok: true,
+    fflogs_access: "accessible",
+    visibility: "unlisted",
+  });
+  assert(unlistedStatus.status === "private", "非 Public visibility 不可顯示為公開可讀。");
+  assert(Fflogs目前明確不可公開({
+    ok: true,
+    fflogs_access: "accessible",
+    visibility: "unlisted",
+  }), "可讀但非 Public 的 report 也可觸發公開狀態重新排查。");
+  assert(!Fflogs目前明確不可公開({
+    ok: true,
+    fflogs_access: "accessible",
+  }), "缺少 visibility 的可讀結果不能直接視為隱藏依據。");
 
   const configErrorStatus = 建立Fflogs即時狀態顯示({
     ok: false,
