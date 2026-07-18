@@ -29,6 +29,8 @@
 
    「查詢公開狀態」按鈕會使用 `apps-script/fflogs-report-status/` 的 Apps Script Web App。它只以受保護的 FFLogs OAuth client 查詢單一 report 的 `visibility` 與 `archiveStatus`，並回傳公開可讀、不可存取或暫時性錯誤；它不判斷 report 是否符合排行榜收錄條件，也不寫入 `data/rankings/`、`data/state.json` 或公開 JSON。
 
+   正式資料管線另會輕量巡檢既有 report 的可見度。巡檢會先以 report code 去重，將沒有 `report_status_checked_at` 的新近 report 優先送出，再以最久未巡檢的 report 輪替；因此固定小額度不會被大量舊報告卡住。FFLogs 回傳 `visibility=Private`、找不到 report 或 `archiveStatus.isAccessible=false` 時，管線只在來源分片標記 `report_hidden` 與原因，後續公開建置自然排除該紀錄，仍可在 hidden delta 保留稽核線索。
+
    若 report 已 Public 且 FFLogs API 可讀，使用者可送出「加入待收錄名單」或「要求重新排查」。Apps Script 會把 report code 寫入 Google Sheet `pending` 工作表；即使使用者貼上的網址含有 `fight` 參數，待收錄名單也只以 report code 為單位。正式 workflow 會在 `fetch_fflogs.py` 前執行 `scripts/read_fflogs_refresh_queue.mjs`，透過 Google Sheets API 讀取 `status=queued|pending|retry` 的列，合併成 `FFLOGS_RETRY_REPORT_CODES`。這會讓下一輪候選穿透已處理快取並完整重掃整份 report；是否真的收錄仍由 `fetch_fflogs.py` 檢查繁中服玩家、支援副本與通關 fight。
 
    `npm run build:user-data` 重新產生 `public/data/report_status_index.json` 且資料 commit/push 成功後，workflow 會執行 `scripts/complete_fflogs_refresh_queue.mjs`。此腳本不刪除 Sheet 列，而是以 report code 為單位，把公開索引、`data/rankings/*.json` 的 `ranking_entries[].source_reports`，以及公開 report 分片中的命中列標記為 `status=done`；分片是 reports -> fights -> players 的權威來源，因此即使該 report 的玩家成績未成為排行榜代表列，也會正確結束待收錄流程。若 `data/state.json` 已確認 `skipped_no_clear` 或 `skipped_no_traditional_chinese_players`，則分別標記為 `not_eligible_no_clear` 或 `not_eligible_no_traditional_chinese_players`，並寫入可讀原因，避免每輪 workflow 永久強制重掃。收尾也會校正 A:N 的固定欄位標題，並只針對純數字的既有 `last_message` 依已知終止結果補回可讀訊息；這些是待收錄申請的終止狀態，資料管線本身對近期 `skipped_no_clear` report 的 24 小時重試規則仍照常生效。此流程不再檢查或等待指定 fight，避免把待收錄名單誤用成單場補抓。
@@ -195,6 +197,16 @@ npm run validate:data
 ```
 
 處理完成後，建議清空手動補抓欄位，避免下次排程重複處理。重抓既有 report 時，資料管線會以 `data/rankings/{key}.reports/` 的 report/fight/player 明細重新建立 `ranking_entries`，所以可以修正舊扁平索引中的錯誤數值。
+
+若使用者已將既有 report 改為 Private、刪除或撤回存取權，請勿用 `retry_report_codes` 重新掃描整個副本。改用單一狀態巡檢，成功標記 hidden 後重建衍生公開資料：
+
+```bash
+npm run check:report-status -- <report code>
+npm run build:user-data
+npm run validate:data
+```
+
+此命令只查詢一份既有 report，且只在來源分片增加 `report_hidden` 與可追溯原因；不會刪除歷史資料、推進掃描點或重新抓取玩家戰鬥資料。
 
 ## 隱藏 report 狀態檢查
 

@@ -121,7 +121,7 @@ jobs:
           # 讓 fetch_fflogs.py 主動保留 active_scan 後結束，避免後續資料建置與 commit 被 runner 取消。
           FFLOGS_MAX_RUNTIME_SECONDS: ${{ vars.FFLOGS_MAX_RUNTIME_SECONDS || '6000' }}
           FFLOGS_RUNTIME_GRACE_SECONDS: ${{ vars.FFLOGS_RUNTIME_GRACE_SECONDS || '900' }}
-          # 每輪由舊到新抽查既有排行榜 report 是否仍可存取，跑完後會從最舊紀錄重新輪巡。
+          # 每輪優先抽查尚未巡檢的較新 report，之後依最久未巡檢順序輪替。
           FFLOGS_EXISTING_REPORT_STATUS_CHECK_ENABLED: ${{ vars.FFLOGS_EXISTING_REPORT_STATUS_CHECK_ENABLED || 'true' }}
           FFLOGS_EXISTING_REPORT_STATUS_CHECK_LIMIT: ${{ vars.FFLOGS_EXISTING_REPORT_STATUS_CHECK_LIMIT || '25' }}
           # 新 report 抓取時順手查同一場 Casts graph 並以本地演算法計算 GCD，只保存衍生結果。

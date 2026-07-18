@@ -2035,6 +2035,15 @@ def 查詢報告目前狀態(
     if not isinstance(報告, dict):
         raise FFLogs報告狀態不可存取錯誤(f"FFLogs report 無法讀取或不存在：{報告代碼}")
 
+    可見度 = str(報告.get("visibility") or "").strip().casefold()
+    if 可見度 == "private":
+        # client-credentials 有時仍能讀到 private report 的摘要與 archiveStatus。
+        # 排行榜的公開資格以 FFLogs 的可見度為準，不能只把 null response 或封存不可讀
+        # 當成下架訊號，否則這類摘要可讀但已設為 Private 的紀錄會繼續留在公開資料。
+        raise FFLogs報告狀態不可存取錯誤(
+            f"FFLogs report visibility=Private：{報告代碼}"
+        )
+
     封存狀態 = 報告.get("archiveStatus")
     if isinstance(封存狀態, dict) and 封存狀態.get("isAccessible") is False:
         raise FFLogs報告狀態不可存取錯誤(
@@ -3507,6 +3516,32 @@ def 標記排行榜報告隱藏(
 
 
 既有報告狀態巡檢狀態鍵 = "existing_report_status_check"
+既有報告狀態巡檢策略版本 = "least_recently_checked_v1"
+
+
+def 取得報告狀態最後巡檢時間(報告: dict[str, Any]) -> int:
+    """取得 lightweight report 狀態最後確認時間；缺值表示尚未巡檢。"""
+    時間 = 轉_float(報告.get("report_status_checked_at"))
+    return int(時間) if 時間 is not None and 時間 >= 0 else 0
+
+
+def 標記排行榜報告已巡檢狀態(
+    排行榜: dict[str, Any],
+    報告代碼: str,
+    *,
+    巡檢時間: int | None = None,
+) -> bool:
+    """記下可讀 report 的狀態巡檢時間，讓下輪可採用 LRU 而非舊資料優先游標。"""
+    報告索引 = 排行榜.get("reports") if isinstance(排行榜.get("reports"), dict) else {}
+    報告 = 報告索引.get(str(報告代碼))
+    if not isinstance(報告, dict) or 報告已標記隱藏(報告):
+        return False
+
+    時間 = 現在毫秒() if 巡檢時間 is None else int(巡檢時間)
+    if 報告.get("report_status_checked_at") == 時間:
+        return False
+    報告["report_status_checked_at"] = 時間
+    return True
 
 
 def 取得既有報告排序時間(報告: dict[str, Any]) -> int:
@@ -3542,7 +3577,10 @@ def 建立既有報告狀態巡檢候選(
     副本清單: list[dict[str, Any]],
     排行榜索引: dict[str, dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    候選列表: list[dict[str, Any]] = []
+    # report code 是 FFLogs 存取權限的唯一單位。同一份 mixed report 可能被分派到多個
+    # 副本，若逐副本重複排入，固定小額度會浪費在同一個 GraphQL 查詢上，並延後其他 report
+    # 的 Private 偵測。因此此處先合併成每個 code 一筆候選；實際標記時仍會同步更新所有副本。
+    候選索引: dict[str, dict[str, Any]] = {}
     for 副本設定 in 副本清單:
         副本鍵值 = 副本設定["key"]
         排行榜 = 排行榜索引.get(副本鍵值) or {}
@@ -3555,35 +3593,24 @@ def 建立既有報告狀態巡檢候選(
 
             報告代碼 = str(原始報告代碼)
             排序時間 = 取得既有報告排序時間(報告)
-            候選列表.append(
-                {
-                    "encounter_key": 副本鍵值,
-                    "encounter_name": 副本設定.get("name") or 副本鍵值,
-                    "report_code": 報告代碼,
-                    "report_start_at": 排序時間,
-                    "report_start_at_iso": 毫秒轉_iso(排序時間),
-                    "sort_key": [排序時間, 副本鍵值, 報告代碼],
-                }
-            )
+            狀態巡檢時間 = 取得報告狀態最後巡檢時間(報告)
+            # 未巡檢的 code 以 0 排在最前，並用較新的 report 時間打破平手；首次導入或
+            # 新上傳後能優先驗證最近紀錄。所有 report 都至少巡過一次後，第一欄自然成為
+            # LRU 順序，最久未確認者會被重新選入，不會讓舊資料或新資料永久飢餓。
+            候選 = {
+                "encounter_key": 副本鍵值,
+                "encounter_name": 副本設定.get("name") or 副本鍵值,
+                "report_code": 報告代碼,
+                "report_start_at": 排序時間,
+                "report_start_at_iso": 毫秒轉_iso(排序時間),
+                "report_status_checked_at": 狀態巡檢時間 or None,
+                "sort_key": [狀態巡檢時間, -排序時間, 副本鍵值, 報告代碼],
+            }
+            現有候選 = 候選索引.get(報告代碼)
+            if 現有候選 is None or tuple(候選["sort_key"]) < tuple(現有候選["sort_key"]):
+                候選索引[報告代碼] = 候選
 
-    return sorted(候選列表, key=lambda 候選: tuple(候選["sort_key"]))
-
-
-def 讀取既有報告狀態巡檢游標(狀態: dict[str, Any]) -> tuple[int, str, str] | None:
-    巡檢狀態 = 狀態.get(既有報告狀態巡檢狀態鍵)
-    if not isinstance(巡檢狀態, dict):
-        return None
-
-    原始游標 = 巡檢狀態.get("last_sort_key")
-    if not isinstance(原始游標, list) or len(原始游標) != 3:
-        return None
-
-    時間 = 轉_float(原始游標[0])
-    副本鍵值 = 原始游標[1]
-    報告代碼 = 原始游標[2]
-    if 時間 is None or not isinstance(副本鍵值, str) or not isinstance(報告代碼, str):
-        return None
-    return (int(時間), 副本鍵值, 報告代碼)
+    return sorted(候選索引.values(), key=lambda 候選: tuple(候選["sort_key"]))
 
 
 def 選取既有報告狀態巡檢批次(
@@ -3592,31 +3619,19 @@ def 選取既有報告狀態巡檢批次(
     上限: int,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     if 上限 <= 0 or not 候選列表:
-        return [], {"candidate_reports": len(候選列表), "wrapped": False}
+        return [], {"candidate_reports": len(候選列表), "wrapped": False, "start_index": 0}
 
-    游標 = 讀取既有報告狀態巡檢游標(狀態)
-    起始索引 = 0
-    if 游標 is not None:
-        for 索引, 候選 in enumerate(候選列表):
-            if tuple(候選["sort_key"]) > 游標:
-                起始索引 = 索引
-                break
-        else:
-            起始索引 = 0
-
-    最大選取數 = min(上限, len(候選列表))
-    選取列表: list[dict[str, Any]] = []
-    for 偏移 in range(最大選取數):
-        選取列表.append(候選列表[(起始索引 + 偏移) % len(候選列表)])
-
-    最後索引 = (起始索引 + len(選取列表) - 1) % len(候選列表) if 選取列表 else None
-    已繞回 = bool(選取列表) and 起始索引 + len(選取列表) > len(候選列表)
+    # 排序已由 report 本身保存的最後巡檢時間決定；不再使用全域時間游標。全域游標會在
+    # 55,000+ 筆未巡檢歷史資料前卡住新 report，而每筆 report 的小型 timestamp 可同時
+    # 兼顧新收錄紀錄與長期輪替，又不需要把完整狀態表膨脹進 data/state.json。
+    選取列表 = 候選列表[: min(上限, len(候選列表))]
     return 選取列表, {
         "candidate_reports": len(候選列表),
-        "start_index": 起始索引,
-        "last_index": 最後索引,
-        "wrapped": 已繞回,
-        "previous_cursor": list(游標) if 游標 is not None else None,
+        "start_index": 0,
+        "last_index": len(選取列表) - 1 if 選取列表 else None,
+        "wrapped": False,
+        "previous_cursor": None,
+        "selection_strategy": 既有報告狀態巡檢策略版本,
     }
 
 
@@ -3635,6 +3650,7 @@ def 更新既有報告狀態巡檢狀態(
         {
             "enabled": 統計.get("enabled"),
             "limit": 統計.get("limit"),
+            "selection_strategy": 既有報告狀態巡檢策略版本,
             "candidate_reports": 統計.get("candidate_reports"),
             "last_checked_at": 現在時間戳記,
             "last_checked_at_iso": 毫秒轉_iso(現在時間戳記),
@@ -3651,11 +3667,71 @@ def 更新既有報告狀態巡檢狀態(
         }
     )
     if 最後排序鍵 is not None:
-        巡檢狀態["last_sort_key"] = 最後排序鍵
-        巡檢狀態["last_sort_key_report_start_at"] = 最後排序鍵[0]
-        巡檢狀態["last_sort_key_report_start_at_iso"] = 毫秒轉_iso(最後排序鍵[0])
-        巡檢狀態["last_sort_key_encounter_key"] = 最後排序鍵[1]
-        巡檢狀態["last_sort_key_report_code"] = 最後排序鍵[2]
+        巡檢狀態["last_selected_sort_key"] = 最後排序鍵
+
+
+def 巡檢指定既有報告狀態(報告代碼: str) -> int:
+    """以單一 GraphQL request 更新指定既有 report 的公開資格，不推進任何掃描點。"""
+    正規化報告代碼 = str(報告代碼 or "").strip()
+    if not 正規化報告代碼:
+        print("--check-report-status 需要指定 report code。", file=sys.stderr)
+        return 2
+
+    # 使用者把既有 report 轉 Private 時，不能透過一般補抓流程立即得知；該流程會重新
+    # 掃描指定副本並可能推動大量深層查詢。這個維護入口只讀取已存在的來源分片，先確認
+    # report code 的落點，再做一次狀態查詢。無法公開讀取時只加上 hidden 標記，符合
+    # append-only 要求，同時讓後續公開建置從正常資料集移除這份 report。
+    副本清單 = 讀取全部有效副本設定清單()
+    命中排行榜: list[tuple[dict[str, Any], dict[str, Any]]] = []
+    for 副本設定 in 副本清單:
+        排行榜 = 讀取排行榜檔案(副本設定)
+        報告索引 = 排行榜.get("reports") if isinstance(排行榜.get("reports"), dict) else {}
+        if isinstance(報告索引.get(正規化報告代碼), dict):
+            命中排行榜.append((副本設定, 排行榜))
+
+    if not 命中排行榜:
+        print(f"指定 report 不在既有排行榜來源分片中：{正規化報告代碼}", file=sys.stderr)
+        return 2
+
+    session = requests.Session()
+    認證池 = FFLogs認證池(session, 讀取認證設定())
+    try:
+        查詢報告目前狀態(session, 認證池, 正規化報告代碼)
+    except (FFLogs報告存取錯誤, FFLogs報告狀態不可存取錯誤) as 錯誤:
+        已標記數量 = 0
+        for 副本設定, 排行榜 in 命中排行榜:
+            if 標記排行榜報告隱藏(
+                排行榜,
+                正規化報告代碼,
+                來源="manual_report_status_check",
+                詳細原因=str(錯誤),
+            ):
+                寫入排行榜檔案(副本設定, 排行榜)
+                已標記數量 += 1
+        print(
+            f"指定 report 無法公開讀取，已在 {已標記數量} 個副本來源標記為 hidden："
+            f"{正規化報告代碼}"
+        )
+        return 0
+    except FFLogs暫時性API錯誤 as 錯誤:
+        print(f"指定 report 狀態查詢遇到暫時性 FFLogs 錯誤：{錯誤}", file=sys.stderr)
+        return 1
+
+    巡檢時間 = 現在毫秒()
+    已更新數量 = 0
+    for 副本設定, 排行榜 in 命中排行榜:
+        if 標記排行榜報告已巡檢狀態(
+            排行榜,
+            正規化報告代碼,
+            巡檢時間=巡檢時間,
+        ):
+            寫入排行榜檔案(副本設定, 排行榜)
+            已更新數量 += 1
+    print(
+        f"指定 report 目前仍可公開讀取，已更新 {已更新數量} 個來源的巡檢時間："
+        f"{正規化報告代碼}"
+    )
+    return 0
 
 
 def 建立排行榜條目(
@@ -5127,10 +5203,12 @@ def main() -> int:
         統計 = {
             "enabled": 既有報告狀態巡檢已啟用,
             "limit": 既有報告狀態巡檢上限,
+            "selection_strategy": 既有報告狀態巡檢策略版本,
             "candidate_reports": 0,
             "selected_reports": 0,
             "checked_reports": 0,
             "unique_codes_checked": 0,
+            "status_check_timestamps_updated": 0,
             "inaccessible_reports": 0,
             "unique_inaccessible_codes": 0,
             "hidden_reports_changed": 0,
@@ -5175,13 +5253,28 @@ def main() -> int:
 
         print(
             f"既有 report 狀態巡檢：本輪選入 {len(選取列表)}/{len(候選列表)} 筆，"
-            f"由舊到新檢查，游標繞回={統計['wrapped']}。"
+            "優先檢查尚未巡檢的較新 report，之後依最久未巡檢順序輪替。"
         )
 
         查詢結果快取: dict[str, Exception | None] = {}
         已查詢代碼: set[str] = set()
         不可存取代碼: set[str] = set()
+        巡檢時間已更新副本鍵: set[str] = set()
         最後排序鍵: list[Any] | None = None
+
+        def 標記所有排行榜報告已巡檢狀態(報告代碼: str) -> int:
+            """集中落地成功巡檢時間，並在本批次結尾才各副本寫檔一次。"""
+            已更新數量 = 0
+            巡檢時間 = 現在毫秒()
+            for 副本鍵值, 目標處理狀態 in 巡檢處理狀態索引.items():
+                if 標記排行榜報告已巡檢狀態(
+                    目標處理狀態["排行榜"],
+                    報告代碼,
+                    巡檢時間=巡檢時間,
+                ):
+                    巡檢時間已更新副本鍵.add(副本鍵值)
+                    已更新數量 += 1
+            return 已更新數量
 
         for 候選 in 選取列表:
             報告代碼 = 候選["report_code"]
@@ -5213,9 +5306,17 @@ def main() -> int:
                     錯誤,
                     巡檢處理狀態索引,
                 )
+            else:
+                統計["status_check_timestamps_updated"] += 標記所有排行榜報告已巡檢狀態(
+                    報告代碼
+                )
 
             統計["checked_reports"] += 1
             最後排序鍵 = list(候選["sort_key"])
+
+        for 副本鍵值 in sorted(巡檢時間已更新副本鍵):
+            目標處理狀態 = 巡檢處理狀態索引[副本鍵值]
+            寫入排行榜檔案(目標處理狀態["副本設定"], 目標處理狀態["排行榜"])
 
         統計["unique_codes_checked"] = len(已查詢代碼)
         統計["unique_inaccessible_codes"] = len(不可存取代碼)
@@ -6029,6 +6130,8 @@ if __name__ == "__main__":
         if sys.argv[1:] == ["--split-rankings"]:
             分割排行榜儲存檔案()
             raise SystemExit(0)
+        if len(sys.argv) == 3 and sys.argv[1] == "--check-report-status":
+            raise SystemExit(巡檢指定既有報告狀態(sys.argv[2]))
         raise SystemExit(main())
     except KeyboardInterrupt:
         print("收到中斷訊號，已保留目前掃描進度；稍後可重新執行續跑。", file=sys.stderr)

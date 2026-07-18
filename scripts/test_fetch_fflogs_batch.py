@@ -735,7 +735,7 @@ class FetchFFLogsBatchTest(unittest.TestCase):
 
         self.assertEqual(呼叫次數, 1)
 
-    def test_existing_report_status_check_candidates_are_oldest_first(self) -> None:
+    def test_existing_report_status_check_candidates_prioritize_unchecked_newest_then_lru(self) -> None:
         副本清單 = [
             {"key": "encounter_a", "name": "副本 A"},
             {"key": "encounter_b", "name": "副本 B"},
@@ -753,7 +753,11 @@ class FetchFFLogsBatchTest(unittest.TestCase):
             },
             "encounter_b": {
                 "reports": {
-                    "old": {"report_start_time": 1000, "fights": []},
+                    "old": {
+                        "report_start_time": 1000,
+                        "report_status_checked_at": 100,
+                        "fights": [],
+                    },
                     "middle": {
                         "fights": [
                             {
@@ -767,25 +771,28 @@ class FetchFFLogsBatchTest(unittest.TestCase):
 
         候選列表 = fflogs.建立既有報告狀態巡檢候選(副本清單, 排行榜索引)
 
-        self.assertEqual([候選["report_code"] for 候選 in 候選列表], ["old", "middle", "new"])
+        self.assertEqual([候選["report_code"] for 候選 in 候選列表], ["new", "middle", "old"])
+        self.assertIsNone(候選列表[0]["report_status_checked_at"])
+        self.assertEqual(候選列表[-1]["report_status_checked_at"], 100)
         self.assertNotIn("hidden", [候選["report_code"] for 候選 in 候選列表])
 
-    def test_existing_report_status_check_batch_wraps_after_newest(self) -> None:
+    def test_existing_report_status_check_batch_uses_priority_order_without_global_cursor(self) -> None:
         候選列表 = [
-            {"report_code": "old", "sort_key": [1000, "a", "old"]},
-            {"report_code": "middle", "sort_key": [2000, "a", "middle"]},
-            {"report_code": "new", "sort_key": [3000, "a", "new"]},
+            {"report_code": "unseen-new", "sort_key": [0, -3000, "a", "unseen-new"]},
+            {"report_code": "unseen-middle", "sort_key": [0, -2000, "a", "unseen-middle"]},
+            {"report_code": "checked-old", "sort_key": [100, -1000, "a", "checked-old"]},
         ]
         狀態 = {
             "existing_report_status_check": {
-                "last_sort_key": [2000, "a", "middle"],
+                "last_sort_key": [2000, "a", "legacy-cursor"],
             }
         }
 
         選取列表, 選取狀態 = fflogs.選取既有報告狀態巡檢批次(候選列表, 狀態, 2)
 
-        self.assertEqual([候選["report_code"] for 候選 in 選取列表], ["new", "old"])
-        self.assertTrue(選取狀態["wrapped"])
+        self.assertEqual([候選["report_code"] for 候選 in 選取列表], ["unseen-new", "unseen-middle"])
+        self.assertFalse(選取狀態["wrapped"])
+        self.assertEqual(選取狀態["selection_strategy"], fflogs.既有報告狀態巡檢策略版本)
 
     def test_report_status_query_marks_inaccessible_archive_status(self) -> None:
         def 假_graphql(
@@ -806,6 +813,27 @@ class FetchFFLogsBatchTest(unittest.TestCase):
         with patch.object(fflogs, "執行_graphql", 假_graphql):
             with self.assertRaises(fflogs.FFLogs報告狀態不可存取錯誤):
                 fflogs.查詢報告目前狀態(None, None, "hidden-code")
+
+    def test_report_status_query_marks_private_visibility(self) -> None:
+        def 假_graphql(
+            session: Any,
+            認證池: Any,
+            查詢: str,
+            變數: dict[str, Any] | None = None,
+        ) -> dict[str, Any]:
+            return {
+                "reportData": {
+                    "report": {
+                        "code": 變數["code"] if 變數 else "unknown",
+                        "visibility": "Private",
+                        "archiveStatus": {"isAccessible": True},
+                    }
+                }
+            }
+
+        with patch.object(fflogs, "執行_graphql", 假_graphql):
+            with self.assertRaisesRegex(fflogs.FFLogs報告狀態不可存取錯誤, "visibility=Private"):
+                fflogs.查詢報告目前狀態(None, None, "private-code")
 
     def test_shallow_report_scan_filters_to_china_scope_when_configured(self) -> None:
         def 假_graphql(
@@ -1956,6 +1984,65 @@ class FetchFFLogsBatchTest(unittest.TestCase):
         self.assertEqual(報告["hidden_source"], "test")
         self.assertEqual(報告["hidden_detected_at"], 1779123456789)
         self.assertIn("permission to view this report", 報告["hidden_detail"])
+
+    def test_mark_ranking_report_status_checked_keeps_public_report_eligible(self) -> None:
+        排行榜 = {
+            "reports": {
+                "abc123": {
+                    "report_code": "abc123",
+                    "visibility": "public",
+                    "fights": [],
+                }
+            }
+        }
+
+        已變更 = fflogs.標記排行榜報告已巡檢狀態(
+            排行榜,
+            "abc123",
+            巡檢時間=1779123456789,
+        )
+
+        self.assertTrue(已變更)
+        報告 = 排行榜["reports"]["abc123"]
+        self.assertEqual(報告["report_status_checked_at"], 1779123456789)
+        self.assertNotIn("report_hidden", 報告)
+
+    def test_manual_report_status_check_marks_private_source_hidden(self) -> None:
+        副本設定 = {"key": "unreal_byakko", "name": "幻 白虎"}
+        排行榜 = {
+            "reports": {
+                "private-code": {
+                    "report_code": "private-code",
+                    "visibility": "public",
+                    "fights": [],
+                }
+            }
+        }
+        寫入結果: list[tuple[dict[str, Any], dict[str, Any]]] = []
+
+        with (
+            patch.object(fflogs, "讀取全部有效副本設定清單", return_value=[副本設定]),
+            patch.object(fflogs, "讀取排行榜檔案", return_value=排行榜),
+            patch.object(fflogs, "讀取認證設定", return_value=[]),
+            patch.object(fflogs, "FFLogs認證池", return_value=object()),
+            patch.object(
+                fflogs,
+                "查詢報告目前狀態",
+                side_effect=fflogs.FFLogs報告狀態不可存取錯誤("visibility=Private"),
+            ),
+            patch.object(
+                fflogs,
+                "寫入排行榜檔案",
+                side_effect=lambda 設定, 內容: 寫入結果.append((設定, 內容)),
+            ),
+        ):
+            結果 = fflogs.巡檢指定既有報告狀態("private-code")
+
+        self.assertEqual(結果, 0)
+        self.assertEqual(len(寫入結果), 1)
+        報告 = 排行榜["reports"]["private-code"]
+        self.assertTrue(報告["report_hidden"])
+        self.assertEqual(報告["hidden_source"], "manual_report_status_check")
 
 
 if __name__ == "__main__":

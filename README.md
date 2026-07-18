@@ -101,6 +101,7 @@ README 只保留入口與最小操作脈絡，完整說明請依主題閱讀：
 | 指令 | 用途 |
 | --- | --- |
 | `npm run build:public-rankings` | 只重建公開排行榜與副本清單，不呼叫 FFLogs API。 |
+| `npm run check:report-status -- <report code>` | 只查既有 report 目前是否仍可公開讀取；Private、刪除或無權限時將來源標記為 hidden，不推進掃描點。 |
 | `npm run fetch:honey-fans` | 抓取 Honey B. Lovely 粉絲榜趣味資料，會呼叫 FFLogs API。 |
 | `npm run build:honey-fans` | 由 `data/fun/honey_b_fans.json` 重建公開趣味榜 JSON，不呼叫 FFLogs API。 |
 | `npm run build:ranking-tables` | 由公開排行榜產生前端薄索引與按需載入報告細節檔。 |
@@ -134,6 +135,7 @@ README 只保留入口與最小操作脈絡，完整說明請依主題閱讀：
 - 若新增前端畫面需要新的統計欄位，請先擴充資料建置層，再讓 Vue 讀取新的靜態 JSON。
 - Honey B. Lovely 粉絲榜來源在 `data/fun/honey_b_fans.json`，公開輸出在 `public/data/fun/honey_b_fans.json`；它是獨立趣味資料，不屬於正式 `data/rankings/` schema。公開榜單、粉絲報告與本期 `records` 只計近 7 天，歷史紀錄仍留在來源檔並輸出 `historical_*`、連續入榜週數與自台灣時間 2026-05-30 00:00:00 起算的活動 `team_rankings`；正式 workflow 會執行 `npm run fetch:honey-fans` 抓新資料，再用 `npm run build:honey-fans` 整理公開 JSON。
 - `data/state.json` 會以緊湊 JSON 保存大量 `checked_reports`，避免為了通過 GitHub 100 MiB 單檔限制而刪除跨輪略過依據；正式 workflow 會在資料 commit 前執行 `npm run compact:state -- --max-bytes 104857600`。`processed_at_iso` 不再作為 report checkpoint 必要欄位，因為它可由 `processed_at` 毫秒時間重建。
+- 既有 report 的公開狀態巡檢以 report code 為單位：尚未巡檢時優先選較新的 report，之後依來源分片保存的 `report_status_checked_at` 輪替。FFLogs 回傳 `visibility=Private`、report 不存在或封存不可讀時，來源 report 會標記 hidden，正常公開產物不再列出該紀錄；完整追溯則保留於 hidden delta。
 - GitHub Actions 的 FFLogs 排行榜抓取步驟預設設定 `FFLOGS_MAX_RUNTIME_SECONDS=6000` 與 `FFLOGS_RUNTIME_GRACE_SECONDS=900`，可由 repo variables 覆寫。這讓 FFLogs 憑證全數進入長冷卻時，`fetch_fflogs.py` 能先保留 `active_scan` 續跑位置並正常進入後續資料建置與 commit，避免 GitHub-hosted runner 直接取消整個 job。
 - GitHub Actions 會先用 `FFLOGS_RECENT_GCD_BACKFILL_REPORT_LIMIT` 控制的非 stateful GCD 補洞追最新候選，再用 `FFLOGS_GCD_BACKFILL_REPORT_LIMIT` 控制的 stateful 回補從固定 cutoff 往舊追；前者處理 cutoff 後空洞，後者處理歷史追平。
 - GitHub Actions checkout 只抓目前分支的淺層 partial clone；這個資料 repo 的完整歷史 pack 已非常大，正式更新與緊急部署都不應改回 `fetch-depth: 0`，避免 runner 在 checkout 階段耗盡磁碟。

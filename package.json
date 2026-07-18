@@ -13,6 +13,7 @@
     "python:venv": "node scripts/run_python.mjs -m venv .venv",
     "python:install": "node scripts/run_python.mjs -m pip install -r requirements.txt",
     "build:public-rankings": "node scripts/run_python.mjs scripts/fetch_fflogs.py --rebuild-public",
+    "check:report-status": "node scripts/run_python.mjs scripts/fetch_fflogs.py --check-report-status",
     "build:icons": "node scripts/generate_site_icons.mjs",
     "compact:rankings": "node scripts/run_python.mjs scripts/compact_ranking_data.py",
     "compact:state": "node scripts/run_python.mjs scripts/compact_state.py",
