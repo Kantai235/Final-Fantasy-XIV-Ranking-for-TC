@@ -2652,7 +2652,7 @@ function 判斷對比勝方(左值, 右值, 越低越好 = false) {
   return 左勝 ? "left" : "right";
 }
 
-function 建立伺服器對比指標({ 標籤, 左值, 右值, 格式化 = 格式化整數, 越低越好 = false, 是否Gcd參考值 = false }) {
+function 建立伺服器對比指標({ 標籤, 左值, 右值, 格式化 = 格式化整數, 越低越好 = false }) {
   const 勝方 = 判斷對比勝方(左值, 右值, 越低越好);
   return {
     標籤,
@@ -2661,7 +2661,6 @@ function 建立伺服器對比指標({ 標籤, 左值, 右值, 格式化 = 格�
     左文字: 格式化(左值),
     右文字: 格式化(右值),
     勝方,
-    是否Gcd參考值,
   };
 }
 
@@ -2697,7 +2696,6 @@ const 伺服器對比概要 = computed(() => {
       左值: 左.fastest_entry?.gcd_coverage?.percent,
       右值: 右.fastest_entry?.gcd_coverage?.percent,
       格式化: 格式化Gcd覆蓋率,
-      是否Gcd參考值: true,
     }));
   }
 

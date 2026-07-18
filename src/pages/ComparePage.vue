@@ -147,7 +147,7 @@ export default {
             <span>副本數 <strong>{{ 比較角色左.統計.副本數 }}</strong></span>
             <span>公開成績 <strong>{{ 比較角色左.統計.公開成績數 }}</strong></span>
             <span>最佳 rDPS <strong>{{ 格式化傷害數值(比較角色左.統計.最佳成績?.rdps) }}</strong></span>
-            <span v-if="顯示Gcd覆蓋率" class="gcd參考文字">最佳 GCD <strong>{{ 格式化Gcd覆蓋率(比較角色左.統計.最高Gcd成績?.gcd_coverage) }}</strong></span>
+            <span v-if="顯示Gcd覆蓋率">最佳 GCD <strong>{{ 格式化Gcd覆蓋率(比較角色左.統計.最高Gcd成績?.gcd_coverage) }}</strong></span>
             <span>
               最後紀錄
               <strong class="比較最後紀錄時間">
@@ -170,7 +170,7 @@ export default {
             <span>副本數 <strong>{{ 比較角色右.統計.副本數 }}</strong></span>
             <span>公開成績 <strong>{{ 比較角色右.統計.公開成績數 }}</strong></span>
             <span>最佳 rDPS <strong>{{ 格式化傷害數值(比較角色右.統計.最佳成績?.rdps) }}</strong></span>
-            <span v-if="顯示Gcd覆蓋率" class="gcd參考文字">最佳 GCD <strong>{{ 格式化Gcd覆蓋率(比較角色右.統計.最高Gcd成績?.gcd_coverage) }}</strong></span>
+            <span v-if="顯示Gcd覆蓋率">最佳 GCD <strong>{{ 格式化Gcd覆蓋率(比較角色右.統計.最高Gcd成績?.gcd_coverage) }}</strong></span>
             <span>
               最後紀錄
               <strong class="比較最後紀錄時間">
@@ -232,7 +232,7 @@ export default {
                     <span class="比較成績輔助列">
                       <small>Rank {{ 格式化排名(列.左.best_entry.job_rank ?? 列.左.best_entry.rank) }}</small>
                       <small>Active {{ 格式化Active(列.左.best_entry.active_percent) }}</small>
-                      <small v-if="顯示Gcd覆蓋率" class="gcd參考文字">GCD {{ 格式化Gcd覆蓋率(列.左.best_entry.gcd_coverage) }}</small>
+                      <small v-if="顯示Gcd覆蓋率">GCD {{ 格式化Gcd覆蓋率(列.左.best_entry.gcd_coverage) }}</small>
                     </span>
                   </div>
                   <span v-else>-</span>
@@ -253,7 +253,7 @@ export default {
                     <span class="比較成績輔助列">
                       <small>Rank {{ 格式化排名(列.右.best_entry.job_rank ?? 列.右.best_entry.rank) }}</small>
                       <small>Active {{ 格式化Active(列.右.best_entry.active_percent) }}</small>
-                      <small v-if="顯示Gcd覆蓋率" class="gcd參考文字">GCD {{ 格式化Gcd覆蓋率(列.右.best_entry.gcd_coverage) }}</small>
+                      <small v-if="顯示Gcd覆蓋率">GCD {{ 格式化Gcd覆蓋率(列.右.best_entry.gcd_coverage) }}</small>
                     </span>
                   </div>
                   <span v-else>-</span>
@@ -266,7 +266,7 @@ export default {
                         {{ 列.差異 === null ? "-" : 格式化帶號整數(列.差異) }}
                       </strong>
                     </span>
-                    <span v-if="顯示Gcd覆蓋率" class="比較差異項 gcd參考文字">
+                    <span v-if="顯示Gcd覆蓋率" class="比較差異項">
                       <small>GCD</small>
                       <strong class="比較差異" :class="{ 左領先: 列.GCD差異 > 0, 右領先: 列.GCD差異 < 0 }">
                         {{ 格式化帶號百分比(列.GCD差異) }}

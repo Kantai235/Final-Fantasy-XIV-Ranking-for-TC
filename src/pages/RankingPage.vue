@@ -49,7 +49,6 @@ export default {
                 value: app.格式化Gcd覆蓋率(列.gcd_coverage),
                 tooltip: app.統計說明文字("GCD 覆蓋率"),
                 tooltipLabel: "GCD 覆蓋率說明",
-                className: "gcd參考文字",
               },
             ]
           : []),
@@ -371,7 +370,7 @@ export default {
               </span>
             </span>
           </th>
-          <th v-show="顯示Gcd覆蓋率" scope="col" class="數字 gcd參考文字" :aria-sort="排序ARIA('gcdCoverage')">
+          <th v-show="顯示Gcd覆蓋率" scope="col" class="數字" :aria-sort="排序ARIA('gcdCoverage')">
             <span class="表頭說明標籤">
               <button
                 class="表頭排序按鈕"
@@ -537,7 +536,7 @@ export default {
                 </span>
               </div>
               <div class="手機排行資訊列">
-                <span v-if="顯示Gcd覆蓋率" class="gcd參考文字">
+                <span v-if="顯示Gcd覆蓋率">
                   <em>GCD</em>
                   <strong>{{ 格式化Gcd覆蓋率(列.gcd_coverage) }}</strong>
                 </span>
@@ -573,7 +572,7 @@ export default {
             </span>
           </td>
           <td class="數字">{{ 格式化Active(列.active) }}</td>
-          <td v-show="顯示Gcd覆蓋率" class="數字 gcd參考文字">{{ 格式化Gcd覆蓋率(列.gcd_coverage) }}</td>
+          <td v-show="顯示Gcd覆蓋率" class="數字">{{ 格式化Gcd覆蓋率(列.gcd_coverage) }}</td>
           <td class="數字">{{ 格式化傷害數值(列.dps) }}</td>
           <td class="數字">{{ 格式化傷害數值(列.rdps) }}</td>
           <td class="數字">{{ 格式化傷害數值(列.adps) }}</td>

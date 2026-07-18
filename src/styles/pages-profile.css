@@ -961,16 +961,6 @@
   visibility: hidden;
 }
 
-.gcd參考文字,
-.gcd參考文字 :is(span, strong, small, em, dt, dd) {
-  color: var(--靜音文字) !important;
-}
-
-.gcd參考文字 .說明提示內容,
-.gcd參考文字 .說明提示內容 :is(span, strong, small, em, dt, dd) {
-  color: var(--主要文字) !important;
-}
-
 .概要項 .說明提示,
 .統計面板標題 .說明提示,
 .成績列數值 .說明提示,
