@@ -1570,8 +1570,8 @@ function validateFflogsLiveStatusDisplay() {
     ok: false,
     error_code: "server_config_error",
   });
-  assert(configErrorStatus.status === "error", "Apps Script 設定錯誤應顯示為查詢錯誤。");
-  assert(configErrorStatus.description.includes("Apps Script"), "Apps Script 設定錯誤應提示站務檢查設定。");
+  assert(configErrorStatus.status === "error", "即時查詢服務設定錯誤應顯示為查詢錯誤。");
+  assert(configErrorStatus.description.includes("即時查詢服務"), "即時查詢服務設定錯誤應顯示使用者可理解的提示。");
 }
 
 function validateReportStatusScheduleParsing() {

@@ -64,14 +64,14 @@ const 常見問題分類 = Object.freeze([
         question: "為什麼 FFLogs 網址貼上去，排行榜還是找不到？",
         answer: [
           "常見原因包含 report 沒公開、已刪除或轉 Private、沒有繁中服玩家、不是目前支援的副本、指定 fight 沒有通關、FFLogs 尚未匯出該 fight，或歷史補查還沒輪到。",
-          "下方工具會先比對目前公開靜態索引，也可以透過站務 Apps Script 即時確認 FFLogs API 目前是否公開可讀。若 FFLogs 可讀但尚未入庫，仍需要等待資料管線下一輪確認繁中服玩家、支援副本與通關 fight。",
+          "下方工具會先比對目前公開靜態索引，也可以透過本站伺服器即時確認 FFLogs 目前是否公開可讀。若 FFLogs 可讀但尚未入庫，仍需要等待下一輪資料更新確認繁中服玩家、支援副本與通關 fight。",
         ],
       },
       {
         question: "Report 已收錄，但 FFLogs 現在顯示 Private 或不可讀，該怎麼處理？",
         answer: [
-          "先用檢查工具的「查詢公開狀態」確認。若本站索引顯示已收錄、但 FFLogs 明確不是公開可讀，工具會開放「要求重新確認公開狀態」。",
-          "這項要求會在後續 workflow 完整重查整份 report；若仍無法公開讀取，既有公開紀錄會改為 hidden，不再顯示於排行榜與個人成績。它不會直接刪除來源資料，也不會因暫時性 API 錯誤就隱藏紀錄。",
+          "先用檢查工具的「查詢公開狀態」確認。若本站索引顯示已收錄、但 FFLogs 明確不是公開可讀，工具會開放「要求伺服器重新確認公開狀態」。",
+          "這項要求會在後續資料更新時由伺服器完整重查整份 report；若仍無法公開讀取，既有公開紀錄就會從排行榜與個人成績中隱藏。它不會直接刪除來源資料，也不會因暫時性錯誤就隱藏紀錄。",
         ],
       },
       {
@@ -276,7 +276,7 @@ const 即時狀態顯示 = computed(() => {
       status: "loading",
       badge: "查詢中",
       title: "正在確認 FFLogs 公開狀態",
-      description: "正在透過站務 Apps Script 查詢 FFLogs API，通常幾秒內會完成。",
+      description: "正在透過本站伺服器查詢 FFLogs，通常幾秒內會完成。",
     };
   }
 
@@ -304,7 +304,7 @@ const 即時狀態細節 = computed(() => {
       value: payload.fflogs_access || payload.error_code || "-",
     },
     {
-      label: "Visibility",
+      label: "公開設定",
       value: payload.visibility || "-",
     },
     {
@@ -337,9 +337,9 @@ const 待收錄請求類型 = computed(() => {
 
 const 待收錄按鈕文字 = computed(() => {
   if (待收錄請求類型.value === "review_existing_visibility") {
-    return "要求重新確認公開狀態";
+    return "要求伺服器重新確認公開狀態";
   }
-  return 待收錄請求類型.value === "retry_existing" ? "要求重新排查" : "加入待收錄名單";
+  return 待收錄請求類型.value === "retry_existing" ? "要求伺服器重新排查" : "安排伺服器排查";
 });
 
 const 可送出待收錄 = computed(() =>
@@ -356,7 +356,7 @@ const 待收錄狀態顯示 = computed(() => {
       status: "loading",
       badge: "送出中",
       title: "正在送出待收錄需求",
-      description: "正在透過 Apps Script 寫入 Google Sheet 待收錄名單。",
+      description: "正在將這份 report 送交本站伺服器安排排查。",
     };
   }
 
@@ -380,12 +380,12 @@ const 待收錄狀態顯示 = computed(() => {
     status: success ? "public" : "error",
     badge: success ? "已排入" : "未排入",
     title: success
-      ? (是公開狀態重新排查 ? "已排入公開狀態重新排查" : "已加入待收錄名單")
-      : "未加入待收錄名單",
+      ? (是公開狀態重新排查 ? "已安排伺服器重新確認公開狀態" : "已安排伺服器排查")
+      : "未安排伺服器排查",
     description: payload.message || (success
       ? (是公開狀態重新排查
-        ? "後續 workflow 會完整確認這份 report；若仍不可公開讀取，既有紀錄會標記為 hidden。"
-        : "後續 workflow 執行時會完整重查整份 report。")
+        ? "後續伺服器會完整確認這份 report；若仍不可公開讀取，既有紀錄會從排行榜與個人成績中隱藏。"
+        : "後續資料更新時，伺服器會完整重查整份 report。")
       : "請先確認 report 的公開狀態。"),
   };
 });
@@ -548,7 +548,7 @@ watch(
           <header class="常見問題區塊標題">
             <span>FFLogs 檢查工具</span>
             <h2>貼上 report 網址，先確認目前收錄狀態</h2>
-            <p>這裡會比對站內已建好的靜態索引，判斷 report 是否已收錄、是否只命中部分 fight，以及下一輪資料更新等待時間；也可按下查詢公開狀態，確認 FFLogs 目前是否公開可讀。已收錄 report 若確認不可公開，可要求重新確認公開狀態。</p>
+            <p>這裡會比對站內已建好的靜態索引，判斷 report 是否已收錄、是否只命中部分 fight，以及下一輪資料更新等待時間；也可按下查詢公開狀態，確認 FFLogs 目前是否公開可讀。已收錄 report 若確認不可公開，可要求伺服器重新確認公開狀態。</p>
           </header>
 
           <section class="Logs檢查工具卡" aria-label="FFLogs 網址檢查">
@@ -618,7 +618,7 @@ watch(
                   </div>
                 </header>
                 <p v-if="需要重新確認公開狀態" class="Logs檢查公開狀態重查提示">
-                  本站目前仍有這份 report 的公開紀錄，但 FFLogs 已明確不是公開可讀。可送出重新確認；後續 workflow 若仍無法讀取，會將既有紀錄標記為 hidden。
+                  本站目前仍有這份 report 的公開紀錄，但 FFLogs 已明確不是公開可讀。可送出給伺服器重新確認；後續資料更新時若仍無法讀取，既有紀錄會從排行榜與個人成績中隱藏。
                 </p>
                 <div v-if="即時狀態細節.length" class="Logs檢查即時狀態細節" aria-label="FFLogs 即時查詢細節">
                   <span v-for="項目 in 即時狀態細節" :key="項目.label">
@@ -632,7 +632,7 @@ watch(
                 v-if="待收錄狀態顯示"
                 class="Logs檢查即時狀態 Logs檢查待收錄狀態"
                 :data-status="待收錄狀態顯示.status"
-                aria-label="待收錄名單送出狀態"
+                aria-label="伺服器排查送出狀態"
               >
                 <header class="Logs檢查即時狀態標頭">
                   <span class="Logs檢查即時狀態徽章">{{ 待收錄狀態顯示.badge }}</span>

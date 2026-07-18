@@ -218,7 +218,7 @@ function enqueueReportRefresh_(reportCode, params, startedAt) {
     return {
       ...statusResult,
       queue_status: "rejected_not_public",
-      message: "這份 FFLogs 目前不是 Public 且可讀狀態；只有本站已收錄的 report 才可要求重新確認公開狀態。",
+      message: "這份 FFLogs 目前不是 Public 且可讀狀態；只有本站已收錄的 report 才可要求伺服器重新確認公開狀態。",
     };
   }
 
@@ -243,7 +243,7 @@ function enqueueReportRefresh_(reportCode, params, startedAt) {
     }
     throw new PublicStatusError_(
       "queue_write_error",
-      "Google Sheet 待收錄名單寫入失敗，請確認 FFLOGS_QUEUE_SPREADSHEET_ID 是否正確、Apps Script 是否已重新授權 Sheets 權限，以及 Web App 是否設定為 Execute as: Me。",
+      "本站伺服器暫時無法安排這份 report 的排查，請稍後再試。",
       null,
       buildSafeDebugMessage_(error),
     );
@@ -259,18 +259,18 @@ function enqueueReportRefresh_(reportCode, params, startedAt) {
     site_status: siteStatus,
     message: queueResult.created
       ? (isVisibilityReview
-        ? "已加入公開狀態重新排查名單；後續 workflow 會確認 report 是否仍不可公開讀取。"
-        : "已加入待收錄名單，會在後續 GitHub Actions workflow 執行時嘗試抓取。")
+        ? "已安排伺服器重新確認公開狀態；後續資料更新時會確認 report 是否仍不可公開讀取。"
+        : "已安排伺服器排查，會在後續資料更新時嘗試抓取。")
       : (isVisibilityReview
-        ? "這份 report 已在公開狀態重新排查名單中，已更新送出時間與重查次數。"
-        : "這份 report 已在待收錄名單中，已更新送出時間與重查次數。"),
+        ? "這份 report 已交由伺服器重新確認公開狀態，已更新送出時間與重查次數。"
+        : "這份 report 已交由伺服器排查，已更新送出時間與重查次數。"),
   };
 }
 
 function upsertQueueRow_(entry) {
   const spreadsheetId = String(PropertiesService.getScriptProperties().getProperty("FFLOGS_QUEUE_SPREADSHEET_ID") || "").trim();
   if (!spreadsheetId) {
-    throw new PublicStatusError_("server_config_error", "Apps Script 尚未設定 FFLOGS_QUEUE_SPREADSHEET_ID。", null);
+    throw new PublicStatusError_("server_config_error", "即時查詢服務暫時無法使用，請稍後再試。", null);
   }
 
   const sheetName = String(PropertiesService.getScriptProperties().getProperty("FFLOGS_QUEUE_SHEET_NAME") || QUEUE_SHEET_NAME_DEFAULT).trim();
@@ -348,7 +348,7 @@ function buildQueueRowValues_(headers, entry, nowIso, existingRow) {
     archive_accessible: entry.archiveAccessible === true ? "TRUE" : entry.archiveAccessible === false ? "FALSE" : "",
     status: "queued",
     request_count: previousRequestCount + 1,
-    last_message: "等待 GitHub Actions workflow 讀取。",
+    last_message: "等待伺服器處理。",
     source: entry.source,
   };
 
@@ -368,7 +368,7 @@ function getFflogsBearerToken_() {
   const clientId = String(props.getProperty("FFLOGS_CLIENT_ID") || "").trim();
   const clientSecret = String(props.getProperty("FFLOGS_CLIENT_SECRET") || "").trim();
   if (!clientId || !clientSecret) {
-    throw new PublicStatusError_("server_config_error", "Apps Script 尚未設定 FFLogs OAuth 憑證。", null);
+    throw new PublicStatusError_("server_config_error", "即時查詢服務暫時無法使用，請稍後再試。", null);
   }
 
   const response = UrlFetchApp.fetch(FFLOGS_TOKEN_URL, {
@@ -391,7 +391,7 @@ function getFflogsBearerToken_() {
     throw new PublicStatusError_("temporary_error", "FFLogs OAuth 暫時無法取得 token，請稍後再試。", statusCode);
   }
   if (statusCode < 200 || statusCode >= 300) {
-    throw new PublicStatusError_("server_config_error", "FFLogs OAuth 憑證可能設定錯誤，請站務檢查 Apps Script 設定。", statusCode);
+    throw new PublicStatusError_("server_config_error", "FFLogs 即時查詢服務暫時無法使用，請稍後再試。", statusCode);
   }
 
   const payload = parseJson_(bodyText, "FFLogs OAuth 回應不是有效 JSON。");
@@ -537,7 +537,7 @@ function buildErrorResult_(error, startedAt) {
     elapsed_ms: new Date().getTime() - startedAt.getTime(),
     error_code: "unexpected_error",
     http_status: null,
-    message: "Apps Script 查詢時發生未預期錯誤，請稍後再試。",
+    message: "FFLogs 即時查詢服務發生未預期錯誤，請稍後再試。",
   };
 }
 

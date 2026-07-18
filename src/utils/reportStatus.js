@@ -218,14 +218,14 @@ export function 建立Fflogs即時狀態顯示(payload) {
       status: "idle",
       badge: "未查詢",
       title: "尚未查詢 FFLogs 公開狀態",
-      description: "按下查詢公開狀態後，會透過站務 Apps Script 確認 FFLogs API 目前是否可讀取這份 report。",
+      description: "按下查詢公開狀態後，本站伺服器會確認 FFLogs 目前是否可讀取這份 report。",
     };
   }
 
   if (payload.ok !== true) {
     const errorCode = String(payload.error_code || "temporary_error");
-    const serverConfigMessage = "即時查詢服務尚未完成設定，請站務確認 Apps Script 的 FFLogs OAuth 憑證。";
-    const rateLimitMessage = "FFLogs 目前回傳限流，請稍後再試。站內排行榜仍會依照既有 workflow 排程更新。";
+    const serverConfigMessage = "即時查詢服務暫時無法使用，請稍後再試。";
+    const rateLimitMessage = "FFLogs 目前回傳限流，請稍後再試。站內排行榜仍會依照既有更新排程處理。";
     return {
       status: "error",
       badge: "查詢失敗",
@@ -234,7 +234,7 @@ export function 建立Fflogs即時狀態顯示(payload) {
         ? serverConfigMessage
         : errorCode === "rate_limited"
           ? rateLimitMessage
-          : payload.message || "Apps Script 或 FFLogs API 暫時無法回應，請稍後再試。",
+          : payload.message || "本站伺服器或 FFLogs 暫時無法回應，請稍後再試。",
     };
   }
 
@@ -255,7 +255,7 @@ export function 建立Fflogs即時狀態顯示(payload) {
         status: "private",
         badge: "非公開",
         title: "FFLogs 目前不是公開可讀",
-        description: "站務 Apps Script 仍可讀取摘要，但 FFLogs visibility 不是 Public。若本站已收錄這份 report，可要求重新確認公開狀態。",
+        description: "本站伺服器仍可讀取摘要，但 FFLogs 的公開設定不是 Public。若本站已收錄這份 report，可要求伺服器重新確認公開狀態。",
       };
     }
 
@@ -356,18 +356,18 @@ function 執行FflogsAppsScriptJsonp(params, options = {}) {
 
     const timeoutMs = Number(options.timeoutMs) > 0 ? Number(options.timeoutMs) : AppsScriptJsonp逾時Ms;
     const timeoutId = setTimeout(() => {
-      settle(reject, new Error("FFLogs Apps Script 查詢逾時，請稍後再試。"));
+      settle(reject, new Error("FFLogs 即時查詢逾時，請稍後再試。"));
     }, timeoutMs);
 
     try {
       script.async = true;
       script.src = 建立Jsonp網址(endpoint, params, callbackName);
       script.onerror = () => {
-        settle(reject, new Error("無法載入 FFLogs Apps Script 服務。"));
+        settle(reject, new Error("無法連線至 FFLogs 即時查詢服務。"));
       };
       (document.head || document.documentElement).appendChild(script);
     } catch (error) {
-      settle(reject, error instanceof Error ? error : new Error("FFLogs Apps Script 查詢失敗。"));
+      settle(reject, error instanceof Error ? error : new Error("FFLogs 即時查詢失敗。"));
     }
   });
 }
