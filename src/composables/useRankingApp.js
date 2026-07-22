@@ -75,6 +75,8 @@ import {
 import {
   個人成績代表是否較佳,
   比較個人成績分位顯示排序,
+  取得成績PR值,
+  取得成績前段百分位,
 } from "../utils/userProfileSorting";
 import { 建立個人成績徽章 } from "../utils/userProfileBadges";
 import {
@@ -125,6 +127,29 @@ const 分位顯示模式選項 = [
   { value: 分位顯示模式前段, label: "前 N%" },
   { value: 分位顯示模式PR, label: "PR" },
 ];
+const 使用者歷史排序欄位 = Object.freeze([
+  { value: "recordedAt", label: "紀錄時間" },
+  { value: "performance", label: "同職分位" },
+  { value: "active", label: "Active" },
+  { value: "gcdCoverage", label: "GCD" },
+  { value: "dps", label: "DPS" },
+  { value: "rdps", label: "rDPS" },
+  { value: "adps", label: "aDPS" },
+  { value: "gameVersion", label: "版本" },
+  { value: "clearTime", label: "通關時間" },
+]);
+const 使用者歷史排序欄位集合 = new Set(使用者歷史排序欄位.map((欄位) => 欄位.value));
+const 使用者歷史排序預設方向 = Object.freeze({
+  recordedAt: "desc",
+  performance: "desc",
+  active: "desc",
+  gcdCoverage: "desc",
+  dps: "desc",
+  rdps: "desc",
+  adps: "desc",
+  gameVersion: "desc",
+  clearTime: "asc",
+});
 
 const activityLogMobileMediaQuery = "(max-width: 720px)";
 const activityLogMobileDefaultRange = "30";
@@ -280,6 +305,7 @@ const 使用者版本篩選 = ref("");
 const 使用者職業類型篩選 = ref("");
 const 使用者職業篩選 = ref("");
 const 使用者職業選單開啟 = ref(false);
+const 使用者歷史排序設定 = ref({});
 const 使用者趨勢職業選擇 = ref({});
 const 使用者趨勢選取點 = ref({});
 const 使用者簡表模式 = ref(false);
@@ -3628,6 +3654,196 @@ function 比較個人成績版本(左側版本, 右側版本) {
   return String(右側版本).localeCompare(String(左側版本), "zh-Hant-TW", { numeric: true });
 }
 
+function 取得使用者歷史排序設定(副本鍵值) {
+  const 鍵值 = String(副本鍵值 || "").trim();
+  const 設定 = 鍵值 ? 使用者歷史排序設定.value[鍵值] : null;
+  if (!設定 || !使用者歷史排序欄位集合.has(設定.欄位)) {
+    return null;
+  }
+
+  return {
+    欄位: 設定.欄位,
+    方向: 設定.方向 === "asc" ? "asc" : "desc",
+  };
+}
+
+function 取得使用者歷史排序欄位(副本鍵值) {
+  return 取得使用者歷史排序設定(副本鍵值)?.欄位 || "";
+}
+
+function 取得使用者歷史排序欄位標籤(副本鍵值) {
+  const 欄位 = 取得使用者歷史排序欄位(副本鍵值);
+  return 使用者歷史排序欄位.find((選項) => 選項.value === 欄位)?.label || "目前欄位";
+}
+
+function 取得使用者歷史排序預設方向(欄位) {
+  // 「同職分位」的數字方向必須配合目前顯示內容：PR 越大越前面，前 N% 則越小越前面。
+  if (欄位 === "performance" && 分位顯示模式.value !== 分位顯示模式PR) {
+    return "asc";
+  }
+
+  return 使用者歷史排序預設方向[欄位] || "desc";
+}
+
+function 設定使用者歷史排序欄位(副本鍵值, 欄位) {
+  const 鍵值 = String(副本鍵值 || "").trim();
+  const 目標欄位 = String(欄位 || "").trim();
+  if (!鍵值) {
+    return;
+  }
+
+  if (!使用者歷史排序欄位集合.has(目標欄位)) {
+    使用者歷史排序設定.value = Object.fromEntries(
+      Object.entries(使用者歷史排序設定.value).filter(([目前鍵值]) => 目前鍵值 !== 鍵值),
+    );
+    return;
+  }
+
+  使用者歷史排序設定.value = {
+    ...使用者歷史排序設定.value,
+    [鍵值]: {
+      欄位: 目標欄位,
+      方向: 取得使用者歷史排序預設方向(目標欄位),
+    },
+  };
+}
+
+function 切換使用者歷史排序(副本鍵值, 欄位) {
+  const 目前設定 = 取得使用者歷史排序設定(副本鍵值);
+  if (目前設定?.欄位 !== 欄位) {
+    設定使用者歷史排序欄位(副本鍵值, 欄位);
+    return;
+  }
+
+  使用者歷史排序設定.value = {
+    ...使用者歷史排序設定.value,
+    [副本鍵值]: {
+      欄位,
+      方向: 目前設定.方向 === "asc" ? "desc" : "asc",
+    },
+  };
+}
+
+function 反轉使用者歷史排序方向(副本鍵值) {
+  const 目前設定 = 取得使用者歷史排序設定(副本鍵值);
+  if (!目前設定) {
+    return;
+  }
+
+  使用者歷史排序設定.value = {
+    ...使用者歷史排序設定.value,
+    [副本鍵值]: {
+      ...目前設定,
+      方向: 目前設定.方向 === "asc" ? "desc" : "asc",
+    },
+  };
+}
+
+function 使用者歷史是否目前排序(副本鍵值, 欄位) {
+  return 取得使用者歷史排序設定(副本鍵值)?.欄位 === 欄位;
+}
+
+function 使用者歷史排序方向圖示(副本鍵值) {
+  return 取得使用者歷史排序設定(副本鍵值)?.方向 === "asc" ? "↑" : "↓";
+}
+
+function 使用者歷史排序ARIA(副本鍵值, 欄位) {
+  const 設定 = 取得使用者歷史排序設定(副本鍵值);
+  if (設定?.欄位 !== 欄位) {
+    return "none";
+  }
+
+  return 設定.方向 === "asc" ? "ascending" : "descending";
+}
+
+function 使用者歷史排序按鈕標籤(副本鍵值, 欄位) {
+  const 標籤 = 使用者歷史排序欄位.find((選項) => 選項.value === 欄位)?.label || 欄位;
+  const 設定 = 取得使用者歷史排序設定(副本鍵值);
+  if (設定?.欄位 !== 欄位) {
+    return `依${標籤}排序`;
+  }
+
+  const 方向文字 = 設定.方向 === "asc" ? "由小至大" : "由大至小";
+  return `目前依${標籤}${方向文字}排序；再次點擊可反轉方向`;
+}
+
+function 取得使用者歷史排序數值(成績, 欄位) {
+  switch (欄位) {
+    case "recordedAt": {
+      const 時間戳記 = Date.parse(成績?.recorded_at_iso || "");
+      return Number.isFinite(時間戳記) ? 時間戳記 : null;
+    }
+    case "performance":
+      if (成績?.is_obsolete_record) {
+        return null;
+      }
+      return 分位顯示模式.value === 分位顯示模式PR
+        ? 取得成績PR值(成績)
+        : 取得成績前段百分位(成績);
+    case "active":
+      return 轉為數字(成績?.active_percent);
+    case "gcdCoverage":
+      return 取得Gcd覆蓋率數值(成績?.gcd_coverage);
+    case "dps":
+      return 轉為數字(成績?.dps);
+    case "rdps":
+      return 轉為數字(成績?.rdps);
+    case "adps":
+      return 轉為數字(成績?.adps);
+    case "gameVersion":
+      return 轉為數字(取得個人成績紀錄版本(成績));
+    case "clearTime":
+      return 轉為數字(成績?.clear_time_seconds);
+    default:
+      return null;
+  }
+}
+
+function 比較使用者歷史排序數值(左側數值, 右側數值, 方向) {
+  if (左側數值 === null || 右側數值 === null) {
+    if (左側數值 === 右側數值) {
+      return 0;
+    }
+    return 左側數值 === null ? 1 : -1;
+  }
+
+  if (左側數值 === 右側數值) {
+    return 0;
+  }
+
+  return 方向 === "asc" ? 左側數值 - 右側數值 : 右側數值 - 左側數值;
+}
+
+function 排序使用者歷史成績(副本) {
+  const 原始成績 = Array.isArray(副本?.public_entries) ? 副本.public_entries : [];
+  const 設定 = 取得使用者歷史排序設定(副本?.encounter_key);
+  if (!設定) {
+    return 原始成績;
+  }
+
+  return 原始成績
+    .map((成績, 原始索引) => ({ 成績, 原始索引 }))
+    .sort((左側, 右側) => {
+      const 差異 = 比較使用者歷史排序數值(
+        取得使用者歷史排序數值(左側.成績, 設定.欄位),
+        取得使用者歷史排序數值(右側.成績, 設定.欄位),
+        設定.方向,
+      );
+      if (差異 !== 0) {
+        return 差異;
+      }
+
+      // 相同數值維持較新的紀錄在前，最後回退至原始索引，讓同分列不會在重繪時跳動。
+      const 紀錄時間差異 = 比較使用者歷史排序數值(
+        取得使用者歷史排序數值(左側.成績, "recordedAt"),
+        取得使用者歷史排序數值(右側.成績, "recordedAt"),
+        "desc",
+      );
+      return 紀錄時間差異 || 左側.原始索引 - 右側.原始索引;
+    })
+    .map(({ 成績 }) => 成績);
+}
+
 const 使用者版本選項 = computed(() => {
   const 版本集合 = new Set(
     使用者完整副本成績.value
@@ -5334,8 +5550,29 @@ watch(使用者伺服器篩選, (伺服器) => {
 });
 
 watch([使用者資料, 使用者伺服器篩選, 使用者版本篩選, 使用者職業類型篩選, 使用者職業篩選], () => {
+  // 篩選結果更換後不沿用舊副本的排序欄位，避免使用者誤把不同快照視為同一排序結果。
+  使用者歷史排序設定.value = {};
   使用者趨勢職業選擇.value = {};
   清除所有使用者趨勢選取點();
+});
+
+watch(分位顯示模式, () => {
+  // PR 與前 N% 的「較佳」數字方向相反。若使用者正在排序同職分位，切換顯示模式時
+  // 反轉數值方向，才能保留原本的高低意圖（例如「較佳在前」仍是較佳在前）。
+  使用者歷史排序設定.value = Object.fromEntries(
+    Object.entries(使用者歷史排序設定.value).map(([副本鍵值, 設定]) => {
+      if (設定?.欄位 !== "performance") {
+        return [副本鍵值, 設定];
+      }
+      return [
+        副本鍵值,
+        {
+          ...設定,
+          方向: 設定.方向 === "asc" ? "desc" : "asc",
+        },
+      ];
+    }),
+  );
 });
 
 watch([顯示個人成績版本, 使用者版本選項], () => {
@@ -5528,6 +5765,8 @@ onUnmounted(() => {
     使用者職業類型篩選,
     使用者職業篩選,
     使用者職業選單開啟,
+    使用者歷史排序欄位,
+    使用者歷史排序設定,
     使用者趨勢職業選擇,
     使用者趨勢選取點,
     使用者簡表模式,
@@ -5657,6 +5896,16 @@ onUnmounted(() => {
     選擇使用者職業類型,
     選擇使用者職業,
     選擇使用者趨勢職業,
+    取得使用者歷史排序欄位,
+    取得使用者歷史排序欄位標籤,
+    設定使用者歷史排序欄位,
+    切換使用者歷史排序,
+    反轉使用者歷史排序方向,
+    使用者歷史是否目前排序,
+    使用者歷史排序方向圖示,
+    使用者歷史排序ARIA,
+    使用者歷史排序按鈕標籤,
+    排序使用者歷史成績,
     切換使用者簡表模式,
     設定使用者簡表版本,
     設定使用者簡表零式量級,

@@ -861,72 +861,206 @@ export default {
           </summary>
 
           <div class="歷史表格外框">
+            <div class="歷史排序控制">
+              <label :for="`歷史排序-${副本.encounter_key}`">排序</label>
+              <select
+                :id="`歷史排序-${副本.encounter_key}`"
+                :value="取得使用者歷史排序欄位(副本.encounter_key)"
+                @change="設定使用者歷史排序欄位(副本.encounter_key, $event.target.value)"
+              >
+                <option value="">原始順序</option>
+                <template v-for="欄位 in 使用者歷史排序欄位" :key="欄位.value">
+                  <option v-if="欄位.value !== 'gameVersion' || 顯示個人成績版本" :value="欄位.value">
+                    {{ 欄位.label }}
+                  </option>
+                </template>
+              </select>
+              <button
+                v-if="取得使用者歷史排序欄位(副本.encounter_key)"
+                class="歷史排序方向按鈕"
+                type="button"
+                :aria-label="`反轉${取得使用者歷史排序欄位標籤(副本.encounter_key)}排序方向`"
+                @click="反轉使用者歷史排序方向(副本.encounter_key)"
+              >
+                {{ 使用者歷史排序方向圖示(副本.encounter_key) }}
+              </button>
+            </div>
             <table class="歷史表格" :class="{ 歷史表格顯示版本: 顯示個人成績版本 }">
               <thead>
                 <tr>
-                  <th scope="col">紀錄時間</th>
+                  <th scope="col" :aria-sort="使用者歷史排序ARIA(副本.encounter_key, 'recordedAt')">
+                    <button
+                      class="表頭排序按鈕"
+                      type="button"
+                      :class="{ 作用中: 使用者歷史是否目前排序(副本.encounter_key, 'recordedAt') }"
+                      :aria-label="使用者歷史排序按鈕標籤(副本.encounter_key, 'recordedAt')"
+                      @click="切換使用者歷史排序(副本.encounter_key, 'recordedAt')"
+                    >
+                      <span>紀錄時間</span>
+                      <span v-if="使用者歷史是否目前排序(副本.encounter_key, 'recordedAt')" class="排序箭頭" aria-hidden="true">
+                        {{ 使用者歷史排序方向圖示(副本.encounter_key) }}
+                      </span>
+                    </button>
+                  </th>
                   <th scope="col">職業</th>
                   <th scope="col" class="歷史報告欄位">報告</th>
-                  <th scope="col" class="數字">
+                  <th scope="col" class="數字" :aria-sort="使用者歷史排序ARIA(副本.encounter_key, 'performance')">
                     <span class="表頭說明標籤">
-                      <span>同職分位</span>
+                      <button
+                        class="表頭排序按鈕"
+                        type="button"
+                        :class="{ 作用中: 使用者歷史是否目前排序(副本.encounter_key, 'performance') }"
+                        :aria-label="使用者歷史排序按鈕標籤(副本.encounter_key, 'performance')"
+                        @click="切換使用者歷史排序(副本.encounter_key, 'performance')"
+                      >
+                        <span>同職分位</span>
+                        <span v-if="使用者歷史是否目前排序(副本.encounter_key, 'performance')" class="排序箭頭" aria-hidden="true">
+                          {{ 使用者歷史排序方向圖示(副本.encounter_key) }}
+                        </span>
+                      </button>
                       <span class="說明提示">
                         <button class="說明提示按鈕" type="button" aria-label="同職分位說明">?</button>
                         <span class="說明提示內容" role="tooltip">{{ 統計說明文字("同職分位") }}</span>
                       </span>
                     </span>
                   </th>
-                  <th scope="col" class="數字">
+                  <th scope="col" class="數字" :aria-sort="使用者歷史排序ARIA(副本.encounter_key, 'active')">
                     <span class="表頭說明標籤">
-                      <span>Active</span>
+                      <button
+                        class="表頭排序按鈕"
+                        type="button"
+                        :class="{ 作用中: 使用者歷史是否目前排序(副本.encounter_key, 'active') }"
+                        :aria-label="使用者歷史排序按鈕標籤(副本.encounter_key, 'active')"
+                        @click="切換使用者歷史排序(副本.encounter_key, 'active')"
+                      >
+                        <span>Active</span>
+                        <span v-if="使用者歷史是否目前排序(副本.encounter_key, 'active')" class="排序箭頭" aria-hidden="true">
+                          {{ 使用者歷史排序方向圖示(副本.encounter_key) }}
+                        </span>
+                      </button>
                       <span class="說明提示">
                         <button class="說明提示按鈕" type="button" aria-label="Active 說明">?</button>
                         <span class="說明提示內容" role="tooltip">{{ 統計說明文字("Active") }}</span>
                       </span>
                     </span>
                   </th>
-                  <th v-show="顯示Gcd覆蓋率" scope="col" class="數字">
+                  <th v-show="顯示Gcd覆蓋率" scope="col" class="數字" :aria-sort="使用者歷史排序ARIA(副本.encounter_key, 'gcdCoverage')">
                     <span class="表頭說明標籤">
-                      <span>GCD</span>
+                      <button
+                        class="表頭排序按鈕"
+                        type="button"
+                        :class="{ 作用中: 使用者歷史是否目前排序(副本.encounter_key, 'gcdCoverage') }"
+                        :aria-label="使用者歷史排序按鈕標籤(副本.encounter_key, 'gcdCoverage')"
+                        @click="切換使用者歷史排序(副本.encounter_key, 'gcdCoverage')"
+                      >
+                        <span>GCD</span>
+                        <span v-if="使用者歷史是否目前排序(副本.encounter_key, 'gcdCoverage')" class="排序箭頭" aria-hidden="true">
+                          {{ 使用者歷史排序方向圖示(副本.encounter_key) }}
+                        </span>
+                      </button>
                       <span class="說明提示">
                         <button class="說明提示按鈕" type="button" aria-label="GCD 覆蓋率說明">?</button>
                         <span class="說明提示內容" role="tooltip">{{ 統計說明文字("GCD 覆蓋率") }}</span>
                       </span>
                     </span>
                   </th>
-                  <th scope="col" class="數字">
+                  <th scope="col" class="數字" :aria-sort="使用者歷史排序ARIA(副本.encounter_key, 'dps')">
                     <span class="表頭說明標籤">
-                      <span>DPS</span>
+                      <button
+                        class="表頭排序按鈕"
+                        type="button"
+                        :class="{ 作用中: 使用者歷史是否目前排序(副本.encounter_key, 'dps') }"
+                        :aria-label="使用者歷史排序按鈕標籤(副本.encounter_key, 'dps')"
+                        @click="切換使用者歷史排序(副本.encounter_key, 'dps')"
+                      >
+                        <span>DPS</span>
+                        <span v-if="使用者歷史是否目前排序(副本.encounter_key, 'dps')" class="排序箭頭" aria-hidden="true">
+                          {{ 使用者歷史排序方向圖示(副本.encounter_key) }}
+                        </span>
+                      </button>
                       <span class="說明提示">
                         <button class="說明提示按鈕" type="button" aria-label="DPS 說明">?</button>
                         <span class="說明提示內容" role="tooltip">{{ 統計說明文字("DPS") }}</span>
                       </span>
                     </span>
                   </th>
-                  <th scope="col" class="數字">
+                  <th scope="col" class="數字" :aria-sort="使用者歷史排序ARIA(副本.encounter_key, 'rdps')">
                     <span class="表頭說明標籤">
-                      <span>rDPS</span>
+                      <button
+                        class="表頭排序按鈕"
+                        type="button"
+                        :class="{ 作用中: 使用者歷史是否目前排序(副本.encounter_key, 'rdps') }"
+                        :aria-label="使用者歷史排序按鈕標籤(副本.encounter_key, 'rdps')"
+                        @click="切換使用者歷史排序(副本.encounter_key, 'rdps')"
+                      >
+                        <span>rDPS</span>
+                        <span v-if="使用者歷史是否目前排序(副本.encounter_key, 'rdps')" class="排序箭頭" aria-hidden="true">
+                          {{ 使用者歷史排序方向圖示(副本.encounter_key) }}
+                        </span>
+                      </button>
                       <span class="說明提示">
                         <button class="說明提示按鈕" type="button" aria-label="rDPS 說明">?</button>
                         <span class="說明提示內容" role="tooltip">{{ 統計說明文字("rDPS") }}</span>
                       </span>
                     </span>
                   </th>
-                  <th scope="col" class="數字">
+                  <th scope="col" class="數字" :aria-sort="使用者歷史排序ARIA(副本.encounter_key, 'adps')">
                     <span class="表頭說明標籤">
-                      <span>aDPS</span>
+                      <button
+                        class="表頭排序按鈕"
+                        type="button"
+                        :class="{ 作用中: 使用者歷史是否目前排序(副本.encounter_key, 'adps') }"
+                        :aria-label="使用者歷史排序按鈕標籤(副本.encounter_key, 'adps')"
+                        @click="切換使用者歷史排序(副本.encounter_key, 'adps')"
+                      >
+                        <span>aDPS</span>
+                        <span v-if="使用者歷史是否目前排序(副本.encounter_key, 'adps')" class="排序箭頭" aria-hidden="true">
+                          {{ 使用者歷史排序方向圖示(副本.encounter_key) }}
+                        </span>
+                      </button>
                       <span class="說明提示">
                         <button class="說明提示按鈕" type="button" aria-label="aDPS 說明">?</button>
                         <span class="說明提示內容" role="tooltip">{{ 統計說明文字("aDPS") }}</span>
                       </span>
                     </span>
                   </th>
-                  <th v-if="顯示個人成績版本" scope="col" class="數字">版本</th>
-                  <th scope="col" class="數字">通關時間</th>
+                  <th
+                    v-if="顯示個人成績版本"
+                    scope="col"
+                    class="數字"
+                    :aria-sort="使用者歷史排序ARIA(副本.encounter_key, 'gameVersion')"
+                  >
+                    <button
+                      class="表頭排序按鈕"
+                      type="button"
+                      :class="{ 作用中: 使用者歷史是否目前排序(副本.encounter_key, 'gameVersion') }"
+                      :aria-label="使用者歷史排序按鈕標籤(副本.encounter_key, 'gameVersion')"
+                      @click="切換使用者歷史排序(副本.encounter_key, 'gameVersion')"
+                    >
+                      <span>版本</span>
+                      <span v-if="使用者歷史是否目前排序(副本.encounter_key, 'gameVersion')" class="排序箭頭" aria-hidden="true">
+                        {{ 使用者歷史排序方向圖示(副本.encounter_key) }}
+                      </span>
+                    </button>
+                  </th>
+                  <th scope="col" class="數字" :aria-sort="使用者歷史排序ARIA(副本.encounter_key, 'clearTime')">
+                    <button
+                      class="表頭排序按鈕"
+                      type="button"
+                      :class="{ 作用中: 使用者歷史是否目前排序(副本.encounter_key, 'clearTime') }"
+                      :aria-label="使用者歷史排序按鈕標籤(副本.encounter_key, 'clearTime')"
+                      @click="切換使用者歷史排序(副本.encounter_key, 'clearTime')"
+                    >
+                      <span>通關時間</span>
+                      <span v-if="使用者歷史是否目前排序(副本.encounter_key, 'clearTime')" class="排序箭頭" aria-hidden="true">
+                        {{ 使用者歷史排序方向圖示(副本.encounter_key) }}
+                      </span>
+                    </button>
+                  </th>
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="成績 in 副本.public_entries" :key="成績.id" :class="{ 過版紀錄列: 成績.is_obsolete_record }">
+                <tr v-for="成績 in 排序使用者歷史成績(副本)" :key="成績.id" :class="{ 過版紀錄列: 成績.is_obsolete_record }">
                   <td>{{ 格式化紀錄時間(成績.recorded_at_iso) }}</td>
                   <td>
                     <span class="職業標籤" :class="職業色彩類別(職業代碼色彩(成績.job))">

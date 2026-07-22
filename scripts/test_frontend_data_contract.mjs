@@ -405,6 +405,35 @@ async function validateUserProfileGameVersionFilter() {
       && profileStyles.includes(".趨勢點.選取中::after"),
     "趨勢預設只顯示最高／最低數值；懸停或點擊資料點時，必須改顯示選取紀錄並可回復預設標記。",
   );
+  const 歷史排序欄位 = ["recordedAt", "performance", "active", "gcdCoverage", "dps", "rdps", "adps", "gameVersion", "clearTime"];
+  assert(
+    source.includes("const 使用者歷史排序設定 = ref({});")
+      && source.includes("function 排序使用者歷史成績(副本)")
+      && source.includes("function 取得使用者歷史排序數值(成績, 欄位)")
+      && source.includes("使用者歷史排序設定.value = {};"),
+    "個人成績歷史表格必須以各副本獨立的排序狀態處理，並在篩選結果更換時重設。",
+  );
+  assert(
+    歷史排序欄位.every((欄位) => profileSource.includes(`切換使用者歷史排序(副本.encounter_key, '${欄位}')`))
+      && profileSource.includes('v-for="成績 in 排序使用者歷史成績(副本)"')
+      && profileSource.includes("使用者歷史排序ARIA")
+      && profileSource.includes("使用者歷史排序方向圖示"),
+    "歷史表格必須讓紀錄時間、同職分位、Active、GCD、DPS、rDPS、aDPS、版本與通關時間欄位可點擊排序。",
+  );
+  assert(
+    source.includes('欄位 === "performance" && 分位顯示模式.value !== 分位顯示模式PR')
+      && source.includes('case "gameVersion":')
+      && source.includes("return 左側數值 === null ? 1 : -1;")
+      && source.includes("watch(分位顯示模式, () => {")
+      && source.includes('設定?.欄位 !== "performance"'),
+    "同職分位排序必須配合 PR／前 N% 顯示方向，切換顯示模式時保留高低排序意圖，缺少數值或版本的紀錄則固定排在最後。",
+  );
+  assert(
+    profileSource.includes('class="歷史排序控制"')
+      && responsiveStyles.includes(".歷史排序控制 {")
+      && profileStyles.includes(".歷史排序控制 {\n  display: none;"),
+    "手機版隱藏表頭時，歷史表格必須提供排序選單與方向按鈕。",
+  );
 }
 
 async function validateHelpTooltipPreference() {

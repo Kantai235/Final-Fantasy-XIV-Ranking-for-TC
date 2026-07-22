@@ -2858,6 +2858,42 @@
     padding: 8px;
   }
 
+  .歷史排序控制 {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+
+  .歷史排序控制 label {
+    color: var(--次要文字);
+    font-size: 0.76rem;
+    font-weight: 780;
+  }
+
+  .歷史排序控制 select,
+  .歷史排序方向按鈕 {
+    min-height: 34px;
+    border: 1px solid var(--邊框柔和色);
+    border-radius: 7px;
+    color: var(--主要文字);
+    background: var(--表面背景);
+    font: inherit;
+  }
+
+  .歷史排序控制 select {
+    width: 100%;
+    min-width: 0;
+    padding: 0 9px;
+  }
+
+  .歷史排序方向按鈕 {
+    min-width: 34px;
+    padding: 0 8px;
+    font-weight: 800;
+  }
+
   .歷史表格,
   .歷史表格 tbody {
     gap: 8px;

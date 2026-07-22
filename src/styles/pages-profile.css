@@ -1699,6 +1699,10 @@ th .說明提示內容 {
   padding-top: 2px;
 }
 
+.歷史排序控制 {
+  display: none;
+}
+
 .歷史表格 {
   width: 100%;
   min-width: 0;
