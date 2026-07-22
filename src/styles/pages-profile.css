@@ -386,6 +386,7 @@
   animation-duration: 18s;
   animation-direction: reverse;
 }
+
 .使用者徽章 strong {
   color: var(--重點色);
   font-size: 0.9rem;
@@ -401,6 +402,7 @@
   letter-spacing: 0.045em;
   text-shadow: 0 1px 10px var(--六絕文字陰影);
 }
+
 .使用者徽章 span {
   color: var(--次要文字);
   font-size: 0.78rem;
@@ -428,6 +430,7 @@
     animation: none;
   }
 }
+
 .個人分位區 {
   overflow: hidden;
   border: 1px solid var(--邊框色);
@@ -451,10 +454,25 @@
   background: var(--表面背景);
 }
 
-.個人分位項 > strong {
+.個人分位主值 {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.個人分位主值 > strong {
   color: var(--重點色);
   font-size: 1.08rem;
   font-weight: 880;
+  font-variant-numeric: tabular-nums;
+}
+
+.個人分位版本 {
+  flex: 0 0 auto;
+  color: var(--靜音文字);
+  font-size: 0.76rem;
+  font-weight: 800;
   font-variant-numeric: tabular-nums;
 }
 
@@ -594,13 +612,6 @@
   color: var(--輸出色);
 }
 
-.趨勢摘要 {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 12px;
-  font-variant-numeric: tabular-nums;
-}
-
 .趨勢圖 {
   position: relative;
   height: 118px;
@@ -641,46 +652,127 @@
   stroke: var(--靜音文字);
 }
 
+.趨勢版本切點層 {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.趨勢版本切點 {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-left: 1px dashed color-mix(in srgb, var(--重點色) 70%, var(--邊框色));
+}
+
+.趨勢版本切點 small {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  border-radius: 999px;
+  padding: 2px 5px;
+  color: var(--次要文字);
+  background: color-mix(in srgb, var(--表面背景) 86%, transparent);
+  font-size: 0.62rem;
+  font-weight: 780;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 .趨勢點層 {
   position: absolute;
   inset: 0;
+  z-index: 2;
   pointer-events: none;
 }
 
 .趨勢點 {
   position: absolute;
+  width: 18px;
+  height: 18px;
+  transform: translate(-50%, -50%);
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 999px;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.趨勢點::after {
   width: 8px;
   height: 8px;
-  transform: translate(-50%, -50%);
+  content: "";
   border: 2px solid var(--重點色);
   border-radius: 999px;
   background: var(--表面背景);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--表面背景) 70%, transparent);
+  transition: transform 120ms ease, box-shadow 120ms ease;
 }
 
-.趨勢點.過版 {
+.趨勢點:hover::after,
+.趨勢點.選取中::after,
+.趨勢點:focus-visible::after {
+  transform: scale(1.35);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--重點色) 28%, transparent);
+}
+
+.趨勢點.過版::after {
   border-color: var(--靜音文字);
   background: var(--表面背景柔和);
 }
 
-.趨勢刻度 {
+.趨勢數值標記層 {
   position: absolute;
-  inset: 8px 10px;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
+  inset: 0;
+  z-index: 3;
   pointer-events: none;
 }
 
-.趨勢刻度 span {
-  align-self: flex-end;
+.趨勢數值標記 {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform: translate(-50%, calc(-100% - 6px));
   border-radius: 999px;
-  padding: 2px 6px;
+  padding: 3px 7px;
   color: var(--次要文字);
-  background: color-mix(in srgb, var(--表面背景) 78%, transparent);
-  font-size: 0.68rem;
-  font-weight: 760;
+  background: color-mix(in srgb, var(--表面背景) 90%, transparent);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.趨勢數值標記 strong {
+  color: var(--主要文字);
+  font-size: 0.66rem;
+  font-weight: 820;
+}
+
+.趨勢數值標記.標籤向下 {
+  transform: translate(-50%, 6px);
+}
+
+.趨勢數值標記.文字靠左 {
+  transform: translate(6px, calc(-100% - 6px));
+  justify-items: start;
+}
+
+.趨勢數值標記.文字靠右 {
+  transform: translate(calc(-100% - 6px), calc(-100% - 6px));
+  justify-items: end;
+}
+
+.趨勢數值標記.標籤向下.文字靠左 {
+  transform: translate(6px, 6px);
+}
+
+.趨勢數值標記.標籤向下.文字靠右 {
+  transform: translate(calc(-100% - 6px), 6px);
 }
 
 .個人成績概要 {
@@ -1470,14 +1562,22 @@ th .說明提示內容 {
 }
 
 .個人成績列 {
-  --個人成績欄位: minmax(160px, 1.32fr) minmax(96px, 0.72fr) minmax(74px, 0.48fr)
+  --個人成績欄位: minmax(160px, 1.32fr) minmax(96px, 0.72fr) minmax(80px, 0.52fr)
     minmax(86px, 0.56fr) minmax(68px, 0.42fr) minmax(68px, 0.42fr) minmax(76px, 0.48fr)
     minmax(76px, 0.48fr) minmax(76px, 0.48fr) minmax(76px, 0.48fr);
-  --個人成績欄距: 10px;
+  /* 摘要標籤包含說明按鈕；略加寬職業 Rank 欄並收斂欄距，避免版本欄開啟後
+     標籤、問號按鈕與數值在桌面寬度下彼此擠壓。 */
+  --個人成績欄距: 8px;
   overflow: visible;
   border: 1px solid var(--邊框色);
   border-radius: 8px;
   background: var(--表面背景);
+}
+
+.個人成績列.個人成績列顯示版本 {
+  --個人成績欄位: minmax(160px, 1.32fr) minmax(96px, 0.72fr) minmax(80px, 0.52fr)
+    minmax(86px, 0.56fr) minmax(68px, 0.42fr) minmax(68px, 0.42fr) minmax(76px, 0.48fr)
+    minmax(76px, 0.48fr) minmax(76px, 0.48fr) minmax(58px, 0.36fr) minmax(76px, 0.48fr);
 }
 
 .個人成績列[open] {
@@ -1519,6 +1619,21 @@ th .說明提示內容 {
 .成績列數值 {
   justify-items: end;
   text-align: right;
+}
+
+.成績列數值 .說明標籤 {
+  max-width: 100%;
+  gap: 4px;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+
+.成績列數值 .說明提示按鈕 {
+  width: 16px;
+  min-width: 16px;
+  height: 16px;
+  min-height: 16px;
+  font-size: 0.66rem;
 }
 
 .成績列副本 small,
@@ -1602,6 +1717,12 @@ th .說明提示內容 {
   align-items: center;
   column-gap: var(--個人成績欄距);
   padding: 0 14px;
+}
+
+.歷史表格.歷史表格顯示版本 tr {
+  grid-template-columns: minmax(160px, 1.32fr) minmax(96px, 0.72fr) minmax(74px, 0.48fr)
+    minmax(86px, 0.56fr) minmax(68px, 0.42fr) minmax(68px, 0.42fr) minmax(76px, 0.48fr)
+    minmax(76px, 0.48fr) minmax(76px, 0.48fr) minmax(62px, 0.4fr) minmax(76px, 0.48fr);
 }
 
 .歷史表格 thead tr {

@@ -28,11 +28,18 @@ import {
   比較個人成績分位顯示排序,
 } from "../src/utils/userProfileSorting.js";
 import {
+  建立個人成績徽章,
+  六絕踏破稱號,
+  建立零式量級踏破徽章,
+} from "../src/utils/userProfileBadges.js";
+import {
+  建立個人成績趨勢版本切點,
   建立個人成績簡表群組,
   建立個人成績簡表可選版本,
   成績符合個人成績簡表版本,
   個人成績簡表版本已開放,
   個人成績簡表版本選項,
+  取得個人成績紀錄版本,
   副本符合個人成績簡表版本,
   是個人成績簡表目標副本,
 } from "../src/utils/userProfileClearSummary.js";
@@ -58,7 +65,8 @@ function reportIssue(message) {
 }
 
 async function readText(filePath) {
-  return readFile(filePath, "utf8");
+  // Git 在 Windows 工作區可能保留 CRLF；靜態契約只驗證結構，不應因換行格式不同而誤判。
+  return (await readFile(filePath, "utf8")).replace(/\r\n/g, "\n");
 }
 
 async function readJson(filePath, label) {
@@ -173,6 +181,284 @@ function validateUserProfilePercentileSorting() {
   assert(
     比較個人成績分位顯示排序(rankBehindButHigherPr, rankAheadButLowerPr, 分位顯示模式前段) < 0,
     "前 N% 模式的分位亮點仍應依 top_percent 較低者排在前面。",
+  );
+}
+
+function validateUserProfileBadges() {
+  const 零式副本鍵值 = [
+    "savage_m1s", "savage_m2s", "savage_m3s", "savage_m4s",
+    "savage_m5s", "savage_m6s", "savage_m7s", "savage_m8s",
+  ];
+  const 六絕副本鍵值 = [
+    "ultimate_bahamut",
+    "ultimate_ultima_weapon",
+    "ultimate_alexander",
+    "ultimate_dragonsong",
+    "ultimate_omega",
+    "ultimate_futures_rewritten",
+  ];
+  const 職業職能 = {
+    Paladin: "role:tank",
+    WhiteMage: "role:healer",
+    Monk: "role:melee",
+    Bard: "role:physical_ranged",
+    BlackMage: "role:magical_ranged",
+    Warrior: "role:tank",
+  };
+  const 公開成績 = [
+    ...零式副本鍵值.map((encounterKey) => ({ encounter_key: encounterKey, job: "Paladin" })),
+    ...六絕副本鍵值.map((encounterKey) => ({ encounter_key: encounterKey, job: "Paladin" })),
+    ...Object.keys(職業職能).flatMap((job) => Array.from({ length: 10 }, () => ({
+      encounter_key: "savage_m1s",
+      job,
+    }))),
+    ...Array.from({ length: 32 }, () => ({ encounter_key: "savage_m2s", job: "Paladin" })),
+  ];
+  const 徽章 = 建立個人成績徽章({
+    角色名稱: "測試角色",
+    公開成績,
+    公開同場玩家數: 50,
+    最後紀錄時間: "2026-07-21T00:00:00.000Z",
+    近期動態基準時間: Date.parse("2026-07-22T00:00:00.000Z"),
+    顯示作者徽章: true,
+    是網站作者: () => true,
+    作者說明: "作者識別測試",
+    取得職能代碼: (job) => 職業職能[job] || "",
+  });
+  const 徽章名稱 = new Set(徽章.map((徽章) => 徽章.名稱));
+  const 多職說明 = 徽章.find((徽章) => 徽章.名稱 === "多職玩家")?.說明 || "";
+  const 三色豆說明 = 徽章.find((徽章) => 徽章.名稱 === "三色豆")?.說明 || "";
+
+  for (const 名稱 of ["輕量級踏破", "次重量級踏破", 六絕踏破稱號, "多職玩家", "三色豆", "高活躍", "社群核心", "近期活躍"]) {
+    assert(徽章名稱.has(名稱), `完整公開成績應取得「${名稱}」徽章。`);
+  }
+  assert(
+    徽章.find((徽章) => 徽章.名稱 === 六絕踏破稱號)?.樣式類別 === "六絕傳奇稱號",
+    "六絕全通稱號必須帶有專屬的傳奇樣式類別。",
+  );
+  assert(
+    徽章[0]?.名稱 === 六絕踏破稱號,
+    "六絕全通稱號必須排在包含作者識別在內的所有徽章最前方。",
+  );
+  assert(!徽章名稱.has("零式全通"), "零式成就應改為依量級命名，不可保留固定的「零式全通」。");
+  assert(多職說明.includes("6 個職業各有至少 10 場"), "多職玩家應要求至少六職各有十場公開通關紀錄。");
+  assert(三色豆說明.includes("5 種職能各有至少 10 場"), "三色豆應以各職能的十場公開通關紀錄判定。");
+
+  const 未完整量級 = 建立零式量級踏破徽章(公開成績.filter((成績) => 成績.encounter_key !== "savage_m8s"));
+  assert(
+    !未完整量級.some((徽章) => 徽章.名稱 === "次重量級踏破"),
+    "少任一 M5S～M8S 有效版本公開成績時，不可發放次重量級踏破徽章。",
+  );
+
+  const M8過版成績 = 公開成績.map((成績) => (
+    成績.encounter_key === "savage_m8s" ? { ...成績, is_obsolete_record: true } : 成績
+  ));
+  const 過版量級 = 建立零式量級踏破徽章(M8過版成績);
+  assert(
+    !過版量級.some((徽章) => 徽章.名稱 === "次重量級踏破"),
+    "M5S～M8S 任一層只有過版紀錄時，不可發放次重量級踏破徽章。",
+  );
+
+  const 六絕含過版紀錄 = 建立個人成績徽章({
+    公開成績: 公開成績.map((成績) => (
+      成績.encounter_key === "ultimate_bahamut" ? { ...成績, is_obsolete_record: true } : 成績
+    )),
+    取得職能代碼: (job) => 職業職能[job] || "",
+  });
+  assert(
+    六絕含過版紀錄.some((徽章) => 徽章.名稱 === 六絕踏破稱號),
+    "六絕全通稱號是歷史成就，任一絕本標記過版後仍須保留。",
+  );
+
+  const 缺少一絕稱號 = 建立個人成績徽章({
+    公開成績: 公開成績.filter((成績) => 成績.encounter_key !== "ultimate_omega"),
+    取得職能代碼: (job) => 職業職能[job] || "",
+  });
+  assert(
+    !缺少一絕稱號.some((徽章) => 徽章.名稱 === 六絕踏破稱號),
+    "缺少任一絕本公開通關紀錄時，不可發放六絕全通稱號。",
+  );
+
+  const 第一筆詩人成績索引 = 公開成績.findIndex((成績) => 成績.job === "Bard");
+  const 少一場詩人 = 公開成績.filter((_, index) => index !== 第一筆詩人成績索引);
+  const 未達職業門檻徽章 = 建立個人成績徽章({
+    公開成績: 少一場詩人,
+    取得職能代碼: (job) => 職業職能[job] || "",
+  });
+  assert(
+    !未達職業門檻徽章.some((徽章) => 徽章.名稱 === "多職玩家"),
+    "任一達標職業少於十場時，不可被算入多職玩家的六職門檻。",
+  );
+}
+
+async function validateUserProfileBadgeDataScope() {
+  const [source, profileSource, profileStyles] = await Promise.all([
+    readText(path.join(srcDir, "composables", "useRankingApp.js")),
+    readText(path.join(srcDir, "pages", "UserProfilePage.vue")),
+    readText(path.join(srcDir, "styles", "pages-profile.css")),
+  ]);
+  assert(
+    source.includes('取得使用者副本成績(使用者資料.value, "", () => true, 使用者代表成績是否較佳)'),
+    "個人成績徽章應使用未套用伺服器或職業篩選的完整公開成績。",
+  );
+  assert(
+    source.includes("公開同場玩家數: 使用者資料.value.summary?.teammate_count"),
+    "社群核心應使用完整的 summary.teammate_count，而非最多二十位的 frequent_teammates。",
+  );
+  assert(
+    profileSource.includes(':class="徽章.樣式類別"')
+      && profileStyles.includes(".使用者徽章.六絕傳奇稱號")
+      && profileStyles.includes("@property --六絕虹彩角度")
+      && profileStyles.includes("from var(--六絕虹彩角度)")
+      && profileStyles.includes(':root[data-theme="light"] .使用者徽章.六絕傳奇稱號')
+      && profileStyles.includes("--六絕稱號文字色")
+      && profileStyles.includes("--六絕虹彩光暈不透明度")
+      && profileStyles.includes("@keyframes 六絕傳奇虹彩流轉")
+      && profileStyles.includes("@media (prefers-reduced-motion: reduce)"),
+    "六絕全通稱號必須套用虹彩循環邊框，並尊重減少動態效果偏好。",
+  );
+}
+
+async function validateUserProfileGameVersionFilter() {
+  const [source, profileSource, controlsStyles, profileStyles, responsiveStyles] = await Promise.all([
+    readText(path.join(srcDir, "composables", "useRankingApp.js")),
+    readText(path.join(srcDir, "pages", "UserProfilePage.vue")),
+    readText(path.join(srcDir, "styles", "controls.css")),
+    readText(path.join(srcDir, "styles", "pages-profile.css")),
+    readText(path.join(srcDir, "styles", "responsive.css")),
+  ]);
+
+  assert(
+    profileSource.includes('v-if="!使用者簡表模式 && 顯示個人成績版本"')
+      && profileSource.includes('v-model="使用者版本篩選"')
+      && !profileSource.includes('<option value="">全部版本</option>'),
+    "開啟個人成績版本顯示後，查詢列必須提供版本快照選單，且不應另設全部版本。",
+  );
+  assert(
+    source.includes('const 使用者版本篩選 = ref("");')
+      && source.includes("const 使用者版本選項 = computed(() => {")
+      && source.includes("function 符合使用者版本篩選(成績)"),
+    "個人成績版本篩選必須由共享狀態依目前伺服器的公開紀錄產生。",
+  );
+  assert(
+    source.includes("return 符合使用者職業篩選(成績) && 符合使用者版本篩選(成績);")
+      && source.includes("function 成績屬於使用者版本快照(成績, 目標版本)")
+      && source.includes("比較個人成績版本(紀錄版本, 目標版本) >= 0")
+      && source.includes("return Boolean(目標版本) && 成績屬於使用者版本快照(成績, 目標版本);")
+      && source.includes(".map((成績) => 取得個人成績紀錄版本(成績))"),
+    "版本選擇必須與職業篩選交集，並以截至目標版本的累積快照篩選相容的版本紀錄。",
+  );
+  assert(
+    profileSource.includes("取得個人成績紀錄版本(成績) || \"—\"")
+      && profileSource.includes("個人分位版本"),
+    "個人分位亮點與歷史紀錄必須使用相同的版本解析結果，避免舊資料顯示空白。",
+  );
+  assert(
+    profileSource.includes('v-if="顯示個人成績版本" class="成績列數值 成績列數值版本"')
+      && profileSource.includes('副本.best_entry ? 取得個人成績紀錄版本(副本.best_entry) || "—" : "-"')
+      && profileStyles.includes(".個人成績列.個人成績列顯示版本")
+      && responsiveStyles.includes(".成績列數值版本 {"),
+    "開啟版本資料時，成績列摘要必須顯示代表成績的版本，且桌面與手機版版面都要保留欄位空間。",
+  );
+  assert(
+    profileStyles.includes("minmax(80px, 0.52fr)")
+      && profileStyles.includes("--個人成績欄距: 8px;")
+      && profileStyles.includes(".成績列數值 .說明標籤 {")
+      && profileStyles.includes(".成績列數值 .說明提示按鈕 {")
+      && profileStyles.includes("width: 16px;"),
+    "成績列摘要的說明標籤與提示按鈕必須保留足夠間距，避免開啟版本欄後擁擠。",
+  );
+  assert(
+    source.includes("watch([顯示個人成績版本, 使用者版本選項], () => {")
+      && source.includes('const 最新可用版本 = 使用者版本選項.value[0]?.value || "";')
+      && source.includes("使用者版本篩選.value = 最新可用版本;"),
+    "開啟版本顯示或切換到沒有原選版本的伺服器時，必須預設回到最新版本快照。",
+  );
+  assert(
+    controlsStyles.includes(".個人成績搜尋表單.個人成績搜尋表單版本篩選")
+      && controlsStyles.includes(".個人成績版本欄位 select"),
+    "版本欄位必須有桌面版查詢列配置與可讀取的選單寬度。",
+  );
+  assert(
+    source.includes("建立個人成績趨勢版本切點")
+      && source.includes("使用時間橫軸")
+      && profileSource.includes("趨勢版本切點層")
+      && profileSource.includes("趨勢.版本切點列表")
+      && profileStyles.includes("趨勢版本切點"),
+    "開啟版本資料時，成績趨勢必須以時間軸標示繁中服版本切點。",
+  );
+  assert(
+    source.includes("const 使用者趨勢選取點 = ref({});")
+      && source.includes("function 取得使用者趨勢顯示數值標記(趨勢)")
+      && source.includes("function 清除所有使用者趨勢選取點()")
+      && source.includes("使用者趨勢選取點.value = {};")
+      && profileSource.includes("趨勢數值標記層")
+      && profileSource.includes("取得使用者趨勢顯示數值標記(趨勢)")
+      && !profileSource.includes("<small>{{ 點.標籤 }}</small>")
+      && profileSource.includes("@mouseenter=\"設定使用者趨勢選取點")
+      && profileSource.includes("@click.stop=\"設定使用者趨勢選取點")
+      && profileSource.includes("@mouseleave=\"清除使用者趨勢選取點")
+      && profileSource.includes("window.addEventListener(\"pointerdown\", 處理趨勢圖外部觸控)")
+      && !profileSource.includes('class="趨勢摘要"')
+      && !profileSource.includes('class="趨勢刻度"')
+      && profileStyles.includes(".趨勢點::after")
+      && profileStyles.includes(".趨勢點.選取中::after"),
+    "趨勢預設只顯示最高／最低數值；懸停或點擊資料點時，必須改顯示選取紀錄並可回復預設標記。",
+  );
+}
+
+async function validateHelpTooltipPreference() {
+  const [source, headerSource, profileStyles] = await Promise.all([
+    readText(path.join(srcDir, "composables", "useRankingApp.js")),
+    readText(path.join(srcDir, "components", "AppHeader.vue")),
+    readText(path.join(srcDir, "styles", "pages-profile.css")),
+  ]);
+
+  assert(
+    source.includes('const 顯示說明提示 = ref(true);')
+      && source.includes('return window.localStorage.getItem(說明提示顯示偏好儲存鍵) !== "disabled";')
+      && source.includes('document.documentElement.dataset.showHelpTooltips = String(顯示提示);')
+      && source.includes("function 設定說明提示顯示(啟用)"),
+    "說明提示按鈕必須預設顯示，並將使用者偏好保存至瀏覽器與根節點狀態。",
+  );
+  assert(
+    headerSource.includes('aria-labelledby="說明提示設定標題"')
+      && headerSource.includes("設定說明提示顯示(false)")
+      && headerSource.includes("設定說明提示顯示(true)"),
+    "設定視窗必須提供說明提示按鈕的顯示與隱藏切換。",
+  );
+  assert(
+    profileStyles.includes(':root[data-show-help-tooltips="false"] .說明提示 {'),
+    "關閉說明提示按鈕時，所有頁面與 Teleport 彈窗中的提示都必須一併隱藏。",
+  );
+}
+
+function validateUserProfileGameVersionFallback() {
+  assert(
+    取得個人成績紀錄版本({ recorded_at_iso: "2026-03-10T09:59:59.000Z" }) === "7.0"
+      && 取得個人成績紀錄版本({ recorded_at_iso: "2026-03-10T10:00:00.000Z" }) === "7.05"
+      && 取得個人成績紀錄版本({ recorded_at_iso: "2026-06-23T10:00:00.000Z" }) === "7.15"
+      && 取得個人成績紀錄版本({ recorded_at_iso: "2026-07-28T04:00:00.000Z" }) === "7.2",
+    "缺少 game_version 的既有個人成績必須依繁中服改版時間正確回推版本。",
+  );
+  assert(
+    取得個人成績紀錄版本({ game_version: "7.1", recorded_at_iso: "2026-07-21T00:00:00.000Z" }) === "7.1"
+      && 取得個人成績紀錄版本({ recorded_at_iso: "not-a-date" }) === "",
+    "明確寫入的 game_version 必須優先，無法判讀時間的資料則不可臆測版本。",
+  );
+
+  const 趨勢切點 = 建立個人成績趨勢版本切點(
+    Date.parse("2026-03-01T00:00:00.000Z"),
+    Date.parse("2026-07-01T00:00:00.000Z"),
+  );
+  assert(
+    趨勢切點.map((切點) => 切點.label).join(",") === "7.05,7.1,7.15"
+      && 趨勢切點.every((切點) => 切點.x > 0 && 切點.x < 100),
+    "成績趨勢必須只標示圖形時間範圍內的繁中服版本切點。",
+  );
+  assert(
+    建立個人成績趨勢版本切點(NaN, Date.parse("2026-07-01T00:00:00.000Z")).length === 0,
+    "無法解析成績時間時，不可顯示可能錯位的版本切點。",
   );
 }
 
@@ -734,9 +1020,9 @@ async function validateMobileUserSearchFormLayout() {
 
   assert(
     mobileStyles.includes(
-      ".使用者搜尋表單,\n  .個人成績搜尋表單.個人成績搜尋表單簡表模式 {\n    grid-template-columns: minmax(0, 1fr);",
+      ".使用者搜尋表單,\n  .個人成績搜尋表單.個人成績搜尋表單簡表模式,\n  .個人成績搜尋表單.個人成績搜尋表單版本篩選 {\n    grid-template-columns: minmax(0, 1fr);",
     ),
-    "手機版簡表搜尋表單必須以同等權重覆寫桌面四欄設定，改為可收縮的單欄。",
+    "手機版簡表與版本篩選搜尋表單必須以同等權重覆寫桌面多欄設定，改為可收縮的單欄。",
   );
   assert(
     mobileStyles.includes(".個人成績搜尋表單 > * {\n    min-width: 0;")
@@ -1822,6 +2108,11 @@ async function main() {
   await validateSiteFeatureFlags();
   validatePercentileDisplayFormatting();
   validateUserProfilePercentileSorting();
+  validateUserProfileBadges();
+  await validateUserProfileBadgeDataScope();
+  await validateUserProfileGameVersionFilter();
+  await validateHelpTooltipPreference();
+  validateUserProfileGameVersionFallback();
   validateUserProfileClearSummary();
   await validateSavageProfileSummaryPresentation();
   await validateMobileProfileSummaryLayout();

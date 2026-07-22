@@ -108,6 +108,7 @@ const nullableStringSchema = nullable(stringSchema);
 const nullableNumberSchema = nullable(numberSchema);
 const nullableIsoTimestampSchema = nullable(isoTimestampSchema);
 const nullableUrlSchema = nullable(urlSchema);
+const nullableGameVersionSchema = nullable(field("string", { pattern: "^7\\.[0-9]+$" }));
 
 const versionStatusSchema = field("string", { enum: ["valid", "obsolete"] });
 const nullableVersionStatusSchema = nullable(versionStatusSchema);
@@ -202,6 +203,7 @@ const reportVariantSchema = objectOf({
   damage_downtime_seconds: nullableNumberSchema,
   damage_time_ms: nullableNumberSchema,
   damage_time_seconds: nullableNumberSchema,
+  game_version: optional(nullableGameVersionSchema),
   fflogs_source_id: optional(numberSchema),
   gcd_coverage: optional(gcdCoverageSchema),
   gcd_coverage_status: optional(gcdCoverageStatusSchema),
@@ -229,6 +231,7 @@ const compactReportVariantSchema = objectOf({
   damage_downtime_seconds: optional(nullableNumberSchema),
   damage_time_ms: optional(nullableNumberSchema),
   damage_time_seconds: optional(nullableNumberSchema),
+  game_version: optional(nullableGameVersionSchema),
   fflogs_source_id: optional(numberSchema),
   gcd_coverage: optional(gcdCoverageSchema),
   gcd_coverage_status: optional(gcdCoverageStatusSchema),
@@ -307,6 +310,7 @@ const fullEntrySchema = objectOf({
   source_reports: optional(arrayOf(stringSchema)),
   report_detail_path: optional(dataPathSchema),
   report_detail_id: optional(stringSchema),
+  game_version: optional(nullableGameVersionSchema),
   is_obsolete_record: optional(booleanSchema),
   version_status: optional(versionStatusSchema),
   version_cutoff_iso: optional(isoTimestampSchema),

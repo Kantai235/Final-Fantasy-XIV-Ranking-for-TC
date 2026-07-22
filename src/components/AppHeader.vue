@@ -318,7 +318,7 @@ export default {
       <div class="設定視窗標頭">
         <p class="設定視窗副標">個人化偏好</p>
         <h2 id="偏好設定標題">設定</h2>
-        <p id="偏好設定說明">調整畫面外觀與排行榜分位的顯示方式。</p>
+        <p id="偏好設定說明">調整畫面外觀、排行榜分位與個人成績單的顯示方式。</p>
       </div>
       <div class="設定視窗內容">
         <section class="設定群組" aria-labelledby="外觀設定標題">
@@ -367,6 +367,32 @@ export default {
               @click="設定分位顯示模式(選項.value)"
             >
               {{ 選項.label }}
+            </button>
+          </div>
+        </section>
+        <section class="設定群組" aria-labelledby="個人成績版本設定標題">
+          <div class="設定群組文字">
+            <h3 id="個人成績版本設定標題">個人成績單版本</h3>
+            <p>開啟後，在個人分位亮點與歷史紀錄顯示繁中服更新時的版本。</p>
+          </div>
+          <div class="設定選項切換" role="group" aria-label="個人成績單版本顯示">
+            <button
+              class="設定選項切換按鈕"
+              type="button"
+              :class="{ 作用中: !顯示個人成績版本 }"
+              :aria-pressed="!顯示個人成績版本 ? 'true' : 'false'"
+              @click="設定個人成績版本顯示(false)"
+            >
+              關閉
+            </button>
+            <button
+              class="設定選項切換按鈕"
+              type="button"
+              :class="{ 作用中: 顯示個人成績版本 }"
+              :aria-pressed="顯示個人成績版本 ? 'true' : 'false'"
+              @click="設定個人成績版本顯示(true)"
+            >
+              開啟
             </button>
           </div>
         </section>

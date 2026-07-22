@@ -5,6 +5,7 @@
 非敏感設定集中在這個目錄：
 
 - `encounters.json`：副本名稱、FFLogs ID、啟用狀態、目前高難標記、個人成績簡表版本與起掃日期。
+- `game_versions.json`：繁中服競技版本的更新切點；資料建置層依通關紀錄時間寫入個人成績單的 `game_version`，供使用者選擇顯示或隱藏。
 - `fflogs.json`：FFLogs 爬蟲的掃描、限流、重試與手動補抓參數。
 - `site.json`：正式站台網址、Vite base path 與本機開發/預覽允許的 host。Cloudflare 規則腳本也會以 `site_url` 推導預設 hostname。
 
@@ -15,11 +16,18 @@
 - 前端實際讀取的是 `public/data/encounters.json`。只要某副本已有 `data/rankings/` 或 `public/data/rankings/` 歷史資料，即使 `enabled=false`，公開清單仍會保留它，避免既有排行榜與個人成績單消失。
 - `current_high_end=true` 是個人成績單「簡表模式」的目前高難標記；所有 `category="絕"` 與 `category="極"` 副本固定列入，其他副本僅在此欄位為 `true` 時列入。它和 `enabled` 的掃描語意無關，公開清單會保留此欄位供前端判定。
 - `profile_summary_available_from` 是副本首次出現在個人成績簡表的繁中服遊戲版本；`profile_summary_available_until` 為選填，表示輪替內容最後可見的版本。兩者只控制簡表版本快照的可見範圍，不能取代 `scan_start_date` 或影響 Python 掃描。版本交界的戰鬥時間上限由前端簡表版本規則集中管理；已公告開放時間的未來版本會在時間到達前維持待開放，時間到達後自動可選，避免把後續戰鬥誤列入舊版。
-- 零式必須額外設定 `profile_summary_savage_tier` 的 `key`、`label`、`order` 與 `floor`（1～4）。簡表會列出所選版本中已開放的所有量級，預設選取 `order` 最新者，並可切換查看各量級的第 1～4 層；某量級四層皆為該版本有效通關時，量級按鈕會亮起彩色勾勾。量級按鈕只表示四層完成狀態，量級內各樓層仍保留職業與 PR 顯示。新增次重量級、重量級時只要填入新量級與較大的 `order`，舊量級的歷史排行榜與玩家成績不會被刪除。
+- 零式必須額外設定 `profile_summary_savage_tier` 的 `key`、`label`、`order` 與 `floor`（1～4）。簡表會列出所選版本中已開放的所有量級，預設選取 `order` 最新者，並可切換查看各量級的第 1～4 層；某量級四層皆為該版本有效通關時，量級按鈕會亮起彩色勾勾。量級按鈕只表示四層完成狀態，量級內各樓層仍保留職業與 PR 顯示。個人成績一般模式的量級踏破徽章不從這個欄位自動衍生，而是固定規則：輕量級為 M1S～M4S、次重量級為 M5S～M8S，且四層皆須有有效版本公開成績；新增未來量級成就時，必須另行在前端成就規則中明確定義。新增次重量級、重量級時只要填入新量級與較大的 `order`，舊量級的歷史排行榜與玩家成績不會被刪除。
+- 個人成績「&lt;傳奇&gt;&lt;究極&gt;&lt;完美&gt;&lt;蒼天&gt;&lt;元始&gt;&lt;創世&gt;」稱號同樣使用固定的六絕副本鍵值：巴哈姆特、究極神兵、亞歷山大、幻想龍詩、歐米茄與伊甸。這是歷史全通成就，與零式量級踏破不同，不套用有效版本限制；未來新增絕本也不得自動擴張既有稱號條件。
 - 新增副本時先確認 `zone_id`、`encounter_id`、`difficulty` 與 `scan_start_date`，再執行資料更新流程。若 `scan_start_date` 是未來時間，爬蟲會在開放前略過它，公開清單也會等首份排行榜檔案建立後才列出，避免提早顯示空選項或造成讀取 404。輪替下架副本可設定選填的 `scan_end_date`；關閉時間到達後停止新增掃描，但既有排行榜與公開歷史資料仍會保留。
 - `ultimate_futures_rewritten` 對應繁中服 2026-05-26 開放的 7.11「絕 伊甸」；FFLogs v2 `worldData.zones` 顯示 Futures Rewritten 的 `zone_id=65`、`encounter_id=1079`、`difficulty=100`。
 - `chaotic_cloud_of_darkness` 對應繁中服 2026-06-23 18:00 維護後開放的 7.15「滅 黑暗之雲」；FFLogs 排行榜頁顯示 Alliance Raids (Chaotic) 的 `zone_id=66`、Cloud of Darkness 的 `encounter_id=2061`，本專案沿用非零式高難度的 `difficulty=100`。`scan_start_date` 使用 `2026-06-23T18:00:00+08:00`，避免維護前候選 report 進入新分類掃描窗。
 - 7.2 預定於繁中服 2026-07-28 12:00 開放。`extreme_zelenia` 對應 FFLogs Trials II (Extreme) 的 `zone_id=67`、Zelenia `encounter_id=1080`、`difficulty=100`；`savage_m5s` 至 `savage_m8s` 對應 AAC Cruiserweight 的 `zone_id=68`、`encounter_id=97` 至 `100`、`difficulty=101`，並以 `profile_summary_savage_tier.key="cruiserweight"`、`label="次重量級"`、`order=2`、`floor=1` 至 `4` 表示。五個副本的 `scan_start_date` 均使用 `2026-07-28T12:00:00+08:00`。同一時間 `savage_m1s` 至 `savage_m4s`、`extreme_queen_eternal` 與 `chaotic_cloud_of_darkness` 套用 `version_cutoff` 成為過版資料；`unreal_byakko` 以 `scan_end_date` 停止掃描並以 `profile_summary_available_until="7.15"` 留在歷史快照，新增的 `unreal_suzaku` 則使用 Trials (Unreal) `zone_id=64`、`encounter_id=3010`、`difficulty=100` 與 7.2 起掃時間。
+
+## `game_versions.json` 的判讀重點
+
+- `versions` 必須依 `starts_at_iso` 由舊到新排序；第一筆以 `null` 表示最早已收錄的版本，讓更早的公開戰鬥仍有可追溯標籤。
+- `patch` 是穩定的繁中服競技版本鍵值，`label` 是寫入公開個人成績資料的顯示文字。新增版本時必須同時提供已確認的繁中服開放時間；不可依國際服日期或瀏覽器目前時間猜測切點。
+- `game_version` 與副本的 `version_cutoff` 完全分離：前者標示紀錄時的技能／裝備環境，後者判定該副本是否已過版。變更此檔後必須重跑 `npm run build:user-data`，讓既有個人成績單重新取得版本欄位。前端開啟版本資料時，個人成績單會依目前選取伺服器的 `game_version` 產生版本選單，並與職業篩選交集；每個選項都是截至該版本的累積快照，最新版本即完整資料，不另設「全部版本」。個別玩家 JSON 由專用資料來源提供；若舊資料尚未同步此欄位，前端只可用相同更新切點與 `recorded_at_iso` 回推版本，並以明確欄位優先。
 
 ## `fflogs.json` 的判讀重點
 

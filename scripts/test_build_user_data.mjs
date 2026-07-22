@@ -56,6 +56,14 @@ async function createFixture(tempRoot) {
       scan_start_date: "2026-01-01",
     },
   ]);
+  await writeJson(path.join(tempRoot, "config", "game_versions.json"), {
+    schema_version: 1,
+    timezone: "Asia/Taipei",
+    versions: [
+      { patch: "7.0", label: "7.0", starts_at_iso: null },
+      { patch: "7.05", label: "7.05", starts_at_iso: "2026-01-02T03:00:00.000Z" },
+    ],
+  });
 
   await writeJson(path.join(tempRoot, "data", "rankings", "fixture_encounter.json"), {
     schema_version: 1,
@@ -450,7 +458,9 @@ async function assertFixtureOutput(tempRoot, expectedGlobalStatsText, expectedSe
   const mainUserBlackMageEntry = mainUserData.encounters[0]?.public_entries?.find((entry) => entry.job === "BlackMage");
   assert(mainUserBlackMageEntry?.job_rank === 2, "fixture 需保留較高 rDPS 但職業 Rank 較低的輸出紀錄。");
   assert(mainUserBlackMageEntry?.fflogs_source_id === 202, "個人成績歷史列應保留 FFLogs sourceID 供外部工具深連結使用。");
+  assert(mainUserBlackMageEntry?.game_version === "7.0", "版本切點前的個人成績應保留舊版本。");
   const mainUserEntry = mainUserData.encounters[0]?.public_entries?.[0];
+  assert(mainUserEntry?.game_version === "7.05", "版本切點當下的個人成績應歸入新版本。");
   assert(mainUserEntry?.gcd_coverage?.percent === 94.43, "個人成績單應保留 GCD 覆蓋率。");
   assert(!Object.hasOwn(mainUserEntry.gcd_coverage || {}, "raw_graph_downtime_percent"), "個人成績單不應輸出 GCD 內部診斷欄位。");
   assert(!Object.hasOwn(mainUserEntry, "gcd_coverage_status"), "個人成績單不應輸出 GCD 診斷狀態，避免首屏 payload 膨脹。");

@@ -502,11 +502,16 @@ button:disabled {
   grid-template-columns: minmax(260px, 1.35fr) minmax(220px, 0.9fr) auto auto;
 }
 
+.個人成績搜尋表單.個人成績搜尋表單版本篩選 {
+  grid-template-columns: minmax(240px, 1.2fr) minmax(200px, 0.82fr) minmax(128px, 0.42fr) auto auto;
+}
+
 .個人成績搜尋表單.個人成績搜尋表單簡表模式 {
   grid-template-columns: minmax(260px, 1fr) minmax(128px, 0.4fr) auto auto;
 }
 
-.簡表版本欄位 select {
+.簡表版本欄位 select,
+.個人成績版本欄位 select {
   min-width: 128px;
 }
 

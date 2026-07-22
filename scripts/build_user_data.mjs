@@ -16,6 +16,7 @@ const publicRankingsDir = path.join(basePublicDataDir, "rankings");
 const publicEncountersPath = path.join(basePublicDataDir, "encounters.json");
 const publicAnnouncementsPath = path.join(basePublicDataDir, "announcements.json");
 const configEncountersPath = path.join(rootDir, "config", "encounters.json");
+const configGameVersionsPath = path.join(rootDir, "config", "game_versions.json");
 const userEntryDetailsDirName = "user-entry-details";
 // 目前箱型圖只比較現行零式系列；其他副本仍會進入全服統計與個人成績單。
 // minimumDamageActivePercent 用來排除明顯中途死亡或缺乏輸出時間的樣本，避免分位數被極端異常值拉歪。
@@ -669,6 +670,86 @@ function attachVersionState(entry, encounter) {
   return entry;
 }
 
+function normalizeGameVersions(config) {
+  const versions = Array.isArray(config?.versions) ? config.versions : null;
+  if (!versions || versions.length === 0) {
+    throw new Error("config/game_versions.json 必須提供至少一個繁中服版本區間。");
+  }
+
+  const normalized = versions.map((version, index) => {
+    const patch = String(version?.patch || "").trim();
+    const label = String(version?.label || patch).trim();
+    const startsAtIso = version?.starts_at_iso ?? null;
+    const startsAtMs = startsAtIso === null ? null : new Date(startsAtIso).getTime();
+
+    if (!patch || !label) {
+      throw new Error(`config/game_versions.json 的 versions[${index}] 缺少 patch 或 label。`);
+    }
+    if (startsAtIso !== null && !Number.isFinite(startsAtMs)) {
+      throw new Error(`config/game_versions.json 的 ${patch} starts_at_iso 不是有效時間。`);
+    }
+
+    return {
+      patch,
+      label,
+      starts_at_iso: startsAtIso === null ? null : new Date(startsAtMs).toISOString(),
+      starts_at_ms: startsAtMs,
+    };
+  });
+
+  if (normalized[0].starts_at_ms !== null) {
+    throw new Error("config/game_versions.json 的第一個版本必須以 starts_at_iso: null 表示最早的已收錄版本。");
+  }
+
+  const patches = new Set();
+  let previousStartsAtMs = 0;
+  for (const version of normalized) {
+    if (patches.has(version.patch)) {
+      throw new Error(`config/game_versions.json 的 patch 不可重複：${version.patch}`);
+    }
+    patches.add(version.patch);
+
+    if (version.starts_at_ms !== null) {
+      if (version.starts_at_ms <= previousStartsAtMs) {
+        throw new Error("config/game_versions.json 的版本開放時間必須依序遞增。");
+      }
+      previousStartsAtMs = version.starts_at_ms;
+    }
+  }
+
+  return normalized;
+}
+
+async function loadGameVersions() {
+  // 此設定描述「繁中服的競技資料區間」，不是 FFLogs 的 valid/obsolete 狀態。
+  // 兩者必須分開：同一筆舊副本的過版紀錄仍可能屬於 7.15，供玩家辨識當時的
+  // 技能與裝備環境；valid/obsolete 則只回答該副本在該時間是否仍是現行難度。
+  return normalizeGameVersions(await readJson(configGameVersionsPath, null));
+}
+
+function attachGameVersion(entry, gameVersions) {
+  const recordedAtMs = entryRecordedAtMs(entry);
+  if (!Number.isFinite(recordedAtMs) || recordedAtMs <= 0) {
+    entry.game_version = null;
+    return entry;
+  }
+
+  let matchedVersion = gameVersions[0];
+  for (const version of gameVersions) {
+    if (version.starts_at_ms === null || version.starts_at_ms <= recordedAtMs) {
+      matchedVersion = version;
+      continue;
+    }
+    break;
+  }
+
+  entry.game_version = matchedVersion.label;
+  for (const variant of entry._reportVariants || []) {
+    variant.game_version = matchedVersion.label;
+  }
+  return entry;
+}
+
 function filterEntriesByVersionMode(entries, versionMode) {
   if (versionMode === "obsolete") {
     return entries.filter((entry) => entry.is_obsolete_record);
@@ -731,6 +812,7 @@ function buildReportVariant(entry) {
     damage_downtime_seconds: toNumber(entry.damage_downtime_seconds),
     damage_time_ms: toNumber(entry.damage_time_ms),
     damage_time_seconds: toNumber(entry.damage_time_seconds),
+    game_version: entry.game_version || null,
     ...hiddenReportFields(entry),
   };
 
@@ -1892,6 +1974,7 @@ const inheritedReportVariantFields = new Set([
   "damage_downtime_seconds",
   "damage_time_ms",
   "damage_time_seconds",
+  "game_version",
   "fflogs_source_id",
   "gcd_coverage",
   "gcd_coverage_status",
@@ -2899,7 +2982,7 @@ async function buildDataset({
   assertInside(basePublicDataDir, teamRankingsPath);
   assertInside(basePublicDataDir, serverComparePath);
 
-  const encounters = await loadEncounters();
+  const [encounters, gameVersions] = await Promise.all([loadEncounters(), loadGameVersions()]);
   const usersByIdentity = new Map();
   const updatedAtIsoByEncounter = new Map();
   const overallCharacterKeys = new Set();
@@ -2950,6 +3033,9 @@ async function buildDataset({
 
   for (const item of pendingEncounterData) {
     const entries = item.entries || [];
+    for (const entry of entries) {
+      attachGameVersion(entry, gameVersions);
+    }
     assignValidVersionJobRanks(entries);
     encounterStats.push(collectEncounterStats(item.encounter, entries, item.updated_at_iso));
     allEntries.push(...entries);

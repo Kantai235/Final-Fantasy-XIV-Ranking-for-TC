@@ -1,5 +1,5 @@
 <script>
-import { ref } from "vue";
+import { onBeforeUnmount, onMounted, ref } from "vue";
 import JobIcon from "../components/JobIcon.vue";
 import PlayerSearchHistoryPanel from "../components/PlayerSearchHistoryPanel.vue";
 import ReportDetailDialog from "../components/ReportDetailDialog.vue";
@@ -180,6 +180,24 @@ export default {
       報告彈窗資料.value = null;
     }
 
+    function 處理趨勢圖外部觸控(event) {
+      // 觸控裝置沒有 hover 離開事件；點擊資料點以外的位置時，主動回到
+      // 預設的最高／最低數值標記。桌面版仍由趨勢圖的 mouseleave 處理。
+      if (event.pointerType !== "touch" || event.target?.closest?.(".趨勢點")) {
+        return;
+      }
+
+      app.清除所有使用者趨勢選取點();
+    }
+
+    onMounted(() => {
+      window.addEventListener("pointerdown", 處理趨勢圖外部觸控);
+    });
+
+    onBeforeUnmount(() => {
+      window.removeEventListener("pointerdown", 處理趨勢圖外部觸控);
+    });
+
     return {
       ...app,
       報告彈窗資料,
@@ -194,7 +212,10 @@ export default {
   <section class="使用者搜尋區" aria-label="個人成績單查詢">
     <form
       class="使用者搜尋表單 個人成績搜尋表單"
-      :class="{ 個人成績搜尋表單簡表模式: 使用者簡表模式 }"
+      :class="{
+        個人成績搜尋表單簡表模式: 使用者簡表模式,
+        個人成績搜尋表單版本篩選: !使用者簡表模式 && 顯示個人成績版本,
+      }"
       @submit.prevent="提交使用者搜尋"
     >
       <div class="欄位 使用者搜尋欄位" @focusout="處理玩家搜尋歷史失焦($event, 'user')">
@@ -290,6 +311,19 @@ export default {
             </div>
           </div>
         </div>
+      </div>
+
+      <div v-if="!使用者簡表模式 && 顯示個人成績版本" class="欄位 個人成績版本欄位">
+        <label for="個人成績版本篩選">版本</label>
+        <select
+          id="個人成績版本篩選"
+          v-model="使用者版本篩選"
+          :disabled="!使用者資料 || 使用者版本選項.length === 0"
+        >
+          <option v-for="版本 in 使用者版本選項" :key="版本.value" :value="版本.value">
+            {{ 版本.label }}
+          </option>
+        </select>
       </div>
 
       <div v-if="使用者簡表模式" class="欄位 簡表版本欄位">
@@ -472,7 +506,10 @@ export default {
               />
               <span>{{ 顯示職業名稱(成績.job) }}</span>
             </span>
-            <strong :class="同職分位色彩類別(成績.performance)">{{ 格式化目前同職分位(成績.performance) }}</strong>
+            <span class="個人分位主值">
+              <strong :class="同職分位色彩類別(成績.performance)">{{ 格式化目前同職分位(成績.performance) }}</strong>
+              <small v-if="顯示個人成績版本" class="個人分位版本">{{ 取得個人成績紀錄版本(成績) || "—" }}</small>
+            </span>
             <small>
               rDPS {{ 格式化傷害數值(成績.rdps) }}
               <span v-if="顯示Gcd覆蓋率">・GCD {{ 格式化Gcd覆蓋率(成績.gcd_coverage) }}</span>
@@ -521,12 +558,12 @@ export default {
                 <small>{{ 選項.紀錄數 }} 筆</small>
               </button>
             </div>
-            <div class="趨勢摘要">
-              <span>最新 {{ 格式化傷害數值(趨勢.最新?.rdps) }}</span>
-              <span>最佳 {{ 趨勢.最佳 ? 格式化傷害數值(趨勢.最佳?.rdps) : "-" }}</span>
-              <span>{{ 趨勢.點列表.length }} 筆</span>
-            </div>
-            <div class="趨勢圖" role="img" :aria-label="`${趨勢.encounter_name} rDPS 趨勢`">
+            <div
+              class="趨勢圖"
+              :aria-label="`${趨勢.encounter_name} rDPS 趨勢${顯示個人成績版本 && 趨勢.版本切點列表.length > 0 ? `，版本切點：${趨勢.版本切點列表.map((切點) => 切點.label).join('、')}` : ''}`"
+              @mouseleave="清除使用者趨勢選取點(趨勢.encounter_key, 趨勢.job)"
+              @click="清除使用者趨勢選取點(趨勢.encounter_key, 趨勢.job)"
+            >
               <svg class="趨勢曲線圖" viewBox="0 0 100 52" preserveAspectRatio="none" aria-hidden="true">
                 <line class="趨勢格線" x1="0" y1="10" x2="100" y2="10"></line>
                 <line class="趨勢格線" x1="0" y1="26" x2="100" y2="26"></line>
@@ -546,20 +583,50 @@ export default {
                   :d="線段.path"
                 ></path>
               </svg>
-              <span class="趨勢點層" aria-hidden="true">
+              <span
+                v-if="顯示個人成績版本 && 趨勢.版本切點列表.length > 0"
+                class="趨勢版本切點層"
+                aria-hidden="true"
+              >
                 <span
+                  v-for="切點 in 趨勢.版本切點列表"
+                  :key="切點.key"
+                  class="趨勢版本切點"
+                  :style="{ left: `${切點.x}%` }"
+                  :title="`繁中服 ${切點.label} 開始`"
+                >
+                  <small>{{ 切點.label }}</small>
+                </span>
+              </span>
+              <span class="趨勢數值標記層" aria-hidden="true">
+                <span
+                  v-for="點 in 取得使用者趨勢顯示數值標記(趨勢)"
+                  :key="點.key"
+                  class="趨勢數值標記"
+                  :class="{ 標籤向下: 點.標籤向下, 文字靠左: 點.文字靠左, 文字靠右: 點.文字靠右 }"
+                  :style="趨勢點樣式(點)"
+                >
+                  <strong>{{ 格式化傷害數值(點.rdps) }}</strong>
+                </span>
+              </span>
+              <span class="趨勢點層">
+                <button
                   v-for="點 in 趨勢.點列表"
                   :key="點.id"
                   class="趨勢點"
-                  :class="{ 過版: 點.過版紀錄 }"
+                  type="button"
+                  :class="{
+                    過版: 點.過版紀錄,
+                    選取中: 取得使用者趨勢選取點(趨勢.encounter_key, 趨勢.job)?.id === 點.id,
+                  }"
                   :style="趨勢點樣式(點)"
-                  :title="`${格式化紀錄時間(點.recorded_at_iso)}・${顯示職業名稱(點.job)}・rDPS ${格式化傷害數值(點.rdps)}${顯示Gcd覆蓋率 ? `・GCD ${格式化Gcd覆蓋率(點.gcd_coverage)}` : ''}${點.過版紀錄 ? '・過版紀錄' : ''}`"
-                ></span>
+                  :aria-label="`${格式化紀錄時間(點.recorded_at_iso)}，${顯示職業名稱(點.job)}，rDPS ${格式化傷害數值(點.rdps)}${顯示Gcd覆蓋率 ? `，GCD ${格式化Gcd覆蓋率(點.gcd_coverage)}` : ''}${點.過版紀錄 ? '，過版紀錄' : ''}`"
+                  @mouseenter="設定使用者趨勢選取點(趨勢.encounter_key, 趨勢.job, 點)"
+                  @focus="設定使用者趨勢選取點(趨勢.encounter_key, 趨勢.job, 點)"
+                  @click.stop="設定使用者趨勢選取點(趨勢.encounter_key, 趨勢.job, 點)"
+                  @keydown.esc.stop="清除使用者趨勢選取點(趨勢.encounter_key, 趨勢.job)"
+                ></button>
               </span>
-              <div class="趨勢刻度" aria-hidden="true">
-                <span>{{ 格式化傷害數值(趨勢.最高) }}</span>
-                <span>{{ 格式化傷害數值(趨勢.最低) }}</span>
-              </div>
             </div>
           </article>
         </div>
@@ -688,7 +755,12 @@ export default {
       </section>
 
       <section class="個人成績列表" aria-label="各副本成績">
-        <details v-for="副本 in 使用者副本成績" :key="副本.encounter_key" class="個人成績列">
+        <details
+          v-for="副本 in 使用者副本成績"
+          :key="副本.encounter_key"
+          class="個人成績列"
+          :class="{ 個人成績列顯示版本: 顯示個人成績版本 }"
+        >
           <summary class="成績列摘要">
             <span class="成績列副本">
               <small>{{ 副本.encounter_category || "副本" }}</small>
@@ -781,11 +853,15 @@ export default {
               </small>
               <strong>{{ 副本.best_entry ? 格式化傷害數值(副本.best_entry.adps) : "-" }}</strong>
             </span>
+            <span v-if="顯示個人成績版本" class="成績列數值 成績列數值版本">
+              <small>版本</small>
+              <strong>{{ 副本.best_entry ? 取得個人成績紀錄版本(副本.best_entry) || "—" : "-" }}</strong>
+            </span>
             <span class="成績列展開">{{ 副本.public_entries.length }} 筆</span>
           </summary>
 
           <div class="歷史表格外框">
-            <table class="歷史表格">
+            <table class="歷史表格" :class="{ 歷史表格顯示版本: 顯示個人成績版本 }">
               <thead>
                 <tr>
                   <th scope="col">紀錄時間</th>
@@ -845,6 +921,7 @@ export default {
                       </span>
                     </span>
                   </th>
+                  <th v-if="顯示個人成績版本" scope="col" class="數字">版本</th>
                   <th scope="col" class="數字">通關時間</th>
                 </tr>
               </thead>
@@ -879,6 +956,7 @@ export default {
                   <td class="數字">{{ 格式化傷害數值(成績.dps) }}</td>
                   <td class="數字">{{ 格式化傷害數值(成績.rdps) }}</td>
                   <td class="數字">{{ 格式化傷害數值(成績.adps) }}</td>
+                  <td v-if="顯示個人成績版本" class="數字">{{ 取得個人成績紀錄版本(成績) || "—" }}</td>
                   <td class="數字">{{ 格式化通關時間(成績.clear_time_seconds) }}</td>
                 </tr>
               </tbody>
