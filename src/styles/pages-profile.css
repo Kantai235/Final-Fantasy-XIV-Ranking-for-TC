@@ -988,6 +988,11 @@
   overflow: visible;
 }
 
+/* 此偏好套用在根節點，讓 Teleport 到 body 的報告彈窗也會一併隱藏說明提示。 */
+:root[data-show-help-tooltips="false"] .說明提示 {
+  display: none;
+}
+
 .說明提示按鈕 {
   width: 18px;
   min-width: 18px;

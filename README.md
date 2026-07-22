@@ -67,6 +67,7 @@ npm run dev
 - 常見問題頁整理 Telegram 群組常見回報，包含更新時間、過版紀錄、GCD 覆蓋率、同名角色與公開狀態；其中的 FFLogs 檢查工具可貼上 report 網址或 report code，比對 `public/data/report_status_index.json` 與 `public/data/update_status.json`，判斷目前公開資料是否已收錄、指定 fight 是否命中，以及剛上傳或歷史補查紀錄大約會落在哪個排程窗；「查詢公開狀態」按鈕會透過 Apps Script Web App 確認 FFLogs API 目前是否可讀。Public 且可讀的 report 可寫入 Google Sheet 待收錄名單；若本站已收錄、但 FFLogs 明確不可公開讀取，則可要求重新確認公開狀態，下一輪 workflow 會重新排查，確認仍不可讀時把既有紀錄標記 hidden。待處理名單只保存 report code，不保留指定 fight。
 - Honey B. Lovely 粉絲榜以獨立趣味資料呈現 M2S `心醉魂迷：奴役` 衍生紀錄；本期榜單、吃心心數、戰鬥次數與報告只計近 7 天，最新收錄紀錄顯示 5 筆、最新加入粉絲顯示 16 筆。頁面可用「超高難度」開關切換為自台灣時間 2026-05-30 00:00:00 起算的通關團隊榜，依單場全隊奴役總次數排序，來源歷史紀錄仍保留用於連續入榜與追溯統計，不混入正式排行榜。
 - 支援深色 / 亮色主題，並依目前頁面的職業或職能篩選切換主色調。
+- 設定視窗可依個人偏好顯示或隱藏各頁的說明提示按鈕，預設為顯示。
 - 支援全域公告通知，公告內容由 `public/data/announcements.json` 隨 commit 更新，使用者關閉後不再主動顯示。
 - GitHub Actions 可定時抓取 FFLogs 與 Honey B. Lovely 粉絲榜、建置資料並部署 GitHub Pages，也提供不抓 FFLogs 的手動緊急部署通道。
 

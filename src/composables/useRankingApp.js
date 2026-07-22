@@ -117,6 +117,7 @@ const 蜂蜂背景音樂偏好儲存鍵 = "ffxiv-tc-rankings-honey-bgm";
 const 蜂蜂背景音樂影片Id = "07V_j5a9kHw";
 const 蜂蜂背景音樂嵌入網址 = `https://www.youtube.com/embed/${蜂蜂背景音樂影片Id}`;
 const 分位顯示偏好儲存鍵 = "ffxiv-tc-rankings-percentile-display-mode";
+const 說明提示顯示偏好儲存鍵 = "ffxiv-tc-rankings-show-help-tooltips";
 const 分位顯示模式選項 = [
   { value: 分位顯示模式前段, label: "前 N%" },
   { value: 分位顯示模式PR, label: "PR" },
@@ -266,6 +267,7 @@ const 蜂蜂背景音樂啟用 = ref(false);
 const 蜂蜂背景音樂偏好已設定 = ref(false);
 const 顯示蜂蜂背景音樂詢問 = ref(false);
 const 分位顯示模式 = ref(預設分位顯示模式);
+const 顯示說明提示 = ref(true);
 const 使用者索引 = ref(null);
 const 使用者資料 = ref(null);
 const 使用者搜尋關鍵字 = ref("");
@@ -4756,6 +4758,37 @@ function 切換分位顯示模式() {
   設定分位顯示模式(使用PR分位顯示.value ? 分位顯示模式前段 : 分位顯示模式PR);
 }
 
+function 讀取說明提示顯示偏好() {
+  if (typeof window === "undefined") {
+    return true;
+  }
+
+  // 舊訪客沒有這個鍵值時維持顯示，讓新功能不會意外拿走既有的欄位說明。
+  return window.localStorage.getItem(說明提示顯示偏好儲存鍵) !== "disabled";
+}
+
+function 套用說明提示顯示(啟用, { 寫入偏好 = true } = {}) {
+  const 顯示提示 = Boolean(啟用);
+  顯示說明提示.value = 顯示提示;
+
+  // 說明提示也會出現在 Teleport 到 body 的報告彈窗中；寫到根節點可讓一般頁面與彈窗同步套用同一個偏好。
+  if (typeof document !== "undefined") {
+    document.documentElement.dataset.showHelpTooltips = String(顯示提示);
+  }
+
+  if (寫入偏好 && typeof window !== "undefined") {
+    window.localStorage.setItem(說明提示顯示偏好儲存鍵, 顯示提示 ? "enabled" : "disabled");
+  }
+}
+
+function 初始化說明提示顯示偏好() {
+  套用說明提示顯示(讀取說明提示顯示偏好(), { 寫入偏好: false });
+}
+
+function 設定說明提示顯示(啟用) {
+  套用說明提示顯示(啟用, { 寫入偏好: true });
+}
+
 function 讀取蜂蜂背景音樂偏好() {
   if (typeof window === "undefined") {
     return null;
@@ -5234,6 +5267,7 @@ watch(頁面模式, (目前頁面模式) => {
 onMounted(() => {
   初始化主題();
   初始化分位顯示偏好();
+  初始化說明提示顯示偏好();
   初始化玩家搜尋歷史();
   if (typeof window !== "undefined") {
     window.addEventListener("popstate", 處理瀏覽紀錄變更);
@@ -5287,8 +5321,10 @@ onUnmounted(() => {
     顯示作者相關標示,
     顯示Gcd覆蓋率,
     分位顯示偏好儲存鍵,
+    說明提示顯示偏好儲存鍵,
     分位顯示模式選項,
     分位顯示模式,
+    顯示說明提示,
     使用PR分位顯示,
     作者說明文字,
     使用者索引,
@@ -5396,6 +5432,7 @@ onUnmounted(() => {
     前段四分位標籤,
     設定分位顯示模式,
     切換分位顯示模式,
+    設定說明提示顯示,
     職業繁中名稱,
     職業群組設定,
     職業群組索引,

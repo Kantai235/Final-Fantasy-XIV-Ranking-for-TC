@@ -370,6 +370,32 @@ export default {
             </button>
           </div>
         </section>
+        <section class="設定群組" aria-labelledby="說明提示設定標題">
+          <div class="設定群組文字">
+            <h3 id="說明提示設定標題">說明提示按鈕</h3>
+            <p>控制各頁欄位與統計旁的說明提示按鈕，預設為開啟。</p>
+          </div>
+          <div class="設定選項切換" role="group" aria-label="說明提示按鈕顯示">
+            <button
+              class="設定選項切換按鈕"
+              type="button"
+              :class="{ 作用中: !顯示說明提示 }"
+              :aria-pressed="!顯示說明提示 ? 'true' : 'false'"
+              @click="設定說明提示顯示(false)"
+            >
+              隱藏
+            </button>
+            <button
+              class="設定選項切換按鈕"
+              type="button"
+              :class="{ 作用中: 顯示說明提示 }"
+              :aria-pressed="顯示說明提示 ? 'true' : 'false'"
+              @click="設定說明提示顯示(true)"
+            >
+              顯示
+            </button>
+          </div>
+        </section>
       </div>
     </section>
   </div>
