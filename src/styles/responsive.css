@@ -869,6 +869,18 @@
     font-size: 0.82rem;
   }
 
+  /* 桌面版徽章可依內容寬度並列；手機上若最後一張卡沿用最小寬度，右側會
+   * 留下沒有資訊的大片空白。改成單欄滿寬可讓成就區的閱讀節奏一致，也能
+   * 讓六絕等較長稱號保有足夠換行空間。 */
+  .使用者徽章區 {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .使用者徽章 {
+    min-width: 0;
+  }
+
   .個人成績概要 {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }

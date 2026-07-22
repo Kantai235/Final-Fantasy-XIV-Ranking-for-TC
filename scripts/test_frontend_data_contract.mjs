@@ -1040,6 +1040,11 @@ async function validateMobileProfileSummaryLayout() {
       && mobileStyles.includes(".簡表副本名稱 {\n    min-width: 0;\n    line-height: 1.35;\n    white-space: normal;\n    overflow-wrap: anywhere;"),
     "手機版簡表副本必須改為可換行的單列，避免長副本名稱造成水平溢出。",
   );
+  assert(
+    mobileStyles.includes(".使用者徽章區 {\n    display: grid;\n    grid-template-columns: minmax(0, 1fr);")
+      && mobileStyles.includes(".使用者徽章 {\n    min-width: 0;"),
+    "手機版個人徽章必須使用滿寬單欄，避免最後一張徽章留下突兀空白。",
+  );
 }
 
 async function validateMobileUserSearchFormLayout() {
