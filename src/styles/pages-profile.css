@@ -305,6 +305,87 @@
   box-shadow: inset 0 0 0 1px var(--作者色柔和);
 }
 
+/* 六絕稱號是角色累積型的頂級成就；虹彩只放在外框與柔光，保留文字對比，
+ * 讓深、亮主題和閱讀輔助工具都能維持清楚可讀。 */
+.使用者徽章.六絕傳奇稱號 {
+  /* 預設暗色主題：低亮度的寶石色只勾勒邊界，讓暖白稱號成為閱讀焦點。 */
+  --六絕虹彩紅: #8d4658;
+  --六絕虹彩橙: #8f673e;
+  --六絕虹彩黃: #897d42;
+  --六絕虹彩綠: #47765f;
+  --六絕虹彩藍: #436f8f;
+  --六絕虹彩靛: #605492;
+  --六絕虹彩紫: #825274;
+  --六絕稱號文字色: #fff0d2;
+  --六絕說明文字色: #ded5c3;
+  --六絕表面提亮: rgba(255, 255, 255, 0.04);
+  --六絕內框色: rgba(255, 255, 255, 0.1);
+  --六絕文字陰影: rgba(86, 123, 158, 0.16);
+  --六絕虹彩光暈不透明度: 0.15;
+  position: relative;
+  isolation: isolate;
+  border-color: transparent;
+  background:
+    linear-gradient(135deg, var(--六絕表面提亮), transparent 60%),
+    var(--表面背景);
+  box-shadow: inset 0 0 0 1px var(--六絕內框色);
+}
+
+/* 亮色主題使用較明亮的粉彩寶石色，讓白底也能看出彩虹；文字採深靛藍與
+ * 藍灰色相，而非純黑或中性灰，避免高對比下顯得僵硬。 */
+:root[data-theme="light"] .使用者徽章.六絕傳奇稱號 {
+  --六絕虹彩紅: #e8879b;
+  --六絕虹彩橙: #e7b16b;
+  --六絕虹彩黃: #d9c85e;
+  --六絕虹彩綠: #70bd92;
+  --六絕虹彩藍: #67b7e4;
+  --六絕虹彩靛: #a296e3;
+  --六絕虹彩紫: #d988c2;
+  --六絕稱號文字色: #29375d;
+  --六絕說明文字色: #4d5f88;
+  --六絕表面提亮: rgba(103, 128, 207, 0.06);
+  --六絕內框色: rgba(67, 86, 145, 0.16);
+  --六絕文字陰影: rgba(102, 124, 194, 0.13);
+  --六絕虹彩光暈不透明度: 0.2;
+}
+
+/* 只改變漸層的起始角度，不旋轉偽元素本身；因此色帶能沿固定邊框流動，
+ * 卡片的幾何、文字和柔光不會跟著繞圈。未支援 @property 的瀏覽器則安全地
+ * 顯示同一組靜態虹彩色帶。 */
+@property --六絕虹彩角度 {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 20deg;
+}
+
+.使用者徽章.六絕傳奇稱號::before,
+.使用者徽章.六絕傳奇稱號::after {
+  position: absolute;
+  z-index: -1;
+  inset: -2px;
+  border-radius: 10px;
+  content: "";
+  background: conic-gradient(
+    from var(--六絕虹彩角度),
+    var(--六絕虹彩紅),
+    var(--六絕虹彩橙),
+    var(--六絕虹彩黃),
+    var(--六絕虹彩綠),
+    var(--六絕虹彩藍),
+    var(--六絕虹彩靛),
+    var(--六絕虹彩紫),
+    var(--六絕虹彩紅)
+  );
+  animation: 六絕傳奇虹彩流轉 12s linear infinite;
+}
+
+.使用者徽章.六絕傳奇稱號::after {
+  z-index: -2;
+  opacity: var(--六絕虹彩光暈不透明度);
+  filter: blur(9px);
+  animation-duration: 18s;
+  animation-direction: reverse;
+}
 .使用者徽章 strong {
   color: var(--重點色);
   font-size: 0.9rem;
@@ -315,6 +396,11 @@
   color: var(--作者色);
 }
 
+.使用者徽章.六絕傳奇稱號 strong {
+  color: var(--六絕稱號文字色);
+  letter-spacing: 0.045em;
+  text-shadow: 0 1px 10px var(--六絕文字陰影);
+}
 .使用者徽章 span {
   color: var(--次要文字);
   font-size: 0.78rem;
@@ -326,6 +412,22 @@
   color: var(--主要文字);
 }
 
+.使用者徽章.六絕傳奇稱號 span {
+  color: var(--六絕說明文字色);
+}
+
+@keyframes 六絕傳奇虹彩流轉 {
+  to {
+    --六絕虹彩角度: 380deg;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .使用者徽章.六絕傳奇稱號::before,
+  .使用者徽章.六絕傳奇稱號::after {
+    animation: none;
+  }
+}
 .個人分位區 {
   overflow: hidden;
   border: 1px solid var(--邊框色);

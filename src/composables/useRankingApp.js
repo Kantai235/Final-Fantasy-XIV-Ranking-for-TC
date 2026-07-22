@@ -76,6 +76,7 @@ import {
   個人成績代表是否較佳,
   比較個人成績分位顯示排序,
 } from "../utils/userProfileSorting";
+import { 建立個人成績徽章 } from "../utils/userProfileBadges";
 import {
   建立個人成績簡表可選版本,
   建立個人成績簡表群組,
@@ -3559,6 +3560,13 @@ function 取得使用者副本成績(資料, 伺服器 = "", 成績篩選 = () =
 const 使用者完整副本成績 = computed(() => {
   return 取得使用者副本成績(使用者資料.value, 使用者伺服器篩選.value, () => true, 使用者代表成績是否較佳);
 });
+const 使用者徽章副本成績 = computed(() => {
+  // 徽章描述角色累積的公開成就，不是目前表格套用的檢視範圍。特別是選取單一
+  // 職業時，不能讓多職、三色豆或量級踏破等已取得的徽章暫時消失；伺服器篩選
+  // 亦同。因此這裡刻意不傳入伺服器或職業條件，與頁面顯示資料分開維護。
+  return 取得使用者副本成績(使用者資料.value, "", () => true, 使用者代表成績是否較佳);
+});
+
 
 const 使用者簡表版本副本成績 = computed(() => {
   // 使用者檔保留完整歷史，簡表才依版本切片。這可避免增加每位玩家 JSON 的重複資料，
@@ -4110,41 +4118,18 @@ const 使用者徽章 = computed(() => {
     return [];
   }
 
-  const 副本集合 = new Set(使用者副本成績.value.map((副本) => 副本.encounter_key));
-  const 成績列表 = 使用者副本成績.value.flatMap((副本) => 副本.public_entries || []);
-  const 職業集合 = new Set(成績列表.map((成績) => 成績.job).filter(Boolean));
-  const 職能集合 = new Set(
-    Array.from(職業集合)
-      .map((職業) => 職業所屬類型(職業)?.代碼)
-      .filter(Boolean),
-  );
-  const 基準時間 = 近期動態基準時間.value;
-  const 最後紀錄時間 = new Date(使用者統計.value.最後紀錄時間 || 0).getTime();
-  const 徽章 = [];
-
-  if (顯示作者相關標示 && 是網站作者(使用者資料.value.character_name)) {
-    徽章.push({ 名稱: "網站作者", 說明: 作者說明文字, 樣式類別: "作者徽章" });
-  }
-  if (["savage_m1s", "savage_m2s", "savage_m3s", "savage_m4s"].every((副本) => 副本集合.has(副本))) {
-    徽章.push({ 名稱: "零式全通", 說明: "目前收錄的四層零式皆有公開成績" });
-  }
-  if (職業集合.size >= 3) {
-    徽章.push({ 名稱: "多職玩家", 說明: `公開成績中出現 ${職業集合.size} 個職業` });
-  }
-  if (職能集合.size >= 3) {
-    徽章.push({ 名稱: "跨職能", 說明: `公開成績橫跨 ${職能集合.size} 種職能` });
-  }
-  if (使用者統計.value.公開成績數 >= 20) {
-    徽章.push({ 名稱: "高活躍", 說明: `公開成績 ${使用者統計.value.公開成績數} 筆` });
-  }
-  if (使用者隊友列表.value.length >= 50) {
-    徽章.push({ 名稱: "社群核心", 說明: `與 ${使用者隊友列表.value.length} 位玩家有公開同場紀錄` });
-  }
-  if (Number.isFinite(最後紀錄時間) && 最後紀錄時間 >= 基準時間 - 7 * 24 * 60 * 60 * 1000) {
-    徽章.push({ 名稱: "近期活躍", 說明: "近七天內有公開紀錄" });
-  }
-
-  return 徽章;
+  const 完整公開成績 = 使用者徽章副本成績.value.flatMap((副本) => 副本.public_entries || []);
+  return 建立個人成績徽章({
+    角色名稱: 使用者資料.value.character_name,
+    公開成績: 完整公開成績,
+    公開同場玩家數: 使用者資料.value.summary?.teammate_count,
+    最後紀錄時間: 使用者資料.value.summary?.last_recorded_at_iso,
+    近期動態基準時間: 近期動態基準時間.value,
+    顯示作者徽章: 顯示作者相關標示,
+    是網站作者,
+    作者說明: 作者說明文字,
+    取得職能代碼: (職業) => 職業所屬類型(職業)?.代碼 || "",
+  });
 });
 
 const 隊友副本交集 = computed(() => {
