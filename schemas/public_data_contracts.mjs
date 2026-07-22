@@ -268,6 +268,7 @@ const rankingEntrySchema = objectOf({
   is_obsolete_record: optional(booleanSchema),
   version_status: optional(versionStatusSchema),
   version_cutoff_iso: optional(isoTimestampSchema),
+  game_version: optional(nullableGameVersionSchema),
   ...hiddenReportFields,
 });
 
@@ -352,11 +353,6 @@ const rankingPayloadSchema = objectOf({
   hidden_reports_included: booleanSchema,
   ranking_entries: arrayOf(rankingEntrySchema),
   version_cutoff: optional(versionCutoffSchema),
-  version_ranking_entries: optional(objectOf({
-    all: arrayOf(rankingEntrySchema),
-    valid: arrayOf(rankingEntrySchema),
-    obsolete: arrayOf(rankingEntrySchema),
-  })),
 });
 
 const rankingHiddenDeltaPayloadSchema = objectOf({
@@ -370,16 +366,6 @@ const rankingHiddenDeltaPayloadSchema = objectOf({
   ranking_entry_order: arrayOf(stringSchema),
   ranking_entries: arrayOf(rankingEntrySchema),
   version_cutoff: optional(versionCutoffSchema),
-  version_ranking_entry_order: optional(objectOf({
-    all: arrayOf(stringSchema),
-    valid: arrayOf(stringSchema),
-    obsolete: arrayOf(stringSchema),
-  })),
-  version_ranking_entries: optional(objectOf({
-    all: arrayOf(rankingEntrySchema),
-    valid: arrayOf(rankingEntrySchema),
-    obsolete: arrayOf(rankingEntrySchema),
-  })),
 });
 
 const rankingDetailsPayloadSchema = objectOf({

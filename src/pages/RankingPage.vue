@@ -91,6 +91,15 @@ export default {
           },
         ],
         traceItems: [
+          ...(取值(app.顯示版本紀錄) && 列.gameVersion
+            ? [
+                {
+                  key: "gameVersion",
+                  label: "繁中服版本",
+                  value: app.取得排行榜遊戲版本文字(列.gameVersion),
+                },
+              ]
+            : []),
           {
             key: "reportFight",
             label: "Report / Fight",
@@ -119,6 +128,7 @@ export default {
         過版紀錄: 列.過版紀錄,
         versionStatus: 列.versionStatus,
         versionCutoffIso: 列.versionCutoffIso,
+        gameVersion: 列.gameVersion || 詳細列.gameVersion,
         detailId: 列.detailId || 詳細列.detailId,
         hasReportDetail: 列.hasReportDetail || 詳細列.hasReportDetail,
       };
@@ -182,8 +192,17 @@ export default {
     </div>
   </div>
 
-  <label v-if="顯示排行榜版本篩選" class="欄位">
+  <label v-if="顯示排行榜版本紀錄" class="欄位">
     <span>版本紀錄</span>
+    <select v-model="排行榜遊戲版本選取值">
+      <option v-for="選項 in 排行榜遊戲版本選項" :key="選項.patch" :value="選項.patch">
+        {{ 選項.label }}
+      </option>
+    </select>
+  </label>
+
+  <label v-if="顯示排行榜紀錄時效" class="欄位">
+    <span>紀錄時效</span>
     <select v-model="排行榜版本範圍">
       <option v-for="選項 in 版本紀錄範圍選項" :key="選項.value" :value="選項.value">
         {{ 選項.label }}
@@ -291,12 +310,10 @@ export default {
   </div>
 </section>
 
-<p v-if="排行榜版本說明文字" class="版本紀錄說明">{{ 排行榜版本說明文字 }}</p>
-
 <section class="表格區" aria-live="polite">
   <div v-if="讀取中" class="狀態列">讀取排行榜資料中</div>
   <div v-else-if="錯誤訊息" class="狀態列 錯誤">{{ 錯誤訊息 }}</div>
-  <div v-else-if="過濾後排行列.length === 0" class="狀態列">目前沒有符合條件的排行榜資料</div>
+  <div v-else-if="過濾後排行列.length === 0" class="狀態列">{{ 排行榜空狀態訊息 }}</div>
 
   <template v-else>
     <div class="分頁資訊列">
@@ -333,6 +350,7 @@ export default {
         <col class="傷害欄" />
         <col class="傷害欄" />
         <col class="通關時間欄" />
+        <col v-show="顯示版本紀錄" class="版本欄" />
         <col class="紀錄時間欄" />
       </colgroup>
       <thead>
@@ -454,6 +472,7 @@ export default {
               <span v-if="是否目前排序('clearTime')" class="排序箭頭" aria-hidden="true">{{ 排序方向圖示("clearTime") }}</span>
             </button>
           </th>
+          <th v-show="顯示版本紀錄" scope="col">版本</th>
           <th scope="col" :aria-sort="排序ARIA('recordedAt')">
             <button
               class="表頭排序按鈕"
@@ -544,6 +563,10 @@ export default {
                   <em>通關</em>
                   <strong>{{ 格式化通關時間(列.通關秒數) }}</strong>
                 </span>
+                <span v-show="顯示版本紀錄">
+                  <em>版本</em>
+                  <strong>{{ 列.gameVersion || "—" }}</strong>
+                </span>
                 <span>
                   <em>紀錄</em>
                   <time :datetime="列.紀錄時間 || undefined" :title="格式化紀錄時間(列.紀錄時間)">
@@ -577,6 +600,7 @@ export default {
           <td class="數字">{{ 格式化傷害數值(列.rdps) }}</td>
           <td class="數字">{{ 格式化傷害數值(列.adps) }}</td>
           <td class="數字">{{ 格式化通關時間(列.通關秒數) }}</td>
+          <td v-show="顯示版本紀錄" class="數字 排行榜版本欄">{{ 列.gameVersion || "—" }}</td>
           <td>
             <time
               class="緊湊紀錄時間"

@@ -121,7 +121,9 @@ const 蜂蜂背景音樂偏好儲存鍵 = "ffxiv-tc-rankings-honey-bgm";
 const 蜂蜂背景音樂影片Id = "07V_j5a9kHw";
 const 蜂蜂背景音樂嵌入網址 = `https://www.youtube.com/embed/${蜂蜂背景音樂影片Id}`;
 const 分位顯示偏好儲存鍵 = "ffxiv-tc-rankings-percentile-display-mode";
-const 個人成績版本顯示偏好儲存鍵 = "ffxiv-tc-rankings-user-profile-game-version";
+// 沿用既有 localStorage 鍵值，讓已開啟「個人成績單版本」的訪客在設定改名為
+// 「版本紀錄」後，仍能保留原本的顯示偏好；鍵名不再限定個人成績單的適用範圍。
+const 版本紀錄顯示偏好儲存鍵 = "ffxiv-tc-rankings-user-profile-game-version";
 const 說明提示顯示偏好儲存鍵 = "ffxiv-tc-rankings-show-help-tooltips";
 const 分位顯示模式選項 = [
   { value: 分位顯示模式前段, label: "前 N%" },
@@ -275,6 +277,10 @@ const 目前玩家搜尋歷史欄位 = ref("");
 const 玩家搜尋歷史管理彈窗開啟 = ref(false);
 const 排序欄位 = ref(預設排序欄位);
 const 排序方向 = ref(預設排序方向);
+// 空值只作為「尚未手動選擇」的內部狀態；介面永遠顯示目前已開放的實際版本。
+// 因此目前預設為 7.15，繁中服 7.2 開放後重新載入頁面會自動改為 7.2，分享網址
+// 也只在開啟版本紀錄且使用者特別選擇歷史版本時帶 gameVersion，避免把「目前版本」當成假選項。
+const 排行榜遊戲版本 = ref("");
 const 排行榜版本範圍 = ref(預設版本紀錄範圍);
 const 目前頁碼 = ref(1);
 const 每頁筆數 = 100;
@@ -295,7 +301,7 @@ const 蜂蜂背景音樂啟用 = ref(false);
 const 蜂蜂背景音樂偏好已設定 = ref(false);
 const 顯示蜂蜂背景音樂詢問 = ref(false);
 const 分位顯示模式 = ref(預設分位顯示模式);
-const 顯示個人成績版本 = ref(false);
+const 顯示版本紀錄 = ref(false);
 const 顯示說明提示 = ref(true);
 const 使用者索引 = ref(null);
 const 使用者資料 = ref(null);
@@ -471,17 +477,6 @@ function 取得版本切片來源(來源, 版本範圍) {
   return 來源?.version_slices?.[範圍] || 來源;
 }
 
-function 版本紀錄說明文字(副本) {
-  if (!副本支援版本篩選(副本)) {
-    return "";
-  }
-
-  const 規則 = 取得副本版本規則(副本);
-  const 本地切點 = 規則?.obsolete_after_local || "04/21 18:00";
-  const 改版文字 = `${規則?.patch || "改版"} 改版後（${本地切點}）`;
-  return `全部版本紀錄會納入所有的紀錄資訊，因此排名可能並不準確。過時版本紀錄為 ${改版文字} 的紀錄；因玩家裝備品級提升，可能存在跳過機制的可能性，較難準確反映玩家當時的副本實力。有效版本紀錄為 ${規則?.patch || "改版"} 改版前的紀錄。`;
-}
-
 const 副本清單索引 = computed(() => new Map(副本清單.value.map((副本) => [副本.key, 副本])));
 
 function 取得零式量級(副本, 副本鍵值) {
@@ -511,9 +506,138 @@ const 副本選單文字 = computed(() => {
   return 目前副本.value?.name || "選擇副本";
 });
 
-const 顯示排行榜版本篩選 = computed(() => 副本支援版本篩選(目前副本.value));
-const 有效排行榜版本範圍 = computed(() => 取得有效版本紀錄範圍(目前副本.value, 排行榜版本範圍.value));
-const 排行榜版本說明文字 = computed(() => 版本紀錄說明文字(目前副本.value));
+function 正規化排行榜遊戲版本選項(版本清單) {
+  const 已收錄Patch = new Set();
+  const 選項 = [];
+
+  for (const 原始版本 of Array.isArray(版本清單) ? 版本清單 : []) {
+    const patch = String(原始版本?.patch || "").trim();
+    const label = String(原始版本?.label || patch).trim();
+    const startsAtIso = 原始版本?.starts_at_iso ?? null;
+    const startsAt = startsAtIso === null ? null : new Date(startsAtIso).getTime();
+    if (!patch || !label || 已收錄Patch.has(patch) || (startsAtIso !== null && !Number.isFinite(startsAt))) {
+      continue;
+    }
+
+    已收錄Patch.add(patch);
+    選項.push({ patch, label, starts_at_iso: startsAtIso });
+  }
+
+  return 選項;
+}
+
+// 版本時間由 Data Building Layer 寫進目前副本的薄索引。這讓 Vue 只使用已靜態化的
+// 中繼資料，不需要讀取 config/ 或自行維護一套容易漂移的繁中服改版日期。
+const 排行榜遊戲版本選項 = computed(() => 正規化排行榜遊戲版本選項(排行榜資料.value?.game_versions));
+
+// 「版本紀錄」與「紀錄時效」使用同一份薄索引的不同欄位：前者依 game_version
+// 做累積版本快照，後者只依 is_obsolete_record 做 valid／obsolete 篩選。兩者互斥，
+// 因此不需要為每個範圍輸出重複的排行榜切片，避免 GitHub Pages 載荷膨脹。
+const 顯示排行榜版本紀錄 = computed(() => {
+  return 顯示版本紀錄.value && 排行榜遊戲版本選項.value.length > 0;
+});
+
+const 顯示排行榜紀錄時效 = computed(() => {
+  return !顯示版本紀錄.value && 副本支援版本篩選(目前副本.value);
+});
+
+const 有效排行榜版本範圍 = computed(() => {
+  return 取得有效版本紀錄範圍(目前副本.value, 排行榜版本範圍.value);
+});
+
+function 取得預設排行榜遊戲版本(選項列表 = 排行榜遊戲版本選項.value, 目前時間戳記 = Date.now()) {
+  let 最新已開放版本 = "";
+  for (const 選項 of 選項列表) {
+    const 開放時間 = 選項.starts_at_iso === null ? null : new Date(選項.starts_at_iso).getTime();
+    if (開放時間 === null || (Number.isFinite(開放時間) && 開放時間 <= 目前時間戳記)) {
+      最新已開放版本 = 選項.patch;
+    }
+  }
+
+  return 最新已開放版本 || 選項列表.at(-1)?.patch || "";
+}
+
+function 正規化排行榜遊戲版本(版本, 選項列表 = 排行榜遊戲版本選項.value) {
+  const patch = String(版本 || "").trim();
+  if (選項列表.some((選項) => 選項.patch === patch)) {
+    return patch;
+  }
+  return 取得預設排行榜遊戲版本(選項列表);
+}
+
+const 有效排行榜遊戲版本 = computed(() => 正規化排行榜遊戲版本(排行榜遊戲版本.value));
+
+const 排行榜遊戲版本選取值 = computed({
+  get() {
+    return 有效排行榜遊戲版本.value;
+  },
+  set(版本) {
+    排行榜遊戲版本.value = 正規化排行榜遊戲版本(版本);
+  },
+});
+
+function 取得排行榜遊戲版本文字(版本) {
+  const patch = 正規化排行榜遊戲版本(版本);
+  return 排行榜遊戲版本選項.value.find((選項) => 選項.patch === patch)?.label || patch || "未知版本";
+}
+
+function 取得副本排行榜開放版本(副本 = 目前副本.value) {
+  const patch = String(副本?.profile_summary_available_from || "").trim();
+  return 排行榜遊戲版本選項.value.some((選項) => 選項.patch === patch) ? patch : "";
+}
+
+const 排行榜副本開放版本 = computed(() => 取得副本排行榜開放版本());
+
+const 排行榜版本早於副本開放 = computed(() => {
+  const 選擇索引 = 排行榜遊戲版本選項.value.findIndex((選項) => 選項.patch === 有效排行榜遊戲版本.value);
+  const 開放索引 = 排行榜遊戲版本選項.value.findIndex((選項) => 選項.patch === 排行榜副本開放版本.value);
+  return 選擇索引 >= 0 && 開放索引 >= 0 && 選擇索引 < 開放索引;
+});
+
+const 排行榜空狀態訊息 = computed(() => {
+  if (顯示排行榜版本紀錄.value && 排行榜版本早於副本開放.value) {
+    const 開放版本文字 = 取得排行榜遊戲版本文字(排行榜副本開放版本.value);
+    return `${目前副本.value?.name || "此副本"}於繁中服 ${開放版本文字} 開放，請至少選擇 ${開放版本文字} 的版本紀錄。`;
+  }
+  return "目前沒有符合條件的排行榜資料";
+});
+
+function 取得排行榜紀錄遊戲版本(紀錄) {
+  const 明確版本 = String(紀錄?.gameVersion || 紀錄?.game_version || "").trim();
+  if (排行榜遊戲版本選項.value.some((選項) => 選項.patch === 明確版本)) {
+    return 明確版本;
+  }
+
+  const 紀錄時間 = new Date(紀錄?.紀錄時間 || 紀錄?.recorded_at_iso || "").getTime();
+  if (!Number.isFinite(紀錄時間)) {
+    return "";
+  }
+
+  let 對應版本 = "";
+  for (const 選項 of 排行榜遊戲版本選項.value) {
+    const 開放時間 = 選項.starts_at_iso === null ? null : new Date(選項.starts_at_iso).getTime();
+    if (開放時間 === null || 紀錄時間 >= 開放時間) {
+      對應版本 = 選項.patch;
+      continue;
+    }
+    break;
+  }
+  return 對應版本;
+}
+
+function 紀錄符合排行榜遊戲版本(紀錄, 版本 = 有效排行榜遊戲版本.value) {
+  const 目標版本 = 正規化排行榜遊戲版本(版本);
+  const 目標索引 = 排行榜遊戲版本選項.value.findIndex((選項) => 選項.patch === 目標版本);
+  if (目標索引 < 0) {
+    // 舊版薄索引尚未帶 game_versions 時保留原有行為，避免使用者因 CDN 舊快取看到空榜。
+    return true;
+  }
+
+  const 紀錄版本 = 取得排行榜紀錄遊戲版本(紀錄);
+  const 紀錄索引 = 排行榜遊戲版本選項.value.findIndex((選項) => 選項.patch === 紀錄版本);
+  // 缺少可靠時間的紀錄不可被臆測為舊版；否則新版本紀錄可能混進早期排行榜。
+  return 紀錄索引 >= 0 && 紀錄索引 <= 目標索引;
+}
 
 function 主色由職業選擇(職業代碼, 類型代碼) {
   if (職業代碼) {
@@ -932,13 +1056,21 @@ const {
   排序方向,
   目前副本,
   取得紀錄版本狀態,
-  取得有效版本紀錄範圍,
-  紀錄符合版本範圍,
-  預設版本紀錄範圍,
 });
 
 const 所有排行列 = computed(() => {
-  return 展開排行榜列(排行榜資料.value, 目前副本.value, 有效排行榜版本範圍.value).sort(比較排行列);
+  return 展開排行榜列(排行榜資料.value, 目前副本.value)
+    .filter((列) => {
+      if (顯示排行榜版本紀錄.value) {
+        return 紀錄符合排行榜遊戲版本(列);
+      }
+
+      return 紀錄符合版本範圍(
+        { is_obsolete_record: 列.過版紀錄 },
+        有效排行榜版本範圍.value,
+      );
+    })
+    .sort(比較排行列);
 });
 
 const 伺服器選項 = computed(() => {
@@ -3146,7 +3278,9 @@ function 排行榜分享條件文字() {
   if (搜尋關鍵字.value.trim()) {
     條件.push(`關鍵字「${搜尋關鍵字.value.trim()}」`);
   }
-  if (顯示排行榜版本篩選.value && 有效排行榜版本範圍.value !== "all") {
+  if (顯示排行榜版本紀錄.value && 有效排行榜遊戲版本.value) {
+    條件.push(`截至 ${取得排行榜遊戲版本文字(有效排行榜遊戲版本.value)} 的累積版本紀錄`);
+  } else if (顯示排行榜紀錄時效.value && 有效排行榜版本範圍.value !== 預設版本紀錄範圍) {
     條件.push(取得版本紀錄範圍文字(有效排行榜版本範圍.value));
   }
 
@@ -3976,10 +4110,10 @@ function 成績屬於使用者版本快照(成績, 目標版本) {
 }
 
 function 符合使用者版本篩選(成績) {
-  // 版本篩選只在使用者明確開啟版本資料時生效。關閉時保留完整歷史成績單，
+  // 個人成績單的版本篩選只在共用「版本紀錄」偏好開啟時生效。關閉時保留完整歷史成績單，
   // 不能因為先前選過版本而讓使用者誤以為部分紀錄遺失。開啟後則以選定版本
   // 作為「截至該版本」的歷史快照；最新版本自然等同所有可用紀錄。
-  if (!顯示個人成績版本.value) {
+  if (!顯示版本紀錄.value) {
     return true;
   }
 
@@ -4884,7 +5018,10 @@ function 更新網址為排行榜(選項 = {}) {
     q: 搜尋關鍵字.value,
     ...排行榜排序分享狀態(),
     pageNo: 目前頁碼.value > 1 ? 目前頁碼.value : "",
-    version: 非預設分享值(有效排行榜版本範圍.value, 預設版本紀錄範圍),
+    version: !顯示排行榜版本紀錄.value && 顯示排行榜紀錄時效.value
+      ? 非預設分享值(有效排行榜版本範圍.value, 預設版本紀錄範圍)
+      : "",
+    gameVersion: 顯示排行榜版本紀錄.value ? 排行榜遊戲版本.value : "",
   }, 選項);
 }
 
@@ -5123,29 +5260,29 @@ function 取得使用者趨勢顯示數值標記(趨勢) {
   return 已選取點 ? [建立使用者趨勢數值標記(已選取點, "選取")] : 趨勢.數值標記點列表;
 }
 
-function 讀取個人成績版本顯示偏好() {
+function 讀取版本紀錄顯示偏好() {
   if (typeof window === "undefined") {
     return false;
   }
 
-  return window.localStorage.getItem(個人成績版本顯示偏好儲存鍵) === "enabled";
+  return window.localStorage.getItem(版本紀錄顯示偏好儲存鍵) === "enabled";
 }
 
-function 套用個人成績版本顯示(啟用, { 寫入偏好 = true } = {}) {
+function 套用版本紀錄顯示(啟用, { 寫入偏好 = true } = {}) {
   const 顯示版本 = Boolean(啟用);
-  顯示個人成績版本.value = 顯示版本;
+  顯示版本紀錄.value = 顯示版本;
 
   if (寫入偏好 && typeof window !== "undefined") {
-    window.localStorage.setItem(個人成績版本顯示偏好儲存鍵, 顯示版本 ? "enabled" : "disabled");
+    window.localStorage.setItem(版本紀錄顯示偏好儲存鍵, 顯示版本 ? "enabled" : "disabled");
   }
 }
 
-function 初始化個人成績版本顯示偏好() {
-  套用個人成績版本顯示(讀取個人成績版本顯示偏好(), { 寫入偏好: false });
+function 初始化版本紀錄顯示偏好() {
+  套用版本紀錄顯示(讀取版本紀錄顯示偏好(), { 寫入偏好: false });
 }
 
-function 設定個人成績版本顯示(啟用) {
-  套用個人成績版本顯示(啟用, { 寫入偏好: true });
+function 設定版本紀錄顯示(啟用) {
+  套用版本紀錄顯示(啟用, { 寫入偏好: true });
 }
 
 function 讀取說明提示顯示偏好() {
@@ -5343,6 +5480,7 @@ function 套用排行榜網址狀態(網址狀態) {
   職業篩選.value = 網址狀態.job || "";
   搜尋關鍵字.value = 網址狀態.q || "";
   排行榜版本範圍.value = 正規化版本紀錄範圍(網址狀態.version);
+  排行榜遊戲版本.value = 網址狀態.gameVersion || "";
 
   if (排序欄位標籤[網址狀態.sort] && (顯示Gcd覆蓋率 || 網址狀態.sort !== "gcdCoverage")) {
     排序欄位.value = 網址狀態.sort;
@@ -5488,23 +5626,14 @@ function 處理瀏覽紀錄變更() {
 
 watch(副本鍵值, () => {
   if (!正在套用網址狀態) {
-    if (!副本支援版本篩選(目前副本.value)) {
-      排行榜版本範圍.value = 預設版本紀錄範圍;
-    }
     // 伺服器與職業是玩家刻意設定的跨副本觀察條件，切副本時只回到第一頁，不主動清空篩選。
     目前頁碼.value = 1;
+    if (!顯示排行榜版本紀錄.value && !副本支援版本篩選(目前副本.value)) {
+      排行榜版本範圍.value = 預設版本紀錄範圍;
+    }
   }
   if (副本清單.value.length > 0) {
     讀取排行榜資料();
-  }
-  if (頁面模式.value === "ranking") {
-    更新網址為排行榜({ replace: true });
-  }
-});
-
-watch(排行榜版本範圍, () => {
-  if (!正在套用網址狀態) {
-    目前頁碼.value = 1;
   }
   if (頁面模式.value === "ranking") {
     更新網址為排行榜({ replace: true });
@@ -5556,6 +5685,24 @@ watch([使用者資料, 使用者伺服器篩選, 使用者版本篩選, 使用�
   清除所有使用者趨勢選取點();
 });
 
+watch(排行榜遊戲版本, () => {
+  if (!正在套用網址狀態) {
+    目前頁碼.value = 1;
+  }
+  if (頁面模式.value === "ranking" && 顯示排行榜版本紀錄.value) {
+    更新網址為排行榜({ replace: true });
+  }
+});
+
+watch(排行榜版本範圍, () => {
+  if (!正在套用網址狀態) {
+    目前頁碼.value = 1;
+  }
+  if (頁面模式.value === "ranking" && 顯示排行榜紀錄時效.value) {
+    更新網址為排行榜({ replace: true });
+  }
+});
+
 watch(分位顯示模式, () => {
   // PR 與前 N% 的「較佳」數字方向相反。若使用者正在排序同職分位，切換顯示模式時
   // 反轉數值方向，才能保留原本的高低意圖（例如「較佳在前」仍是較佳在前）。
@@ -5575,8 +5722,8 @@ watch(分位顯示模式, () => {
   );
 });
 
-watch([顯示個人成績版本, 使用者版本選項], () => {
-  if (!顯示個人成績版本.value) {
+watch([顯示版本紀錄, 使用者版本選項], () => {
+  if (!顯示版本紀錄.value) {
     使用者版本篩選.value = "";
     return;
   }
@@ -5589,6 +5736,15 @@ watch([顯示個人成績版本, 使用者版本選項], () => {
     使用者版本篩選.value = 最新可用版本;
   }
 }, { immediate: true });
+
+watch(顯示版本紀錄, () => {
+  if (!正在套用網址狀態) {
+    目前頁碼.value = 1;
+  }
+  if (頁面模式.value === "ranking") {
+    更新網址為排行榜({ replace: true });
+  }
+});
 
 watch([使用者資料, 使用者伺服器篩選, 使用者職業類型選項], () => {
   if (使用者職業類型篩選.value && !使用者職業類型選項.value.some((職能) => 職能.代碼 === 使用者職業類型篩選.value)) {
@@ -5694,7 +5850,7 @@ watch(頁面模式, (目前頁面模式) => {
 onMounted(() => {
   初始化主題();
   初始化分位顯示偏好();
-  初始化個人成績版本顯示偏好();
+  初始化版本紀錄顯示偏好();
   初始化說明提示顯示偏好();
   初始化玩家搜尋歷史();
   if (typeof window !== "undefined") {
@@ -5740,6 +5896,8 @@ onUnmounted(() => {
     玩家搜尋歷史管理彈窗開啟,
     排序欄位,
     排序方向,
+    排行榜遊戲版本,
+    排行榜遊戲版本選取值,
     排行榜版本範圍,
     目前頁碼,
     每頁筆數,
@@ -5749,11 +5907,11 @@ onUnmounted(() => {
     顯示作者相關標示,
     顯示Gcd覆蓋率,
     分位顯示偏好儲存鍵,
-    個人成績版本顯示偏好儲存鍵,
+    版本紀錄顯示偏好儲存鍵,
     說明提示顯示偏好儲存鍵,
     分位顯示模式選項,
     分位顯示模式,
-    顯示個人成績版本,
+    顯示版本紀錄,
     顯示說明提示,
     使用PR分位顯示,
     作者說明文字,
@@ -5851,10 +6009,16 @@ onUnmounted(() => {
     統計副本分組,
     比較副本分組,
     副本選單文字,
-    顯示排行榜版本篩選,
-    有效排行榜版本範圍,
-    排行榜版本說明文字,
     取得版本紀錄範圍文字,
+    排行榜遊戲版本選項,
+    有效排行榜遊戲版本,
+    有效排行榜版本範圍,
+    取得排行榜遊戲版本文字,
+    顯示排行榜版本紀錄,
+    顯示排行榜紀錄時效,
+    排行榜副本開放版本,
+    排行榜版本早於副本開放,
+    排行榜空狀態訊息,
     套用主題,
     套用暫時主題,
     停用主題切換,
@@ -5866,7 +6030,7 @@ onUnmounted(() => {
     前段四分位標籤,
     設定分位顯示模式,
     切換分位顯示模式,
-    設定個人成績版本顯示,
+    設定版本紀錄顯示,
     設定說明提示顯示,
     職業繁中名稱,
     職業群組設定,

@@ -247,24 +247,9 @@ async function resolveRankingPayload(ranking, label) {
     hidden_reports_included: true,
     ranking_entries: mergeEntriesByOrder(baseRanking?.ranking_entries, ranking.ranking_entries, ranking.ranking_entry_order),
   };
-  const versionModes = new Set([
-    ...Object.keys(baseRanking?.version_ranking_entries || {}),
-    ...Object.keys(ranking.version_ranking_entries || {}),
-  ]);
-  if (versionModes.size > 0) {
-    merged.version_ranking_entries = {};
-    for (const versionMode of versionModes) {
-      merged.version_ranking_entries[versionMode] = mergeEntriesByOrder(
-        baseRanking?.version_ranking_entries?.[versionMode],
-        ranking.version_ranking_entries?.[versionMode],
-        ranking.version_ranking_entry_order?.[versionMode],
-      );
-    }
-  }
   delete merged.format;
   delete merged.base_path;
   delete merged.ranking_entry_order;
-  delete merged.version_ranking_entry_order;
   return merged;
 }
 
@@ -287,21 +272,6 @@ async function resolveRankingTablePayload(table, label) {
     table_columns: columns,
     table_rows: mergeRowsByOrder(baseTable?.table_rows, table.table_rows, table.table_row_order, columns),
   };
-  const versionModes = new Set([
-    ...Object.keys(baseTable?.version_table_rows || {}),
-    ...Object.keys(table.version_table_rows || {}),
-  ]);
-  if (versionModes.size > 0) {
-    merged.version_table_rows = {};
-    for (const versionMode of versionModes) {
-      merged.version_table_rows[versionMode] = mergeRowsByOrder(
-        baseTable?.version_table_rows?.[versionMode],
-        table.version_table_rows?.[versionMode],
-        table.version_table_row_order?.[versionMode],
-        columns,
-      );
-    }
-  }
   return merged;
 }
 
@@ -533,6 +503,72 @@ async function validateEncounters() {
 }
 
 async function validateRankings(publicEncounters) {
+  const gameVersionsConfig = await readJson(path.join(rootDir, "config", "game_versions.json"), "config/game_versions.json");
+  const gameVersions = Array.isArray(gameVersionsConfig?.versions)
+    ? gameVersionsConfig.versions.map((version) => ({
+      patch: String(version?.patch || "").trim(),
+      label: String(version?.label || version?.patch || "").trim(),
+      starts_at_iso: version?.starts_at_iso ?? null,
+    }))
+    : [];
+  const gameVersionPatches = new Set(gameVersions.map((version) => version.patch).filter(Boolean));
+
+  if (gameVersions.length === 0 || gameVersions.some((version) => !version.patch || !version.label)) {
+    reportIssue("config/game_versions.json 必須提供可用的繁中服版本設定，才能驗證排行榜版本紀錄。");
+  }
+
+  function expectedGameVersion(recordedAtIso) {
+    const recordedAt = new Date(recordedAtIso || "").getTime();
+    if (!Number.isFinite(recordedAt)) {
+      return null;
+    }
+
+    let matchedPatch = null;
+    for (const version of gameVersions) {
+      const startsAt = version.starts_at_iso === null ? null : new Date(version.starts_at_iso).getTime();
+      if (startsAt === null || recordedAt >= startsAt) {
+        matchedPatch = version.patch;
+        continue;
+      }
+      break;
+    }
+    return matchedPatch;
+  }
+
+  function validateTableGameVersions(table, label) {
+    if (!Array.isArray(table?.game_versions)) {
+      reportIssue(`${label} 必須包含 game_versions，讓前端以繁中服版本日期篩選。`);
+      return;
+    }
+
+    const tableVersions = table.game_versions.map((version) => ({
+      patch: String(version?.patch || "").trim(),
+      label: String(version?.label || "").trim(),
+      starts_at_iso: version?.starts_at_iso ?? null,
+    }));
+    if (JSON.stringify(tableVersions) !== JSON.stringify(gameVersions)) {
+      reportIssue(`${label} 的 game_versions 必須與 config/game_versions.json 一致。`);
+    }
+
+    const columns = Array.isArray(table?.table_columns) ? table.table_columns : [];
+    const gameVersionIndex = columns.indexOf("game_version");
+    const recordedAtIndex = columns.indexOf("recorded_at_iso");
+    if (gameVersionIndex < 0 || recordedAtIndex < 0) {
+      reportIssue(`${label} 的 table_columns 必須包含 recorded_at_iso 與 game_version。`);
+      return;
+    }
+
+    for (const row of table.table_rows || []) {
+      const recordedAtIso = Array.isArray(row) ? row[recordedAtIndex] : row?.recorded_at_iso;
+      const gameVersion = Array.isArray(row) ? row[gameVersionIndex] : row?.game_version;
+      const expected = expectedGameVersion(recordedAtIso);
+      if (!gameVersionPatches.has(gameVersion) || gameVersion !== expected) {
+        reportIssue(`${label} 有一筆列的 game_version 與 recorded_at_iso 對應的繁中服版本不一致。`);
+        break;
+      }
+    }
+  }
+
   for (const encounter of publicEncounters) {
     const key = encounter?.key;
     if (!key) {
@@ -576,6 +612,7 @@ async function validateRankings(publicEncounters) {
       if (table?.table_rows?.length !== publicRanking?.ranking_entries?.length) {
         reportIssue(`${key} 排行榜薄索引列數需等於公開 ranking_entries`);
       }
+      validateTableGameVersions(table, `${key} 排行榜薄索引`);
     }
     if (!existsSync(detailPath)) {
       reportIssue(`${key} 缺少排行榜報告細節檔：public/data/ranking-details/${key}.json`);
@@ -621,6 +658,7 @@ async function validateRankings(publicEncounters) {
       if (allTable?.detail_path !== `data/all/ranking-details/${key}.json`) {
         reportIssue(`${key} 完整鏡像排行榜薄索引 detail_path 不正確`);
       }
+      validateTableGameVersions(allTable, `${key} 完整鏡像排行榜薄索引`);
     }
     if (!existsSync(allDetailPath)) {
       reportIssue(`${key} 缺少完整鏡像排行榜報告細節檔：public/data/all/ranking-details/${key}.json`);

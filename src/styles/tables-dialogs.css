@@ -51,35 +51,39 @@ table {
 }
 
 .排行榜表格 .角色欄 {
-  width: 17%;
+  width: 16%;
 }
 
 .排行榜表格 .伺服器欄 {
-  width: 9%;
+  width: 8%;
 }
 
 .排行榜表格 .職業欄 {
-  width: 10.5%;
+  width: 9.5%;
 }
 
 .排行榜表格 .active欄 {
-  width: 7.8%;
+  width: 7.5%;
 }
 
 .排行榜表格 .gcd欄 {
-  width: 7.8%;
+  width: 7.5%;
 }
 
 .排行榜表格 .傷害欄 {
-  width: 7.8%;
+  width: 7.4%;
 }
 
 .排行榜表格 .通關時間欄 {
-  width: 8.7%;
+  width: 8.5%;
+}
+
+.排行榜表格 .版本欄 {
+  width: 5.5%;
 }
 
 .排行榜表格 .紀錄時間欄 {
-  width: 10.5%;
+  width: 9.5%;
 }
 
 th,
@@ -103,6 +107,10 @@ td {
 .排行榜表格 td.排名 {
   overflow: visible;
   text-overflow: clip;
+}
+
+.排行榜版本欄 {
+  font-weight: 760;
 }
 
 .排行榜表格 .排行榜角色欄位 {

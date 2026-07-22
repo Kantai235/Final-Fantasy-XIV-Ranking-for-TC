@@ -137,14 +137,14 @@
 
 ### F. 版本切點與過版紀錄
 1. `config/encounters.json` 的 `version_cutoff` 用來描述副本版本有效期限；`極 佐拉加` 與 `極 豔翼蛇鳥` 的過版切點是台灣時間 2026-04-21 18:00（`2026-04-21T10:00:00.000Z`），輕量級零式 M1S～M4S、`極 永恆女王` 與 `滅 黑暗之雲` 的過版切點是台灣時間 2026-07-28 12:00（`2026-07-28T04:00:00.000Z`）。
-2. `scripts/fetch_fflogs.py --rebuild-public` 會依 `start_time` 標記公開排行榜條目的 `is_obsolete_record`、`version_status` 與 `version_cutoff_iso`，並為支援切點的副本輸出 `version_ranking_entries.all|valid|obsolete`；這是避免前端重新實作排行榜去重與排序規則。
+2. `scripts/fetch_fflogs.py --rebuild-public` 會依 `start_time` 標記公開排行榜條目的 `is_obsolete_record`、`version_status` 與 `version_cutoff_iso`。排行榜可依使用者偏好用 `game_version` 做繁中服版本累積篩選，或只用既有過版標記做時效篩選；無論哪種模式都不得再輸出重複的 `version_ranking_entries.all|valid|obsolete`。
 3. `scripts/build_user_data.mjs` 會在全服統計、個人成績單與隊伍榜輸出 `version_slices.all|valid|obsolete`。同職分位、個人最佳紀錄與職業最佳紀錄只能使用 `valid` 紀錄，過版紀錄只作為歷史資料呈現與追溯。
-4. 前端版本篩選一律使用 `version=all|valid|obsolete` 的網址狀態；若副本沒有 `version_cutoff`，必須自動回到 `all`，避免非過版副本出現無效篩選。
+4. 全服統計、玩家比較與隊伍榜的版本時效篩選仍使用 `version=all|valid|obsolete`；排行榜的共用「版本紀錄」偏好開啟時使用 `gameVersion`，直接顯示目前已開放的實際遊戲版本作為預設，並顯示每筆版本。偏好關閉時，排行榜若有 `version_cutoff` 則改使用 `version=all|valid|obsolete` 的紀錄時效篩選；網址只能寫入目前模式的條件。
 5. 個人成績簡表另有繁中服遊戲版本快照，和 `version_cutoff` 的 valid／obsolete 語意分離。`profile_summary_available_from` 決定副本首次可見版本，選填的 `profile_summary_available_until` 可讓輪替內容只保留至最後一個歷史版本；版本選項以「下一版本開放時間」排除後續 `recorded_at_iso`。已公告的未來版本需保存明確開放時間，並在時間到達前標示待開放、到達後自動可選。未公告開放時間時不得用目前時間或猜測日期切分歷史戰鬥。
 6. 個人成績簡表的零式會列出所選遊戲版本中全部已開放量級，預設選取最新量級，但可切換查看較早量級。`profile_summary_savage_tier` 必須保存量級 key、名稱、遞增順序與量級內 1～4 層；某量級四層皆有該版本有效通關時，量級按鈕顯示彩色勾勾，量級內樓層仍顯示職業與 PR。新增次重量級、重量級時提高 order 即可讓簡表加入新量級，舊量級的排行榜與個人成績仍維持歷史追溯。
-7. `config/game_versions.json` 是個人成績單 `game_version` 的唯一繁中服競技版本切點來源。`build_user_data.mjs` 必須以戰鬥 `recorded_at_iso` 在建置層寫入版本標籤；此欄位只用於玩家辨識當時的技能／裝備環境，不得改變 `version_cutoff` 的 valid／obsolete、排名或 PR 語意。前端以 localStorage 偏好控制顯示，預設關閉；開啟時個人分位亮點的 PR 在左、版本在右，成績列摘要與歷史表皆在 aDPS 後顯示版本，並在一般成績單依目前伺服器的已收錄版本提供篩選。版本條件需與職業篩選交集，並以「截至選定版本」的累積快照套用：選擇 7.1 時包含 7.0、7.05 與 7.1，最新版本即完整成績單，不另設「全部版本」。關閉版本顯示時需清除版本條件。個別玩家 JSON 來自專用資料來源，若舊資料尚未帶入 `game_version`，前端僅可依同一組繁中服切點從 `recorded_at_iso` 回推顯示與篩選版本；明確欄位永遠優先，無法判讀時間時不可臆測。
+7. `config/game_versions.json` 是個人成績單與排行榜 `game_version` 的唯一繁中服競技版本切點來源。`build_user_data.mjs` 與 `build_ranking_table_data.mjs` 必須以戰鬥 `recorded_at_iso` 在建置層寫入版本標籤；此欄位只用於玩家辨識當時的技能／裝備環境，不得改變 `version_cutoff` 的 valid／obsolete、排名或 PR 語意。前端以共用 localStorage「版本紀錄」偏好控制顯示，預設關閉；開啟時個人分位亮點的 PR 在左、版本在右，成績列摘要與歷史表皆在 aDPS 後顯示版本，並在一般成績單依目前伺服器的已收錄版本提供篩選。版本條件需與職業篩選交集，並以「截至選定版本」的累積快照套用：選擇 7.1 時包含 7.0、7.05 與 7.1，最新版本即完整成績單，不另設「全部版本」。關閉版本顯示時需清除版本條件。個別玩家 JSON 來自專用資料來源，若舊資料尚未帶入 `game_version`，前端僅可依同一組繁中服切點從 `recorded_at_iso` 回推顯示與篩選版本；明確欄位永遠優先，無法判讀時間時不可臆測。
 
-8. 開啟個人成績版本資料時，趨勢圖只能在每筆 `recorded_at_iso` 可解析時改用時間橫軸，並依繁中服更新切點插入垂直版本線。若有紀錄缺少時間，必須保留等距樣本軸且不畫切點，不得猜測錯位。預設只標示最高／最低數值；滑鼠懸停、鍵盤聚焦或觸控點擊資料點時，只顯示該點數值，離開圖表、按 Escape 或點擊圖表空白處後恢復預設標記。
+8. 開啟「版本紀錄」時，個人成績趨勢圖只能在每筆 `recorded_at_iso` 可解析時改用時間橫軸，並依繁中服更新切點插入垂直版本線。若有紀錄缺少時間，必須保留等距樣本軸且不畫切點，不得猜測錯位。預設只標示最高／最低數值；滑鼠懸停、鍵盤聚焦或觸控點擊資料點時，只顯示該點數值，離開圖表、按 Escape 或點擊圖表空白處後恢復預設標記。
 
 9. 說明提示按鈕以 localStorage 偏好控制，預設顯示；使用者關閉時，前端必須在根節點設定狀態，讓一般頁面與 Teleport 到 body 的報告彈窗同步隱藏提示。成績列摘要的說明標籤需預留提示按鈕空間，新增欄位時不可讓標籤、按鈕與數值互相擠壓。
 10. 個人成績歷史表格的排序只可對目前已篩選的 `public_entries` 建立前端檢視，不得改寫資料、排名或最佳成績。排序設定以副本 key 隔離；切換玩家、伺服器、職業或遊戲版本快照時必須重設。缺失值固定排在最後；同職分位須依可見的 PR／前 N% 語意決定預設方向，避免數字方向與畫面內容相反。

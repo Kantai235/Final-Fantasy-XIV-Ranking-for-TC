@@ -50,6 +50,7 @@ const 可分享參數 = [
   "split",
   "metric",
   "version",
+  "gameVersion",
   "report",
 ];
 
@@ -211,6 +212,7 @@ export function 讀取目前網址狀態() {
     split: 讀取參數文字(參數, "split"),
     metric: 讀取參數文字(參數, "metric"),
     version: 讀取參數文字(參數, "version"),
+    gameVersion: 讀取參數文字(參數, "gameVersion"),
   };
 }
 
@@ -232,6 +234,7 @@ function 寫入頁面專屬參數(參數, 狀態) {
     寫入參數(參數, "order", 狀態.order);
     寫入參數(參數, "pageNo", 狀態.pageNo);
     寫入參數(參數, "version", 狀態.version);
+    寫入參數(參數, "gameVersion", 狀態.gameVersion);
     return;
   }
 

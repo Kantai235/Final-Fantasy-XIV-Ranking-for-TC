@@ -9,9 +9,6 @@ export function useRankingData({
   排序方向,
   目前副本,
   取得紀錄版本狀態,
-  取得有效版本紀錄範圍,
-  紀錄符合版本範圍,
-  預設版本紀錄範圍,
 }) {
   function 排序欄位預設方向(欄位) {
     return 排序預設方向[欄位] || "desc";
@@ -154,6 +151,7 @@ export function useRankingData({
       activeTimeMs: 轉為數字(條目.active_time_ms),
       通關秒數,
       紀錄時間: 條目.recorded_at_iso || 條目.report_start_time_iso,
+      gameVersion: 條目.game_version || null,
       重複來源數: 轉為數字(條目.duplicate_count) || 1,
       原始排名: 轉為數字(條目.rank),
       職業排名: 轉為數字(條目.job_rank ?? 條目.rank),
@@ -171,14 +169,13 @@ export function useRankingData({
     return Object.fromEntries((欄位列表 || []).map((欄位, index) => [欄位, 列[index]]));
   }
 
-  function 取得排行榜薄索引條目(原始資料, 版本範圍) {
+  function 取得排行榜薄索引條目(原始資料) {
     if (!原始資料 || 原始資料.format !== "ranking_table_index_v1") {
       return null;
     }
 
     const 欄位列表 = Array.isArray(原始資料.table_columns) ? 原始資料.table_columns : [];
-    const 版本列 = 原始資料.version_table_rows?.[版本範圍];
-    const 來源列 = Array.isArray(版本列) ? 版本列 : 原始資料.table_rows;
+    const 來源列 = 原始資料.table_rows;
     if (!Array.isArray(來源列)) {
       return [];
     }
@@ -267,22 +264,12 @@ export function useRankingData({
         hidden_reports_included: true,
         table_columns: 欄位列表,
         table_rows: 依順序合併列(公開資料.table_rows, 資料.table_rows, 資料.table_row_order, 欄位列表),
+        // hidden delta 與公開底稿的快取更新可能短暫不同步；優先採用 delta 的中繼資料，
+        // 但 delta 尚未更新時仍保留公開底稿的版本清單，避免版本紀錄控制項消失。
+        game_versions: Array.isArray(資料.game_versions) && 資料.game_versions.length > 0
+          ? 資料.game_versions
+          : 公開資料.game_versions,
       };
-      const 版本模式列表 = new Set([
-        ...Object.keys(公開資料.version_table_rows || {}),
-        ...Object.keys(資料.version_table_rows || {}),
-      ]);
-      if (版本模式列表.size > 0) {
-        合併後.version_table_rows = {};
-        for (const 版本模式 of 版本模式列表) {
-          合併後.version_table_rows[版本模式] = 依順序合併列(
-            公開資料.version_table_rows?.[版本模式],
-            資料.version_table_rows?.[版本模式],
-            資料.version_table_row_order?.[版本模式],
-            欄位列表,
-          );
-        }
-      }
       return 合併後;
     }
 
@@ -294,20 +281,6 @@ export function useRankingData({
         hidden_reports_included: true,
         ranking_entries: 依順序合併條目(公開資料.ranking_entries, 資料.ranking_entries, 資料.ranking_entry_order),
       };
-      const 版本模式列表 = new Set([
-        ...Object.keys(公開資料.version_ranking_entries || {}),
-        ...Object.keys(資料.version_ranking_entries || {}),
-      ]);
-      if (版本模式列表.size > 0) {
-        合併後.version_ranking_entries = {};
-        for (const 版本模式 of 版本模式列表) {
-          合併後.version_ranking_entries[版本模式] = 依順序合併條目(
-            公開資料.version_ranking_entries?.[版本模式],
-            資料.version_ranking_entries?.[版本模式],
-            資料.version_ranking_entry_order?.[版本模式],
-          );
-        }
-      }
       delete 合併後.format;
       return 合併後;
     }
@@ -372,22 +345,14 @@ export function useRankingData({
 
   // 讀取舊格式時會把 report -> fight -> player 攤平成排行榜列。
   // 這段邏輯只做呈現用正規化，不改寫 append-only 歷史資料。
-  function 展開排行榜列(原始資料, 副本 = 目前副本.value, 版本範圍 = 預設版本紀錄範圍) {
-    const 有效版本範圍 = 取得有效版本紀錄範圍(副本, 版本範圍);
-    const 薄索引條目 = 取得排行榜薄索引條目(原始資料, 有效版本範圍);
+  function 展開排行榜列(原始資料, 副本 = 目前副本.value) {
+    const 薄索引條目 = 取得排行榜薄索引條目(原始資料);
     if (Array.isArray(薄索引條目)) {
       return 薄索引條目.map((條目) => 建立排行列(條目, 副本));
     }
 
-    const 版本排行榜條目 = 原始資料?.version_ranking_entries?.[有效版本範圍];
-    if (Array.isArray(版本排行榜條目)) {
-      return 版本排行榜條目.map((條目) => 建立排行列(條目, 副本));
-    }
-
     if (Array.isArray(原始資料?.ranking_entries)) {
-      return 原始資料.ranking_entries
-        .map((條目) => 建立排行列(條目, 副本))
-        .filter((列) => 紀錄符合版本範圍({ is_obsolete_record: 列.過版紀錄 }, 有效版本範圍));
+      return 原始資料.ranking_entries.map((條目) => 建立排行列(條目, 副本));
     }
 
     const 報告集合 = 原始資料?.reports ?? {};
@@ -435,9 +400,7 @@ export function useRankingData({
       });
     });
 
-    return 只保留角色最佳成績(攤平排行列).filter((列) =>
-      紀錄符合版本範圍({ is_obsolete_record: 列.過版紀錄 }, 有效版本範圍),
-    );
+    return 只保留角色最佳成績(攤平排行列);
   }
 
   return {

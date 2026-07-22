@@ -321,7 +321,6 @@ def 正規化報告地區範圍(值: Any) -> str:
     "raw_next_gcd_capped_denominator_ms",
 )
 
-版本紀錄範圍清單 = ("all", "valid", "obsolete")
 報告尚未完整匯出狀態 = "deferred_incomplete_export"
 無通關報告狀態 = "skipped_no_clear"
 無繁中服玩家報告狀態 = "skipped_no_traditional_chinese_players"
@@ -3881,29 +3880,6 @@ def 建立公開GCD覆蓋率(覆蓋率: Any) -> Any:
     return {欄位: 覆蓋率.get(欄位) for 欄位 in 公開GCD覆蓋率欄位 if 欄位 in 覆蓋率}
 
 
-def 建立版本排行榜條目(
-    排行榜: dict[str, Any],
-    *,
-    包含隱藏報告: bool = False,
-) -> dict[str, list[dict[str, Any]]]:
-    版本設定 = 取得副本版本截止設定(排行榜.get("encounter"))
-    if not 版本設定:
-        return {}
-
-    return {
-        版本範圍: [
-            建立公開排行榜條目(條目)
-            for 條目 in 建立排行榜條目(
-                排行榜,
-                版本範圍,
-                包含隱藏報告=包含隱藏報告,
-            )
-            if isinstance(條目, dict)
-        ]
-        for 版本範圍 in 版本紀錄範圍清單
-    }
-
-
 def 建立公開排行榜(
     排行榜: dict[str, Any],
     *,
@@ -3928,11 +3904,10 @@ def 建立公開排行榜(
     }
 
     if 版本設定:
+        # version_cutoff 與每筆條目的過版標記仍供個人成績、全服統計與隊伍榜使用；
+        # 但排行榜已改用繁中服 game_version 累積篩選，不再輸出 all/valid/obsolete
+        # 三份重複的 version_ranking_entries，避免公開資料隨時效切片成倍膨脹。
         公開排行榜["version_cutoff"] = 版本設定
-        公開排行榜["version_ranking_entries"] = 建立版本排行榜條目(
-            排行榜,
-            包含隱藏報告=包含隱藏報告,
-        )
 
     return 公開排行榜
 

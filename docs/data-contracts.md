@@ -38,7 +38,9 @@ npm run sync:data -- --dry-run
 
 個人成績簡表的版本選擇採「版本快照」：先用 `profile_summary_available_from` 與選填的 `profile_summary_available_until` 界定副本的可見版本，再以每個版本的下一個繁中服版本開放時間排除之後的 `recorded_at_iso`。因此選擇 7.0 時，極豔翼蛇鳥／極佐拉加會保留至 7.05 開放前，而 7.05 之後的同副本戰鬥不會混入。幻白虎最後可見於 7.15，7.2 改由幻朱雀呈現。7.15 的截止時間是 2026-07-28 12:00（`2026-07-28T04:00:00.000Z`）；7.2 在此時間到達前維持待開放，到達後自動可選。這與 `version_cutoff` 的 valid／obsolete 語意分離：前者是歷史畫面的時間範圍，後者是副本難度是否已過版。
 
-個人成績條目的 `game_version` 則是另一個顯示欄位：`scripts/build_user_data.mjs` 讀取 `config/game_versions.json`，以戰鬥的 `recorded_at_iso` 對應繁中服已確認的競技版本更新切點並寫入版本標籤。它不改變排名、PR、有效／過版判定或歷史資料；前端設定預設隱藏，使用者開啟後才會在個人分位亮點、成績列摘要與歷史紀錄中顯示，並在一般個人成績單查詢列依目前伺服器的已收錄版本提供篩選。版本條件與職業條件交集套用，且版本選擇代表「截至該版本」的累積快照：選擇 7.1 時包含 7.0、7.05 與 7.1，最新版本即完整成績單，不另設「全部版本」。關閉版本資料時必須清除條件，避免隱性縮小成績單範圍。個別玩家 JSON 由專用資料來源提供，舊資料若尚未寫入該欄位，前端只可依相同固定切點與 `recorded_at_iso` 回推版本供顯示與篩選；有明確欄位時一律以欄位值為準，無法解析時間時不可猜測。歷史表格的自訂排序僅在前端對目前已篩選的 `public_entries` 建立排序檢視，不改寫 JSON 或排名語意；每個副本各自保存排序欄位與方向。可排序欄位為紀錄時間、同職分位、Active、GCD、DPS、rDPS、aDPS、版本與通關時間；缺值固定置後，同職分位會依目前 PR／前 N% 顯示模式採用相應的高低排序方向，切換顯示模式時會保留使用者原本的高低排序意圖。
+個人成績條目的 `game_version` 則是另一個顯示欄位：`scripts/build_user_data.mjs` 讀取 `config/game_versions.json`，以戰鬥的 `recorded_at_iso` 對應繁中服已確認的競技版本更新切點並寫入版本標籤。它不改變排名、PR、有效／過版判定或歷史資料；前端共用的「版本紀錄」設定預設隱藏，使用者開啟後才會在個人分位亮點、成績列摘要與歷史紀錄中顯示，並在一般個人成績單查詢列依目前伺服器的已收錄版本提供篩選。版本條件與職業條件交集套用，且版本選擇代表「截至該版本」的累積快照：選擇 7.1 時包含 7.0、7.05 與 7.1，最新版本即完整成績單，不另設「全部版本」。關閉版本資料時必須清除條件，避免隱性縮小成績單範圍。個別玩家 JSON 由專用資料來源提供，舊資料若尚未寫入該欄位，前端只可依相同固定切點與 `recorded_at_iso` 回推版本供顯示與篩選；有明確欄位時一律以欄位值為準，無法解析時間時不可猜測。歷史表格的自訂排序僅在前端對目前已篩選的 `public_entries` 建立排序檢視，不改寫 JSON 或排名語意；每個副本各自保存排序欄位與方向。可排序欄位為紀錄時間、同職分位、Active、GCD、DPS、rDPS、aDPS、版本與通關時間；缺值固定置後，同職分位會依目前 PR／前 N% 顯示模式採用相應的高低排序方向，切換顯示模式時會保留使用者原本的高低排序意圖。
+
+排行榜的版本紀錄使用相同切點，但資料只寫入 `public/data/ranking-tables/{key}.json` 與對應的 hidden delta 薄索引：`scripts/build_ranking_table_data.mjs` 會在每列加入 `game_version`，並在檔案頂層帶入依序排列的 `game_versions`。共用的「版本紀錄」偏好開啟時，Vue 會選擇 7.05 並保留 `game_version` 為 7.0 或 7.05 的列；選擇 7.1 時則保留 7.0、7.05、7.1，以此類推，並顯示列表版本欄。選單不提供抽象的「目前版本」選項，而是直接預設目前已開放的實際版本；7.2 於 2026-07-28 12:00 開放後會取代 7.15 成為預設。副本較晚開放時，若使用者選到早於 `profile_summary_available_from` 的版本，前端必須明確提示副本的繁中服開放版本與「至少選擇」的最低版本；輪替副本在關閉後不會產生新列，但其開放期間的歷史列仍可由之後版本選項查看。偏好關閉時，排行榜隱藏 `game_version` 介面並在有 `version_cutoff` 的副本改用 `version=all|valid|obsolete`「紀錄時效」篩選；這只使用每列既有的 `is_obsolete_record`，不重建重複的排行切片。
 
 零式在版本快照中會列出全部已開放量級；簡表預設選取 `profile_summary_savage_tier.order` 最大的一組，但可切換至較早量級。因此 7.05 與 7.15 只提供輕量級 1～4；7.2 會同時提供輕量級與次重量級，預設顯示次重量級 1～4（M5S／熱舞綠光、M6S／狂熱糖潮、M7S／野蠻恨心、M8S／劍嚎）。某量級四層皆有該版本有效通關時，該量級按鈕會亮起彩色勾勾；量級內的第 1～4 層仍依一般簡表規則顯示職業與 PR。這只影響簡表呈現，不會刪除舊量級的個人成績或排行歷史。
 
@@ -104,10 +106,12 @@ Honey B. Lovely 粉絲榜來源在 `data/fun/honey_b_fans.json`，公開檔在 `
 - `format="ranking_table_index_v1"`：代表檔案是欄位陣列加列陣列的薄索引。
 - `table_columns`：列陣列的欄位順序。
 - `table_rows`：前端表格、篩選與排序所需的最小欄位。
-- `version_table_rows`：若副本有版本切點，保留 `all|valid|obsolete` 各自排序後的薄索引列，避免前端重新計算版本排名。
+- `game_versions`：由 `config/game_versions.json` 投影出的繁中服版本順序與開放時間；`table_rows` 的 `game_version` 欄位必須依 `recorded_at_iso` 對應其中一個 patch。
 - `detail_path`：指向 `public/data/ranking-details/{key}.json`，使用者點擊「報告」按鈕時才載入。
 
 `public/data/ranking-details/{key}.json` 保存以 entry `id` 為 key 的完整公開排行榜條目，用來組成 FFLogs、xivanalysis 與 ffreplay 外部連結，以及報告彈窗內的追溯欄位。這組檔案是公開 `ranking_entries` 的衍生快取，不是權威來源；重建時仍以 `data/rankings/*.json` 與分片為準。
+
+累積版本篩選不得輸出每個版本各一份完整 `table_rows`。它只使用既有單一薄索引的 `game_version` 小欄位做本地篩選，避免版本數增加時讓 GitHub Pages artifact 以倍數成長。
 
 ## Logs 檢查索引
 
@@ -226,11 +230,10 @@ UCoB（絕巴哈姆特，encounterID 1073）通關判斷需由資料管線補判
 - `is_obsolete_record`
 - `version_status`
 - `version_cutoff_iso`
-- `version_ranking_entries.all|valid|obsolete`
 
 `scripts/build_user_data.mjs` 會在全服統計、個人成績單與隊伍榜輸出 `version_slices.all|valid|obsolete`。同職分位、個人最佳紀錄與職業最佳紀錄只能使用 `valid` 紀錄，過版紀錄只作為歷史資料呈現與追溯。
 
-前端版本篩選一律使用 `version=all|valid|obsolete` 的網址狀態；若副本沒有 `version_cutoff`，必須自動回到 `all`，避免非過版副本出現無效篩選。
+全服統計、玩家比較與隊伍榜仍以 `version=all|valid|obsolete` 的網址狀態篩選有效／過版資料；排行榜依共用偏好擇一使用 `gameVersion` 累積版本紀錄或 `version=all|valid|obsolete` 紀錄時效，且兩種模式都不讀取或輸出 `version_ranking_entries` 與 `version_table_rows`。
 
 ## 外部工具連結
 

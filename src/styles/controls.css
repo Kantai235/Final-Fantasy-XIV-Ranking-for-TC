@@ -436,15 +436,6 @@ button:disabled {
   background: var(--輸出色柔和);
 }
 
-.版本紀錄說明 {
-  max-width: 980px;
-  margin: -4px 0 18px;
-  color: var(--次要文字);
-  font-size: 0.9rem;
-  font-weight: 650;
-  line-height: 1.55;
-}
-
 .版本紀錄標籤 {
   display: inline-flex;
   align-items: center;

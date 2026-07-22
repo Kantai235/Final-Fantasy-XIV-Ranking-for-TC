@@ -105,7 +105,7 @@ GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON={"client_email":"...","private_key":"-----BEG
 | `npm run build:public-rankings` | 執行 `fetch_fflogs.py --rebuild-public`，只重建公開排行榜與副本清單，不呼叫 FFLogs API。 |
 | `npm run fetch:honey-fans` | 抓取 Honey B. Lovely 粉絲榜趣味資料，會呼叫 FFLogs API。 |
 | `npm run build:honey-fans` | 由 `data/fun/honey_b_fans.json` 重建公開趣味榜 JSON，不呼叫 FFLogs API。 |
-| `npm run build:ranking-tables` | 由公開排行榜產生 `ranking-tables` 薄索引與 `ranking-details` 報告細節檔。 |
+| `npm run build:ranking-tables` | 由公開排行榜產生 `ranking-tables` 薄索引與 `ranking-details` 報告細節檔，並以 `config/game_versions.json` 對照 `recorded_at_iso` 寫入排行榜的 `game_version`。 |
 | `npm run build:user-data` | 產生個人成績單、個人成績報告細節、全服統計、近期動態、隊伍榜、伺服器對比與排行榜薄索引資料。 |
 | `npm run validate:data` | 驗證公開副本、公開資料 schema、排行榜分片、raw 欄位、全服統計、使用者索引與 Honey B. Lovely 粉絲榜。 |
 | `npm run audit:gcd:xivanalysis` | 以固定 seed 對零式、極、幻的每個副本各抽樣 10 場；若 10 場未涵蓋全職業，會自動補抽缺漏職業所在戰鬥，並將本地 GCD 覆蓋率重算結果與 xivanalysis 畫面值比對。此流程會存取外部站台並集中重試頁面讀取錯誤，遇到限流請拉長 `--delay-ms`。 |

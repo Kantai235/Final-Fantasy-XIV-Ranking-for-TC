@@ -214,7 +214,7 @@ export default {
       class="使用者搜尋表單 個人成績搜尋表單"
       :class="{
         個人成績搜尋表單簡表模式: 使用者簡表模式,
-        個人成績搜尋表單版本篩選: !使用者簡表模式 && 顯示個人成績版本,
+        個人成績搜尋表單版本篩選: !使用者簡表模式 && 顯示版本紀錄,
       }"
       @submit.prevent="提交使用者搜尋"
     >
@@ -313,7 +313,7 @@ export default {
         </div>
       </div>
 
-      <div v-if="!使用者簡表模式 && 顯示個人成績版本" class="欄位 個人成績版本欄位">
+      <div v-if="!使用者簡表模式 && 顯示版本紀錄" class="欄位 個人成績版本欄位">
         <label for="個人成績版本篩選">版本</label>
         <select
           id="個人成績版本篩選"
@@ -508,7 +508,7 @@ export default {
             </span>
             <span class="個人分位主值">
               <strong :class="同職分位色彩類別(成績.performance)">{{ 格式化目前同職分位(成績.performance) }}</strong>
-              <small v-if="顯示個人成績版本" class="個人分位版本">{{ 取得個人成績紀錄版本(成績) || "—" }}</small>
+              <small v-if="顯示版本紀錄" class="個人分位版本">{{ 取得個人成績紀錄版本(成績) || "—" }}</small>
             </span>
             <small>
               rDPS {{ 格式化傷害數值(成績.rdps) }}
@@ -560,7 +560,7 @@ export default {
             </div>
             <div
               class="趨勢圖"
-              :aria-label="`${趨勢.encounter_name} rDPS 趨勢${顯示個人成績版本 && 趨勢.版本切點列表.length > 0 ? `，版本切點：${趨勢.版本切點列表.map((切點) => 切點.label).join('、')}` : ''}`"
+              :aria-label="`${趨勢.encounter_name} rDPS 趨勢${顯示版本紀錄 && 趨勢.版本切點列表.length > 0 ? `，版本切點：${趨勢.版本切點列表.map((切點) => 切點.label).join('、')}` : ''}`"
               @mouseleave="清除使用者趨勢選取點(趨勢.encounter_key, 趨勢.job)"
               @click="清除使用者趨勢選取點(趨勢.encounter_key, 趨勢.job)"
             >
@@ -584,7 +584,7 @@ export default {
                 ></path>
               </svg>
               <span
-                v-if="顯示個人成績版本 && 趨勢.版本切點列表.length > 0"
+                v-if="顯示版本紀錄 && 趨勢.版本切點列表.length > 0"
                 class="趨勢版本切點層"
                 aria-hidden="true"
               >
@@ -759,7 +759,7 @@ export default {
           v-for="副本 in 使用者副本成績"
           :key="副本.encounter_key"
           class="個人成績列"
-          :class="{ 個人成績列顯示版本: 顯示個人成績版本 }"
+          :class="{ 個人成績列顯示版本: 顯示版本紀錄 }"
         >
           <summary class="成績列摘要">
             <span class="成績列副本">
@@ -853,7 +853,7 @@ export default {
               </small>
               <strong>{{ 副本.best_entry ? 格式化傷害數值(副本.best_entry.adps) : "-" }}</strong>
             </span>
-            <span v-if="顯示個人成績版本" class="成績列數值 成績列數值版本">
+            <span v-if="顯示版本紀錄" class="成績列數值 成績列數值版本">
               <small>版本</small>
               <strong>{{ 副本.best_entry ? 取得個人成績紀錄版本(副本.best_entry) || "—" : "-" }}</strong>
             </span>
@@ -870,7 +870,7 @@ export default {
               >
                 <option value="">原始順序</option>
                 <template v-for="欄位 in 使用者歷史排序欄位" :key="欄位.value">
-                  <option v-if="欄位.value !== 'gameVersion' || 顯示個人成績版本" :value="欄位.value">
+                  <option v-if="欄位.value !== 'gameVersion' || 顯示版本紀錄" :value="欄位.value">
                     {{ 欄位.label }}
                   </option>
                 </template>
@@ -885,7 +885,7 @@ export default {
                 {{ 使用者歷史排序方向圖示(副本.encounter_key) }}
               </button>
             </div>
-            <table class="歷史表格" :class="{ 歷史表格顯示版本: 顯示個人成績版本 }">
+            <table class="歷史表格" :class="{ 歷史表格顯示版本: 顯示版本紀錄 }">
               <thead>
                 <tr>
                   <th scope="col" :aria-sort="使用者歷史排序ARIA(副本.encounter_key, 'recordedAt')">
@@ -1025,7 +1025,7 @@ export default {
                     </span>
                   </th>
                   <th
-                    v-if="顯示個人成績版本"
+                    v-if="顯示版本紀錄"
                     scope="col"
                     class="數字"
                     :aria-sort="使用者歷史排序ARIA(副本.encounter_key, 'gameVersion')"
@@ -1090,7 +1090,7 @@ export default {
                   <td class="數字">{{ 格式化傷害數值(成績.dps) }}</td>
                   <td class="數字">{{ 格式化傷害數值(成績.rdps) }}</td>
                   <td class="數字">{{ 格式化傷害數值(成績.adps) }}</td>
-                  <td v-if="顯示個人成績版本" class="數字">{{ 取得個人成績紀錄版本(成績) || "—" }}</td>
+                  <td v-if="顯示版本紀錄" class="數字">{{ 取得個人成績紀錄版本(成績) || "—" }}</td>
                   <td class="數字">{{ 格式化通關時間(成績.clear_time_seconds) }}</td>
                 </tr>
               </tbody>

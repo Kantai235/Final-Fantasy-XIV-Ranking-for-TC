@@ -320,25 +320,26 @@ async function validateUserProfileBadgeDataScope() {
 }
 
 async function validateUserProfileGameVersionFilter() {
-  const [source, profileSource, controlsStyles, profileStyles, responsiveStyles] = await Promise.all([
+  const [source, profileSource, headerSource, controlsStyles, profileStyles, responsiveStyles] = await Promise.all([
     readText(path.join(srcDir, "composables", "useRankingApp.js")),
     readText(path.join(srcDir, "pages", "UserProfilePage.vue")),
+    readText(path.join(srcDir, "components", "AppHeader.vue")),
     readText(path.join(srcDir, "styles", "controls.css")),
     readText(path.join(srcDir, "styles", "pages-profile.css")),
     readText(path.join(srcDir, "styles", "responsive.css")),
   ]);
 
   assert(
-    profileSource.includes('v-if="!使用者簡表模式 && 顯示個人成績版本"')
+    profileSource.includes('v-if="!使用者簡表模式 && 顯示版本紀錄"')
       && profileSource.includes('v-model="使用者版本篩選"')
       && !profileSource.includes('<option value="">全部版本</option>'),
-    "開啟個人成績版本顯示後，查詢列必須提供版本快照選單，且不應另設全部版本。",
+    "開啟版本紀錄後，個人成績單查詢列必須提供版本快照選單，且不應另設全部版本。",
   );
   assert(
     source.includes('const 使用者版本篩選 = ref("");')
       && source.includes("const 使用者版本選項 = computed(() => {")
       && source.includes("function 符合使用者版本篩選(成績)"),
-    "個人成績版本篩選必須由共享狀態依目前伺服器的公開紀錄產生。",
+    "個人成績單的版本篩選必須由共享狀態依目前伺服器的公開紀錄產生。",
   );
   assert(
     source.includes("return 符合使用者職業篩選(成績) && 符合使用者版本篩選(成績);")
@@ -354,7 +355,7 @@ async function validateUserProfileGameVersionFilter() {
     "個人分位亮點與歷史紀錄必須使用相同的版本解析結果，避免舊資料顯示空白。",
   );
   assert(
-    profileSource.includes('v-if="顯示個人成績版本" class="成績列數值 成績列數值版本"')
+    profileSource.includes('v-if="顯示版本紀錄" class="成績列數值 成績列數值版本"')
       && profileSource.includes('副本.best_entry ? 取得個人成績紀錄版本(副本.best_entry) || "—" : "-"')
       && profileStyles.includes(".個人成績列.個人成績列顯示版本")
       && responsiveStyles.includes(".成績列數值版本 {"),
@@ -369,7 +370,7 @@ async function validateUserProfileGameVersionFilter() {
     "成績列摘要的說明標籤與提示按鈕必須保留足夠間距，避免開啟版本欄後擁擠。",
   );
   assert(
-    source.includes("watch([顯示個人成績版本, 使用者版本選項], () => {")
+    source.includes("watch([顯示版本紀錄, 使用者版本選項], () => {")
       && source.includes('const 最新可用版本 = 使用者版本選項.value[0]?.value || "";')
       && source.includes("使用者版本篩選.value = 最新可用版本;"),
     "開啟版本顯示或切換到沒有原選版本的伺服器時，必須預設回到最新版本快照。",
@@ -378,6 +379,13 @@ async function validateUserProfileGameVersionFilter() {
     controlsStyles.includes(".個人成績搜尋表單.個人成績搜尋表單版本篩選")
       && controlsStyles.includes(".個人成績版本欄位 select"),
     "版本欄位必須有桌面版查詢列配置與可讀取的選單寬度。",
+  );
+  assert(
+    headerSource.includes('<h3 id="版本紀錄設定標題">版本紀錄</h3>')
+      && headerSource.includes("設定版本紀錄顯示(true)")
+      && source.includes("const 版本紀錄顯示偏好儲存鍵")
+      && source.includes("const 顯示版本紀錄 = ref(false);"),
+    "設定視窗必須將個人成績單版本改為共用的版本紀錄偏好。",
   );
   assert(
     source.includes("建立個人成績趨勢版本切點")
@@ -759,7 +767,7 @@ function extractSourceSection(source, startText, endText, label) {
 async function validateEncounterSwitchFilterPersistence() {
   const filePath = path.join(srcDir, "composables", "useRankingApp.js");
   const source = await readText(filePath);
-  const rankingWatcher = extractSourceSection(source, "watch(副本鍵值", "watch(排行榜版本範圍", "排行榜副本切換 watcher");
+  const rankingWatcher = extractSourceSection(source, "watch(副本鍵值", "watch(職業類型篩選", "排行榜副本切換 watcher");
   const statsWatcher = extractSourceSection(
     source,
     "watch([統計副本鍵值, 全服統計資料]",
@@ -1047,6 +1055,35 @@ async function validateMobileProfileSummaryLayout() {
   );
 }
 
+function expectedRankingGameVersion(recordedAtIso, gameVersions) {
+  const recordedAt = new Date(recordedAtIso || "").getTime();
+  if (!Number.isFinite(recordedAt)) {
+    return null;
+  }
+
+  let matchedPatch = null;
+  for (const version of gameVersions) {
+    const startsAt = version.starts_at_iso === null ? null : new Date(version.starts_at_iso).getTime();
+    if (startsAt === null || recordedAt >= startsAt) {
+      matchedPatch = version.patch;
+      continue;
+    }
+    break;
+  }
+  return matchedPatch;
+}
+
+function expectedDefaultRankingGameVersion(gameVersions, currentTime) {
+  let latestOpenedPatch = "";
+  for (const version of gameVersions) {
+    const startsAt = version.starts_at_iso === null ? null : new Date(version.starts_at_iso).getTime();
+    if (startsAt === null || (Number.isFinite(startsAt) && startsAt <= currentTime)) {
+      latestOpenedPatch = version.patch;
+    }
+  }
+  return latestOpenedPatch || gameVersions.at(-1)?.patch || "";
+}
+
 async function validateMobileUserSearchFormLayout() {
   const source = await readText(path.join(srcDir, "styles", "responsive.css"));
   const mobileStyleStart = source.indexOf("@media (max-width: 720px)");
@@ -1202,6 +1239,24 @@ async function validatePublicDataForFrontend() {
   assert(Array.isArray(userIndex?.users) && userIndex.users.length > 0, "public/data/users/index.json 必須包含 users");
   assert(userIndex?.total_users === userIndex?.users?.length, "public/data/users/index.json total_users 必須等於 users 長度");
   const userDetailCache = new Map();
+  const gameVersionsConfig = await readJson(path.join(rootDir, "config", "game_versions.json"), "config/game_versions.json");
+  const gameVersions = Array.isArray(gameVersionsConfig?.versions)
+    ? gameVersionsConfig.versions.map((version) => ({
+      patch: String(version?.patch || "").trim(),
+      label: String(version?.label || version?.patch || "").trim(),
+      starts_at_iso: version?.starts_at_iso ?? null,
+    }))
+    : [];
+  const gameVersionPatches = new Set(gameVersions.map((version) => version.patch));
+  assert(gameVersions.length > 0 && gameVersions.every((version) => version.patch && version.label), "config/game_versions.json 必須提供完整的排行榜版本設定。");
+  assert(
+    expectedDefaultRankingGameVersion(gameVersions, Date.parse("2026-07-22T00:00:00+08:00")) === "7.15",
+    "排行榜在 7.2 開放前必須預設選擇 7.15。",
+  );
+  assert(
+    expectedDefaultRankingGameVersion(gameVersions, Date.parse("2026-07-28T12:00:00+08:00")) === "7.2",
+    "排行榜在 7.2 開放時間起必須預設選擇 7.2。",
+  );
 
   for (const encounter of encounters || []) {
     const key = encounter?.key;
@@ -1215,14 +1270,9 @@ async function validatePublicDataForFrontend() {
     assert(ranking?.schema_version === 1, `${key} 公開排行榜 schema_version 必須是 1`);
     assert(Array.isArray(ranking?.ranking_entries), `${key} 公開排行榜必須包含 ranking_entries`);
     assert(!ranking?.reports && !ranking?.report_shards, `${key} 公開排行榜不可包含 reports 或 report_shards`);
+    assert(!ranking?.version_ranking_entries, `${key} 公開排行榜不可再輸出紀錄時效的 version_ranking_entries`);
     if (encounter?.version_cutoff) {
       assert(ranking?.version_cutoff?.obsolete_after_iso, `${key} 公開排行榜必須保留 version_cutoff.obsolete_after_iso`);
-      for (const versionMode of ["all", "valid", "obsolete"]) {
-        assert(
-          Array.isArray(ranking?.version_ranking_entries?.[versionMode]),
-          `${key} 公開排行榜必須包含 version_ranking_entries.${versionMode}`,
-        );
-      }
       assert(
         ranking.ranking_entries.some((entry) => typeof entry.is_obsolete_record === "boolean"),
         `${key} 公開排行榜條目必須標記 is_obsolete_record`,
@@ -1234,7 +1284,23 @@ async function validatePublicDataForFrontend() {
     assert(table?.format === "ranking_table_index_v1", `${key} 排行榜薄索引 format 必須正確`);
     assert(Array.isArray(table?.table_columns), `${key} 排行榜薄索引必須包含 table_columns`);
     assert(Array.isArray(table?.table_rows), `${key} 排行榜薄索引必須包含 table_rows`);
+    assert(!table?.version_table_rows, `${key} 排行榜薄索引不可再複製紀錄時效的 version_table_rows`);
     assert(table.table_columns.includes("has_report_detail"), `${key} 排行榜薄索引必須標記可按需載入報告細節`);
+    assert(table.table_columns.includes("game_version"), `${key} 排行榜薄索引必須標記每筆繁中服遊戲版本`);
+    assert(
+      JSON.stringify(table?.game_versions || []) === JSON.stringify(gameVersions),
+      `${key} 排行榜薄索引的 game_versions 必須完全對齊 config/game_versions.json`,
+    );
+    const recordedAtIndex = table.table_columns.indexOf("recorded_at_iso");
+    const gameVersionIndex = table.table_columns.indexOf("game_version");
+    for (const row of table.table_rows || []) {
+      const recordedAtIso = Array.isArray(row) ? row[recordedAtIndex] : row?.recorded_at_iso;
+      const gameVersion = Array.isArray(row) ? row[gameVersionIndex] : row?.game_version;
+      assert(
+        gameVersionPatches.has(gameVersion) && gameVersion === expectedRankingGameVersion(recordedAtIso, gameVersions),
+        `${key} 排行榜薄索引的 game_version 必須由 recorded_at_iso 正確推得。`,
+      );
+    }
     assert(table.detail_path === `data/ranking-details/${key}.json`, `${key} 排行榜薄索引 detail_path 必須指向報告細節檔`);
     assert(existsSync(rankingDetailPath), `${key} 必須提供排行榜報告細節檔`);
     const details = await readJson(rankingDetailPath, `${key} 排行榜報告細節`);
@@ -1333,9 +1399,46 @@ async function validateHiddenDeltaDataForFrontend() {
 
   const useRankingAppSource = await readText(path.join(srcDir, "composables", "useRankingApp.js"));
   const rankingDataSource = await readText(path.join(srcDir, "composables", "rankingApp", "useRankingData.js"));
+  const rankingPageSource = await readText(path.join(srcDir, "pages", "RankingPage.vue"));
   const userDataSource = await readText(path.join(srcDir, "utils", "userData.js"));
   assert(rankingDataSource.includes("ranking_table_hidden_delta_v1"), "前端排行榜讀取端必須支援 hidden delta 薄索引");
   assert(rankingDataSource.includes("ranking_detail_hidden_delta_v1"), "前端排行榜讀取端必須支援 hidden delta 報告細節");
+  assert(rankingDataSource.includes("gameVersion: 條目.game_version"), "前端排行榜列必須保留薄索引的 game_version。");
+  assert(
+    rankingPageSource.includes('<col v-show="顯示版本紀錄" class="版本欄" />')
+      && rankingPageSource.includes('<th v-show="顯示版本紀錄" scope="col">版本</th>')
+      && rankingPageSource.includes('v-show="顯示版本紀錄" class="數字 排行榜版本欄">{{ 列.gameVersion || "—" }}</td>')
+      && rankingPageSource.includes('<span v-show="顯示版本紀錄">\n                  <em>版本</em>'),
+    "開啟版本紀錄時，排行榜桌面表格與手機排行卡都必須顯示每筆紀錄的遊戲版本。",
+  );
+  assert(!rankingDataSource.includes("version_table_rows"), "前端排行榜不可再讀取紀錄時效的 version_table_rows。");
+  assert(
+    useRankingAppSource.includes("紀錄符合排行榜遊戲版本")
+      && useRankingAppSource.includes("顯示排行榜版本紀錄")
+      && useRankingAppSource.includes("顯示排行榜紀錄時效"),
+    "排行榜必須依共用偏好切換累積版本紀錄與紀錄時效模式。",
+  );
+  assert(
+    useRankingAppSource.includes("const 排行榜版本範圍 = ref(預設版本紀錄範圍);")
+      && useRankingAppSource.includes("紀錄符合版本範圍(")
+      && useRankingAppSource.includes("{ is_obsolete_record: 列.過版紀錄 }"),
+    "關閉版本紀錄後，排行榜必須以既有過版標記提供紀錄時效篩選。",
+  );
+  assert(
+    useRankingAppSource.includes("gameVersion: 顯示排行榜版本紀錄.value ? 排行榜遊戲版本.value : \"\"")
+      && useRankingAppSource.includes("version: !顯示排行榜版本紀錄.value && 顯示排行榜紀錄時效.value"),
+    "排行榜分享網址必須只保留目前模式對應的版本條件。",
+  );
+  assert(useRankingAppSource.includes("排行榜版本早於副本開放"), "排行榜必須辨識早於副本開放版本的選擇。");
+  assert(
+    rankingPageSource.includes('v-if="顯示排行榜版本紀錄"')
+      && rankingPageSource.includes('v-model="排行榜遊戲版本選取值"')
+      && rankingPageSource.includes('v-if="顯示排行榜紀錄時效"')
+      && rankingPageSource.includes('v-model="排行榜版本範圍"')
+      && rankingPageSource.includes("<span>紀錄時效</span>"),
+    "排行榜介面必須在開啟版本紀錄時顯示版本選單，關閉時改顯示紀錄時效。",
+  );
+  assert(rankingPageSource.includes("排行榜空狀態訊息"), "排行榜必須顯示早於副本開放版本的專屬提示。");
   assert(useRankingAppSource.includes("讀取個人成績報告詳細資料"), "前端個人成績單必須支援按需載入報告細節");
   assert(useRankingAppSource.includes("user_entry_details_v1"), "前端個人成績單必須辨識個人成績報告細節格式");
   assert(userDataSource.includes("user_profile_hidden_delta_v1"), "前端個人成績單讀取端必須支援 hidden delta");
@@ -1997,6 +2100,16 @@ async function validateShareUrlStateCompatibility() {
       expected: { page: "stats", encounter: "savage_m1s", server: "鳳凰", metric: "rdps", version: "valid" },
     },
     {
+      label: "排行榜累積版本紀錄 query",
+      href: "https://ranking.init.engineer/?encounter=savage_m1s&gameVersion=7.1",
+      expected: { page: "ranking", encounter: "savage_m1s", gameVersion: "7.1" },
+    },
+    {
+      label: "排行榜紀錄時效 query",
+      href: "https://ranking.init.engineer/?encounter=savage_m1s&version=obsolete",
+      expected: { page: "ranking", encounter: "savage_m1s", version: "obsolete" },
+    },
+    {
       label: "玩家比較版本 query",
       href: "https://ranking.init.engineer/compare?left=Aa&right=Bb&encounter=extreme_zoraal_ja&version=obsolete",
       expected: { page: "compare", left: "Aa", right: "Bb", encounter: "extreme_zoraal_ja", version: "obsolete" },
@@ -2076,11 +2189,19 @@ async function validateShareUrlStateCompatibility() {
   );
 
   installUrlStateWindow("https://ranking.init.engineer/?encounter=savage_m1s&version=valid", events);
+  module.writeState({ page: "ranking", encounter: "extreme_zoraal_ja", gameVersion: "7.1" }, { replace: true });
+  assert(
+    globalThis.window.location.href ===
+      "https://ranking.init.engineer/?encounter=extreme_zoraal_ja&gameVersion=7.1",
+    "排行榜處於版本紀錄模式時，分享網址必須只保留累積版本紀錄 query。",
+  );
+
+  installUrlStateWindow("https://ranking.init.engineer/?encounter=savage_m1s&gameVersion=7.1", events);
   module.writeState({ page: "ranking", encounter: "extreme_zoraal_ja", version: "obsolete" }, { replace: true });
   assert(
     globalThis.window.location.href ===
       "https://ranking.init.engineer/?encounter=extreme_zoraal_ja&version=obsolete",
-    "排行榜分享網址必須保留版本篩選 query",
+    "排行榜處於紀錄時效模式時，分享網址必須只保留 version query。",
   );
 
   installUrlStateWindow("https://ranking.init.engineer/?encounter=savage_m1s&server=%E9%B3%B3%E5%87%B0&jobType=role%3Ahealer&job=WhiteMage", events);

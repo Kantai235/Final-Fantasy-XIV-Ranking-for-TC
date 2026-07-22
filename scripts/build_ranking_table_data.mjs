@@ -10,6 +10,7 @@ const rankingInputDir = path.join(publicDataDir, "rankings");
 const allRankingInputDir = path.join(publicAllDataDir, "rankings");
 const rankingTableDirName = "ranking-tables";
 const rankingDetailDirName = "ranking-details";
+const gameVersionsConfigPath = path.join(rootDir, "config", "game_versions.json");
 
 const tableColumns = [
   "id",
@@ -24,6 +25,7 @@ const tableColumns = [
   "gcd_coverage",
   "clear_time_seconds",
   "recorded_at_iso",
+  "game_version",
   "duplicate_count",
   "rank",
   "is_obsolete_record",
@@ -53,6 +55,75 @@ async function writeJson(filePath, data) {
   await writeFile(filePath, `${JSON.stringify(data)}\n`, "utf8");
 }
 
+function normalizeGameVersions(config) {
+  const sourceVersions = Array.isArray(config?.versions) ? config.versions : [];
+  if (sourceVersions.length === 0) {
+    throw new Error("config/game_versions.json 必須提供至少一個繁中服版本區間。");
+  }
+
+  const seenPatches = new Set();
+  let previousStartAt = -Infinity;
+
+  return sourceVersions.map((version, index) => {
+    const patch = String(version?.patch || "").trim();
+    const label = String(version?.label || patch).trim();
+    const startsAtIso = version?.starts_at_iso ?? null;
+    const startsAt = startsAtIso === null ? null : new Date(startsAtIso).getTime();
+
+    if (!patch || !label) {
+      throw new Error(`config/game_versions.json 的 versions[${index}] 缺少 patch 或 label。`);
+    }
+    if (seenPatches.has(patch)) {
+      throw new Error(`config/game_versions.json 的 patch 不可重複：${patch}`);
+    }
+    if (index === 0 && startsAtIso !== null) {
+      throw new Error("config/game_versions.json 的第一個版本必須以 starts_at_iso: null 表示最早的已收錄版本。");
+    }
+    if (index > 0 && (!Number.isFinite(startsAt) || startsAt <= previousStartAt)) {
+      throw new Error("config/game_versions.json 的版本開放時間必須依序遞增。");
+    }
+
+    seenPatches.add(patch);
+    if (startsAt !== null) {
+      previousStartAt = startsAt;
+    }
+    return {
+      patch,
+      label,
+      starts_at_iso: startsAtIso,
+    };
+  });
+}
+
+const gameVersions = normalizeGameVersions(await readJson(gameVersionsConfigPath));
+
+function resolveEntryGameVersion(entry) {
+  const explicitPatch = String(entry?.game_version || "").trim();
+  if (gameVersions.some((version) => version.patch === explicitPatch)) {
+    return explicitPatch;
+  }
+
+  const recordedAt = new Date(entry?.recorded_at_iso || entry?.report_start_time_iso || "").getTime();
+  if (!Number.isFinite(recordedAt)) {
+    return null;
+  }
+
+  // 排行榜來源是 append-only 的 fight 紀錄，不能依今天的副本狀態或 scan_start_date 推測。
+  // 唯一可靠的競技版本依據是該場紀錄時間落在哪一個繁中服改版區間；這也讓未來新增
+  // 版本時只要更新 config/game_versions.json，就能在重建薄索引時自動補上新分類。
+  let matchedVersion = null;
+  for (const version of gameVersions) {
+    const startsAt = version.starts_at_iso === null ? null : new Date(version.starts_at_iso).getTime();
+    if (startsAt === null || recordedAt >= startsAt) {
+      matchedVersion = version;
+      continue;
+    }
+    break;
+  }
+
+  return matchedVersion?.patch || null;
+}
+
 function normalizeGcdCoverageForTable(value) {
   if (typeof value === "number") {
     return value;
@@ -77,6 +148,7 @@ function buildTableEntry(entry) {
     gcd_coverage: normalizeGcdCoverageForTable(entry?.gcd_coverage),
     clear_time_seconds: entry?.clear_time_seconds ?? null,
     recorded_at_iso: entry?.recorded_at_iso || entry?.report_start_time_iso || null,
+    game_version: resolveEntryGameVersion(entry),
     duplicate_count: entry?.duplicate_count ?? 1,
     rank: entry?.rank ?? null,
     is_obsolete_record: typeof entry?.is_obsolete_record === "boolean" ? entry.is_obsolete_record : undefined,
@@ -114,18 +186,11 @@ function collectRowOrder(rows, columns) {
 
 function collectDetailEntries(ranking) {
   const details = {};
-  const groups = [
-    ranking?.ranking_entries,
-    ...Object.values(ranking?.version_ranking_entries || {}),
-  ];
-
-  for (const group of groups) {
-    for (const entry of Array.isArray(group) ? group : []) {
-      if (!entry || typeof entry !== "object" || !entry.id) {
-        continue;
-      }
-      details[entry.id] = entry;
+  for (const entry of Array.isArray(ranking?.ranking_entries) ? ranking.ranking_entries : []) {
+    if (!entry || typeof entry !== "object" || !entry.id) {
+      continue;
     }
+    details[entry.id] = entry;
   }
 
   return details;
@@ -188,36 +253,10 @@ async function resolveRankingDelta(ranking, fileName) {
     ),
   };
 
-  const versionModes = new Set([
-    ...Object.keys(baseRanking.version_ranking_entries || {}),
-    ...Object.keys(ranking.version_ranking_entries || {}),
-  ]);
-  if (versionModes.size > 0) {
-    merged.version_ranking_entries = {};
-    for (const versionMode of versionModes) {
-      merged.version_ranking_entries[versionMode] = mergeEntriesByOrder(
-        baseRanking.version_ranking_entries?.[versionMode],
-        ranking.version_ranking_entries?.[versionMode],
-        ranking.version_ranking_entry_order?.[versionMode],
-      );
-    }
-  }
-  if (ranking.version_cutoff || baseRanking.version_cutoff) {
-    merged.version_cutoff = ranking.version_cutoff || baseRanking.version_cutoff;
-  }
-
   return merged;
 }
 
 function buildRankingDeltaPayload(ranking, fileName) {
-  const versionEntries = {};
-  const versionOrders = {};
-  for (const [versionMode, entries] of Object.entries(ranking.version_ranking_entries || {})) {
-    const versionList = Array.isArray(entries) ? entries : [];
-    versionEntries[versionMode] = versionList.filter(isHiddenEntry);
-    versionOrders[versionMode] = versionList.map((entry) => entry?.id).filter(Boolean);
-  }
-
   return {
     schema_version: ranking.schema_version || 1,
     format: "ranking_hidden_delta_v1",
@@ -228,13 +267,6 @@ function buildRankingDeltaPayload(ranking, fileName) {
     hidden_reports_included: true,
     ranking_entry_order: (ranking.ranking_entries || []).map((entry) => entry?.id).filter(Boolean),
     ranking_entries: (ranking.ranking_entries || []).filter(isHiddenEntry),
-    ...(ranking.version_cutoff ? { version_cutoff: ranking.version_cutoff } : {}),
-    ...(Object.keys(versionEntries).length > 0
-      ? {
-          version_ranking_entry_order: versionOrders,
-          version_ranking_entries: versionEntries,
-        }
-      : {}),
   };
 }
 
@@ -272,14 +304,6 @@ async function buildDataset({ label, inputDir, outputBaseDir, detailPathPrefix, 
         .filter(([, entry]) => isHiddenEntry(entry))
         .map(([id]) => id),
     );
-    const versionTableRows = ranking.version_ranking_entries && typeof ranking.version_ranking_entries === "object"
-      ? Object.fromEntries(
-          Object.entries(ranking.version_ranking_entries).map(([versionMode, entries]) => [
-            versionMode,
-            buildTableRows(entries),
-          ]),
-        )
-      : null;
     const tablePayload = {
       schema_version: 1,
       format: deltaMode ? "ranking_table_hidden_delta_v1" : "ranking_table_index_v1",
@@ -288,35 +312,17 @@ async function buildDataset({ label, inputDir, outputBaseDir, detailPathPrefix, 
       updated_at_iso: ranking.updated_at_iso ?? null,
       hidden_reports_included: Boolean(ranking.hidden_reports_included),
       detail_path: detailPath,
+      // 版本設定只在每個已載入的薄索引附帶一份極小中繼資料；前端以列上的 game_version
+      // 做累積篩選，不輸出 7.0、7.05…等多套完整排行榜，避免 GitHub Pages payload 成倍成長。
+      game_versions: gameVersions,
       ...(deltaMode ? { base_path: `data/${rankingTableDirName}/${fileName}` } : {}),
       table_columns: tableColumns,
       table_rows: deltaMode ? filterRowsByIds(tableRows, tableColumns, hiddenEntryIds) : tableRows,
     };
     totalRows += tablePayload.table_rows.length;
 
-    if (ranking.version_cutoff) {
-      tablePayload.version_cutoff = ranking.version_cutoff;
-    }
-    if (versionTableRows) {
-      tablePayload.version_table_rows = deltaMode
-        ? Object.fromEntries(
-            Object.entries(versionTableRows).map(([versionMode, rows]) => [
-              versionMode,
-              filterRowsByIds(rows, tableColumns, hiddenEntryIds),
-            ]),
-          )
-        : versionTableRows;
-    }
     if (deltaMode) {
       tablePayload.table_row_order = collectRowOrder(tableRows, tableColumns);
-      if (versionTableRows) {
-        tablePayload.version_table_row_order = Object.fromEntries(
-          Object.entries(versionTableRows).map(([versionMode, rows]) => [
-            versionMode,
-            collectRowOrder(rows, tableColumns),
-          ]),
-        );
-      }
     }
 
     await writeJson(path.join(tableOutputDir, fileName), tablePayload);

@@ -370,27 +370,27 @@ export default {
             </button>
           </div>
         </section>
-        <section class="設定群組" aria-labelledby="個人成績版本設定標題">
+        <section class="設定群組" aria-labelledby="版本紀錄設定標題">
           <div class="設定群組文字">
-            <h3 id="個人成績版本設定標題">個人成績單版本</h3>
-            <p>開啟後，在個人分位亮點與歷史紀錄顯示繁中服更新時的版本。</p>
+            <h3 id="版本紀錄設定標題">版本紀錄</h3>
+            <p>開啟後，個人成績單與排行榜會顯示繁中服版本；排行榜改用累積版本紀錄篩選。</p>
           </div>
-          <div class="設定選項切換" role="group" aria-label="個人成績單版本顯示">
+          <div class="設定選項切換" role="group" aria-label="版本紀錄顯示">
             <button
               class="設定選項切換按鈕"
               type="button"
-              :class="{ 作用中: !顯示個人成績版本 }"
-              :aria-pressed="!顯示個人成績版本 ? 'true' : 'false'"
-              @click="設定個人成績版本顯示(false)"
+              :class="{ 作用中: !顯示版本紀錄 }"
+              :aria-pressed="!顯示版本紀錄 ? 'true' : 'false'"
+              @click="設定版本紀錄顯示(false)"
             >
               關閉
             </button>
             <button
               class="設定選項切換按鈕"
               type="button"
-              :class="{ 作用中: 顯示個人成績版本 }"
-              :aria-pressed="顯示個人成績版本 ? 'true' : 'false'"
-              @click="設定個人成績版本顯示(true)"
+              :class="{ 作用中: 顯示版本紀錄 }"
+              :aria-pressed="顯示版本紀錄 ? 'true' : 'false'"
+              @click="設定版本紀錄顯示(true)"
             >
               開啟
             </button>

@@ -165,3 +165,13 @@
 3. `scripts/build_public_status_data.mjs` 只把 `data/update_status.json` 與 `public/data/global_stats.json` 中可公開的更新摘要輸出到 `public/data/update_status.json`，供前端推估每 30 分鐘排程、24 小時近期重查、24-72 小時延遲掃描與歷史補查等待時間。
 4. 若使用者貼上的 report 完全不在公開或 hidden delta 索引中，前端只能回報「尚未在公開索引找到」並列出排程與常見原因；不能宣稱已即時確認 private、deleted、沒有繁中服玩家或沒有通關，這類精確判斷仍只能由資料管線下一輪掃描或站務端受保護診斷工具完成。
 5. 待處理名單只以 report code 為單位；即使使用者貼上的 FFLogs 網址帶有 `fight` 參數，也不得把 queue 語意改成指定 fight 補抓。Public 且可讀的 report 可使用一般待收錄或重查；只有本站公開索引已命中且 Apps Script 明確確認 FFLogs 非 Public 或不可讀時，才可使用 `review_existing_visibility` 重新確認公開狀態。workflow 仍須完整重掃整份 report；只有重建後的 hidden delta 真的命中時，收尾才可把該列標為 `hidden`，避免暫時性錯誤或前端參數直接隱藏資料。
+
+### I. 版本紀錄與排行榜時效篩選調整
+1. 本項技術決策僅取代 F.2 與 F.4 中「排行榜」的部分；全服統計、玩家比較與隊伍榜仍保留 `version=all|valid|obsolete` 與 `version_slices` 的有效／過版資料語意。
+2. 公開排行榜不再輸出 `version_ranking_entries`，排行榜薄索引也不再輸出 `version_table_rows`。這兩份資料都是同一排行榜為 valid／obsolete 時效篩選保留的重複切片；刪除後仍保留來源 `ranking_entries`、`version_cutoff` 與每筆紀錄的過版標記，避免 GitHub Pages 載荷重複成長。
+3. 排行榜版本紀錄只使用 `gameVersion` 的累積遊戲版本條件，選單直接顯示實際版本；未手動選擇時，於已開放版本中自動預設最新版本。若選擇早於副本 `profile_summary_available_from` 的版本，空狀態必須指出繁中服開放版本，並要求至少選擇該版本，不得顯示泛用的無資料訊息。
+
+### J. 共用版本紀錄偏好
+1. 本項取代 I.3 的排行榜選單顯示條件。設定視窗的「版本紀錄」是個人成績單與排行榜共用的 localStorage 偏好，預設關閉；既有個人成績單版本偏好鍵值必須繼續可讀寫，避免使用者設定遺失。
+2. 偏好開啟時，排行榜使用 `gameVersion` 累積篩選、顯示版本欄，並隱藏紀錄時效；偏好關閉時，隱藏版本欄與累積版本選單，若副本有 `version_cutoff` 則改顯示 `version=all|valid|obsolete` 紀錄時效。網址只能保存目前模式使用的條件。
+3. 兩種前端篩選都只能使用薄索引既有的 `game_version` 與 `is_obsolete_record`，不得恢復 `version_ranking_entries` 或 `version_table_rows`，以維持 GitHub Pages 容量控制。

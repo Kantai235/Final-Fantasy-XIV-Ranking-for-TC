@@ -60,14 +60,6 @@ function collectTableRows(table) {
       rows.push(item);
     }
   }
-  for (const versionRows of Object.values(table?.version_table_rows || {})) {
-    for (const row of Array.isArray(versionRows) ? versionRows : []) {
-      const item = rowToObject(row, columns);
-      if (item) {
-        rows.push(item);
-      }
-    }
-  }
   return rows;
 }
 
@@ -230,20 +222,6 @@ async function resolveRankingPayload(ranking) {
     hidden_reports_included: true,
     ranking_entries: mergeEntriesByOrder(base?.ranking_entries, ranking.ranking_entries, ranking.ranking_entry_order),
   };
-  const versionModes = new Set([
-    ...Object.keys(base?.version_ranking_entries || {}),
-    ...Object.keys(ranking.version_ranking_entries || {}),
-  ]);
-  if (versionModes.size > 0) {
-    merged.version_ranking_entries = {};
-    for (const versionMode of versionModes) {
-      merged.version_ranking_entries[versionMode] = mergeEntriesByOrder(
-        base?.version_ranking_entries?.[versionMode],
-        ranking.version_ranking_entries?.[versionMode],
-        ranking.version_ranking_entry_order?.[versionMode],
-      );
-    }
-  }
   return merged;
 }
 
@@ -262,21 +240,6 @@ async function resolveRankingTablePayload(table) {
     table_columns: columns,
     table_rows: mergeRowsByOrder(base?.table_rows, table.table_rows, table.table_row_order, columns),
   };
-  const versionModes = new Set([
-    ...Object.keys(base?.version_table_rows || {}),
-    ...Object.keys(table.version_table_rows || {}),
-  ]);
-  if (versionModes.size > 0) {
-    merged.version_table_rows = {};
-    for (const versionMode of versionModes) {
-      merged.version_table_rows[versionMode] = mergeRowsByOrder(
-        base?.version_table_rows?.[versionMode],
-        table.version_table_rows?.[versionMode],
-        table.version_table_row_order?.[versionMode],
-        columns,
-      );
-    }
-  }
   return merged;
 }
 

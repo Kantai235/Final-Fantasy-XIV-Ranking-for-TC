@@ -50,7 +50,7 @@ GraphQL 查詢字串集中在 `scripts/fflogs_pipeline/graphql_queries.py`；這
 - `public/data/update_status.json`
 - `public/data/all/` hidden delta 與額外檢視索引
 
-複雜排序、分位數、隊友統計、職業分布與版本切片應在這一層完成。`config/game_versions.json` 的繁中服競技版本切點也在這一層依 `recorded_at_iso` 轉為個人成績的 `game_version`，供 Vue 直接顯示；不得由前端自行依目前時間推測。個別玩家 JSON 由專用資料來源提供，若舊資料暫未同步 `game_version`，Vue 只能依同一組固定切點與 `recorded_at_iso` 回推顯示／篩選版本，且明確欄位優先。若新增前端畫面需要新的統計欄位，請先擴充這一層，再讓 Vue 讀取結果。
+複雜排序、分位數、隊友統計、職業分布與版本切片應在這一層完成。`config/game_versions.json` 的繁中服競技版本切點會依 `recorded_at_iso` 轉為個人成績與排行榜薄索引列的 `game_version`；薄索引另附帶同一份極小 `game_versions` 中繼資料，供 Vue 在「版本紀錄」偏好開啟時做累積版本篩選。偏好關閉時則只使用每列既有的 `is_obsolete_record` 做紀錄時效篩選，兩種模式都不得複製五套完整排行榜。個別玩家 JSON 由專用資料來源提供，若舊資料暫未同步 `game_version`，Vue 只能依同一組固定切點與 `recorded_at_iso` 回推顯示／篩選版本，且明確欄位優先。若新增前端畫面需要新的統計欄位，請先擴充這一層，再讓 Vue 讀取結果。
 同名角色若出現在不同伺服器，公開衍生資料會以「角色名稱 + 伺服器」拆成不同玩家；目前不再自動處理轉服合併，也不再把另一個伺服器列為搜尋 alias。
 正式 GitHub Actions 會在資料驗證後把 `public/data/users`、`public/data/user-entry-details` 與 hidden 使用者差量同步到 `Final-Fantasy-XIV-Ranking-for-TC-Users`，再於 Pages 建置完成後移除 `dist/data/users` 內除了 `index.json` 之外的個別玩家檔、`dist/data/user-entry-details`、`dist/data/all/users` 與 `dist/data/all/user-entry-details`。這不改變資料建置層的輸出契約，只是部署時把大型個別玩家 JSON 放到專用資料來源，並讓所有訪客共用的搜尋索引留在主站 CDN 快取層。
 
@@ -123,10 +123,10 @@ GraphQL 查詢字串集中在 `scripts/fflogs_pipeline/graphql_queries.py`；這
 
 ## 前端頁面範圍
 
-- 排行榜：依副本、伺服器、職業類型、職業、關鍵字與版本篩選成績。
+- 排行榜：依副本、伺服器、職業類型、職業與關鍵字篩選成績；共用「版本紀錄」偏好開啟時提供累積版本篩選與版本欄，關閉時則為有 `version_cutoff` 的副本提供紀錄時效篩選。
 - 全服統計：伺服器分布、職業分布、零式進度概覽與資料狀態。
-- 個人成績單：各副本最佳紀錄、歷史紀錄、同職分位、常同場隊友與分享用代表職業；開啟版本資料時可依目前伺服器與職業交集選擇繁中服競技版本的累積快照，所選版本會包含該版本及所有較早紀錄，最新版本即完整成績單。
-- 設定：主題、分位顯示與個人成績版本欄位等偏好保存在瀏覽器；說明提示按鈕預設顯示，關閉時會連同 Teleport 彈窗內的提示一併隱藏。
+- 個人成績單：各副本最佳紀錄、歷史紀錄、同職分位、常同場隊友與分享用代表職業；開啟版本紀錄時可依目前伺服器與職業交集選擇繁中服競技版本的累積快照，所選版本會包含該版本及所有較早紀錄，最新版本即完整成績單。
+- 設定：主題、分位顯示與共用的版本紀錄等偏好保存在瀏覽器；說明提示按鈕預設顯示，關閉時會連同 Teleport 彈窗內的提示一併隱藏。
 - 成績趨勢：版本資料開啟且紀錄時間完整時，以線性時間軸渲染，並在繁中服更新切點標示垂直版本線；缺少時間則保留等距資料點軸。
 - 玩家比較：依職能或職業並排比較兩名玩家。
 - 隊伍榜：同場 8 人公開紀錄的最速通關、隊伍 rDPS 與成員組成。

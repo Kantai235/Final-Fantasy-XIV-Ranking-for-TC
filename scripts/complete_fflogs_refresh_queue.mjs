@@ -153,10 +153,7 @@ export function isHiddenEntry(entry) {
 }
 
 export function rankingEntryGroups(ranking) {
-  return [
-    ranking?.ranking_entries,
-    ...Object.values(ranking?.version_ranking_entries || {}),
-  ].filter(Array.isArray);
+  return [ranking?.ranking_entries].filter(Array.isArray);
 }
 
 export function addSourceReportCodesFromRanking(ranking, indexedReportCodes, { includeHidden }) {

@@ -1924,7 +1924,7 @@
     grid-column: 1 / -1;
   }
 
-  .排行榜表格 td:nth-child(11) {
+  .排行榜表格 td:nth-child(12) {
     grid-column: 1 / -1;
   }
 
@@ -1969,6 +1969,10 @@
   }
 
   .排行榜表格 td:nth-child(11)::before {
+    content: "版本";
+  }
+
+  .排行榜表格 td:nth-child(12)::before {
     content: "紀錄時間";
   }
 
@@ -2056,6 +2060,7 @@
   .排行榜表格 th:nth-child(9),
   .排行榜表格 th:nth-child(10),
   .排行榜表格 th:nth-child(11),
+  .排行榜表格 th:nth-child(12),
   .排行榜表格 th:nth-child(5),
   .排行榜表格 td:nth-child(5) {
     display: none;
@@ -2113,13 +2118,20 @@
   }
 
   .排行榜表格 td:nth-child(11) {
+    grid-column: 4;
+    grid-row: 2;
+    justify-content: flex-end;
+  }
+
+  .排行榜表格 td:nth-child(12) {
     grid-column: 3 / 5;
     grid-row: 3;
   }
 
   .排行榜表格 td:nth-child(7),
   .排行榜表格 td:nth-child(9),
-  .排行榜表格 td:nth-child(11) {
+  .排行榜表格 td:nth-child(11),
+  .排行榜表格 td:nth-child(12) {
     justify-content: flex-end;
   }
 
@@ -2158,7 +2170,8 @@
   .排行榜表格 td:nth-child(7),
   .排行榜表格 td:nth-child(9),
   .排行榜表格 td:nth-child(10),
-  .排行榜表格 td:nth-child(11) {
+  .排行榜表格 td:nth-child(11),
+  .排行榜表格 td:nth-child(12) {
     gap: 3px;
     color: var(--次要文字);
     font-size: 0.66rem;
@@ -2179,13 +2192,18 @@
   }
 
   .排行榜表格 td:nth-child(11)::before {
+    content: "版" !important;
+  }
+
+  .排行榜表格 td:nth-child(12)::before {
     content: "紀" !important;
   }
 
   .排行榜表格 td:nth-child(7)::before,
   .排行榜表格 td:nth-child(9)::before,
   .排行榜表格 td:nth-child(10)::before,
-  .排行榜表格 td:nth-child(11)::before {
+  .排行榜表格 td:nth-child(11)::before,
+  .排行榜表格 td:nth-child(12)::before {
     color: var(--靜音文字);
     font-size: 0.6rem;
     font-weight: 760;
@@ -2251,18 +2269,18 @@
     height: 24px;
   }
 
-  .排行榜表格 td:nth-child(11) .緊湊紀錄時間 {
+  .排行榜表格 td:nth-child(12) .緊湊紀錄時間 {
     display: grid;
     justify-items: end;
     gap: 0;
     line-height: 1;
   }
 
-  .排行榜表格 td:nth-child(11) .緊湊紀錄時間 span:first-child {
+  .排行榜表格 td:nth-child(12) .緊湊紀錄時間 span:first-child {
     font-size: 0.62rem;
   }
 
-  .排行榜表格 td:nth-child(11) .緊湊紀錄時間 span:last-child {
+  .排行榜表格 td:nth-child(12) .緊湊紀錄時間 span:last-child {
     font-size: 0.6rem;
   }
 
@@ -2321,6 +2339,7 @@
   .排行榜表格 th:nth-child(9),
   .排行榜表格 th:nth-child(10),
   .排行榜表格 th:nth-child(11),
+  .排行榜表格 th:nth-child(12),
   .排行榜表格 td:nth-child(3),
   .排行榜表格 td:nth-child(4),
   .排行榜表格 td:nth-child(5),
@@ -2329,7 +2348,8 @@
   .排行榜表格 td:nth-child(8),
   .排行榜表格 td:nth-child(9),
   .排行榜表格 td:nth-child(10),
-  .排行榜表格 td:nth-child(11) {
+  .排行榜表格 td:nth-child(11),
+  .排行榜表格 td:nth-child(12) {
     display: none;
   }
 
@@ -2461,7 +2481,8 @@
   .排行榜表格 td:nth-child(7)::before,
   .排行榜表格 td:nth-child(9)::before,
   .排行榜表格 td:nth-child(10)::before,
-  .排行榜表格 td:nth-child(11)::before {
+  .排行榜表格 td:nth-child(11)::before,
+  .排行榜表格 td:nth-child(12)::before {
     content: none !important;
   }
 
@@ -2637,7 +2658,7 @@
 
   .手機排行資訊列 {
     display: grid;
-    grid-template-columns: auto auto minmax(0, 1fr) auto;
+    grid-template-columns: auto auto auto minmax(0, 1fr) auto;
     align-items: center;
     gap: 6px;
     color: var(--次要文字);
