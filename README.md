@@ -114,7 +114,7 @@ README 只保留入口與最小操作脈絡，完整說明請依主題閱讀：
 | `npm run read:fflogs-refresh-queue` | 讀取 Google Sheet 待收錄名單，輸出本輪會送入 `FFLOGS_RETRY_REPORT_CODES` 的 report code。 |
 | `npm run complete:fflogs-refresh-queue` | 依公開與 hidden 狀態索引、排行榜來源與 report 分片更新 Google Sheet 待處理列：已收錄為 `done`，已確認隱藏為 `hidden`，無通關或無繁中服玩家則寫入終止狀態與原因；也會校正待處理欄位標題與純數字的錯置訊息。 |
 | `npm run validate:data` | 驗證公開資料、schema 契約、分片、全服統計、使用者索引與 Honey B. Lovely 粉絲榜完整性。 |
-| `npm run compact:state` | 壓縮 `data/state.json` 的重複 checkpoint、可重建時間鏡像與 JSON 空白，保留 `checked_reports` 狀態並降低 Git blob 體積。 |
+| `npm run compact:state` | 壓縮 state 主檔與各副本 `checked_reports` 分片中的重複 checkpoint、可重建時間鏡像與 JSON 空白；保留完整快取並檢查每個 Git blob 體積。 |
 | `npm run audit:gcd:xivanalysis` | 以固定 seed 對零式、極、幻的每個副本各抽樣 10 場，若 10 場未涵蓋全職業會自動補抽缺漏職業所在戰鬥，並將本地 GCD 覆蓋率與 xivanalysis 畫面值比對；100 場外站頁面稽核使用 `--sample-size 100 --local-mode stored --tolerance 0`，必要時可搭配 `--workers`、`--exclude-report-codes` 與 `--apply-all-checked`。 |
 | `npm run test:data-conservation` | 檢查排行榜薄索引、細節檔、使用者檔與 hidden delta 的資料守恆。 |
 | `npm run audit:pages-payload` | 以 baseline 模式稽核 `dist/` 與 GitHub Pages payload 體積，只在超過硬上限時失敗，可用 `-- --write-history <path>` 記錄趨勢。 |
@@ -137,7 +137,7 @@ README 只保留入口與最小操作脈絡，完整說明請依主題閱讀：
 - `.env` 內的 FFLogs 與 Cloudflare 憑證是敏感資訊，不應提交到版本控制，也不要印到 Log。
 - 若新增前端畫面需要新的統計欄位，請先擴充資料建置層，再讓 Vue 讀取新的靜態 JSON。
 - Honey B. Lovely 粉絲榜來源在 `data/fun/honey_b_fans.json`，公開輸出在 `public/data/fun/honey_b_fans.json`；它是獨立趣味資料，不屬於正式 `data/rankings/` schema。公開榜單、粉絲報告與本期 `records` 只計近 7 天，歷史紀錄仍留在來源檔並輸出 `historical_*`、連續入榜週數與自台灣時間 2026-05-30 00:00:00 起算的活動 `team_rankings`；正式 workflow 會執行 `npm run fetch:honey-fans` 抓新資料，再用 `npm run build:honey-fans` 整理公開 JSON。
-- `data/state.json` 會以緊湊 JSON 保存大量 `checked_reports`，避免為了通過 GitHub 100 MiB 單檔限制而刪除跨輪略過依據；正式 workflow 會在資料 commit 前執行 `npm run compact:state -- --max-bytes 104857600`。`processed_at_iso` 不再作為 report checkpoint 必要欄位，因為它可由 `processed_at` 毫秒時間重建。
+- `data/state.json` 保存掃描游標與執行狀態；跨輪 `checked_reports` 依副本緊湊保存於 `data/state/checked_reports/{encounter key}.json`。讀取資料管線時會自動還原既有 state 結構，避免為了通過 GitHub 100 MiB 單檔限制而刪除略過依據；正式 workflow 會在資料 commit 前執行 `npm run compact:state -- --max-bytes 104857600`，確認主檔與每個分片都符合限制。`processed_at_iso` 不再作為 report checkpoint 必要欄位，因為它可由 `processed_at` 毫秒時間重建。
 - 既有 report 的公開狀態巡檢以 report code 為單位：尚未巡檢時優先選較新的 report，之後依來源分片保存的 `report_status_checked_at` 輪替。FFLogs 回傳 `visibility=Private`、report 不存在或封存不可讀時，來源 report 會標記 hidden，正常公開產物不再列出該紀錄；完整追溯則保留於 hidden delta。
 - GitHub Actions 的 FFLogs 排行榜抓取步驟預設設定 `FFLOGS_MAX_RUNTIME_SECONDS=6000` 與 `FFLOGS_RUNTIME_GRACE_SECONDS=900`，可由 repo variables 覆寫。這讓 FFLogs 憑證全數進入長冷卻時，`fetch_fflogs.py` 能先保留 `active_scan` 續跑位置並正常進入後續資料建置與 commit，避免 GitHub-hosted runner 直接取消整個 job。
 - GitHub Actions 會先用 `FFLOGS_RECENT_GCD_BACKFILL_REPORT_LIMIT` 控制的非 stateful GCD 補洞追最新候選，再用 `FFLOGS_GCD_BACKFILL_REPORT_LIMIT` 控制的 stateful 回補從固定 cutoff 往舊追；前者處理 cutoff 後空洞，後者處理歷史追平。

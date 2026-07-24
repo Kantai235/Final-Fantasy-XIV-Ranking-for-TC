@@ -26,8 +26,8 @@ RAW_EVENT_GCD_ENCOUNTERS = gcd_core.RAW_EVENT_GCD_ENCOUNTERS
 GCD_CALCULATION_VERSION = gcd_core.GCD_CALCULATION_VERSION
 
 read_json = getattr(fflogs, "\u8b80\u53d6_json")
-write_json = getattr(fflogs, "\u5beb\u5165_json")
-state_path = getattr(fflogs, "\u72c0\u614b\u6a94\u6848\u8def\u5f91")
+load_state_file = getattr(fflogs, "\u8b80\u53d6\u72c0\u614b\u6a94\u6848")
+write_state_file = getattr(fflogs, "\u5beb\u5165\u72c0\u614b\u6a94\u6848")
 ranking_path = getattr(fflogs, "\u6392\u884c\u699c\u6a94\u6848\u8def\u5f91")
 load_ranking_file = getattr(fflogs, "\u8b80\u53d6\u6392\u884c\u699c\u6a94\u6848")
 write_ranking_file = getattr(fflogs, "\u5beb\u5165\u6392\u884c\u699c\u6a94\u6848")
@@ -287,8 +287,7 @@ def cutoff_iso(cutoff_ms: int | None) -> str | None:
 
 
 def load_state() -> dict[str, Any]:
-    state = read_json(state_path, {})
-    return state if isinstance(state, dict) else {}
+    return load_state_file()
 
 
 def resolve_stateful_report_window(
@@ -739,7 +738,7 @@ def main() -> int:
                 failed=0,
                 checked_at_iso=checked_at_iso,
             )
-            write_json(state_path, state)
+            write_state_file(state)
         return 0
 
     session = fflogs.requests.Session()
@@ -2667,7 +2666,7 @@ def main() -> int:
             failed_report_codes=failed_report_codes,
             completed_report_codes=completed_report_codes,
         )
-        write_json(state_path, state)
+        write_state_file(state)
         print("已更新 data/state.json 的 gcd_report_backfill 回補狀態。")
     return 0
 

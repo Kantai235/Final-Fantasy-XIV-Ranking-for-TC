@@ -14,6 +14,7 @@ from typing import Any, Callable, Iterable
 import requests
 from dotenv import load_dotenv
 
+from fflogs_pipeline import state_store
 from fflogs_pipeline.graphql_queries import (
     深層過濾查詢,
     報告狀態查詢,
@@ -635,14 +636,17 @@ def 就地覆寫檔案(來源路徑: Path, 目標路徑: Path) -> None:
 def 寫入_json(路徑: Path, 內容: Any, *, 緊湊格式: bool = False) -> None:
     路徑.parent.mkdir(parents=True, exist_ok=True)
     暫存路徑 = 路徑.with_name(f".{路徑.name}.{os.getpid()}.{time.time_ns()}.tmp")
-    是狀態檔案 = 路徑.resolve() == 狀態檔案路徑.resolve()
+    是狀態儲存檔案 = (
+        路徑.resolve() == 狀態檔案路徑.resolve()
+        or state_store.is_checked_reports_shard_path(狀態檔案路徑, 路徑)
+    )
 
     try:
         with 暫存路徑.open("w", encoding="utf-8", newline="\n") as 檔案:
-            if 緊湊格式 or 是狀態檔案:
-                # state.json 保存大量 checked_reports 快取；這些狀態不能任意刪除，
-                # 因此用無縮排格式降低 Git blob 體積，避免排程資料 commit 超過 GitHub 100 MiB 單檔限制。
-                json.dump(內容, 檔案, ensure_ascii=False, sort_keys=是狀態檔案, separators=(",", ":"))
+            if 緊湊格式 or 是狀態儲存檔案:
+                # state 主檔與 checked_reports 分片都是跨輪 checkpoint；不能為了縮小檔案刪資料。
+                # 兩者固定使用排序過的緊湊 JSON，讓 Git 只記錄實質變更，也避免單一分片膨脹。
+                json.dump(內容, 檔案, ensure_ascii=False, sort_keys=是狀態儲存檔案, separators=(",", ":"))
             else:
                 json.dump(內容, 檔案, ensure_ascii=False, indent=2, sort_keys=True)
             檔案.write("\n")
@@ -676,6 +680,17 @@ def 寫入_json(路徑: Path, 內容: Any, *, 緊湊格式: bool = False) -> Non
                 暫存路徑.unlink()
             except OSError:
                 pass
+
+
+def 讀取狀態檔案() -> dict[str, Any]:
+    """相容舊版 inline state，並在記憶體中合併各副本 checked_reports 分片。"""
+    return state_store.load_state(狀態檔案路徑)
+
+
+def 寫入狀態檔案(狀態: dict[str, Any]) -> None:
+    # 先安全落地各副本分片、最後才改寫主檔。若流程在兩者間中斷，下次讀取會依
+    # processed_at 合併舊 inline 快取與新分片，不會漏掉已檢查的 report。
+    state_store.write_state(狀態檔案路徑, 狀態, write_json=寫入_json)
 
 
 階段切換清除欄位 = {
@@ -716,7 +731,7 @@ def 更新副本掃描進度(狀態: dict[str, Any], 副本設定: dict[str, Any
     即時進度.update(進度)
     即時進度["updated_at"] = 更新時間戳記
     即時進度["updated_at_iso"] = 毫秒轉_iso(更新時間戳記)
-    寫入_json(狀態檔案路徑, 狀態)
+    寫入狀態檔案(狀態)
 
 
 def 清除副本掃描進度(狀態: dict[str, Any], 副本設定: dict[str, Any]) -> None:
@@ -4677,7 +4692,7 @@ def 標記報告處理狀態(
     副本狀態["checkpoint_updated_at"] = 現在時間戳記
     副本狀態["checkpoint_updated_at_iso"] = 毫秒轉_iso(現在時間戳記)
     if 立即寫入:
-        寫入_json(狀態檔案路徑, 狀態)
+        寫入狀態檔案(狀態)
 
 
 def 更新狀態(
@@ -4713,7 +4728,7 @@ def 更新狀態(
         副本狀態.pop("active_scan", None)
         副本狀態索引[副本["key"]] = 副本狀態
     狀態["encounters"] = 副本狀態索引
-    寫入_json(狀態檔案路徑, 狀態)
+    寫入狀態檔案(狀態)
 
 
 def main() -> int:
@@ -4724,7 +4739,7 @@ def main() -> int:
     只處理指定報告模式 = bool(只處理報告代碼)
     寫入公開副本清單(副本清單)
 
-    狀態 = 讀取_json(狀態檔案路徑, {})
+    狀態 = 讀取狀態檔案()
     掃描結束時間戳記 = 現在毫秒()
     gcd計算器 = 即時GCD覆蓋率計算器()
 
@@ -4811,7 +4826,7 @@ def main() -> int:
         if not 強制 and 待寫入狀態檢查點數 < 狀態檢查點批次寫入報告數:
             return
 
-        寫入_json(狀態檔案路徑, 狀態)
+        寫入狀態檔案(狀態)
         print(f"已批次寫入 {待寫入狀態檢查點數} 筆 state checkpoint（{原因}）。")
         標記狀態已寫入()
 
@@ -5040,7 +5055,7 @@ def main() -> int:
             )
             處理狀態["已處理報告代碼"].add(已儲存報告代碼)
             處理狀態["已知報告代碼"].add(已儲存報告代碼)
-        寫入_json(狀態檔案路徑, 狀態)
+        寫入狀態檔案(狀態)
         標記狀態已寫入()
 
         處理狀態["rankings_inserted_or_updated"] += 批次新增或更新數量
@@ -6046,7 +6061,7 @@ def main() -> int:
         狀態["last_manual_run_at"] = 掃描結束時間戳記
         狀態["last_manual_run_at_iso"] = 毫秒轉_iso(掃描結束時間戳記)
         狀態["last_run_stats"] = 統計
-        寫入_json(狀態檔案路徑, 狀態)
+        寫入狀態檔案(狀態)
     else:
         for 副本設定 in 已完成副本清單:
             套用延遲掃描執行狀態(狀態, 副本設定, 副本處理狀態[副本設定["key"]])

@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
-import time
 from pathlib import Path
 from typing import Any
+
+from fflogs_pipeline import state_store
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -14,22 +14,16 @@ STATE_PATH = PROJECT_ROOT / "data" / "state.json"
 GITHUB_SINGLE_BLOB_LIMIT_BYTES = 100 * 1024 * 1024
 
 
-def read_json(path: Path, default: Any) -> Any:
-    if not path.exists():
-        return default
-    with path.open("r", encoding="utf-8") as file:
-        return json.load(file)
-
-
 def compact_json_bytes(content: Any) -> bytes:
-    return (json.dumps(content, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n").encode("utf-8")
+    return state_store.compact_json_bytes(content)
 
 
-def write_json(path: Path, content: Any) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temp_path = path.with_name(f".{path.name}.{os.getpid()}.{time.time_ns()}.tmp")
-    temp_path.write_bytes(compact_json_bytes(content))
-    os.replace(temp_path, path)
+def on_disk_state_storage_sizes(state_path: Path) -> dict[Path, int]:
+    paths = [state_path]
+    shard_directory = state_store.checked_reports_directory(state_path)
+    if shard_directory.exists():
+        paths.extend(sorted(shard_directory.glob("*.json")))
+    return {path: path.stat().st_size for path in paths if path.exists()}
 
 
 def stable_json(value: Any) -> str:
@@ -121,29 +115,28 @@ def parse_args() -> argparse.Namespace:
         "--max-bytes",
         type=int,
         default=0,
-        help="壓縮後若仍超過此 byte 數就失敗；0 代表使用 GitHub 100 MiB 單檔限制。",
+        help="任一 state 主檔或 checked_reports 分片超過此 byte 數就失敗；0 代表 GitHub 100 MiB 單檔限制。",
     )
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
-    state = read_json(STATE_PATH, {})
-    if not isinstance(state, dict):
-        raise RuntimeError("data/state.json 必須是 JSON 物件。")
+    state = state_store.load_state(STATE_PATH)
 
-    before_bytes = STATE_PATH.stat().st_size if STATE_PATH.exists() else 0
+    before_sizes = on_disk_state_storage_sizes(STATE_PATH)
     timestamp_summary = compact_report_checkpoint_timestamps(state)
     summary = compact_processed_reports(state)
-    compacted_bytes = len(compact_json_bytes(state))
+    compacted_sizes = state_store.state_storage_sizes(STATE_PATH, state)
 
-    if not args.dry_run and STATE_PATH.exists() and compacted_bytes != before_bytes:
-        write_json(STATE_PATH, state)
+    if not args.dry_run:
+        state_store.write_state(STATE_PATH, state)
 
-    after_bytes = STATE_PATH.stat().st_size if STATE_PATH.exists() else 0
+    after_sizes = compacted_sizes if args.dry_run else on_disk_state_storage_sizes(STATE_PATH)
     mode = "dry-run" if args.dry_run else "written"
-    if args.dry_run:
-        after_bytes = compacted_bytes
+    before_total = sum(before_sizes.values())
+    after_total = sum(after_sizes.values())
+    largest_path, largest_size = max(after_sizes.items(), key=lambda item: item[1], default=(STATE_PATH, 0))
 
     print(
         f"State compact {mode}: "
@@ -153,20 +146,22 @@ def main() -> int:
     )
     print(
         f"processed_reports: {summary['processed_before']:,} -> {summary['processed_after']:,}; "
-        f"bytes: {before_bytes:,} -> {after_bytes:,}."
+        f"state storage bytes: {before_total:,} -> {after_total:,} across {len(after_sizes)} files."
     )
     limit = args.max_bytes or GITHUB_SINGLE_BLOB_LIMIT_BYTES
-    if after_bytes > limit:
-        print(
-            f"ERROR: data/state.json is {after_bytes:,} bytes after compaction; "
-            f"limit is {limit:,} bytes.",
-            file=sys.stderr,
-        )
+    oversized = [(path, size) for path, size in after_sizes.items() if size > limit]
+    if oversized:
+        for path, size in oversized:
+            print(
+                f"ERROR: {path.relative_to(PROJECT_ROOT)} is {size:,} bytes after compaction; "
+                f"limit is {limit:,} bytes.",
+                file=sys.stderr,
+            )
         return 1
-    if after_bytes > GITHUB_SINGLE_BLOB_LIMIT_BYTES:
+    if largest_size > GITHUB_SINGLE_BLOB_LIMIT_BYTES:
         print(
-            f"WARNING: data/state.json is above GitHub's 100 MiB single-file limit "
-            f"({after_bytes:,} > {GITHUB_SINGLE_BLOB_LIMIT_BYTES:,}).",
+            f"WARNING: {largest_path.relative_to(PROJECT_ROOT)} is above GitHub's 100 MiB single-file limit "
+            f"({largest_size:,} > {GITHUB_SINGLE_BLOB_LIMIT_BYTES:,}).",
             file=sys.stderr,
         )
     return 0

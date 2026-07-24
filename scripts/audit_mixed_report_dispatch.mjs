@@ -1,6 +1,7 @@
 import { appendFileSync, existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { readStateWithCheckedReportShards } from "./state_store.mjs";
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const configPath = path.join(rootDir, "config", "encounters.json");
@@ -385,7 +386,7 @@ function appendStepSummary(lines) {
 
 const revision = readMixedDispatchRevision();
 const encounters = enabledEncounterList(readJson(configPath, []));
-const state = readJson(statePath, {});
+const state = readStateWithCheckedReportShards(statePath, {});
 const rows = encounters.map((encounter) => buildEncounterAudit(encounter, state, revision));
 const summary = summarize(rows);
 const lines = buildMarkdownReport(rows, summary, revision);

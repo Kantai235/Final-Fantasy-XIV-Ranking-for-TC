@@ -2,6 +2,7 @@ import { appendFileSync, existsSync } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { readStateWithCheckedReportShards } from "./state_store.mjs";
 import {
   batchUpdateSheetValues,
   parseServiceAccountJson,
@@ -538,7 +539,7 @@ async function main() {
     return QUEUED_STATUSES.has(status);
   });
   const statusesByCode = buildReportStatusesByCode(
-    await readJsonIfExists(statePath),
+    readStateWithCheckedReportShards(statePath, {}),
     queuedRows.map((row) => row.report_code),
   );
   const rowsToUpdate = queuedRows

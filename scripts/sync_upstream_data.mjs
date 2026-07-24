@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -74,12 +74,24 @@ function normalizePath(filePath) {
   return filePath.replace(/\\/g, "/");
 }
 
+function isCheckedReportsShardPath(filePath) {
+  const normalized = normalizePath(filePath);
+  return normalized.startsWith("data/state/checked_reports/") && normalized.endsWith(".json");
+}
+
+function usesShardedCheckedReports(state) {
+  return state?.checked_reports_storage?.format === "encounter_shards_v1";
+}
+
 function isSourceDataPath(filePath) {
-  // 來源資料是不可逆歷史資產：encounter key、state report 狀態與完整排行榜報告都不能被靜默刪除。
+  // 來源資料是不可逆歷史資產：encounter key、state report 狀態（含分片）與完整排行榜
+  // 報告都不能被靜默刪除。checked_reports 雖然已離開單一 state.json，仍維持 append-only
+  // 同步保護，避免本機與 workflow 同時寫入時遺失跨輪略過依據。
   const normalized = normalizePath(filePath);
   return (
     normalized === "config/encounters.json" ||
     normalized === "data/state.json" ||
+    isCheckedReportsShardPath(normalized) ||
     (normalized.startsWith("data/rankings/") && normalized.endsWith(".json"))
   );
 }
@@ -157,7 +169,37 @@ function parsePorcelainZ(output) {
 }
 
 function getDirtyEntries() {
-  return parsePorcelainZ(gitText(["status", "--porcelain=v1", "-z"]));
+  const entries = parsePorcelainZ(gitText(["status", "--porcelain=v1", "-z"]));
+  const expandedEntries = [];
+  for (const entry of entries) {
+    // Git 會把全新的 data/state/ 顯示成單一未追蹤目錄，導致內部 JSON 分片未參與
+    // append-only 預檢。展開檔案後才能讓每個 checked_reports 分片接受相同保護。
+    if (entry.xy !== "??" || !entry.path.endsWith("/")) {
+      expandedEntries.push(entry);
+      continue;
+    }
+    const directoryPath = path.join(rootDir, entry.path);
+    if (!existsSync(directoryPath)) {
+      expandedEntries.push(entry);
+      continue;
+    }
+    const pendingDirectories = [directoryPath];
+    while (pendingDirectories.length) {
+      const currentDirectory = pendingDirectories.pop();
+      for (const child of readdirSync(currentDirectory, { withFileTypes: true })) {
+        const childPath = path.join(currentDirectory, child.name);
+        if (child.isDirectory()) {
+          pendingDirectories.push(childPath);
+        } else if (child.isFile()) {
+          expandedEntries.push({
+            ...entry,
+            path: normalizePath(path.relative(rootDir, childPath)),
+          });
+        }
+      }
+    }
+  }
+  return expandedEntries;
 }
 
 function hasUnmergedStatus(xy) {
@@ -374,8 +416,19 @@ function checkProtectedRemovals(relPath, base, side, sideName, issues) {
     return;
   }
 
+  if (isCheckedReportsShardPath(relPath)) {
+    checkRemovedKeys(issues, relPath, base, side, sideName);
+    return;
+  }
+
   if (relPath === "data/state.json") {
     checkRemovedKeys(issues, `${relPath}:encounters`, base.encounters, side.encounters, sideName);
+    if (usesShardedCheckedReports(side)) {
+      // 分片遷移把 checkpoint 從主檔移到受保護的 data/state/checked_reports/*.json。
+      // 此時主檔少了 checked_reports 是儲存位置改變，不是刪除；各分片會在本輪
+      // sync 預檢中逐一驗證 report code 沒有遺失。
+      return;
+    }
     for (const encounterKey of Object.keys(base.encounters || {})) {
       const baseEncounter = base.encounters?.[encounterKey];
       const sideEncounter = side.encounters?.[encounterKey];
@@ -414,6 +467,9 @@ function countProtectedAdditions(relPath, base, side) {
     return 0;
   }
   let count = 0;
+  if (isCheckedReportsShardPath(relPath)) {
+    return [...keySet(side)].filter((key) => !keySet(base).has(key)).length;
+  }
   if (relPath === "data/state.json") {
     for (const [encounterKey, encounter] of Object.entries(side.encounters || {})) {
       const baseEncounter = base.encounters?.[encounterKey] || {};
@@ -956,6 +1012,9 @@ function mergeDataPath(relPath, base, local, remote, issues) {
   issues.additions += countProtectedAdditions(relPath, base, remote);
   if (relPath === "data/state.json") {
     return mergeStateFile(base, local, remote, [relPath], issues);
+  }
+  if (isCheckedReportsShardPath(relPath)) {
+    return mergeAppendOnlyMap(base, local, remote, [relPath], issues);
   }
   if (relPath.startsWith("data/rankings/")) {
     return mergeRankingFile(base, local, remote, [relPath], issues);

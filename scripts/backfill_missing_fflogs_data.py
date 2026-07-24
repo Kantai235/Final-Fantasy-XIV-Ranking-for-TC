@@ -31,8 +31,8 @@ auth_pool_class = getattr(fflogs, "FFLogs\u8a8d\u8b49\u6c60")
 report_has_tc_players = getattr(fflogs, "\u5831\u544a\u662f\u5426\u5305\u542b\u7e41\u4e2d\u670d\u73a9\u5bb6")
 calculate_damage_time_info = getattr(fflogs, "\u8a08\u7b97\u50b7\u5bb3\u6642\u9593\u8cc7\u8a0a")
 milliseconds_to_seconds = getattr(fflogs, "\u6beb\u79d2\u8f49\u79d2\u6578")
-write_json = getattr(fflogs, "\u5beb\u5165_json")
-state_path = getattr(fflogs, "\u72c0\u614b\u6a94\u6848\u8def\u5f91")
+load_state_file = getattr(fflogs, "\u8b80\u53d6\u72c0\u614b\u6a94\u6848")
+write_state_file = getattr(fflogs, "\u5beb\u5165\u72c0\u614b\u6a94\u6848")
 mark_report_status = getattr(fflogs, "\u6a19\u8a18\u5831\u544a\u8655\u7406\u72c0\u614b")
 report_access_error_class = getattr(fflogs, "FFLogs\u5831\u544a\u5b58\u53d6\u932f\u8aa4")
 hidden_reason_inaccessible = getattr(fflogs, "\u5831\u544a\u7121\u6cd5\u5b58\u53d6\u96b1\u85cf\u539f\u56e0")
@@ -255,8 +255,7 @@ def make_shallow_report(report_code: str, report: dict[str, Any]) -> dict[str, A
 
 
 def load_state() -> dict[str, Any]:
-    state = read_json(state_path, {})
-    return state if isinstance(state, dict) else {}
+    return load_state_file()
 
 
 def skipped_inaccessible_report_codes(state: dict[str, Any]) -> set[str]:
@@ -310,7 +309,7 @@ def mark_candidate_inaccessible(
             extra,
             立即寫入=False,
         )
-    write_json(state_path, state)
+    write_state_file(state)
 
 
 def scan_candidates(
