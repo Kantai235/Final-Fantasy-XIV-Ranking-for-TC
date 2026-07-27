@@ -106,7 +106,7 @@ class FetchFFLogsBatchTest(unittest.TestCase):
     def test_scheduled_encounter_waits_until_scan_start_time(self) -> None:
         副本設定 = {
             "key": "savage_m5s",
-            "scan_start_date": "2026-07-28T12:00:00+08:00",
+            "scan_start_date": "2026-07-28T13:00:00+08:00",
             "scan_end_date": "2026-10-01T10:00:00+08:00",
         }
         開放時間戳記 = fflogs.解析日期時間為毫秒(副本設定["scan_start_date"])

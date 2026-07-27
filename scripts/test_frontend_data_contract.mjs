@@ -475,7 +475,7 @@ function validateUserProfileGameVersionFallback() {
     取得個人成績紀錄版本({ recorded_at_iso: "2026-03-10T09:59:59.000Z" }) === "7.0"
       && 取得個人成績紀錄版本({ recorded_at_iso: "2026-03-10T10:00:00.000Z" }) === "7.05"
       && 取得個人成績紀錄版本({ recorded_at_iso: "2026-06-23T10:00:00.000Z" }) === "7.15"
-      && 取得個人成績紀錄版本({ recorded_at_iso: "2026-07-28T04:00:00.000Z" }) === "7.2",
+      && 取得個人成績紀錄版本({ recorded_at_iso: "2026-07-28T05:00:00.000Z" }) === "7.2",
     "缺少 game_version 的既有個人成績必須依繁中服改版時間正確回推版本。",
   );
   assert(
@@ -792,7 +792,7 @@ async function validateEncounterSwitchFilterPersistence() {
 function validateUserProfileClearSummary() {
   const lightHeavyweight = { key: "light-heavyweight", label: "輕量級", order: 1 };
   const cruiserweight = { key: "cruiserweight", label: "次重量級", order: 2 };
-  const version72OpenedAt = Date.parse("2026-07-28T04:00:00.000Z");
+  const version72OpenedAt = Date.parse("2026-07-28T05:00:00.000Z");
   const encounters = [
     {
       key: "savage_m1s",
@@ -974,10 +974,10 @@ function validateUserProfileClearSummary() {
       ),
     "幻白虎只應保留至 7.15 快照，7.2 必須改由幻朱雀呈現。",
   );
-  assert(成績符合個人成績簡表版本({ recorded_at_iso: "2026-07-28T03:59:59.000Z" }, "7.15"), "7.15 應保留 7.2 開放前的戰鬥。");
-  assert(!成績符合個人成績簡表版本({ recorded_at_iso: "2026-07-28T04:00:00.000Z" }, "7.15"), "7.15 不可混入 7.2 開放後的戰鬥。");
+  assert(成績符合個人成績簡表版本({ recorded_at_iso: "2026-07-28T04:59:59.000Z" }, "7.15"), "7.15 應保留 7.2 開放前的戰鬥。");
+  assert(!成績符合個人成績簡表版本({ recorded_at_iso: "2026-07-28T05:00:00.000Z" }, "7.15"), "7.15 不可混入 7.2 開放後的戰鬥。");
   const version72 = 個人成績簡表版本選項.find((版本) => 版本.value === "7.2");
-  assert(version72?.available_from_iso === "2026-07-28T04:00:00.000Z", "7.2 必須保存繁中服的預定開放時間。");
+  assert(version72?.available_from_iso === "2026-07-28T05:00:00.000Z", "7.2 必須保存繁中服的確認開放時間。");
   assert(!個人成績簡表版本已開放(version72, version72OpenedAt - 1), "7.2 在開放前必須維持待開放狀態。");
   assert(個人成績簡表版本已開放(version72, version72OpenedAt), "7.2 在開放時間當下必須可選取。");
   assert(
@@ -1254,7 +1254,7 @@ async function validatePublicDataForFrontend() {
     "排行榜在 7.2 開放前必須預設選擇 7.15。",
   );
   assert(
-    expectedDefaultRankingGameVersion(gameVersions, Date.parse("2026-07-28T12:00:00+08:00")) === "7.2",
+    expectedDefaultRankingGameVersion(gameVersions, Date.parse("2026-07-28T13:00:00+08:00")) === "7.2",
     "排行榜在 7.2 開放時間起必須預設選擇 7.2。",
   );
 

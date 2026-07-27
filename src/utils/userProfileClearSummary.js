@@ -7,8 +7,8 @@ export const 個人成績簡表版本選項 = Object.freeze([
   { value: "7.0", label: "7.0", record_cutoff_iso: "2026-03-10T10:00:00.000Z" },
   { value: "7.05", label: "7.05", record_cutoff_iso: "2026-04-21T10:00:00.000Z" },
   { value: "7.1", label: "7.1", record_cutoff_iso: "2026-06-23T10:00:00.000Z" },
-  { value: "7.15", label: "7.15", record_cutoff_iso: "2026-07-28T04:00:00.000Z" },
-  { value: "7.2", label: "7.2", record_cutoff_iso: null, available_from_iso: "2026-07-28T04:00:00.000Z" },
+  { value: "7.15", label: "7.15", record_cutoff_iso: "2026-07-28T05:00:00.000Z" },
+  { value: "7.2", label: "7.2", record_cutoff_iso: null, available_from_iso: "2026-07-28T05:00:00.000Z" },
 ]);
 
 // 個別玩家成績由專用資料來源提供，部署新版欄位與舊有 JSON 的更新時間不一定同步。
