@@ -700,6 +700,31 @@ class FetchFFLogsBatchTest(unittest.TestCase):
             )
         )
 
+    def test_report_tc_player_check_accepts_ramuh_server(self) -> None:
+        # FFLogs 的繁中服判定直接依 masterData.actors[].server 精確比對。拉姆是繁中服世界，
+        # 若遺漏它，整份只有拉姆玩家的 report 會在進入 fight 查詢前被錯誤排除。
+        with patch.object(
+            fflogs,
+            "執行_graphql",
+            return_value={
+                "reportData": {
+                    "report": {
+                        "masterData": {
+                            "actors": [
+                                {"id": 4, "name": "拉姆測試角色", "server": "拉姆", "type": "Player"},
+                                {"id": 99, "name": "Omega", "server": None, "type": "NPC"},
+                            ]
+                        }
+                    }
+                }
+            },
+        ) as 執行查詢:
+            有繁中服玩家, 玩家 = fflogs.報告是否包含繁中服玩家(None, None, "ramuh-only-report")
+
+        self.assertTrue(有繁中服玩家)
+        self.assertEqual(玩家, [{"id": 4, "name": "拉姆測試角色", "server": "拉姆", "type": "Player"}])
+        執行查詢.assert_called_once_with(None, None, fflogs.深層過濾查詢, {"code": "ramuh-only-report"})
+
     def test_report_tc_player_check_is_cached_per_run(self) -> None:
         呼叫報告代碼: list[str] = []
 
