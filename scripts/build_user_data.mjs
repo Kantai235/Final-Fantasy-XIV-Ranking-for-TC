@@ -365,6 +365,12 @@ function isHiddenEntry(entry) {
   return Boolean(entry?.report_hidden || entry?.hidden_report);
 }
 
+function isIntegrityHiddenFight(fight) {
+  // 普攻異常檢核是 fight 層而不是 report 層：保留 report 原始資料以供日後追溯，
+  // 但無論是否建置 hidden report delta，都不能讓已判定異常的 pull 回流到任何公開衍生資料。
+  return Boolean(fight?.data_integrity?.hidden_from_public);
+}
+
 function hiddenReportFields(report) {
   if (!isHiddenReport(report)) {
     return {};
@@ -1428,6 +1434,9 @@ function collectEntriesFromReports({ ranking, encounter, includeHiddenReports = 
       if (!fight || typeof fight !== "object") {
         continue;
       }
+      if (isIntegrityHiddenFight(fight)) {
+        continue;
+      }
 
       const fightPlayers = Array.isArray(fight.players) ? fight.players : [];
       for (const player of fightPlayers) {
@@ -1723,6 +1732,9 @@ function collectTeamRecordsFromReports({ ranking, encounter, includeHiddenReport
     const reportCode = report.report_code || fallbackReportCode;
     for (const fight of report.fights || []) {
       if (!fight || typeof fight !== "object") {
+        continue;
+      }
+      if (isIntegrityHiddenFight(fight)) {
         continue;
       }
 
@@ -2457,6 +2469,9 @@ function addActivityLogsFromReports(
     const reportCode = report.report_code || fallbackReportCode;
     for (const fight of report.fights || []) {
       if (!fight || typeof fight !== "object") {
+        continue;
+      }
+      if (isIntegrityHiddenFight(fight)) {
         continue;
       }
 

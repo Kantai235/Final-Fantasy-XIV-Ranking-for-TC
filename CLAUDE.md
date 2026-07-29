@@ -165,3 +165,9 @@
 3. `scripts/build_public_status_data.mjs` 只把 `data/update_status.json` 與 `public/data/global_stats.json` 中可公開的更新摘要輸出到 `public/data/update_status.json`，供前端推估每 30 分鐘排程、24 小時近期重查、24-72 小時延遲掃描與歷史補查等待時間。
 4. 若使用者貼上的 report 完全不在公開或 hidden delta 索引中，前端只能回報「尚未在公開索引找到」並列出排程與常見原因；不能宣稱已即時確認 private、deleted、沒有繁中服玩家或沒有通關，這類精確判斷仍只能由資料管線下一輪掃描或站務端受保護診斷工具完成。
 5. 待處理名單只以 report code 為單位；即使使用者貼上的 FFLogs 網址帶有 `fight` 參數，也不得把 queue 語意改成指定 fight 補抓。Public 且可讀的 report 可使用一般待收錄或重查；只有本站公開索引已命中且 Apps Script 明確確認 FFLogs 非 Public 或不可讀時，才可使用 `review_existing_visibility` 重新確認公開狀態。workflow 仍須完整重掃整份 report；只有重建後的 hidden delta 真的命中時，收尾才可把該列標為 `hidden`，避免暫時性錯誤或前端參數直接隱藏資料。
+
+### I. 2026-07-28 後普攻資料完整性暫時防護
+1. `scripts/fight_integrity.py` 是唯一集中定義此暫時規則的模組；`scripts/backfill_fight_integrity.py` 只針對台灣時間 `2026-07-28T18:00:00+08:00` 後的 fight 查詢「依目標傷害」與 `targetResources.maxHitPoints`，不保存 raw events。全隊敵方承傷／敵方最大生命池總和嚴格大於 `1.15` 時標記為 `excluded`；`damage_done_summary.exploitDetails` 出現 `guid=7` 或 `Attack` 時標記為 `suspected`。不可使用泛用 `exploit:6`，因為它在正常紀錄也會大量出現。
+2. 檢核結果必須寫在 `fights[].data_integrity`，其中 `hidden_from_public=true` 只會使該 fight 從 `ranking_entries`、公開排行榜、個人成績、隊伍榜與近期動態消失；report、fight、players 與其檢核證據均保留。不得把此情況轉為 `report_hidden`，也不得整份 report 刪除。
+3. `ultimate_bahamut` 的多階段敵方生命池語意不能套用此倍率檢核，必須寫入 `not_applicable`，避免把正常歷史戰鬥誤判。其他無法取得最大 HP 的 fight 只能寫 `unverifiable`，除非同時有 `Attack` 標記才可隱藏為 `suspected`。
+4. 這是可撤除的資料品質防護。GitHub Actions 用 `FFLOGS_FIGHT_INTEGRITY_REPORT_LIMIT` 小批量逐輪補查，`FFLOGS_FIGHT_INTEGRITY_ENABLED=false` 停止新增檢核；日後 Log 工具修正後可停止 workflow 步驟與回補腳本，但已標記的歷史 fight 必須繼續保留並隱藏，不能回填為正常或硬刪。

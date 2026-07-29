@@ -26,6 +26,7 @@ from fflogs_pipeline.graphql_queries import (
     玩家成績全部查詢,
 )
 import gcd_coverage_core as gcd_core
+import fight_integrity as integrity
 
 
 # 本檔是資料管線的 Data Fetching Layer。
@@ -3347,6 +3348,43 @@ def 保留既有報告GCD覆蓋率(既有報告: dict[str, Any], 新報告: dict
     return 已更新
 
 
+def 建立戰鬥完整性索引(報告: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """依同一 report 內穩定的 fight ID 索引既有完整性檢核結果。"""
+    索引: dict[str, dict[str, Any]] = {}
+    for 戰鬥 in 報告.get("fights") or []:
+        if not isinstance(戰鬥, dict):
+            continue
+        fight_id = 戰鬥.get("fight_id")
+        完整性結果 = 戰鬥.get("data_integrity")
+        if fight_id is not None and isinstance(完整性結果, dict):
+            索引[str(fight_id)] = 完整性結果
+    return 索引
+
+
+def 保留既有報告戰鬥完整性(既有報告: dict[str, Any], 新報告: dict[str, Any]) -> bool:
+    # 這是短期 Attack 異常的衍生檢核，不會在一般 report 深查時重跑。若新抓取直接覆蓋舊
+    # report，先前已判為應隱藏的 fight 會回到公開資料，讓排行榜在 Log 工具修正前反覆混入
+    # 異常值。因此只要新 report 尚未提供自己的檢核結果，就按 report 內的 fight ID 保留舊值。
+    # 原始 fight、玩家與 report 仍完整覆寫／保留；這裡只維護可拔除的衍生標記。
+    既有完整性索引 = 建立戰鬥完整性索引(既有報告)
+    if not 既有完整性索引:
+        return False
+
+    已更新 = False
+    for 戰鬥 in 新報告.get("fights") or []:
+        if not isinstance(戰鬥, dict) or isinstance(戰鬥.get("data_integrity"), dict):
+            continue
+        fight_id = 戰鬥.get("fight_id")
+        if fight_id is None:
+            continue
+        既有完整性結果 = 既有完整性索引.get(str(fight_id))
+        if isinstance(既有完整性結果, dict):
+            戰鬥["data_integrity"] = 既有完整性結果
+            已更新 = True
+
+    return 已更新
+
+
 def 解析_iso_時間毫秒(時間文字: Any) -> int | None:
     if not isinstance(時間文字, str) or not 時間文字.strip():
         return None
@@ -3498,6 +3536,12 @@ def 登記排行榜條目(
 
 def 報告已標記隱藏(報告: Any) -> bool:
     return isinstance(報告, dict) and bool(報告.get("report_hidden") or 報告.get("hidden_report"))
+
+
+def 戰鬥已標記資料完整性隱藏(戰鬥: Any) -> bool:
+    # 暫時性的普攻資料異常檢核只在 fight 層隱藏，不能升級成整份 report 隱藏：
+    # 同一 report 可同時有正常與異常 pull，保留原始 report 才能在工具修正後追溯／復原。
+    return integrity.is_hidden_from_public(戰鬥)
 
 
 def 標記排行榜報告隱藏(
@@ -3782,6 +3826,8 @@ def 建立排行榜條目(
 
         for 戰鬥 in 報告.get("fights") or []:
             if not isinstance(戰鬥, dict):
+                continue
+            if 戰鬥已標記資料完整性隱藏(戰鬥):
                 continue
 
             戰鬥簽章 = 建立戰鬥簽章(戰鬥)
@@ -4283,6 +4329,7 @@ def 套用成績到排行榜(排行榜: dict[str, Any], 新成績列表: list[di
         既有報告 = 報告索引.get(報告代碼)
         if isinstance(既有報告, dict) and isinstance(成績, dict):
             保留既有報告GCD覆蓋率(既有報告, 成績)
+            保留既有報告戰鬥完整性(既有報告, 成績)
         if 報告索引.get(報告代碼) != 成績:
             新增或更新數量 += 1
         報告索引[報告代碼] = 成績

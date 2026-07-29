@@ -196,6 +196,24 @@ jobs:
             --stateful-report-backfill \
             --report-limit "${FFLOGS_GCD_BACKFILL_REPORT_LIMIT:-50}"
 
+      - name: 分批檢核 7.28 後戰鬥的傷害完整性
+        env:
+          FFLOGS_CLIENT_ID: ${{ secrets.FFLOGS_CLIENT_ID }}
+          FFLOGS_CLIENT_SECRET: ${{ secrets.FFLOGS_CLIENT_SECRET }}
+          FFLOGS_CLIENT_IDS: ${{ secrets.FFLOGS_CLIENT_IDS }}
+          FFLOGS_CLIENT_SECRETS: ${{ secrets.FFLOGS_CLIENT_SECRETS }}
+          FFLOGS_CLIENT_CREDENTIALS_JSON: ${{ secrets.FFLOGS_CLIENT_CREDENTIALS_JSON }}
+          # 這是可撤除的暫時性防護：停用後不再新增檢核，但既有 data_integrity 標記仍會由建置層隱藏。
+          FFLOGS_FIGHT_INTEGRITY_ENABLED: ${{ vars.FFLOGS_FIGHT_INTEGRITY_ENABLED || 'true' }}
+          FFLOGS_FIGHT_INTEGRITY_REPORT_LIMIT: ${{ vars.FFLOGS_FIGHT_INTEGRITY_REPORT_LIMIT || '25' }}
+        run: |
+          INTEGRITY_REPORT_LIMIT="${FFLOGS_FIGHT_INTEGRITY_REPORT_LIMIT:-25}"
+          if [ "$INTEGRITY_REPORT_LIMIT" = "0" ]; then
+            echo "FFLOGS_FIGHT_INTEGRITY_REPORT_LIMIT=0，略過本輪傷害完整性檢核。"
+            exit 0
+          fi
+          python scripts/backfill_fight_integrity.py --report-limit "$INTEGRITY_REPORT_LIMIT"
+
       - name: 分割完整排行榜資料供 Git 追蹤
         run: python scripts/fetch_fflogs.py --split-rankings
 

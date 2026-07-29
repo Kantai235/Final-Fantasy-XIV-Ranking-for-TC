@@ -351,6 +351,45 @@ async function createFixture(tempRoot) {
         },
       ],
     },
+    INTEGRITY1: {
+      report_code: "INTEGRITY1",
+      title: "Fixture integrity-hidden fight",
+      url: "https://www.fflogs.com/reports/INTEGRITY1",
+      report_start_time_iso: "2026-01-03T04:50:00.000Z",
+      fights: [
+        {
+          fight_id: 10,
+          fight_hash: "integrity-hidden-fixture-fight",
+          clear_time_ms: 500000,
+          clear_time_seconds: 500,
+          damage_time_ms: 450000,
+          damage_time_seconds: 450,
+          recorded_at: 1767416400000,
+          recorded_at_iso: "2026-01-03T05:00:00.000Z",
+          // 即使輸出到 public/data/all 的 hidden delta，也不得讓暫時性資料品質檢核
+          // 已判定異常的 pull 回流；原始 report 分片仍完整保留以供日後追溯。
+          data_integrity: {
+            calculation_version: 1,
+            status: "excluded",
+            hidden_from_public: true,
+            reasons: ["enemy_damage_exceeds_hp_ratio_threshold"],
+          },
+          players: [
+            {
+              name: "異常角色",
+              server: "鳳凰",
+              job: "BlackMage",
+              dps: 9999,
+              rdps: 9999,
+              adps: 9999,
+              total_damage: 4499550,
+              active_time_ms: 430000,
+              active_percent: 95.56,
+            },
+          ],
+        },
+      ],
+    },
   });
 }
 
@@ -396,6 +435,8 @@ async function assertFixtureOutput(tempRoot, expectedGlobalStatsText, expectedSe
   assert(hiddenUserData.summary.last_recorded_at_iso === null, "空白成績單不可包含紀錄時間。");
   assert(hiddenUserData.encounters.length === 0, "空白成績單不可輸出副本成績。");
   assert(hiddenUserData.frequent_teammates.length === 0, "空白成績單不可輸出隊友資料。");
+  assert(!usersIndex.users.some((user) => user.character_name === "異常角色"), "完整性檢核隱藏的 fight 不可產生公開角色入口。");
+  assert(!allUsersIndex.users.some((user) => user.character_name === "異常角色"), "完整性檢核隱藏的 fight 不可回流到 hidden delta。");
 
   const allHiddenUserData = await readJson(
     path.join(tempRoot, "public", allHiddenUser.file_path),

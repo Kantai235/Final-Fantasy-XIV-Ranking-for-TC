@@ -2069,6 +2069,43 @@ class FetchFFLogsBatchTest(unittest.TestCase):
         self.assertTrue(報告["report_hidden"])
         self.assertEqual(報告["hidden_source"], "manual_report_status_check")
 
+    def test_integrity_hidden_fight_is_excluded_without_deleting_report(self) -> None:
+        report = 建立測試排行榜報告("INTEGRITY")
+        report["fights"][0]["data_integrity"] = {
+            "calculation_version": 1,
+            "status": "excluded",
+            "hidden_from_public": True,
+            "reasons": ["enemy_damage_exceeds_hp_ratio_threshold"],
+        }
+        ranking = {
+            "encounter": {"key": "fixture_encounter", "name": "測試副本", "category": "零式"},
+            "reports": {"INTEGRITY": report},
+        }
+
+        entries = fflogs.建立排行榜條目(ranking)
+
+        self.assertEqual(entries, [])
+        self.assertIn("data_integrity", ranking["reports"]["INTEGRITY"]["fights"][0])
+        self.assertFalse(ranking["reports"]["INTEGRITY"].get("report_hidden", False))
+
+    def test_refetch_preserves_existing_fight_integrity_result(self) -> None:
+        existing_report = 建立測試排行榜報告("INTEGRITY-REFETCH")
+        existing_report["fights"][0]["data_integrity"] = {
+            "calculation_version": 1,
+            "status": "suspected",
+            "hidden_from_public": True,
+            "reasons": ["basic_attack_anomaly_marker"],
+        }
+        refreshed_report = 建立測試排行榜報告("INTEGRITY-REFETCH")
+
+        updated = fflogs.保留既有報告戰鬥完整性(existing_report, refreshed_report)
+
+        self.assertTrue(updated)
+        self.assertEqual(
+            refreshed_report["fights"][0]["data_integrity"],
+            existing_report["fights"][0]["data_integrity"],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

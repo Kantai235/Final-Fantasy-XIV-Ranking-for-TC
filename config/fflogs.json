@@ -22,6 +22,15 @@
   "existing_report_status_check_limit": 0,
   "fetch_gcd_coverage_enabled": false,
   "fetch_gcd_coverage_max_fights_per_run": 0,
+  "fight_integrity_check": {
+    "enabled": true,
+    "cutoff_iso": "2026-07-28T18:00:00+08:00",
+    "hp_ratio_threshold": 1.15,
+    "report_limit": 25,
+    "excluded_encounter_keys": [
+      "ultimate_bahamut"
+    ]
+  },
   "report_status_cache_limit": 50000,
   "request_timeout": 30,
   "request_connect_timeout": null,

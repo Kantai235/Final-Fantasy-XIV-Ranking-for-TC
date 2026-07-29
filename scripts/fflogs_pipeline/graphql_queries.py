@@ -284,6 +284,82 @@ def 建立戰鬥清單查詢(套用通關篩選: bool = True) -> str:
 )
 
 
+# 戰鬥完整性檢核是暫時性防護：2026-07-28 之後部分日誌的普攻資料會讓團隊總傷害
+# 明顯超過敵方生命池。查詢刻意只取「依目標彙總的傷害」與目標 actor 的 instanceCount，
+# 不把完整事件序列落地；下一段查詢再以少量事件的 targetResources 取得 maxHitPoints。
+#
+# 不直接重用玩家 Damage Done 表，是因為排行榜玩家列採 viewBy: Source，而生命池比較
+# 必須採 viewBy: Target，才能同時涵蓋王與實際被擊殺的附加目標。
+戰鬥完整性目標傷害查詢 = """
+query FightIntegrityTargets(
+  $code: String!
+  $fightID: Int!
+  $startTime: Float!
+  $endTime: Float!
+  $encounterID: Int!
+  $difficulty: Int!
+) {
+  reportData {
+    report(code: $code) {
+      fights(fightIDs: [$fightID]) {
+        enemyNPCs {
+          id
+          instanceCount
+        }
+      }
+      targetDamage: table(
+        dataType: DamageDone
+        fightIDs: [$fightID]
+        startTime: $startTime
+        endTime: $endTime
+        encounterID: $encounterID
+        difficulty: $difficulty
+        hostilityType: Friendlies
+        viewBy: Target
+        translate: true
+      )
+    }
+  }
+}
+"""
+
+
+def 建立戰鬥完整性目標生命值查詢(目標_id清單: list[int]) -> str:
+    # GraphQL 的 targetID 只能逐目標指定；用 alias 合併成一個 request，避免每個王／小怪
+    # 都各打一次 API。targetResources.maxHitPoints 只需前幾筆傷害事件即可取得，無須保存 raw events。
+    查詢片段 = "\n".join(
+        f"""
+      target_{索引}: events(
+        dataType: DamageDone
+        fightIDs: [$fightID]
+        startTime: $startTime
+        endTime: $endTime
+        targetID: {目標_id}
+        includeResources: true
+        limit: 5
+        translate: true
+      ) {{
+        data
+      }}
+"""
+        for 索引, 目標_id in enumerate(目標_id清單)
+    )
+    return f"""
+query FightIntegrityTargetHealth(
+  $code: String!
+  $fightID: Int!
+  $startTime: Float!
+  $endTime: Float!
+) {{
+  reportData {{
+    report(code: $code) {{
+{查詢片段}
+    }}
+  }}
+}}
+"""
+
+
 玩家成績查詢模板 = """
 query FightPlayerStats($code: String!, $fightIDs: [Int], $encounterID: Int!, $difficulty: Int!) {
   reportData {

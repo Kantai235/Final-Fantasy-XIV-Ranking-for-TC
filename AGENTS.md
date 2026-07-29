@@ -175,3 +175,9 @@
 1. 本項取代 I.3 的排行榜選單顯示條件。設定視窗的「版本紀錄」是個人成績單與排行榜共用的 localStorage 偏好，預設關閉；既有個人成績單版本偏好鍵值必須繼續可讀寫，避免使用者設定遺失。
 2. 偏好開啟時，排行榜使用 `gameVersion` 累積篩選、顯示版本欄，並隱藏紀錄時效；偏好關閉時，隱藏版本欄與累積版本選單，若副本有 `version_cutoff` 則改顯示 `version=all|valid|obsolete` 紀錄時效。網址只能保存目前模式使用的條件。
 3. 兩種前端篩選都只能使用薄索引既有的 `game_version` 與 `is_obsolete_record`，不得恢復 `version_ranking_entries` 或 `version_table_rows`，以維持 GitHub Pages 容量控制。
+
+### K. 2026-07-28 後普攻資料完整性暫時防護
+1. `scripts/fight_integrity.py` 是唯一集中定義此暫時規則的模組；`scripts/backfill_fight_integrity.py` 只針對台灣時間 `2026-07-28T18:00:00+08:00` 後的 fight 查詢「依目標傷害」與 `targetResources.maxHitPoints`，不保存 raw events。全隊敵方承傷／敵方最大生命池總和嚴格大於 `1.15` 時標記為 `excluded`；`damage_done_summary.exploitDetails` 出現 `guid=7` 或 `Attack` 時標記為 `suspected`。不可使用泛用 `exploit:6`，因為它在正常紀錄也會大量出現。
+2. 檢核結果必須寫在 `fights[].data_integrity`，其中 `hidden_from_public=true` 只會使該 fight 從 `ranking_entries`、公開排行榜、個人成績、隊伍榜與近期動態消失；report、fight、players 與其檢核證據均保留。不得把此情況轉為 `report_hidden`，也不得整份 report 刪除。
+3. `ultimate_bahamut` 的多階段敵方生命池語意不能套用此倍率檢核，必須寫入 `not_applicable`，避免把正常歷史戰鬥誤判。其他無法取得最大 HP 的 fight 只能寫 `unverifiable`，除非同時有 `Attack` 標記才可隱藏為 `suspected`。
+4. 這是可撤除的資料品質防護。GitHub Actions 用 `FFLOGS_FIGHT_INTEGRITY_REPORT_LIMIT` 小批量逐輪補查，`FFLOGS_FIGHT_INTEGRITY_ENABLED=false` 停止新增檢核；日後 Log 工具修正後可停止 workflow 步驟與回補腳本，但已標記的歷史 fight 必須繼續保留並隱藏，不能回填為正常或硬刪。
