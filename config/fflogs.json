@@ -27,6 +27,7 @@
     "cutoff_iso": "2026-07-28T18:00:00+08:00",
     "hp_ratio_threshold": 1.15,
     "suspected_hp_ratio_threshold": 1.14,
+    "historical_baseline_file": "config/fight_integrity_baselines.json",
     "report_limit": 25,
     "excluded_encounter_keys": [
       "ultimate_bahamut"

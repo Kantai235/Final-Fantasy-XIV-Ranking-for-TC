@@ -6,7 +6,7 @@ import argparse
 import os
 import sys
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +16,7 @@ sys.path.insert(0, str(SCRIPT_DIR))
 
 import fetch_fflogs as fflogs  # noqa: E402
 import fight_integrity as integrity  # noqa: E402
+import fight_integrity_baselines as historical_baselines  # noqa: E402
 import fight_integrity_cache as integrity_cache  # noqa: E402
 from fflogs_pipeline.graphql_queries import (  # noqa: E402
     建立戰鬥完整性目標生命值查詢,
@@ -49,6 +50,9 @@ class IntegrityConfig:
     suspected_hp_ratio_threshold: float
     excluded_encounter_keys: set[str]
     default_report_limit: int
+    historical_damage_baselines: historical_baselines.HistoricalDamageBaselinePolicy = field(
+        default_factory=historical_baselines.HistoricalDamageBaselinePolicy.disabled
+    )
 
 
 @dataclass
@@ -106,6 +110,13 @@ def load_config() -> IntegrityConfig:
         if isinstance(value, str) and value
     }
     report_limit = integrity.to_int(config.get("report_limit"))
+    baseline_file = config.get("historical_baseline_file")
+    if not isinstance(baseline_file, str) or not baseline_file:
+        raise RuntimeError("fight_integrity_check.historical_baseline_file 必須是設定檔路徑。")
+    baseline_path = Path(baseline_file)
+    if not baseline_path.is_absolute():
+        baseline_path = PROJECT_ROOT / baseline_path
+    historical_damage_baselines = historical_baselines.load_historical_damage_baseline_policy(baseline_path)
 
     enabled = parse_bool(config.get("enabled"), True)
     enabled = parse_bool(os.getenv("FFLOGS_FIGHT_INTEGRITY_ENABLED"), enabled)
@@ -117,6 +128,7 @@ def load_config() -> IntegrityConfig:
         suspected_hp_ratio_threshold=suspected_threshold,
         excluded_encounter_keys=excluded_keys,
         default_report_limit=max(1, report_limit or 25),
+        historical_damage_baselines=historical_damage_baselines,
     )
 
 
@@ -217,7 +229,9 @@ def seed_measurement_cache_from_results(
         metrics = result.get("metrics") if isinstance(result, dict) else None
         checked_at_iso = str(result.get("checked_at_iso") or "") if isinstance(result, dict) else ""
         try:
-            if isinstance(metrics, dict):
+            if isinstance(metrics, dict) and all(
+                key in metrics for key in ("enemy_damage", "enemy_hp_capacity", "target_count")
+            ):
                 measurement_cache.put(
                     candidate.report_code,
                     candidate.report,
@@ -339,6 +353,7 @@ def evaluate_measurement(
     checked_at_iso: str,
     *,
     measurement: dict[str, float | int],
+    historical_screen: historical_baselines.HistoricalDamageScreen | None,
 ) -> dict[str, Any]:
     """以已快取或剛查得的最小測量資料重新套用完整性規則。"""
 
@@ -351,6 +366,7 @@ def evaluate_measurement(
         attack_marker=attack_marker,
         hp_ratio_threshold=config.hp_ratio_threshold,
         suspected_hp_ratio_threshold=config.suspected_hp_ratio_threshold,
+        historical_screen=historical_screen,
     )
 
 
@@ -363,7 +379,7 @@ def evaluate_candidate(
     measurement_cache: integrity_cache.FightIntegrityMeasurementCache,
     *,
     refresh_cache: bool,
-) -> tuple[dict[str, Any], bool]:
+) -> tuple[dict[str, Any], bool, bool]:
     """優先以本機測量快取判定；只有未命中或要求刷新時才呼叫 FFLogs。"""
 
     attack_marker = integrity.has_basic_attack_exploit_marker(candidate.fight)
@@ -371,13 +387,12 @@ def evaluate_candidate(
         return integrity.make_not_applicable_result(
             checked_at_iso=checked_at_iso,
             reason="encounter_hp_pool_semantics_not_supported",
-        ), False
-    if not has_query_context(candidate.fight):
-        return integrity.make_unverifiable_result(
-            checked_at_iso=checked_at_iso,
-            reason="missing_fight_query_context",
-            attack_marker=attack_marker,
-        ), False
+        ), False, False
+
+    historical_screen = config.historical_damage_baselines.screen(
+        candidate.encounter_key,
+        candidate.fight,
+    )
 
     cached = None if refresh_cache else measurement_cache.get(
         candidate.report_code,
@@ -390,13 +405,31 @@ def evaluate_candidate(
                 checked_at_iso=checked_at_iso,
                 reason=cached["reason"],
                 attack_marker=attack_marker,
-            ), True
+                historical_screen=historical_screen,
+            ), True, False
         return evaluate_measurement(
             candidate,
             config,
             checked_at_iso,
             measurement=cached["measurement"],
-        ), True
+            historical_screen=historical_screen,
+        ), True, False
+
+    # 歷史基準只負責替完整繁中隊伍的舊副本正常場次省下生命池查詢。它從未自行排除：
+    # 一旦高於上緣，仍要以快取／FFLogs 目標生命池確認，避免多目標戰鬥被誤傷。
+    if historical_screen is not None and not historical_screen.exceeds_threshold and not attack_marker:
+        return integrity.make_historical_screen_valid_result(
+            checked_at_iso=checked_at_iso,
+            historical_screen=historical_screen,
+        ), False, False
+
+    if not has_query_context(candidate.fight):
+        return integrity.make_unverifiable_result(
+            checked_at_iso=checked_at_iso,
+            reason="missing_fight_query_context",
+            attack_marker=attack_marker,
+            historical_screen=historical_screen,
+        ), False, False
 
     targets, _ = query_target_damage(session, auth_pool, candidate)
     target_ids = [target["id"] for target in targets]
@@ -413,7 +446,8 @@ def evaluate_candidate(
             checked_at_iso=checked_at_iso,
             reason="missing_enemy_max_hp",
             attack_marker=attack_marker,
-        ), False
+            historical_screen=historical_screen,
+        ), False, True
 
     measurement = {
         "enemy_damage": sum(target["damage"] for target in targets),
@@ -434,7 +468,8 @@ def evaluate_candidate(
         config,
         checked_at_iso,
         measurement=measurement,
-    ), False
+        historical_screen=historical_screen,
+    ), False, True
 
 
 def main() -> int:
@@ -504,8 +539,12 @@ def main() -> int:
 
     for index, candidate in enumerate(selected, start=1):
         print(f"[{index}/{len(selected)}] 檢核 {candidate.label}")
+        historical_screen = config.historical_damage_baselines.screen(
+            candidate.encounter_key,
+            candidate.fight,
+        )
         try:
-            result, cache_hit = evaluate_candidate(
+            result, cache_hit, api_queried = evaluate_candidate(
                 session,
                 auth_pool,
                 candidate,
@@ -516,7 +555,7 @@ def main() -> int:
             )
             if cache_hit:
                 cache_hits += 1
-            elif candidate.encounter_key not in config.excluded_encounter_keys and has_query_context(candidate.fight):
+            if api_queried:
                 api_measurements += 1
         except report_access_error_class:
             mark_ranking_report_hidden(
@@ -530,6 +569,7 @@ def main() -> int:
                 checked_at_iso=checked_at_iso,
                 reason="report_not_accessible",
                 attack_marker=integrity.has_basic_attack_exploit_marker(candidate.fight),
+                historical_screen=historical_screen,
             )
         except graphql_error_class as error:
             print(f"  → FFLogs 查詢失敗，保留不可驗證狀態：{error}", file=sys.stderr)
@@ -537,6 +577,7 @@ def main() -> int:
                 checked_at_iso=checked_at_iso,
                 reason="fflogs_graphql_query_failed",
                 attack_marker=integrity.has_basic_attack_exploit_marker(candidate.fight),
+                historical_screen=historical_screen,
             )
             counters["failed"] += 1
         except (RuntimeError, ValueError, TypeError) as error:
@@ -545,6 +586,7 @@ def main() -> int:
                 checked_at_iso=checked_at_iso,
                 reason="integrity_measurement_failed",
                 attack_marker=integrity.has_basic_attack_exploit_marker(candidate.fight),
+                historical_screen=historical_screen,
             )
             counters["failed"] += 1
 

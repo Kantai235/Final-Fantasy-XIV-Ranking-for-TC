@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import contextlib
 import io
+import tempfile
 import unittest
+from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
@@ -2087,6 +2089,141 @@ class FetchFFLogsBatchTest(unittest.TestCase):
         self.assertEqual(entries, [])
         self.assertIn("data_integrity", ranking["reports"]["INTEGRITY"]["fights"][0])
         self.assertFalse(ranking["reports"]["INTEGRITY"].get("report_hidden", False))
+
+    def test_new_fight_integrity_check_hides_abnormal_rdps_before_ranking(self) -> None:
+        """新收錄 fight 必須先取得敵方承傷／生命池，再交由排行榜索引處理。"""
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            cache = fflogs.integrity_cache.FightIntegrityMeasurementCache.load(
+                Path(temporary_directory) / "measurements.json"
+            )
+            source_report = {
+                "startTime": 1_785_000_000_000,
+                "endTime": 1_785_000_012_000,
+                "revision": 1,
+                "fights": [
+                    {
+                        "id": 8,
+                        "encounterID": 96,
+                        "difficulty": 101,
+                        "startTime": 1_000,
+                        "endTime": 11_000,
+                        "combatTime": 10_000,
+                        "kill": True,
+                    }
+                ],
+            }
+            config = fflogs.戰鬥完整性檢核設定(
+                enabled=True,
+                cutoff_ms=0,
+                cutoff_iso="2026-07-28T18:00:00+08:00",
+                hp_ratio_threshold=1.15,
+                suspected_hp_ratio_threshold=1.14,
+                excluded_encounter_keys=set(),
+            )
+            graphql_results = [
+                {
+                    "reportData": {
+                        "report": {
+                            "targetDamage": {"data": {"entries": [{"id": 10, "total": 120_000}]}},
+                            "fights": [{"enemyNPCs": [{"id": 10, "instanceCount": 1}]}],
+                        }
+                    }
+                },
+                {
+                    "reportData": {
+                        "report": {
+                            "target_0": {"data": [{"targetResources": {"maxHitPoints": 100_000}}]}
+                        }
+                    }
+                },
+            ]
+            with (
+                patch.object(fflogs, "篩選報告通關戰鬥", return_value=source_report),
+                patch.object(
+                    fflogs,
+                    "查詢多場玩家成績",
+                    return_value={8: 建立測試原始成績(120_000)},
+                ),
+                patch.object(fflogs, "執行_graphql", side_effect=graphql_results) as execute_graphql,
+            ):
+                report = fflogs.建立報告成績(
+                    object(),
+                    object(),
+                    {"key": "fixture_encounter", "encounter_id": 96, "difficulty": 101},
+                    {"code": "NEW-INTEGRITY", "startTime": source_report["startTime"]},
+                    [{"server": "巴哈姆特"}],
+                    預查報告=source_report,
+                    完整性檢核設定=config,
+                    完整性測量快取=cache,
+                )
+
+        self.assertEqual(execute_graphql.call_count, 2)
+        self.assertIsNotNone(report)
+        fight = report["fights"][0]
+        self.assertEqual(fight["data_integrity"]["status"], "excluded")
+        self.assertTrue(fight["data_integrity"]["hidden_from_public"])
+        ranking = {
+            "encounter": {"key": "fixture_encounter", "name": "測試副本", "category": "零式"},
+            "reports": {"NEW-INTEGRITY": report},
+        }
+        self.assertEqual(fflogs.建立排行榜條目(ranking), [])
+
+    def test_new_fight_integrity_historical_normal_screen_skips_hp_query(self) -> None:
+        """舊副本完整隊伍落在歷史高端內時，必須不讀取 FFLogs 生命池。"""
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            cache = fflogs.integrity_cache.FightIntegrityMeasurementCache.load(
+                Path(temporary_directory) / "measurements.json"
+            )
+            fight = {
+                "fight_id": 8,
+                "encounter_id": 96,
+                "difficulty": 101,
+                "start_time": 1_000,
+                "end_time": 601_000,
+                "recorded_at": 1_759_000_000_000,
+                "size": 8,
+                "players": [{"total_damage": 125} for _ in range(8)],
+                "damage_done_summary": {"exploitDetails": []},
+            }
+            historical_policy = fflogs.historical_baselines.HistoricalDamageBaselinePolicy(
+                enabled=True,
+                reference_cutoff_iso="2026-07-28T18:00:00+08:00",
+                screening_multiplier=1.05,
+                baselines={
+                    "fixture_encounter": fflogs.historical_baselines.HistoricalDamageBaseline(
+                        upper_reference_damage=1_000,
+                        sample_count=500,
+                        unique_fight_count=300,
+                    )
+                },
+            )
+            config = fflogs.戰鬥完整性檢核設定(
+                enabled=True,
+                cutoff_ms=0,
+                cutoff_iso="2026-07-28T18:00:00+08:00",
+                hp_ratio_threshold=1.15,
+                suspected_hp_ratio_threshold=1.14,
+                excluded_encounter_keys=set(),
+                historical_damage_baselines=historical_policy,
+            )
+            with patch.object(fflogs, "執行_graphql") as execute_graphql:
+                result = fflogs.檢核戰鬥完整性(
+                    object(),
+                    object(),
+                    副本鍵值="fixture_encounter",
+                    報告代碼="BASELINE-NORMAL",
+                    報告脈絡={"revision": 1, "start_time": 1_700_000_000_000, "end_time": 1_700_001_000_000},
+                    戰鬥=fight,
+                    設定=config,
+                    測量快取=cache,
+                )
+
+        self.assertIsNotNone(result)
+        self.assertEqual(result["status"], "valid")
+        self.assertFalse(result["metrics"]["historical_team_damage"]["exceeds_threshold"])
+        execute_graphql.assert_not_called()
 
     def test_refetch_preserves_existing_fight_integrity_result(self) -> None:
         existing_report = 建立測試排行榜報告("INTEGRITY-REFETCH")

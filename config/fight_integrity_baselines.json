@@ -1,0 +1,75 @@
+{
+  "schema_version": 1,
+  "enabled": true,
+  "metric": "full_traditional_chinese_party_player_total_damage",
+  "reference_cutoff_iso": "2026-07-28T18:00:00+08:00",
+  "minimum_sample_count": 100,
+  "screening_multiplier": 1.05,
+  "encounters": {
+    "chaotic_cloud_of_darkness": {
+      "upper_reference_damage": 310428347,
+      "sample_count": 9258,
+      "unique_fight_count": 3706
+    },
+    "extreme_queen_eternal": {
+      "upper_reference_damage": 83454553,
+      "sample_count": 16176,
+      "unique_fight_count": 9083
+    },
+    "extreme_valigarmanda": {
+      "upper_reference_damage": 65579235,
+      "sample_count": 10429,
+      "unique_fight_count": 6201
+    },
+    "extreme_zoraal_ja": {
+      "upper_reference_damage": 66146019,
+      "sample_count": 12274,
+      "unique_fight_count": 7435
+    },
+    "savage_m1s": {
+      "upper_reference_damage": 75867947,
+      "sample_count": 9549,
+      "unique_fight_count": 4938
+    },
+    "savage_m2s": {
+      "upper_reference_damage": 87090316,
+      "sample_count": 9406,
+      "unique_fight_count": 4632
+    },
+    "savage_m3s": {
+      "upper_reference_damage": 96522568,
+      "sample_count": 8456,
+      "unique_fight_count": 4094
+    },
+    "savage_m4s": {
+      "upper_reference_damage": 114525934,
+      "sample_count": 8360,
+      "unique_fight_count": 4099
+    },
+    "ultimate_alexander": {
+      "upper_reference_damage": 19168712,
+      "sample_count": 3315,
+      "unique_fight_count": 1571
+    },
+    "ultimate_futures_rewritten": {
+      "upper_reference_damage": 150901138,
+      "sample_count": 502,
+      "unique_fight_count": 315
+    },
+    "ultimate_omega": {
+      "upper_reference_damage": 63322557,
+      "sample_count": 307,
+      "unique_fight_count": 173
+    },
+    "ultimate_ultima_weapon": {
+      "upper_reference_damage": 8925881,
+      "sample_count": 2296,
+      "unique_fight_count": 1301
+    },
+    "unreal_byakko": {
+      "upper_reference_damage": 57344332,
+      "sample_count": 12049,
+      "unique_fight_count": 7890
+    }
+  }
+}

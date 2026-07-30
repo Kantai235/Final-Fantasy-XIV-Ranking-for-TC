@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 import backfill_fight_integrity as backfill
 import fight_integrity as integrity
+import fight_integrity_baselines as baselines
 import fight_integrity_cache as cache_module
 
 
@@ -52,7 +53,7 @@ class FightIntegrityBackfillCacheTest(unittest.TestCase):
             ) as query_damage,
             patch.object(backfill, "query_target_max_hp", return_value={10: 100_000}) as query_max_hp,
         ):
-            first_result, first_cache_hit = backfill.evaluate_candidate(
+            first_result, first_cache_hit, first_api_queried = backfill.evaluate_candidate(
                 None,
                 None,
                 self.candidate,
@@ -61,7 +62,7 @@ class FightIntegrityBackfillCacheTest(unittest.TestCase):
                 self.cache,
                 refresh_cache=False,
             )
-            second_result, second_cache_hit = backfill.evaluate_candidate(
+            second_result, second_cache_hit, second_api_queried = backfill.evaluate_candidate(
                 None,
                 None,
                 self.candidate,
@@ -70,7 +71,7 @@ class FightIntegrityBackfillCacheTest(unittest.TestCase):
                 self.cache,
                 refresh_cache=False,
             )
-            _, refreshed_cache_hit = backfill.evaluate_candidate(
+            _, refreshed_cache_hit, refreshed_api_queried = backfill.evaluate_candidate(
                 None,
                 None,
                 self.candidate,
@@ -85,8 +86,91 @@ class FightIntegrityBackfillCacheTest(unittest.TestCase):
         self.assertFalse(first_cache_hit)
         self.assertTrue(second_cache_hit)
         self.assertFalse(refreshed_cache_hit)
+        self.assertTrue(first_api_queried)
+        self.assertFalse(second_api_queried)
+        self.assertTrue(refreshed_api_queried)
         self.assertEqual(query_damage.call_count, 2)
         self.assertEqual(query_max_hp.call_count, 2)
+
+    def test_historical_baseline_normal_fight_skips_hp_query(self) -> None:
+        self.candidate.encounter_key = "savage_m1s"
+        self.candidate.fight["size"] = 8
+        self.candidate.fight["players"] = [{"total_damage": 125} for _ in range(8)]
+        self.config.historical_damage_baselines = baselines.HistoricalDamageBaselinePolicy(
+            enabled=True,
+            reference_cutoff_iso="2026-07-28T18:00:00+08:00",
+            screening_multiplier=1.05,
+            baselines={
+                "savage_m1s": baselines.HistoricalDamageBaseline(
+                    upper_reference_damage=1_000,
+                    sample_count=500,
+                    unique_fight_count=300,
+                )
+            },
+        )
+
+        with (
+            patch.object(backfill, "query_target_damage") as query_damage,
+            patch.object(backfill, "query_target_max_hp") as query_max_hp,
+        ):
+            result, cache_hit, api_queried = backfill.evaluate_candidate(
+                None,
+                None,
+                self.candidate,
+                self.config,
+                "2026-07-30T00:00:00Z",
+                self.cache,
+                refresh_cache=False,
+            )
+
+        self.assertEqual(result["status"], "valid")
+        self.assertFalse(cache_hit)
+        self.assertFalse(api_queried)
+        self.assertFalse(result["metrics"]["historical_team_damage"]["exceeds_threshold"])
+        query_damage.assert_not_called()
+        query_max_hp.assert_not_called()
+
+    def test_historical_high_damage_requires_hp_measurement_before_final_status(self) -> None:
+        self.candidate.encounter_key = "savage_m1s"
+        self.candidate.fight["size"] = 8
+        self.candidate.fight["players"] = [{"total_damage": 138} for _ in range(8)]
+        self.config.historical_damage_baselines = baselines.HistoricalDamageBaselinePolicy(
+            enabled=True,
+            reference_cutoff_iso="2026-07-28T18:00:00+08:00",
+            screening_multiplier=1.05,
+            baselines={
+                "savage_m1s": baselines.HistoricalDamageBaseline(
+                    upper_reference_damage=1_000,
+                    sample_count=500,
+                    unique_fight_count=300,
+                )
+            },
+        )
+
+        with (
+            patch.object(
+                backfill,
+                "query_target_damage",
+                return_value=([{"id": 10, "damage": 100_000, "instance_count": 1}], {10: 1}),
+            ) as query_damage,
+            patch.object(backfill, "query_target_max_hp", return_value={10: 100_000}) as query_max_hp,
+        ):
+            result, cache_hit, api_queried = backfill.evaluate_candidate(
+                None,
+                None,
+                self.candidate,
+                self.config,
+                "2026-07-30T00:00:00Z",
+                self.cache,
+                refresh_cache=False,
+            )
+
+        self.assertEqual(result["status"], "valid")
+        self.assertFalse(cache_hit)
+        self.assertTrue(api_queried)
+        self.assertTrue(result["metrics"]["historical_team_damage"]["exceeds_threshold"])
+        query_damage.assert_called_once()
+        query_max_hp.assert_called_once()
 
     def test_existing_result_seeds_cache_without_an_api_query(self) -> None:
         self.candidate.fight["data_integrity"] = integrity.evaluate(

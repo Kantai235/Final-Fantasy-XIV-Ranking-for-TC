@@ -18,8 +18,11 @@ from typing import Any
 
 
 DATA_INTEGRITY_KEY = "data_integrity"
-CALCULATION_VERSION = 2
-RULESET = "post_2026_07_28_basic_attack_v2"
+CALCULATION_VERSION = 3
+RULESET = "post_2026_07_28_basic_attack_v3_historical_screen"
+# v2 已保存目標承傷與最大 HP 的最終判定，規則門檻與其相同。保留它可避免只因新增
+# 「本地預篩」而對數百筆既有戰鬥重打 FFLogs；v3 只套用於尚未有生命池量測的新 fight。
+COMPATIBLE_CALCULATION_VERSIONS = frozenset({2, CALCULATION_VERSION})
 DEFAULT_CUTOFF_ISO = "2026-07-28T18:00:00+08:00"
 DEFAULT_HP_RATIO_THRESHOLD = 1.15
 DEFAULT_SUSPECTED_HP_RATIO_THRESHOLD = 1.14
@@ -103,9 +106,27 @@ def current_result(fight: dict[str, Any]) -> dict[str, Any] | None:
     return value if isinstance(value, dict) else None
 
 
+def attach_historical_damage_screen(
+    result: dict[str, Any],
+    historical_screen: Any | None,
+) -> dict[str, Any]:
+    """把不含玩家資訊的本地預篩證據附在既有結果，不改變生命池判定優先順序。"""
+
+    if historical_screen is None:
+        return result
+    to_metrics = getattr(historical_screen, "to_metrics", None)
+    if not callable(to_metrics):
+        return result
+    metrics = result.get("metrics")
+    normalized_metrics = dict(metrics) if isinstance(metrics, dict) else {}
+    normalized_metrics["historical_team_damage"] = to_metrics()
+    result["metrics"] = normalized_metrics
+    return result
+
+
 def needs_check(fight: dict[str, Any]) -> bool:
     result = current_result(fight)
-    return not result or result.get("calculation_version") != CALCULATION_VERSION
+    return not result or result.get("calculation_version") not in COMPATIBLE_CALCULATION_VERSIONS
 
 
 def is_hidden_from_public(fight: Any) -> bool:
@@ -135,20 +156,41 @@ def make_unverifiable_result(
     checked_at_iso: str,
     reason: str,
     attack_marker: bool,
+    historical_screen: Any | None = None,
 ) -> dict[str, Any]:
     # 有 Attack 標記時，即使 FFLogs 已 Private 或 HP 資源缺漏，也不能把它重新視為正常。
-    status = "suspected" if attack_marker else "unverifiable"
+    baseline_exceeded = bool(getattr(historical_screen, "exceeds_threshold", False))
+    status = "suspected" if attack_marker or baseline_exceeded else "unverifiable"
     reasons = [reason]
+    if baseline_exceeded:
+        reasons.append("historical_team_damage_exceeds_screen_threshold")
     if attack_marker:
         reasons.append("fflogs_basic_attack_exploit_marker")
-    return {
+    return attach_historical_damage_screen({
         "calculation_version": CALCULATION_VERSION,
         "ruleset": RULESET,
         "checked_at_iso": checked_at_iso,
         "status": status,
-        "hidden_from_public": attack_marker,
+        "hidden_from_public": attack_marker or baseline_exceeded,
         "reasons": reasons,
-    }
+    }, historical_screen)
+
+
+def make_historical_screen_valid_result(
+    *,
+    checked_at_iso: str,
+    historical_screen: Any,
+) -> dict[str, Any]:
+    """歷史高端篩檢未命中時，避免為一般舊副本正常場次再查一次 API。"""
+
+    return attach_historical_damage_screen({
+        "calculation_version": CALCULATION_VERSION,
+        "ruleset": RULESET,
+        "checked_at_iso": checked_at_iso,
+        "status": "valid",
+        "hidden_from_public": False,
+        "reasons": [],
+    }, historical_screen)
 
 
 def evaluate(
@@ -160,6 +202,7 @@ def evaluate(
     attack_marker: bool,
     hp_ratio_threshold: float,
     suspected_hp_ratio_threshold: float,
+    historical_screen: Any | None = None,
 ) -> dict[str, Any]:
     """建立唯一的判定結果；倍率是全隊傷害 / 目標最大 HP 總和。
 
@@ -172,6 +215,7 @@ def evaluate(
             checked_at_iso=checked_at_iso,
             reason="invalid_enemy_hp_measurement",
             attack_marker=attack_marker,
+            historical_screen=historical_screen,
         )
 
     ratio = enemy_damage / enemy_hp_capacity
@@ -190,7 +234,7 @@ def evaluate(
     else:
         status = "valid"
 
-    return {
+    return attach_historical_damage_screen({
         "calculation_version": CALCULATION_VERSION,
         "ruleset": RULESET,
         "checked_at_iso": checked_at_iso,
@@ -206,4 +250,4 @@ def evaluate(
             "suspected_hp_ratio_threshold": suspected_hp_ratio_threshold,
             "target_count": target_count,
         },
-    }
+    }, historical_screen)

@@ -3,6 +3,7 @@ from __future__ import annotations
 import unittest
 
 import fight_integrity as integrity
+import fight_integrity_baselines as baselines
 
 
 class FightIntegrityTest(unittest.TestCase):
@@ -96,6 +97,11 @@ class FightIntegrityTest(unittest.TestCase):
         self.assertFalse(integrity.is_in_scope(report, before, cutoff))
         self.assertTrue(integrity.is_in_scope(report, at_cutoff, cutoff))
 
+    def test_existing_v2_hp_measurement_is_compatible_without_requery(self) -> None:
+        fight = {"data_integrity": {"calculation_version": 2, "status": "valid"}}
+
+        self.assertFalse(integrity.needs_check(fight))
+
     def test_unverifiable_attack_marker_stays_hidden(self) -> None:
         result = integrity.make_unverifiable_result(
             checked_at_iso="2026-07-30T00:00:00Z",
@@ -104,6 +110,29 @@ class FightIntegrityTest(unittest.TestCase):
         )
         self.assertEqual(result["status"], "suspected")
         self.assertTrue(result["hidden_from_public"])
+
+    def test_unverifiable_historical_high_damage_stays_hidden_as_suspected(self) -> None:
+        screen = baselines.HistoricalDamageScreen(
+            encounter_key="fixture",
+            team_total_damage=1_100,
+            upper_reference_damage=1_000,
+            screening_threshold=1_050,
+            screening_multiplier=1.05,
+            sample_count=500,
+            unique_fight_count=300,
+            reference_cutoff_iso="2026-07-28T18:00:00+08:00",
+        )
+
+        result = integrity.make_unverifiable_result(
+            checked_at_iso="2026-07-30T00:00:00Z",
+            reason="missing_enemy_max_hp",
+            attack_marker=False,
+            historical_screen=screen,
+        )
+
+        self.assertEqual(result["status"], "suspected")
+        self.assertTrue(result["hidden_from_public"])
+        self.assertIn("historical_team_damage_exceeds_screen_threshold", result["reasons"])
 
 
 if __name__ == "__main__":

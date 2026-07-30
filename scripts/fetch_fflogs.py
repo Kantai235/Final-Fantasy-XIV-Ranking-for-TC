@@ -7,6 +7,7 @@ import os
 import sys
 import time
 from collections import deque
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterable
@@ -21,12 +22,16 @@ from fflogs_pipeline.graphql_queries import (
     報告完整戰鬥清單查詢,
     戰鬥清單查詢,
     戰鬥清單全部查詢,
+    建立戰鬥完整性目標生命值查詢,
     淺層掃描查詢,
+    戰鬥完整性目標傷害查詢,
     玩家成績查詢,
     玩家成績全部查詢,
 )
 import gcd_coverage_core as gcd_core
 import fight_integrity as integrity
+import fight_integrity_baselines as historical_baselines
+import fight_integrity_cache as integrity_cache
 
 
 # 本檔是資料管線的 Data Fetching Layer。
@@ -43,6 +48,8 @@ TOKEN_URL = "https://www.fflogs.com/oauth/token"
 
 專案根目錄 = Path(__file__).resolve().parents[1]
 load_dotenv(專案根目錄 / ".env")
+
+戰鬥完整性測量快取路徑 = 專案根目錄 / "data" / "local-cache" / "fight-integrity" / "measurements.json"
 
 狀態檔案路徑 = 專案根目錄 / "data" / "state.json"
 副本設定檔路徑 = 專案根目錄 / "config" / "encounters.json"
@@ -179,6 +186,89 @@ def 讀取FFLogs執行設定() -> dict[str, Any]:
 
 
 FFLogs執行設定 = 讀取FFLogs執行設定()
+
+
+@dataclass(frozen=True)
+class 戰鬥完整性檢核設定:
+    """新收錄 fight 的最小傷害完整性規則與範圍。
+
+    規則本身仍集中在 fight_integrity.py；這個型別只保留資料管線呼叫 FFLogs
+    時所需的設定，讓即時收錄與既有資料回補使用完全相同的門檻。
+    """
+
+    enabled: bool
+    cutoff_ms: int
+    cutoff_iso: str
+    hp_ratio_threshold: float
+    suspected_hp_ratio_threshold: float
+    excluded_encounter_keys: set[str]
+    historical_damage_baselines: historical_baselines.HistoricalDamageBaselinePolicy = (
+        historical_baselines.HistoricalDamageBaselinePolicy.disabled()
+    )
+
+
+def 解析布林設定值(值: Any, 預設值: bool) -> bool:
+    if isinstance(值, bool):
+        return 值
+    if isinstance(值, str):
+        正規化值 = 值.strip().lower()
+        if 正規化值 in {"1", "true", "yes", "on"}:
+            return True
+        if 正規化值 in {"0", "false", "no", "off"}:
+            return False
+    return 預設值
+
+
+def 讀取戰鬥完整性檢核設定() -> 戰鬥完整性檢核設定:
+    """讀取新 report 與回補工具共用的戰鬥完整性設定。
+
+    這個防護預設只涵蓋 2026-07-28 後受 FFLogs 普攻資料異常影響的戰鬥。過去
+    歷史紀錄不會因為本次即時檢核重寫；`ultimate_bahamut` 則保留既定例外，因其
+    多階段敵方生命池不能使用一般倍率比較。
+    """
+
+    原始設定 = FFLogs執行設定.get("fight_integrity_check")
+    設定 = 原始設定 if isinstance(原始設定, dict) else {}
+    cutoff_iso = str(設定.get("cutoff_iso") or integrity.DEFAULT_CUTOFF_ISO)
+    cutoff_ms = integrity.parse_iso_to_epoch_ms(cutoff_iso)
+    if cutoff_ms is None:
+        raise RuntimeError("fight_integrity_check.cutoff_iso 必須是含時區的有效 ISO 時間。")
+
+    hp_ratio_threshold = integrity.to_number(設定.get("hp_ratio_threshold"))
+    if hp_ratio_threshold is None or hp_ratio_threshold <= 1:
+        raise RuntimeError("fight_integrity_check.hp_ratio_threshold 必須大於 1。")
+    suspected_hp_ratio_threshold = integrity.to_number(設定.get("suspected_hp_ratio_threshold"))
+    if suspected_hp_ratio_threshold is None:
+        suspected_hp_ratio_threshold = integrity.DEFAULT_SUSPECTED_HP_RATIO_THRESHOLD
+    if suspected_hp_ratio_threshold <= 1 or suspected_hp_ratio_threshold >= hp_ratio_threshold:
+        raise RuntimeError(
+            "fight_integrity_check.suspected_hp_ratio_threshold 必須大於 1 且小於 hp_ratio_threshold。"
+        )
+
+    excluded = 設定.get("excluded_encounter_keys")
+    excluded_encounter_keys = {
+        str(value)
+        for value in (excluded if isinstance(excluded, list) else integrity.DEFAULT_EXCLUDED_ENCOUNTER_KEYS)
+        if isinstance(value, str) and value
+    }
+    baseline_file = 設定.get("historical_baseline_file")
+    if not isinstance(baseline_file, str) or not baseline_file:
+        raise RuntimeError("fight_integrity_check.historical_baseline_file 必須是設定檔路徑。")
+    baseline_path = Path(baseline_file)
+    if not baseline_path.is_absolute():
+        baseline_path = 專案根目錄 / baseline_path
+    historical_damage_baselines = historical_baselines.load_historical_damage_baseline_policy(baseline_path)
+    enabled = 解析布林設定值(設定.get("enabled"), True)
+    enabled = 解析布林設定值(os.getenv("FFLOGS_FIGHT_INTEGRITY_ENABLED"), enabled)
+    return 戰鬥完整性檢核設定(
+        enabled=enabled,
+        cutoff_ms=cutoff_ms,
+        cutoff_iso=cutoff_iso,
+        hp_ratio_threshold=hp_ratio_threshold,
+        suspected_hp_ratio_threshold=suspected_hp_ratio_threshold,
+        excluded_encounter_keys=excluded_encounter_keys,
+        historical_damage_baselines=historical_damage_baselines,
+    )
 
 
 def 整數設定(名稱: str) -> int:
@@ -4102,6 +4192,219 @@ def 建立戰鬥時間範圍索引(戰鬥列表: list[dict[str, Any]]) -> dict[i
     return 時間範圍索引
 
 
+def 戰鬥完整性查詢脈絡完整(戰鬥: dict[str, Any]) -> bool:
+    """確認可用 fight 相對時間與副本識別取得敵方承傷／生命池。
+
+    FFLogs 的 table 與 events 查詢都必須同時帶 fight ID、相對開始與結束時間。少了
+    時間範圍時，舊 report 可能只回傳 partial table，反而把異常 rDPS 當成正常資料。
+    """
+
+    return all(
+        integrity.to_number(戰鬥.get(欄位)) is not None
+        for 欄位 in ("fight_id", "start_time", "end_time", "encounter_id", "difficulty")
+    ) and (integrity.to_number(戰鬥.get("end_time")) or 0) > (integrity.to_number(戰鬥.get("start_time")) or 0)
+
+
+def 查詢戰鬥完整性目標傷害(
+    session: requests.Session,
+    認證池: FFLogs認證池,
+    報告代碼: str,
+    戰鬥: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """以 Target 視角取得本場所有實際受傷敵人的彙總承傷與 instanceCount。"""
+
+    payload = 執行_graphql(
+        session,
+        認證池,
+        戰鬥完整性目標傷害查詢,
+        {
+            "code": 報告代碼,
+            "fightID": integrity.to_int(戰鬥.get("fight_id")),
+            "startTime": integrity.to_number(戰鬥.get("start_time")),
+            "endTime": integrity.to_number(戰鬥.get("end_time")),
+            "encounterID": integrity.to_int(戰鬥.get("encounter_id")),
+            "difficulty": integrity.to_int(戰鬥.get("difficulty")),
+        },
+    )
+    報告 = ((payload.get("reportData") or {}).get("report")) or {}
+    表格 = 報告.get("targetDamage") if isinstance(報告, dict) else {}
+    表格資料 = 表格.get("data") if isinstance(表格, dict) else {}
+    條目列表 = 表格資料.get("entries") if isinstance(表格資料, dict) else []
+    戰鬥列表 = 報告.get("fights") if isinstance(報告, dict) else []
+    敵方NPC = 戰鬥列表[0].get("enemyNPCs") if isinstance(戰鬥列表, list) and 戰鬥列表 else []
+    instance_counts: dict[int, int] = {}
+    for NPC in 敵方NPC if isinstance(敵方NPC, list) else []:
+        if not isinstance(NPC, dict):
+            continue
+        actor_id = integrity.to_int(NPC.get("id"))
+        if actor_id is not None:
+            instance_counts[actor_id] = max(1, integrity.to_int(NPC.get("instanceCount")) or 1)
+
+    目標列表: list[dict[str, Any]] = []
+    for 條目 in 條目列表 if isinstance(條目列表, list) else []:
+        if not isinstance(條目, dict):
+            continue
+        actor_id = integrity.to_int(條目.get("id"))
+        傷害總量 = integrity.to_number(條目.get("total"))
+        if actor_id is None or 傷害總量 is None or 傷害總量 <= 0:
+            continue
+        目標列表.append(
+            {
+                "id": actor_id,
+                "damage": 傷害總量,
+                "instance_count": instance_counts.get(actor_id, 1),
+            }
+        )
+    return 目標列表
+
+
+def 查詢戰鬥完整性目標生命值(
+    session: requests.Session,
+    認證池: FFLogs認證池,
+    報告代碼: str,
+    戰鬥: dict[str, Any],
+    目標_id清單: list[int],
+) -> dict[int, float]:
+    """以少量 DamageDone events 取得每個實際受傷目標的 maxHitPoints。"""
+
+    if not 目標_id清單:
+        return {}
+    payload = 執行_graphql(
+        session,
+        認證池,
+        建立戰鬥完整性目標生命值查詢(目標_id清單),
+        {
+            "code": 報告代碼,
+            "fightID": integrity.to_int(戰鬥.get("fight_id")),
+            "startTime": integrity.to_number(戰鬥.get("start_time")),
+            "endTime": integrity.to_number(戰鬥.get("end_time")),
+        },
+    )
+    報告 = ((payload.get("reportData") or {}).get("report")) or {}
+    目標生命值索引: dict[int, float] = {}
+    for 索引, 目標_id in enumerate(目標_id清單):
+        events = 報告.get(f"target_{索引}") if isinstance(報告, dict) else {}
+        event_data = events.get("data") if isinstance(events, dict) else []
+        最大生命值 = max(
+            (
+                integrity.to_number((event.get("targetResources") or {}).get("maxHitPoints")) or 0
+                for event in event_data
+                if isinstance(event, dict)
+            ),
+            default=0,
+        )
+        if 最大生命值 > 0:
+            目標生命值索引[目標_id] = 最大生命值
+    return 目標生命值索引
+
+
+def 檢核戰鬥完整性(
+    session: requests.Session,
+    認證池: FFLogs認證池,
+    *,
+    副本鍵值: str,
+    報告代碼: str,
+    報告脈絡: dict[str, Any],
+    戰鬥: dict[str, Any],
+    設定: 戰鬥完整性檢核設定,
+    測量快取: integrity_cache.FightIntegrityMeasurementCache,
+) -> dict[str, Any] | None:
+    """在新 fight 寫入排行來源前完成最小完整性檢核。
+
+    只保存 `data_integrity` 的判定與最小測量值，不保存 Target 表格或 raw events。若
+    report/fight 來源指紋未變，會重用本機快取，避免新收錄流程與後續回補重複消耗 API 額度。
+    `excluded`、`suspected` 的 fight 仍會完整保存以供追溯，但由排行榜重建器排除。
+    """
+
+    if not 設定.enabled or not integrity.is_in_scope(報告脈絡, 戰鬥, 設定.cutoff_ms):
+        return None
+
+    攻擊異常標記 = integrity.has_basic_attack_exploit_marker(戰鬥)
+    檢核時間 = 毫秒轉_iso(現在毫秒()) or ""
+    if 副本鍵值 in 設定.excluded_encounter_keys:
+        return integrity.make_not_applicable_result(
+            checked_at_iso=檢核時間,
+            reason="encounter_hp_pool_semantics_not_supported",
+        )
+
+    歷史傷害預篩 = 設定.historical_damage_baselines.screen(副本鍵值, 戰鬥)
+
+    快取結果 = 測量快取.get(報告代碼, 報告脈絡, 戰鬥)
+    if 快取結果 is not None:
+        if 快取結果["outcome"] == "unverifiable":
+            return integrity.make_unverifiable_result(
+                checked_at_iso=檢核時間,
+                reason=快取結果["reason"],
+                attack_marker=攻擊異常標記,
+                historical_screen=歷史傷害預篩,
+            )
+        測量值 = 快取結果["measurement"]
+    else:
+        # 完整繁中隊伍且仍在歷史高端範圍內的舊副本，不必為正常新紀錄重複查敵方 HP。
+        # Attack 標記與高端候選仍進入量測路徑，以保留高信心 excluded 的可能性。
+        if 歷史傷害預篩 is not None and not 歷史傷害預篩.exceeds_threshold and not 攻擊異常標記:
+            return integrity.make_historical_screen_valid_result(
+                checked_at_iso=檢核時間,
+                historical_screen=歷史傷害預篩,
+            )
+        if not 戰鬥完整性查詢脈絡完整(戰鬥):
+            return integrity.make_unverifiable_result(
+                checked_at_iso=檢核時間,
+                reason="missing_fight_query_context",
+                attack_marker=攻擊異常標記,
+                historical_screen=歷史傷害預篩,
+            )
+        目標列表 = 查詢戰鬥完整性目標傷害(session, 認證池, 報告代碼, 戰鬥)
+        目標_id清單 = [目標["id"] for 目標 in 目標列表]
+        目標生命值索引 = 查詢戰鬥完整性目標生命值(
+            session,
+            認證池,
+            報告代碼,
+            戰鬥,
+            目標_id清單,
+        )
+        if not 目標列表 or len(目標生命值索引) != len(目標_id清單):
+            測量快取.put_unverifiable(
+                報告代碼,
+                報告脈絡,
+                戰鬥,
+                reason="missing_enemy_max_hp",
+                cached_at_iso=檢核時間,
+            )
+            return integrity.make_unverifiable_result(
+                checked_at_iso=檢核時間,
+                reason="missing_enemy_max_hp",
+                attack_marker=攻擊異常標記,
+                historical_screen=歷史傷害預篩,
+            )
+        測量值 = {
+            "enemy_damage": sum(目標["damage"] for 目標 in 目標列表),
+            "enemy_hp_capacity": sum(
+                目標生命值索引[目標["id"]] * 目標["instance_count"]
+                for 目標 in 目標列表
+            ),
+            "target_count": len(目標列表),
+        }
+        測量快取.put(
+            報告代碼,
+            報告脈絡,
+            戰鬥,
+            measurement=測量值,
+            cached_at_iso=檢核時間,
+        )
+
+    return integrity.evaluate(
+        checked_at_iso=檢核時間,
+        enemy_damage=測量值["enemy_damage"],
+        enemy_hp_capacity=測量值["enemy_hp_capacity"],
+        target_count=測量值["target_count"],
+        attack_marker=攻擊異常標記,
+        hp_ratio_threshold=設定.hp_ratio_threshold,
+        suspected_hp_ratio_threshold=設定.suspected_hp_ratio_threshold,
+        historical_screen=歷史傷害預篩,
+    )
+
+
 def 傷害表格疑似未完整匯出(
     戰鬥時間毫秒: float | None,
     傷害時間資訊: dict[str, Any],
@@ -4154,6 +4457,8 @@ def 建立報告成績(
     繁中服玩家: list[dict[str, Any]],
     gcd計算器: 即時GCD覆蓋率計算器 | None = None,
     預查報告: dict[str, Any] | None = None,
+    完整性檢核設定: 戰鬥完整性檢核設定 | None = None,
+    完整性測量快取: integrity_cache.FightIntegrityMeasurementCache | None = None,
 ) -> dict[str, Any] | None:
     # 一份 report 可能含同 zone 多個 encounter；這裡保存完成排名建置所需的 report/fight/player 脈絡。
     # GraphQL 原始表格可從 FFLogs 依 report code 重查，若全部落地會讓 repo 以 GB 級成長。
@@ -4169,6 +4474,13 @@ def 建立報告成績(
 
     整理後戰鬥列表: list[dict[str, Any]] = []
     報告起始時間戳記 = 報告.get("startTime") or 淺層報告.get("startTime")
+    完整性報告脈絡 = {
+        # 快取指紋必須採 FFLogs report 修訂版與絕對起訖時間；同一 report 被重新上傳或
+        # 工具修正後，舊測量值會自然失效並重新量測，不能沿用可能已過期的正常判定。
+        "revision": 報告.get("revision"),
+        "start_time": 報告起始時間戳記,
+        "end_time": 報告.get("endTime") or 淺層報告.get("endTime"),
+    }
     戰鬥_id清單 = [戰鬥.get("id") for 戰鬥 in 戰鬥列表 if type(戰鬥.get("id")) is int]
     戰鬥時間範圍索引 = 建立戰鬥時間範圍索引(戰鬥列表)
     玩家成績索引 = 查詢多場玩家成績(session, 認證池, 副本設定, 報告代碼, 戰鬥_id清單, 戰鬥時間範圍索引)
@@ -4235,6 +4547,21 @@ def 建立報告成績(
             "damage_done_summary": 建立傷害表格摘要(原始成績),
             "players": 玩家列表,
         }
+        if 完整性檢核設定 is not None and 完整性測量快取 is not None:
+            完整性結果 = 檢核戰鬥完整性(
+                session,
+                認證池,
+                副本鍵值=副本設定["key"],
+                報告代碼=報告代碼,
+                報告脈絡=完整性報告脈絡,
+                戰鬥=整理後戰鬥,
+                設定=完整性檢核設定,
+                測量快取=完整性測量快取,
+            )
+            if 完整性結果 is not None:
+                # 先寫入 report/fight 的可追溯標記，再由建立排行榜條目() 依
+                # hidden_from_public 過濾；絕不能靠前端隱藏，否則衍生資料會先吃到異常 rDPS。
+                整理後戰鬥["data_integrity"] = 完整性結果
         if gcd計算器 is not None:
             gcd計算器.補齊戰鬥玩家GCD覆蓋率(session, 認證池, 報告代碼, 副本設定, 整理後戰鬥, 玩家列表)
 
@@ -4791,12 +5118,22 @@ def main() -> int:
     狀態 = 讀取狀態檔案()
     掃描結束時間戳記 = 現在毫秒()
     gcd計算器 = 即時GCD覆蓋率計算器()
+    完整性檢核設定 = 讀取戰鬥完整性檢核設定()
+    完整性測量快取 = integrity_cache.FightIntegrityMeasurementCache.load(戰鬥完整性測量快取路徑)
 
     print(f"啟用副本：{', '.join(副本['name'] for 副本 in 副本清單)}")
     print(f"可用 FFLogs 憑證組數：{len(認證池.認證清單)}")
     if gcd計算器.啟用:
         上限文字 = str(gcd計算器.戰鬥上限) if gcd計算器.戰鬥上限 > 0 else "無上限"
         print(f"已啟用新 report 即時 GCD 覆蓋率計算，本輪 Casts graph 戰鬥上限：{上限文字}。")
+    if 完整性檢核設定.enabled:
+        print(
+            "已啟用新 report 戰鬥完整性檢核："
+            f"切點={完整性檢核設定.cutoff_iso}、"
+            f"異常倍率門檻={完整性檢核設定.hp_ratio_threshold}。"
+        )
+    else:
+        print("新 report 戰鬥完整性檢核已停用；既有 hidden_from_public 標記仍會保留。")
     if 排除報告代碼:
         print(f"永久排除 FFLogs report：{', '.join(sorted(排除報告代碼))}")
     if 重抓報告代碼:
@@ -5911,6 +6248,8 @@ def main() -> int:
                         繁中服玩家,
                         gcd計算器,
                         預查報告,
+                        完整性檢核設定,
+                        完整性測量快取,
                     )
                 except FFLogs報告尚未完整匯出錯誤 as 錯誤:
                     標記報告略過(
