@@ -46,6 +46,7 @@ class IntegrityConfig:
     cutoff_ms: int
     cutoff_iso: str
     hp_ratio_threshold: float
+    suspected_hp_ratio_threshold: float
     excluded_encounter_keys: set[str]
     default_report_limit: int
 
@@ -90,6 +91,13 @@ def load_config() -> IntegrityConfig:
     threshold = integrity.to_number(config.get("hp_ratio_threshold"))
     if threshold is None or threshold <= 1:
         raise RuntimeError("fight_integrity_check.hp_ratio_threshold 必須大於 1。")
+    suspected_threshold = integrity.to_number(config.get("suspected_hp_ratio_threshold"))
+    if suspected_threshold is None:
+        suspected_threshold = integrity.DEFAULT_SUSPECTED_HP_RATIO_THRESHOLD
+    if suspected_threshold <= 1 or suspected_threshold >= threshold:
+        raise RuntimeError(
+            "fight_integrity_check.suspected_hp_ratio_threshold 必須大於 1 且小於 hp_ratio_threshold。"
+        )
 
     excluded = config.get("excluded_encounter_keys")
     excluded_keys = {
@@ -106,6 +114,7 @@ def load_config() -> IntegrityConfig:
         cutoff_ms=cutoff_ms,
         cutoff_iso=cutoff_iso,
         hp_ratio_threshold=threshold,
+        suspected_hp_ratio_threshold=suspected_threshold,
         excluded_encounter_keys=excluded_keys,
         default_report_limit=max(1, report_limit or 25),
     )
@@ -341,6 +350,7 @@ def evaluate_measurement(
         target_count=measurement["target_count"],
         attack_marker=attack_marker,
         hp_ratio_threshold=config.hp_ratio_threshold,
+        suspected_hp_ratio_threshold=config.suspected_hp_ratio_threshold,
     )
 
 

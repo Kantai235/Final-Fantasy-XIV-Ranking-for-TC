@@ -18,10 +18,11 @@ from typing import Any
 
 
 DATA_INTEGRITY_KEY = "data_integrity"
-CALCULATION_VERSION = 1
-RULESET = "post_2026_07_28_basic_attack_v1"
+CALCULATION_VERSION = 2
+RULESET = "post_2026_07_28_basic_attack_v2"
 DEFAULT_CUTOFF_ISO = "2026-07-28T18:00:00+08:00"
 DEFAULT_HP_RATIO_THRESHOLD = 1.15
+DEFAULT_SUSPECTED_HP_RATIO_THRESHOLD = 1.14
 DEFAULT_EXCLUDED_ENCOUNTER_KEYS = ("ultimate_bahamut",)
 
 
@@ -158,8 +159,14 @@ def evaluate(
     target_count: int,
     attack_marker: bool,
     hp_ratio_threshold: float,
+    suspected_hp_ratio_threshold: float,
 ) -> dict[str, Any]:
-    """建立唯一的判定結果；倍率是全隊傷害 / 目標最大 HP 總和。"""
+    """建立唯一的判定結果；倍率是全隊傷害 / 目標最大 HP 總和。
+
+    1.15 以上（嚴格大於）是高信心排除；1.14 至 1.15 的邊界群組只標為疑似。
+    後者來自極澤蓮尼亞實測：同一群組大多已有 Attack 標記，但少數 report
+    漏報標記，因此不能再依賴泛用 exploit:6 補判。
+    """
     if enemy_damage < 0 or enemy_hp_capacity <= 0 or target_count <= 0:
         return make_unverifiable_result(
             checked_at_iso=checked_at_iso,
@@ -171,12 +178,14 @@ def evaluate(
     reasons: list[str] = []
     if ratio > hp_ratio_threshold:
         reasons.append("enemy_damage_exceeds_hp_ratio_threshold")
+    elif ratio >= suspected_hp_ratio_threshold:
+        reasons.append("enemy_damage_reaches_suspected_hp_ratio_threshold")
     if attack_marker:
         reasons.append("fflogs_basic_attack_exploit_marker")
 
     if ratio > hp_ratio_threshold:
         status = "excluded"
-    elif attack_marker:
+    elif ratio >= suspected_hp_ratio_threshold or attack_marker:
         status = "suspected"
     else:
         status = "valid"
@@ -194,6 +203,7 @@ def evaluate(
             "enemy_hp_capacity": round(enemy_hp_capacity, 3),
             "damage_to_hp_ratio": round(ratio, 6),
             "hp_ratio_threshold": hp_ratio_threshold,
+            "suspected_hp_ratio_threshold": suspected_hp_ratio_threshold,
             "target_count": target_count,
         },
     }

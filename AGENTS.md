@@ -177,7 +177,7 @@
 3. 兩種前端篩選都只能使用薄索引既有的 `game_version` 與 `is_obsolete_record`，不得恢復 `version_ranking_entries` 或 `version_table_rows`，以維持 GitHub Pages 容量控制。
 
 ### K. 2026-07-28 後普攻資料完整性暫時防護
-1. `scripts/fight_integrity.py` 是唯一集中定義此暫時規則的模組；`scripts/backfill_fight_integrity.py` 只針對台灣時間 `2026-07-28T18:00:00+08:00` 後的 fight 查詢「依目標傷害」與 `targetResources.maxHitPoints`，不保存 raw events。全隊敵方承傷／敵方最大生命池總和嚴格大於 `1.15` 時標記為 `excluded`；`damage_done_summary.exploitDetails` 出現 `guid=7` 或 `Attack` 時標記為 `suspected`。不可使用泛用 `exploit:6`，因為它在正常紀錄也會大量出現。
+1. `scripts/fight_integrity.py` 是唯一集中定義此暫時規則的模組；`scripts/backfill_fight_integrity.py` 只針對台灣時間 `2026-07-28T18:00:00+08:00` 後的 fight 查詢「依目標傷害」與 `targetResources.maxHitPoints`，不保存 raw events。全隊敵方承傷／敵方最大生命池總和嚴格大於 `1.15` 時標記為 `excluded`；倍率介於 `1.14` 至 `1.15` 時標記為 `suspected`，用來補足 Attack 標記漏報但尚未達高信心排除門檻的邊界群組；`damage_done_summary.exploitDetails` 出現 `guid=7` 或 `Attack` 仍會直接標記為 `suspected`。不可使用泛用 `exploit:6`，因為它在正常紀錄也會大量出現。
 2. 檢核結果必須寫在 `fights[].data_integrity`，其中 `hidden_from_public=true` 只會使該 fight 從 `ranking_entries`、公開排行榜、個人成績、隊伍榜與近期動態消失；report、fight、players 與其檢核證據均保留。不得把此情況轉為 `report_hidden`，也不得整份 report 刪除。
 3. `ultimate_bahamut` 的多階段敵方生命池語意不能套用此倍率檢核，必須寫入 `not_applicable`，避免把正常歷史戰鬥誤判。其他無法取得最大 HP 的 fight 只能寫 `unverifiable`，除非同時有 `Attack` 標記才可隱藏為 `suspected`。
 4. 這是可撤除的資料品質防護。GitHub Actions 用 `FFLOGS_FIGHT_INTEGRITY_REPORT_LIMIT` 小批量逐輪補查，`FFLOGS_FIGHT_INTEGRITY_ENABLED=false` 停止新增檢核；日後 Log 工具修正後可停止 workflow 步驟與回補腳本，但已標記的歷史 fight 必須繼續保留並隱藏，不能回填為正常或硬刪。

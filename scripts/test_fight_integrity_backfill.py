@@ -38,6 +38,7 @@ class FightIntegrityBackfillCacheTest(unittest.TestCase):
             cutoff_ms=0,
             cutoff_iso="2026-07-28T18:00:00+08:00",
             hp_ratio_threshold=1.15,
+            suspected_hp_ratio_threshold=1.14,
             excluded_encounter_keys=set(),
             default_report_limit=25,
         )
@@ -95,6 +96,7 @@ class FightIntegrityBackfillCacheTest(unittest.TestCase):
             target_count=1,
             attack_marker=False,
             hp_ratio_threshold=1.15,
+            suspected_hp_ratio_threshold=1.14,
         )
 
         seeded = backfill.seed_measurement_cache_from_results([self.candidate], self.cache)

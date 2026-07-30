@@ -14,6 +14,7 @@ class FightIntegrityTest(unittest.TestCase):
             target_count=2,
             attack_marker=False,
             hp_ratio_threshold=1.15,
+            suspected_hp_ratio_threshold=1.14,
         )
 
         self.assertEqual(result["status"], "excluded")
@@ -29,12 +30,42 @@ class FightIntegrityTest(unittest.TestCase):
             target_count=1,
             attack_marker=True,
             hp_ratio_threshold=1.15,
+            suspected_hp_ratio_threshold=1.14,
         )
 
         self.assertEqual(result["status"], "suspected")
         self.assertTrue(result["hidden_from_public"])
         self.assertIn("fflogs_basic_attack_exploit_marker", result["reasons"])
         self.assertNotIn("enemy_damage_exceeds_hp_ratio_threshold", result["reasons"])
+
+    def test_near_hp_ratio_threshold_is_suspected_without_attack_marker(self) -> None:
+        result = integrity.evaluate(
+            checked_at_iso="2026-07-30T00:00:00Z",
+            enemy_damage=114_274.4,
+            enemy_hp_capacity=100_000,
+            target_count=2,
+            attack_marker=False,
+            hp_ratio_threshold=1.15,
+            suspected_hp_ratio_threshold=1.14,
+        )
+
+        self.assertEqual(result["status"], "suspected")
+        self.assertTrue(result["hidden_from_public"])
+        self.assertEqual(result["reasons"], ["enemy_damage_reaches_suspected_hp_ratio_threshold"])
+
+    def test_ratio_below_near_hp_threshold_is_valid_without_attack_marker(self) -> None:
+        result = integrity.evaluate(
+            checked_at_iso="2026-07-30T00:00:00Z",
+            enemy_damage=113_999.9,
+            enemy_hp_capacity=100_000,
+            target_count=2,
+            attack_marker=False,
+            hp_ratio_threshold=1.15,
+            suspected_hp_ratio_threshold=1.14,
+        )
+
+        self.assertEqual(result["status"], "valid")
+        self.assertFalse(result["hidden_from_public"])
 
     def test_generic_exploit_six_is_not_basic_attack_marker(self) -> None:
         fight = {

@@ -105,7 +105,7 @@ README 只保留入口與最小操作脈絡，完整說明請依主題閱讀：
 | --- | --- |
 | `npm run build:public-rankings` | 只重建公開排行榜與副本清單，不呼叫 FFLogs API。 |
 | `npm run check:report-status -- <report code>` | 只查既有 report 目前是否仍可公開讀取；Private、刪除或無權限時將來源標記為 hidden，不推進掃描點。 |
-| `npm run backfill:fight-integrity` | 分批檢核台灣時間 2026-07-28 18:00 後的 fight：全隊敵方承傷／敵方最大生命池超過 1.15 倍時標記 `excluded`；FFLogs `Attack` 異常標記則標記 `suspected`。兩者都只從公開衍生資料隱藏，原始 report/fight 保留。敵方承傷與生命池會保存於不進 Git 的最小快取，重跑時不會重複耗用 API；只有 `--refresh-cache` 才會強制重新讀取。 |
+| `npm run backfill:fight-integrity` | 分批檢核台灣時間 2026-07-28 18:00 後的 fight：全隊敵方承傷／敵方最大生命池嚴格超過 1.15 倍時標記 `excluded`；介於 1.14 至 1.15 倍、或 FFLogs `Attack` 異常標記時標記 `suspected`。兩者都只從公開衍生資料隱藏，原始 report/fight 保留。敵方承傷與生命池會保存於不進 Git 的最小快取，重跑時不會重複耗用 API；只有 `--refresh-cache` 才會強制重新讀取。 |
 | `npm run fetch:honey-fans` | 抓取 Honey B. Lovely 粉絲榜趣味資料，會呼叫 FFLogs API。 |
 | `npm run build:honey-fans` | 由 `data/fun/honey_b_fans.json` 重建公開趣味榜 JSON，不呼叫 FFLogs API。 |
 | `npm run build:ranking-tables` | 由公開排行榜產生前端薄索引與按需載入報告細節檔；會依 `config/game_versions.json` 在薄索引列寫入 `game_version`，供排行榜累積版本篩選使用。 |
