@@ -70,7 +70,7 @@ export function 建立個人成績趨勢版本切點(起始時間戳記, 結束�
     .filter(Boolean);
 }
 
-export const 預設個人成績簡表版本 = "7.15";
+export const 預設個人成績簡表版本 = "7.2";
 
 const 個人成績簡表版本索引 = new Map(個人成績簡表版本選項.map((版本, index) => [版本.value, { ...版本, index }]));
 

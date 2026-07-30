@@ -39,6 +39,7 @@ import {
   成績符合個人成績簡表版本,
   個人成績簡表版本已開放,
   個人成績簡表版本選項,
+  預設個人成績簡表版本,
   取得個人成績紀錄版本,
   副本符合個人成績簡表版本,
   是個人成績簡表目標副本,
@@ -793,6 +794,7 @@ function validateUserProfileClearSummary() {
   const lightHeavyweight = { key: "light-heavyweight", label: "輕量級", order: 1 };
   const cruiserweight = { key: "cruiserweight", label: "次重量級", order: 2 };
   const version72OpenedAt = Date.parse("2026-07-28T05:00:00.000Z");
+  assert(預設個人成績簡表版本 === "7.2", "個人成績簡表目前必須預設顯示 7.2。");
   const encounters = [
     {
       key: "savage_m1s",

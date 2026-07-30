@@ -140,7 +140,7 @@
 2. `scripts/fetch_fflogs.py --rebuild-public` 會依 `start_time` 標記公開排行榜條目的 `is_obsolete_record`、`version_status` 與 `version_cutoff_iso`，並為支援切點的副本輸出 `version_ranking_entries.all|valid|obsolete`；這是避免前端重新實作排行榜去重與排序規則。
 3. `scripts/build_user_data.mjs` 會在全服統計、個人成績單與隊伍榜輸出 `version_slices.all|valid|obsolete`。同職分位、個人最佳紀錄與職業最佳紀錄只能使用 `valid` 紀錄，過版紀錄只作為歷史資料呈現與追溯。
 4. 前端版本篩選一律使用 `version=all|valid|obsolete` 的網址狀態；若副本沒有 `version_cutoff`，必須自動回到 `all`，避免非過版副本出現無效篩選。
-5. 個人成績簡表另有繁中服遊戲版本快照，和 `version_cutoff` 的 valid／obsolete 語意分離。`profile_summary_available_from` 決定副本首次可見版本，選填的 `profile_summary_available_until` 可讓輪替內容只保留至最後一個歷史版本；版本選項以「下一版本開放時間」排除後續 `recorded_at_iso`。已公告的未來版本需保存明確開放時間，並在時間到達前標示待開放、到達後自動可選。未公告開放時間時不得用目前時間或猜測日期切分歷史戰鬥。
+5. 個人成績簡表另有繁中服遊戲版本快照，和 `version_cutoff` 的 valid／obsolete 語意分離，目前預設選擇 7.2。`profile_summary_available_from` 決定副本首次可見版本，選填的 `profile_summary_available_until` 可讓輪替內容只保留至最後一個歷史版本；版本選項以「下一版本開放時間」排除後續 `recorded_at_iso`。已公告的未來版本需保存明確開放時間，並在時間到達前標示待開放、到達後自動可選。未公告開放時間時不得用目前時間或猜測日期切分歷史戰鬥。
 6. 個人成績簡表的零式會列出所選遊戲版本中全部已開放量級，預設選取最新量級，但可切換查看較早量級。`profile_summary_savage_tier` 必須保存量級 key、名稱、遞增順序與量級內 1～4 層；某量級四層皆有該版本有效通關時，量級按鈕顯示彩色勾勾，量級內樓層仍顯示職業與 PR。新增次重量級、重量級時提高 order 即可讓簡表加入新量級，舊量級的排行榜與個人成績仍維持歷史追溯。
 7. `config/game_versions.json` 是個人成績單 `game_version` 的唯一繁中服競技版本切點來源。`build_user_data.mjs` 必須以戰鬥 `recorded_at_iso` 在建置層寫入版本標籤；此欄位只用於玩家辨識當時的技能／裝備環境，不得改變 `version_cutoff` 的 valid／obsolete、排名或 PR 語意。前端以 localStorage 偏好控制顯示，預設關閉；開啟時個人分位亮點的 PR 在左、版本在右，成績列摘要與歷史表皆在 aDPS 後顯示版本，並在一般成績單依目前伺服器的已收錄版本提供篩選。版本條件需與職業篩選交集，並以「截至選定版本」的累積快照套用：選擇 7.1 時包含 7.0、7.05 與 7.1，最新版本即完整成績單，不另設「全部版本」。關閉版本顯示時需清除版本條件。個別玩家 JSON 來自專用資料來源，若舊資料尚未帶入 `game_version`，前端僅可依同一組繁中服切點從 `recorded_at_iso` 回推顯示與篩選版本；明確欄位永遠優先，無法判讀時間時不可臆測。
 
