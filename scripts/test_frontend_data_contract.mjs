@@ -1026,6 +1026,39 @@ async function validateSavageProfileSummaryPresentation() {
   );
 }
 
+async function validateUserProfileSummaryJobFilter() {
+  const pageSource = await readText(path.join(srcDir, "pages", "UserProfilePage.vue"));
+  const composableSource = await readText(path.join(srcDir, "composables", "useRankingApp.js"));
+  const controlStyles = await readText(path.join(srcDir, "styles", "controls.css"));
+
+  assert(
+    pageSource.includes('v-if="!使用者簡表模式 || 使用者有多個職業"')
+      && pageSource.includes("個人成績搜尋表單簡表職業篩選: 使用者簡表模式 && 使用者有多個職業"),
+    "簡表職能／職業選單只應在玩家有多個職業時顯示，並套用對應的桌面欄位配置。",
+  );
+  assert(
+    composableSource.includes("const 使用者有多個職業 = computed(() => 使用者可用職業列表.value.length > 1);"),
+    "簡表必須依目前玩家與伺服器實際收錄的職業數判斷是否顯示選單。",
+  );
+  assert(
+    composableSource.includes("成績符合個人成績簡表版本(成績, 使用者簡表版本.value)")
+      && composableSource.includes("&& 符合使用者職業篩選(成績)"),
+    "簡表成績必須同時套用遊戲版本與職能／職業條件。",
+  );
+  assert(
+    composableSource.includes('const 使用者職業類型篩選 = ref("");')
+      && composableSource.includes('const 使用者職業篩選 = ref("");')
+      && composableSource.includes('目前使用者職業類型.value?.名稱 || "全部職業"'),
+    "簡表與一般成績單共用的職業條件必須預設為全部職業。",
+  );
+  assert(
+    controlStyles.includes(
+      ".個人成績搜尋表單.個人成績搜尋表單簡表職業篩選 {\n  grid-template-columns: minmax(220px, 1.1fr) minmax(200px, 0.82fr) minmax(128px, 0.42fr) auto auto;",
+    ),
+    "桌面版多職業簡表必須為玩家、職業、版本與操作按鈕保留可收縮欄位。",
+  );
+}
+
 async function validateMobileProfileSummaryLayout() {
   const source = await readText(path.join(srcDir, "styles", "responsive.css"));
   const mobileStyleStart = source.indexOf("@media (max-width: 720px)");
@@ -2270,6 +2303,7 @@ async function main() {
   validateUserProfileGameVersionFallback();
   validateUserProfileClearSummary();
   await validateSavageProfileSummaryPresentation();
+  await validateUserProfileSummaryJobFilter();
   await validateMobileProfileSummaryLayout();
   await validateMobileUserSearchFormLayout();
   validateGcdCoverageDiagnosticFields();

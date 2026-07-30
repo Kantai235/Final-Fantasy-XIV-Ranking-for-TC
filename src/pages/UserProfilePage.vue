@@ -214,6 +214,7 @@ export default {
       class="使用者搜尋表單 個人成績搜尋表單"
       :class="{
         個人成績搜尋表單簡表模式: 使用者簡表模式,
+        個人成績搜尋表單簡表職業篩選: 使用者簡表模式 && 使用者有多個職業,
         個人成績搜尋表單版本篩選: !使用者簡表模式 && 顯示版本紀錄,
       }"
       @submit.prevent="提交使用者搜尋"
@@ -243,7 +244,11 @@ export default {
         </datalist>
       </div>
 
-      <div v-if="!使用者簡表模式" class="欄位 職業選單欄位" @focusout="處理使用者職業選單失焦">
+      <div
+        v-if="!使用者簡表模式 || 使用者有多個職業"
+        class="欄位 職業選單欄位"
+        @focusout="處理使用者職業選單失焦"
+      >
         <span>職業</span>
         <div class="職業選單">
           <button
