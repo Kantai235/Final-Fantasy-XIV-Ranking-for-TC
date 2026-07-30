@@ -95,7 +95,7 @@ README 只保留入口與最小操作脈絡，完整說明請依主題閱讀：
 
 本專案最重要的邊界是「抓取、建置、呈現」三層分離：
 
-1. `scripts/fetch_fflogs.py` 是 Data Fetching Layer。它是唯一可直接呼叫 FFLogs GraphQL API 的入口，負責 OAuth、限流、重試、繁中服玩家初篩、report 狀態判定，以及 `data/rankings/` 與 `data/state.json` 的可追溯寫入；GraphQL 查詢字串集中在 `scripts/fflogs_pipeline/graphql_queries.py`，避免掃描策略與查詢文本互相纏在同一個巨型檔。暫時性的 7/28 後普攻資料完整性檢核由獨立的 `scripts/backfill_fight_integrity.py` 分批執行，只在 fight 層寫入 `data_integrity` 標記，不會刪除原始 report。
+1. `scripts/fetch_fflogs.py` 是 Data Fetching Layer。它是唯一可直接呼叫 FFLogs GraphQL API 的入口，負責 OAuth、限流、重試、繁中服玩家初篩、report 狀態判定，以及 `data/rankings/` 與 `data/state.json` 的可追溯寫入；GraphQL 查詢字串集中在 `scripts/fflogs_pipeline/graphql_queries.py`，避免掃描策略與查詢文本互相纏在同一個巨型檔。暫時性的 7/28 後普攻資料完整性檢核由獨立的 `scripts/backfill_fight_integrity.py` 分批執行，會優先使用不進 Git 的最小測量快取，只在 fight 層寫入 `data_integrity` 標記，不會刪除原始 report。
 2. `scripts/build_user_data.mjs` 是 Data Building Layer。它讀取排行榜來源資料，產生個人成績單、個人成績報告細節、全服統計、近期動態、隊伍榜與伺服器對比等 `public/data/` 靜態 JSON；`build:user-data` 也會接續產生排行榜薄索引、Logs 狀態索引與公開更新狀態。正式部署時，個別玩家成績單 JSON 會先同步到專用 users repo，再從主站 Pages artifact 移除；高頻共用的 `data/users/index.json` 會保留在主站 `/data/`，讓 Cloudflare/GitHub Pages 快取承接玩家搜尋索引請求。
 3. `src/` 是 UI Presentation Layer。Vue 只讀取靜態 JSON 進行呈現、篩選與狀態管理：主站共用資料與個人成績單索引來自 Pages artifact 的 `/data/`，個別玩家成績單資料來自專用 users repo，不能直接呼叫 FFLogs API；`src/composables/rankingApp/` 承接排行榜預設值、注入 context 與排行列正規化，`src/styles/app.css` 則只作為樣式拆檔入口。
 
@@ -105,7 +105,7 @@ README 只保留入口與最小操作脈絡，完整說明請依主題閱讀：
 | --- | --- |
 | `npm run build:public-rankings` | 只重建公開排行榜與副本清單，不呼叫 FFLogs API。 |
 | `npm run check:report-status -- <report code>` | 只查既有 report 目前是否仍可公開讀取；Private、刪除或無權限時將來源標記為 hidden，不推進掃描點。 |
-| `npm run backfill:fight-integrity` | 分批檢核台灣時間 2026-07-28 18:00 後的 fight：全隊敵方承傷／敵方最大生命池超過 1.15 倍時標記 `excluded`；FFLogs `Attack` 異常標記則標記 `suspected`。兩者都只從公開衍生資料隱藏，原始 report/fight 保留。 |
+| `npm run backfill:fight-integrity` | 分批檢核台灣時間 2026-07-28 18:00 後的 fight：全隊敵方承傷／敵方最大生命池超過 1.15 倍時標記 `excluded`；FFLogs `Attack` 異常標記則標記 `suspected`。兩者都只從公開衍生資料隱藏，原始 report/fight 保留。敵方承傷與生命池會保存於不進 Git 的最小快取，重跑時不會重複耗用 API；只有 `--refresh-cache` 才會強制重新讀取。 |
 | `npm run fetch:honey-fans` | 抓取 Honey B. Lovely 粉絲榜趣味資料，會呼叫 FFLogs API。 |
 | `npm run build:honey-fans` | 由 `data/fun/honey_b_fans.json` 重建公開趣味榜 JSON，不呼叫 FFLogs API。 |
 | `npm run build:ranking-tables` | 由公開排行榜產生前端薄索引與按需載入報告細節檔；會依 `config/game_versions.json` 在薄索引列寫入 `game_version`，供排行榜累積版本篩選使用。 |
@@ -142,7 +142,7 @@ README 只保留入口與最小操作脈絡，完整說明請依主題閱讀：
 - 既有 report 的公開狀態巡檢以 report code 為單位：尚未巡檢時優先選較新的 report，之後依來源分片保存的 `report_status_checked_at` 輪替。FFLogs 回傳 `visibility=Private`、report 不存在或封存不可讀時，來源 report 會標記 hidden，正常公開產物不再列出該紀錄；完整追溯則保留於 hidden delta。
 - GitHub Actions 的 FFLogs 排行榜抓取步驟預設設定 `FFLOGS_MAX_RUNTIME_SECONDS=6000` 與 `FFLOGS_RUNTIME_GRACE_SECONDS=900`，可由 repo variables 覆寫。這讓 FFLogs 憑證全數進入長冷卻時，`fetch_fflogs.py` 能先保留 `active_scan` 續跑位置並正常進入後續資料建置與 commit，避免 GitHub-hosted runner 直接取消整個 job。
 - GitHub Actions 會先用 `FFLOGS_RECENT_GCD_BACKFILL_REPORT_LIMIT` 控制的非 stateful GCD 補洞追最新候選，再用 `FFLOGS_GCD_BACKFILL_REPORT_LIMIT` 控制的 stateful 回補從固定 cutoff 往舊追；前者處理 cutoff 後空洞，後者處理歷史追平。
-- GitHub Actions 會以 `FFLOGS_FIGHT_INTEGRITY_REPORT_LIMIT`（預設 25）逐批執行 7/28 後的戰鬥完整性檢核；可用 `FFLOGS_FIGHT_INTEGRITY_ENABLED=false` 停止新增檢核。這是可撤除的暫時性防護：停用後既有 `data_integrity.hidden_from_public=true` 仍會從排行榜、個人成績、隊伍榜與近期動態隱藏，原始 report/fight 不會被移除。
+- GitHub Actions 會以 `FFLOGS_FIGHT_INTEGRITY_REPORT_LIMIT`（預設 25）逐批執行 7/28 後的戰鬥完整性檢核；可用 `FFLOGS_FIGHT_INTEGRITY_ENABLED=false` 停止新增檢核。它會用 Actions cache 接續 `data/local-cache/fight-integrity/measurements.json` 的最小測量資料；該資料只含彙總敵方承傷、生命池與目標數，不會進 Git。既有 `data_integrity.metrics` 也會直接植入快取，不會為了補快取重讀 API。規則重跑優先離線復查，僅在 report／fight 來源指紋變動或明確使用 `--refresh-cache` 時重新讀取 FFLogs。這是可撤除的暫時性防護：停用後既有 `data_integrity.hidden_from_public=true` 仍會從排行榜、個人成績、隊伍榜與近期動態隱藏，原始 report/fight 不會被移除。
 - GitHub Actions checkout 只抓目前分支的淺層 partial clone；這個資料 repo 的完整歷史 pack 已非常大，正式更新與緊急部署都不應改回 `fetch-depth: 0`，避免 runner 在 checkout 階段耗盡磁碟。
 - GitHub Actions 以 Node.js 24 執行前端與資料建置，官方 actions 也需使用支援 Node 24 的 major 版本；Pages 部署若遇到 `syncing_files` 後的暫時性失敗，workflow 會等待 60 秒後重試一次。
 - 正式 Pages artifact 只保留 `dist/data/users/index.json`，不保留個別玩家成績單 JSON、`dist/data/user-entry-details`、hidden 使用者差量 JSON、逐玩家靜態分享頁與 `dist/og/users` 玩家 OG 圖；前端仍由 `/user` route 與 users 專用 repo 讀取個別玩家成績單。這是為了讓高頻搜尋索引吃到主站 CDN 快取，同時避免 GitHub Pages 在 `syncing_files` 階段同步上萬個小檔時失敗。

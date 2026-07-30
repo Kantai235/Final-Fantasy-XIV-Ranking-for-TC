@@ -16,6 +16,7 @@ sys.path.insert(0, str(SCRIPT_DIR))
 
 import fetch_fflogs as fflogs  # noqa: E402
 import fight_integrity as integrity  # noqa: E402
+import fight_integrity_cache as integrity_cache  # noqa: E402
 from fflogs_pipeline.graphql_queries import (  # noqa: E402
     建立戰鬥完整性目標生命值查詢,
     戰鬥完整性目標傷害查詢,
@@ -35,6 +36,8 @@ mark_ranking_report_hidden = getattr(fflogs, "標記排行榜報告隱藏")
 report_access_error_class = getattr(fflogs, "FFLogs報告存取錯誤")
 graphql_error_class = getattr(fflogs, "FFLogsGraphQL錯誤")
 hidden_reason_inaccessible = getattr(fflogs, "報告無法存取隱藏原因")
+
+DEFAULT_CACHE_PATH = PROJECT_ROOT / "data" / "local-cache" / "fight-integrity" / "measurements.json"
 
 
 @dataclass
@@ -189,6 +192,56 @@ def select_candidates(candidates: list[Candidate], report_limit: int) -> list[Ca
     return [candidate for candidate in candidates if candidate.report_code in selected_codes]
 
 
+def seed_measurement_cache_from_results(
+    candidates: list[Candidate],
+    measurement_cache: integrity_cache.FightIntegrityMeasurementCache,
+) -> int:
+    """將既有檢核結果中的彙總測量值補入新快取，不重新讀取 FFLogs。"""
+
+    seeded = 0
+    for candidate in candidates:
+        if integrity.needs_check(candidate.fight):
+            continue
+        if measurement_cache.get(candidate.report_code, candidate.report, candidate.fight) is not None:
+            continue
+        result = integrity.current_result(candidate.fight)
+        metrics = result.get("metrics") if isinstance(result, dict) else None
+        checked_at_iso = str(result.get("checked_at_iso") or "") if isinstance(result, dict) else ""
+        try:
+            if isinstance(metrics, dict):
+                measurement_cache.put(
+                    candidate.report_code,
+                    candidate.report,
+                    candidate.fight,
+                    measurement=metrics,
+                    cached_at_iso=checked_at_iso,
+                    persist=False,
+                )
+            else:
+                status = result.get("status") if isinstance(result, dict) else None
+                if status not in {"unverifiable", "suspected"}:
+                    continue
+                reasons = result.get("reasons") if isinstance(result, dict) else None
+                reason = reasons[0] if isinstance(reasons, list) and reasons and isinstance(reasons[0], str) else ""
+                if not reason:
+                    continue
+                measurement_cache.put_unverifiable(
+                    candidate.report_code,
+                    candidate.report,
+                    candidate.fight,
+                    reason=reason,
+                    cached_at_iso=checked_at_iso,
+                    persist=False,
+                )
+        except ValueError:
+            continue
+        seeded += 1
+
+    if seeded:
+        measurement_cache.save()
+    return seeded
+
+
 def query_target_damage(
     session: Any,
     auth_pool: Any,
@@ -271,53 +324,129 @@ def query_target_max_hp(session: Any, auth_pool: Any, candidate: Candidate, targ
     return max_hp_by_target
 
 
+def evaluate_measurement(
+    candidate: Candidate,
+    config: IntegrityConfig,
+    checked_at_iso: str,
+    *,
+    measurement: dict[str, float | int],
+) -> dict[str, Any]:
+    """以已快取或剛查得的最小測量資料重新套用完整性規則。"""
+
+    attack_marker = integrity.has_basic_attack_exploit_marker(candidate.fight)
+    return integrity.evaluate(
+        checked_at_iso=checked_at_iso,
+        enemy_damage=measurement["enemy_damage"],
+        enemy_hp_capacity=measurement["enemy_hp_capacity"],
+        target_count=measurement["target_count"],
+        attack_marker=attack_marker,
+        hp_ratio_threshold=config.hp_ratio_threshold,
+    )
+
+
 def evaluate_candidate(
     session: Any,
     auth_pool: Any,
     candidate: Candidate,
     config: IntegrityConfig,
     checked_at_iso: str,
-) -> dict[str, Any]:
+    measurement_cache: integrity_cache.FightIntegrityMeasurementCache,
+    *,
+    refresh_cache: bool,
+) -> tuple[dict[str, Any], bool]:
+    """優先以本機測量快取判定；只有未命中或要求刷新時才呼叫 FFLogs。"""
+
     attack_marker = integrity.has_basic_attack_exploit_marker(candidate.fight)
     if candidate.encounter_key in config.excluded_encounter_keys:
         return integrity.make_not_applicable_result(
             checked_at_iso=checked_at_iso,
             reason="encounter_hp_pool_semantics_not_supported",
-        )
+        ), False
     if not has_query_context(candidate.fight):
         return integrity.make_unverifiable_result(
             checked_at_iso=checked_at_iso,
             reason="missing_fight_query_context",
             attack_marker=attack_marker,
-        )
+        ), False
+
+    cached = None if refresh_cache else measurement_cache.get(
+        candidate.report_code,
+        candidate.report,
+        candidate.fight,
+    )
+    if cached is not None:
+        if cached["outcome"] == "unverifiable":
+            return integrity.make_unverifiable_result(
+                checked_at_iso=checked_at_iso,
+                reason=cached["reason"],
+                attack_marker=attack_marker,
+            ), True
+        return evaluate_measurement(
+            candidate,
+            config,
+            checked_at_iso,
+            measurement=cached["measurement"],
+        ), True
 
     targets, _ = query_target_damage(session, auth_pool, candidate)
     target_ids = [target["id"] for target in targets]
     target_hp = query_target_max_hp(session, auth_pool, candidate, target_ids)
     if not targets or len(target_hp) != len(target_ids):
+        measurement_cache.put_unverifiable(
+            candidate.report_code,
+            candidate.report,
+            candidate.fight,
+            reason="missing_enemy_max_hp",
+            cached_at_iso=checked_at_iso,
+        )
         return integrity.make_unverifiable_result(
             checked_at_iso=checked_at_iso,
             reason="missing_enemy_max_hp",
             attack_marker=attack_marker,
-        )
+        ), False
 
-    enemy_damage = sum(target["damage"] for target in targets)
-    enemy_hp_capacity = sum(target_hp[target["id"]] * target["instance_count"] for target in targets)
-    return integrity.evaluate(
-        checked_at_iso=checked_at_iso,
-        enemy_damage=enemy_damage,
-        enemy_hp_capacity=enemy_hp_capacity,
-        target_count=len(targets),
-        attack_marker=attack_marker,
-        hp_ratio_threshold=config.hp_ratio_threshold,
+    measurement = {
+        "enemy_damage": sum(target["damage"] for target in targets),
+        "enemy_hp_capacity": sum(target_hp[target["id"]] * target["instance_count"] for target in targets),
+        "target_count": len(targets),
+    }
+    # 落地的是最小彙總值，不保存依目標表格或 raw events；若 FFLogs 之後修正
+    # 同一 report，來源指紋變更時快取自然會失效。
+    measurement_cache.put(
+        candidate.report_code,
+        candidate.report,
+        candidate.fight,
+        measurement=measurement,
+        cached_at_iso=checked_at_iso,
     )
+    return evaluate_measurement(
+        candidate,
+        config,
+        checked_at_iso,
+        measurement=measurement,
+    ), False
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="分批回補 FFLogs 戰鬥完整性檢核。")
     parser.add_argument("--report-limit", type=int, default=None, help="本輪最多處理的 report 數。")
     parser.add_argument("--dry-run", action="store_true", help="只列出候選，不呼叫 API、不寫入資料。")
-    parser.add_argument("--force", action="store_true", help="重新檢查已有目前版本結果的 fight。")
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="重新判定已有目前版本結果的 fight；仍優先使用有效測量快取。",
+    )
+    parser.add_argument(
+        "--cache-path",
+        type=Path,
+        default=DEFAULT_CACHE_PATH,
+        help="不進 Git 的完整性測量快取路徑。",
+    )
+    parser.add_argument(
+        "--refresh-cache",
+        action="store_true",
+        help="忽略有效快取並重新向 FFLogs 讀取本輪測量資料。",
+    )
     args = parser.parse_args()
 
     config = load_config()
@@ -330,7 +459,10 @@ def main() -> int:
         print("report limit 為 0，略過本輪戰鬥完整性檢核。")
         return 0
 
-    candidates, _, scoped_fights = find_candidates(load_encounters(), config, force=args.force)
+    scoped_candidates, _, scoped_fights = find_candidates(load_encounters(), config, force=True)
+    candidates = scoped_candidates if args.force else [
+        candidate for candidate in scoped_candidates if integrity.needs_check(candidate.fight)
+    ]
     selected = select_candidates(candidates, report_limit)
     print(
         "戰鬥完整性檢核候選："
@@ -341,19 +473,41 @@ def main() -> int:
         print(f"- {candidate.label}")
     if len(selected) > 20:
         print(f"... 另有 {len(selected) - 20} 場本輪候選。")
-    if args.dry_run or not selected:
+    if args.dry_run:
+        return 0
+
+    measurement_cache = integrity_cache.FightIntegrityMeasurementCache.load(args.cache_path)
+    seeded_count = seed_measurement_cache_from_results(scoped_candidates, measurement_cache)
+    cache_mode = "強制刷新" if args.refresh_cache else "優先讀取"
+    seeded_label = f"、由既有結果補入 {seeded_count} 筆" if seeded_count else ""
+    print(f"完整性測量快取：{args.cache_path}（目前 {len(measurement_cache)} 筆，{cache_mode}{seeded_label}）")
+    if not selected:
         return 0
 
     session = fflogs.requests.Session()
     auth_pool = auth_pool_class(session, read_credentials())
     changed_encounters: set[str] = set()
     counters = {"excluded": 0, "suspected": 0, "valid": 0, "unverifiable": 0, "not_applicable": 0, "failed": 0}
+    cache_hits = 0
+    api_measurements = 0
     checked_at_iso = milliseconds_to_iso(time.time() * 1000) or ""
 
     for index, candidate in enumerate(selected, start=1):
         print(f"[{index}/{len(selected)}] 檢核 {candidate.label}")
         try:
-            result = evaluate_candidate(session, auth_pool, candidate, config, checked_at_iso)
+            result, cache_hit = evaluate_candidate(
+                session,
+                auth_pool,
+                candidate,
+                config,
+                checked_at_iso,
+                measurement_cache,
+                refresh_cache=args.refresh_cache,
+            )
+            if cache_hit:
+                cache_hits += 1
+            elif candidate.encounter_key not in config.excluded_encounter_keys and has_query_context(candidate.fight):
+                api_measurements += 1
         except report_access_error_class:
             mark_ranking_report_hidden(
                 candidate.ranking,
@@ -395,7 +549,11 @@ def main() -> int:
         candidate = next(item for item in selected if item.encounter_key == encounter_key)
         write_ranking_file(candidate.encounter, candidate.ranking)
 
-    print("戰鬥完整性檢核完成：" + "、".join(f"{key}={value}" for key, value in counters.items()))
+    print(
+        "戰鬥完整性檢核完成："
+        + "、".join(f"{key}={value}" for key, value in counters.items())
+        + f"、快取命中={cache_hits}、FFLogs 測量={api_measurements}"
+    )
     return 0
 
 
