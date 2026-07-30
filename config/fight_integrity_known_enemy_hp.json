@@ -11,7 +11,9 @@
     },
     "unreal_suzaku": {
       "enemy_hp_capacity": 127613543,
-      "suspected_team_damage_ratio_threshold": 1.005
+      "suspected_team_damage_ratio_threshold": 1.005,
+      "required_full_party_damage_min": 71280000,
+      "required_full_party_damage_max": 72720000
     },
     "ultimate_futures_rewritten": {
       "maximum_full_party_damage": 151500000

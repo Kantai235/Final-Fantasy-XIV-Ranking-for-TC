@@ -120,6 +120,14 @@ class KnownEnemyCapacityPolicyTest(unittest.TestCase):
             1.005,
         )
         self.assertEqual(
+            policy.rules["unreal_suzaku"].required_full_party_damage_min,
+            71_280_000,
+        )
+        self.assertEqual(
+            policy.rules["unreal_suzaku"].required_full_party_damage_max,
+            72_720_000,
+        )
+        self.assertEqual(
             policy.rules["ultimate_futures_rewritten"].maximum_full_party_damage,
             151_500_000,
         )
