@@ -4333,14 +4333,32 @@ def 檢核戰鬥完整性(
 
     攻擊異常標記 = integrity.has_basic_attack_exploit_marker(戰鬥)
     檢核時間 = 毫秒轉_iso(現在毫秒()) or ""
+    歷史傷害預篩 = 設定.historical_damage_baselines.screen(副本鍵值, 戰鬥)
+    已知生命池預篩 = 設定.known_enemy_capacity.screen(副本鍵值, 戰鬥)
+
+    # 已驗證固定完整隊伍總傷害範圍或歷史硬上限的副本可直接離線判定。固定範圍同時攔截
+    # 偏低與偏高資料；單向硬上限只攔截超標值，且完全不耗用 FFLogs API。
+    if (
+        已知生命池預篩 is not None
+        and (
+            已知生命池預篩.has_required_full_party_damage_range
+            or 已知生命池預篩.exceeds_maximum_full_party_damage
+        )
+    ):
+        return integrity.make_known_capacity_result(
+            checked_at_iso=檢核時間,
+            known_capacity_screen=已知生命池預篩,
+            hp_ratio_threshold=設定.hp_ratio_threshold,
+            attack_marker=攻擊異常標記,
+        )
+
+    # 多階段副本不以單一目標生命池判定正常；但完整隊伍傷害越過獨立確認的硬上限時，
+    # 仍可不查詢 API 直接隱藏，避免「不適用」繞過明確的傷害異常證據。
     if 副本鍵值 in 設定.excluded_encounter_keys:
         return integrity.make_not_applicable_result(
             checked_at_iso=檢核時間,
             reason="encounter_hp_pool_semantics_not_supported",
         )
-
-    歷史傷害預篩 = 設定.historical_damage_baselines.screen(副本鍵值, 戰鬥)
-    已知生命池預篩 = 設定.known_enemy_capacity.screen(副本鍵值, 戰鬥)
 
     快取結果 = 測量快取.get(報告代碼, 報告脈絡, 戰鬥)
     if 快取結果 is not None:
@@ -4364,6 +4382,7 @@ def 檢核戰鬥完整性(
                 checked_at_iso=檢核時間,
                 known_capacity_screen=已知生命池預篩,
                 hp_ratio_threshold=設定.hp_ratio_threshold,
+                attack_marker=攻擊異常標記,
             )
         # 完整繁中隊伍且仍在歷史高端範圍內的舊副本，不必為正常新紀錄重複查敵方 HP。
         # Attack 標記與高端候選仍進入量測路徑，以保留高信心 excluded 的可能性。

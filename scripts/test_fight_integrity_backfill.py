@@ -209,6 +209,79 @@ class FightIntegrityBackfillCacheTest(unittest.TestCase):
         query_damage.assert_not_called()
         query_max_hp.assert_not_called()
 
+    def test_multiphase_encounter_total_damage_upper_limit_overrides_not_applicable(self) -> None:
+        self.candidate.encounter_key = "ultimate_bahamut"
+        self.candidate.fight["size"] = 8
+        self.candidate.fight["players"] = [{"total_damage": 30_000_000} for _ in range(8)]
+        self.config.excluded_encounter_keys = {"ultimate_bahamut"}
+        self.config.known_enemy_capacity = known_capacity.KnownEnemyCapacityPolicy(
+            enabled=True,
+            rules={
+                "ultimate_bahamut": known_capacity.KnownEnemyCapacityRule(
+                    maximum_full_party_damage=13_230_230,
+                )
+            },
+        )
+
+        with patch.object(backfill, "query_target_damage") as query_damage:
+            result, cache_hit, api_queried = backfill.evaluate_candidate(
+                None,
+                None,
+                self.candidate,
+                self.config,
+                "2026-07-30T00:00:00Z",
+                self.cache,
+                refresh_cache=False,
+                offline_only=True,
+            )
+
+        self.assertEqual(result["status"], "suspected")
+        self.assertTrue(result["hidden_from_public"])
+        self.assertFalse(cache_hit)
+        self.assertFalse(api_queried)
+        query_damage.assert_not_called()
+
+    def test_required_total_damage_range_replaces_old_cached_result_without_api(self) -> None:
+        self.candidate.fight["size"] = 8
+        self.candidate.fight["players"] = [{"total_damage": 12_400} for _ in range(8)]
+        self.config.known_enemy_capacity = known_capacity.KnownEnemyCapacityPolicy(
+            enabled=True,
+            rules={
+                "extreme_zelenia": known_capacity.KnownEnemyCapacityRule(
+                    enemy_hp_capacity=100_000,
+                    suspected_team_damage_ratio_threshold=1.005,
+                    required_full_party_damage_min=99_900,
+                    required_full_party_damage_max=100_100,
+                )
+            },
+        )
+        self.cache.put(
+            self.candidate.report_code,
+            self.candidate.report,
+            self.candidate.fight,
+            measurement={"enemy_damage": 100_000, "enemy_hp_capacity": 100_000, "target_count": 1},
+            cached_at_iso="2026-07-30T00:00:00Z",
+        )
+
+        with patch.object(backfill, "query_target_damage") as query_damage:
+            result, cache_hit, api_queried = backfill.evaluate_candidate(
+                None,
+                None,
+                self.candidate,
+                self.config,
+                "2026-07-30T00:00:00Z",
+                self.cache,
+                refresh_cache=False,
+                offline_only=True,
+            )
+
+        self.assertEqual(result["status"], "suspected")
+        self.assertTrue(result["hidden_from_public"])
+        self.assertFalse(cache_hit)
+        self.assertFalse(api_queried)
+        self.assertIn("full_party_damage_outside_required_known_total_range", result["reasons"])
+        query_damage.assert_not_called()
+
     def test_existing_result_seeds_cache_without_an_api_query(self) -> None:
         self.candidate.fight["data_integrity"] = integrity.evaluate(
             checked_at_iso="2026-07-30T00:00:00Z",

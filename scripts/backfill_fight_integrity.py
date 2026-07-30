@@ -172,14 +172,34 @@ def has_query_context(fight: dict[str, Any]) -> bool:
 
 
 def needs_known_capacity_recheck(candidate: Candidate, config: IntegrityConfig) -> bool:
-    """只挑選固定生命池下限已超標、但尚未寫入新證據的既有 fight。"""
+    """判斷既有 fight 是否缺少現行固定生命池或固定總傷害的證據。"""
 
     screen = config.known_enemy_capacity.screen(candidate.encounter_key, candidate.fight)
-    if screen is None or not screen.exceeds_suspected_threshold:
+    if screen is None:
         return False
     result = integrity.current_result(candidate.fight)
+    # 已有敵方生命池 1.15 倍高信心結論時不可被僅有「玩家傷害上限」的離線證據
+    # 降級成 suspected。它本來已隱藏，且不需要額外重查或消耗 API 配額。
+    if isinstance(result, dict) and result.get("status") == "excluded":
+        return False
     metrics = result.get("metrics") if isinstance(result, dict) else None
-    return not isinstance(metrics, dict) or "known_full_party_damage" not in metrics
+    known_metrics = metrics.get("known_full_party_damage") if isinstance(metrics, dict) else None
+    if screen.has_required_full_party_damage_range:
+        return not (
+            isinstance(known_metrics, dict)
+            and known_metrics.get("required_full_party_damage_min")
+            == screen.required_full_party_damage_min
+            and known_metrics.get("required_full_party_damage_max")
+            == screen.required_full_party_damage_max
+        )
+    if screen.exceeds_maximum_full_party_damage:
+        return not (
+            isinstance(known_metrics, dict)
+            and known_metrics.get("maximum_full_party_damage")
+            == screen.maximum_full_party_damage
+            and known_metrics.get("exceeds_maximum_full_party_damage") is True
+        )
+    return screen.exceeds_suspected_threshold and not isinstance(known_metrics, dict)
 
 
 def find_candidates(
@@ -408,12 +428,6 @@ def evaluate_candidate(
     """優先以本機測量快取判定；只有未命中或要求刷新時才呼叫 FFLogs。"""
 
     attack_marker = integrity.has_basic_attack_exploit_marker(candidate.fight)
-    if candidate.encounter_key in config.excluded_encounter_keys:
-        return integrity.make_not_applicable_result(
-            checked_at_iso=checked_at_iso,
-            reason="encounter_hp_pool_semantics_not_supported",
-        ), False, False
-
     historical_screen = config.historical_damage_baselines.screen(
         candidate.encounter_key,
         candidate.fight,
@@ -422,6 +436,30 @@ def evaluate_candidate(
         candidate.encounter_key,
         candidate.fight,
     )
+
+    # 已驗證固定完整隊伍總傷害範圍或歷史硬上限的副本，優先於任何舊量測快取離線判定。
+    # 固定範圍可同時攔截偏低與偏高資料；單向硬上限只攔截超標值，不能據此判定正常。
+    if (
+        known_capacity_screen is not None
+        and (
+            known_capacity_screen.has_required_full_party_damage_range
+            or known_capacity_screen.exceeds_maximum_full_party_damage
+        )
+    ):
+        return integrity.make_known_capacity_result(
+            checked_at_iso=checked_at_iso,
+            known_capacity_screen=known_capacity_screen,
+            hp_ratio_threshold=config.hp_ratio_threshold,
+            attack_marker=attack_marker,
+        ), False, False
+
+    # 絕巴哈姆特等多階段副本不能以查得的單一目標生命池判定正常；不過在完整隊伍
+    # 傷害已越過獨立確認的歷史硬上限時，該上限仍是足以直接隱藏的異常證據。
+    if candidate.encounter_key in config.excluded_encounter_keys:
+        return integrity.make_not_applicable_result(
+            checked_at_iso=checked_at_iso,
+            reason="encounter_hp_pool_semantics_not_supported",
+        ), False, False
 
     cached = None if refresh_cache else measurement_cache.get(
         candidate.report_code,
@@ -453,6 +491,7 @@ def evaluate_candidate(
             checked_at_iso=checked_at_iso,
             known_capacity_screen=known_capacity_screen,
             hp_ratio_threshold=config.hp_ratio_threshold,
+            attack_marker=attack_marker,
         ), False, False
 
     # 歷史基準也只會把完整隊伍的極端高傷害標為疑似並隱藏，永不直接寫成 excluded。

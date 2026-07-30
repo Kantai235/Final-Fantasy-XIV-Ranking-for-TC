@@ -2251,6 +2251,8 @@ class FetchFFLogsBatchTest(unittest.TestCase):
                     "extreme_zelenia": fflogs.known_capacity.KnownEnemyCapacityRule(
                         enemy_hp_capacity=100_000,
                         suspected_team_damage_ratio_threshold=1.005,
+                        required_full_party_damage_min=99_900,
+                        required_full_party_damage_max=100_100,
                     )
                 },
             )
@@ -2289,6 +2291,62 @@ class FetchFFLogsBatchTest(unittest.TestCase):
         self.assertIsNotNone(result)
         self.assertEqual(result["status"], "suspected")
         self.assertTrue(result["hidden_from_public"])
+        execute_graphql.assert_not_called()
+
+    def test_multiphase_total_damage_upper_limit_precedes_not_applicable(self) -> None:
+        """多階段副本仍須以完整隊伍傷害硬上限攔截明確異常。"""
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            cache = fflogs.integrity_cache.FightIntegrityMeasurementCache.load(
+                Path(temporary_directory) / "measurements.json"
+            )
+            known_policy = fflogs.known_capacity.KnownEnemyCapacityPolicy(
+                enabled=True,
+                rules={
+                    "ultimate_bahamut": fflogs.known_capacity.KnownEnemyCapacityRule(
+                        maximum_full_party_damage=13_230_230,
+                    )
+                },
+            )
+            config = fflogs.戰鬥完整性檢核設定(
+                enabled=True,
+                cutoff_ms=0,
+                cutoff_iso="2026-07-28T18:00:00+08:00",
+                hp_ratio_threshold=1.15,
+                suspected_hp_ratio_threshold=1.14,
+                excluded_encounter_keys={"ultimate_bahamut"},
+                known_enemy_capacity=known_policy,
+            )
+            fight = {
+                "fight_id": 2,
+                "encounter_id": 1073,
+                "difficulty": 100,
+                "start_time": 1_000,
+                "end_time": 601_000,
+                "recorded_at": 1_759_000_000_000,
+                "size": 8,
+                "players": [{"total_damage": 30_000_000} for _ in range(8)],
+                "damage_done_summary": {"exploitDetails": []},
+            }
+            with patch.object(fflogs, "執行_graphql") as execute_graphql:
+                result = fflogs.檢核戰鬥完整性(
+                    object(),
+                    object(),
+                    副本鍵值="ultimate_bahamut",
+                    報告代碼="UCOB-HARD-LIMIT",
+                    報告脈絡={"revision": 1, "start_time": 1_700_000_000_000, "end_time": 1_700_001_000_000},
+                    戰鬥=fight,
+                    設定=config,
+                    測量快取=cache,
+                )
+
+        self.assertIsNotNone(result)
+        self.assertEqual(result["status"], "suspected")
+        self.assertTrue(result["hidden_from_public"])
+        self.assertIn(
+            "full_party_damage_exceeds_confirmed_total_damage_upper_limit",
+            result["reasons"],
+        )
         execute_graphql.assert_not_called()
 
     def test_refetch_preserves_existing_fight_integrity_result(self) -> None:

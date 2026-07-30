@@ -5,11 +5,28 @@
   "encounters": {
     "extreme_zelenia": {
       "enemy_hp_capacity": 92086232,
-      "suspected_team_damage_ratio_threshold": 1.005
+      "suspected_team_damage_ratio_threshold": 1.005,
+      "required_full_party_damage_min": 92086132,
+      "required_full_party_damage_max": 92086332
     },
     "unreal_suzaku": {
       "enemy_hp_capacity": 127613543,
       "suspected_team_damage_ratio_threshold": 1.005
+    },
+    "ultimate_futures_rewritten": {
+      "maximum_full_party_damage": 151500000
+    },
+    "ultimate_bahamut": {
+      "maximum_full_party_damage": 13230230
+    },
+    "savage_m1s": {
+      "maximum_full_party_damage": 75870000
+    },
+    "savage_m3s": {
+      "maximum_full_party_damage": 96523000
+    },
+    "savage_m4s": {
+      "maximum_full_party_damage": 114526000
     }
   }
 }

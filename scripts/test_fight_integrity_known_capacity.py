@@ -34,6 +34,58 @@ class KnownEnemyCapacityPolicyTest(unittest.TestCase):
 
         self.assertIsNone(self.policy.screen("fixture", fight))
 
+    def test_confirmed_total_damage_upper_limit_does_not_require_enemy_hp(self) -> None:
+        policy = known_capacity.KnownEnemyCapacityPolicy(
+            enabled=True,
+            rules={
+                "fixture": known_capacity.KnownEnemyCapacityRule(
+                    maximum_full_party_damage=100_000,
+                )
+            },
+        )
+
+        screen = policy.screen(
+            "fixture",
+            {"size": 8, "players": [{"total_damage": 12_625} for _ in range(8)]},
+        )
+
+        self.assertIsNotNone(screen)
+        self.assertIsNone(screen.damage_to_known_hp_ratio)
+        self.assertTrue(screen.exceeds_maximum_full_party_damage)
+        self.assertEqual(screen.to_metrics()["maximum_full_party_damage"], 100_000)
+
+    def test_required_full_party_damage_range_distinguishes_low_and_high_anomalies(self) -> None:
+        policy = known_capacity.KnownEnemyCapacityPolicy(
+            enabled=True,
+            rules={
+                "fixture": known_capacity.KnownEnemyCapacityRule(
+                    enemy_hp_capacity=100_000,
+                    suspected_team_damage_ratio_threshold=1.005,
+                    required_full_party_damage_min=99_900,
+                    required_full_party_damage_max=100_100,
+                )
+            },
+        )
+
+        matching = policy.screen(
+            "fixture",
+            {"size": 8, "players": [{"total_damage": 12_500} for _ in range(8)]},
+        )
+        low = policy.screen(
+            "fixture",
+            {"size": 8, "players": [{"total_damage": 12_400} for _ in range(8)]},
+        )
+        high = policy.screen(
+            "fixture",
+            {"size": 8, "players": [{"total_damage": 12_600} for _ in range(8)]},
+        )
+
+        self.assertIsNotNone(matching)
+        self.assertTrue(matching.has_required_full_party_damage_range)
+        self.assertTrue(matching.matches_required_full_party_damage_range)
+        self.assertFalse(low.matches_required_full_party_damage_range)
+        self.assertFalse(high.matches_required_full_party_damage_range)
+
     def test_loader_rejects_non_positive_tolerance(self) -> None:
         payload = {
             "schema_version": 1,
@@ -52,7 +104,7 @@ class KnownEnemyCapacityPolicyTest(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "fixture"):
                 known_capacity.load_known_enemy_capacity_policy(path)
 
-    def test_repository_policy_contains_confirmed_zelenia_and_suzaku_capacities(self) -> None:
+    def test_repository_policy_contains_confirmed_capacity_and_total_damage_rules(self) -> None:
         """正式設定只能收錄已有重複量測證據的固定生命池。"""
 
         config_path = Path(__file__).resolve().parent.parent / "config" / "fight_integrity_known_enemy_hp.json"
@@ -60,11 +112,24 @@ class KnownEnemyCapacityPolicyTest(unittest.TestCase):
         policy = known_capacity.load_known_enemy_capacity_policy(config_path)
 
         self.assertEqual(policy.rules["extreme_zelenia"].enemy_hp_capacity, 92_086_232)
+        self.assertEqual(policy.rules["extreme_zelenia"].required_full_party_damage_min, 92_086_132)
+        self.assertEqual(policy.rules["extreme_zelenia"].required_full_party_damage_max, 92_086_332)
         self.assertEqual(policy.rules["unreal_suzaku"].enemy_hp_capacity, 127_613_543)
         self.assertEqual(
             policy.rules["unreal_suzaku"].suspected_team_damage_ratio_threshold,
             1.005,
         )
+        self.assertEqual(
+            policy.rules["ultimate_futures_rewritten"].maximum_full_party_damage,
+            151_500_000,
+        )
+        self.assertEqual(
+            policy.rules["ultimate_bahamut"].maximum_full_party_damage,
+            13_230_230,
+        )
+        self.assertEqual(policy.rules["savage_m1s"].maximum_full_party_damage, 75_870_000)
+        self.assertEqual(policy.rules["savage_m3s"].maximum_full_party_damage, 96_523_000)
+        self.assertEqual(policy.rules["savage_m4s"].maximum_full_party_damage, 114_526_000)
 
 
 if __name__ == "__main__":

@@ -158,6 +158,91 @@ class FightIntegrityTest(unittest.TestCase):
         self.assertTrue(result["hidden_from_public"])
         self.assertIn("full_party_damage_exceeds_known_hp_suspected_ratio_threshold", result["reasons"])
 
+    def test_required_full_party_damage_range_hides_both_low_and_high_results(self) -> None:
+        matching = known_capacity.KnownEnemyCapacityScreen(
+            encounter_key="extreme_zelenia",
+            team_total_damage=100_000,
+            enemy_hp_capacity=100_000,
+            suspected_team_damage_ratio_threshold=1.005,
+            required_full_party_damage_min=99_900,
+            required_full_party_damage_max=100_100,
+        )
+        low = known_capacity.KnownEnemyCapacityScreen(
+            encounter_key="extreme_zelenia",
+            team_total_damage=99_899,
+            enemy_hp_capacity=100_000,
+            suspected_team_damage_ratio_threshold=1.005,
+            required_full_party_damage_min=99_900,
+            required_full_party_damage_max=100_100,
+        )
+        high = known_capacity.KnownEnemyCapacityScreen(
+            encounter_key="extreme_zelenia",
+            team_total_damage=115_001,
+            enemy_hp_capacity=100_000,
+            suspected_team_damage_ratio_threshold=1.005,
+            required_full_party_damage_min=99_900,
+            required_full_party_damage_max=100_100,
+        )
+
+        matching_result = integrity.make_known_capacity_result(
+            checked_at_iso="2026-07-30T00:00:00Z",
+            known_capacity_screen=matching,
+            hp_ratio_threshold=1.15,
+            attack_marker=False,
+        )
+        low_result = integrity.make_known_capacity_result(
+            checked_at_iso="2026-07-30T00:00:00Z",
+            known_capacity_screen=low,
+            hp_ratio_threshold=1.15,
+            attack_marker=False,
+        )
+        high_result = integrity.make_known_capacity_result(
+            checked_at_iso="2026-07-30T00:00:00Z",
+            known_capacity_screen=high,
+            hp_ratio_threshold=1.15,
+            attack_marker=False,
+        )
+        attack_result = integrity.make_known_capacity_result(
+            checked_at_iso="2026-07-30T00:00:00Z",
+            known_capacity_screen=matching,
+            hp_ratio_threshold=1.15,
+            attack_marker=True,
+        )
+
+        self.assertEqual(matching_result["status"], "valid")
+        self.assertFalse(matching_result["hidden_from_public"])
+        self.assertEqual(low_result["status"], "suspected")
+        self.assertTrue(low_result["hidden_from_public"])
+        self.assertEqual(high_result["status"], "excluded")
+        self.assertTrue(high_result["hidden_from_public"])
+        self.assertIn("full_party_damage_outside_required_known_total_range", low_result["reasons"])
+        self.assertEqual(attack_result["status"], "suspected")
+        self.assertTrue(attack_result["hidden_from_public"])
+
+    def test_confirmed_total_damage_upper_limit_hides_without_hp_ratio(self) -> None:
+        screen = known_capacity.KnownEnemyCapacityScreen(
+            encounter_key="ultimate_bahamut",
+            team_total_damage=243_355_653,
+            maximum_full_party_damage=13_230_230,
+        )
+
+        result = integrity.make_known_capacity_result(
+            checked_at_iso="2026-07-30T00:00:00Z",
+            known_capacity_screen=screen,
+            hp_ratio_threshold=1.15,
+            attack_marker=False,
+        )
+
+        self.assertEqual(result["status"], "suspected")
+        self.assertTrue(result["hidden_from_public"])
+        self.assertIn(
+            "full_party_damage_exceeds_confirmed_total_damage_upper_limit",
+            result["reasons"],
+        )
+        self.assertIsNone(
+            result["metrics"]["known_full_party_damage"].get("enemy_hp_capacity"),
+        )
+
     def test_unverifiable_fight_is_fail_closed(self) -> None:
         result = integrity.make_unverifiable_result(
             checked_at_iso="2026-07-30T00:00:00Z",

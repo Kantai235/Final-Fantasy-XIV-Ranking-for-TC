@@ -50,10 +50,19 @@ def _to_bool(value: Any, default: bool) -> bool:
 
 @dataclass(frozen=True)
 class KnownEnemyCapacityRule:
-    """單一副本已確認的敵方總生命池與保守疑似門檻。"""
+    """單一副本已確認的敵方總生命池與保守疑似門檻。
 
-    enemy_hp_capacity: int
-    suspected_team_damage_ratio_threshold: float
+    ``maximum_full_party_damage`` 是和敵方生命池分離的歷史傷害上限。它只在
+    完整繁中隊伍的玩家傷害合計超過明確上限時提供異常證據，不能把未超過上限
+    的戰鬥視為正常；這避免 Limit Break 未歸屬玩家列時產生 false valid，也能
+    安全用於多階段生命池副本。
+    """
+
+    enemy_hp_capacity: int | None = None
+    suspected_team_damage_ratio_threshold: float | None = None
+    required_full_party_damage_min: int | None = None
+    required_full_party_damage_max: int | None = None
+    maximum_full_party_damage: int | None = None
 
 
 @dataclass(frozen=True)
@@ -62,27 +71,88 @@ class KnownEnemyCapacityScreen:
 
     encounter_key: str
     team_total_damage: int
-    enemy_hp_capacity: int
-    suspected_team_damage_ratio_threshold: float
+    enemy_hp_capacity: int | None = None
+    suspected_team_damage_ratio_threshold: float | None = None
+    required_full_party_damage_min: int | None = None
+    required_full_party_damage_max: int | None = None
+    maximum_full_party_damage: int | None = None
 
     @property
-    def damage_to_known_hp_ratio(self) -> float:
+    def has_known_enemy_hp_capacity(self) -> bool:
+        return self.enemy_hp_capacity is not None
+
+    @property
+    def damage_to_known_hp_ratio(self) -> float | None:
+        if self.enemy_hp_capacity is None:
+            return None
         return self.team_total_damage / self.enemy_hp_capacity
 
     @property
     def exceeds_suspected_threshold(self) -> bool:
-        return self.damage_to_known_hp_ratio > self.suspected_team_damage_ratio_threshold
+        ratio = self.damage_to_known_hp_ratio
+        return (
+            ratio is not None
+            and self.suspected_team_damage_ratio_threshold is not None
+            and ratio > self.suspected_team_damage_ratio_threshold
+        )
+
+    @property
+    def has_maximum_full_party_damage(self) -> bool:
+        return self.maximum_full_party_damage is not None
+
+    @property
+    def exceeds_maximum_full_party_damage(self) -> bool:
+        return (
+            self.maximum_full_party_damage is not None
+            and self.team_total_damage > self.maximum_full_party_damage
+        )
+
+    @property
+    def has_required_full_party_damage_range(self) -> bool:
+        """是否有可由完整隊伍總傷害直接判定正常與否的副本專用規則。"""
+
+        return (
+            self.required_full_party_damage_min is not None
+            and self.required_full_party_damage_max is not None
+        )
+
+    @property
+    def matches_required_full_party_damage_range(self) -> bool:
+        """完整隊伍總傷害是否落在副本確認過的正常範圍內。"""
+
+        if not self.has_required_full_party_damage_range:
+            return False
+        return (
+            self.required_full_party_damage_min <= self.team_total_damage
+            <= self.required_full_party_damage_max
+        )
 
     def to_metrics(self) -> dict[str, Any]:
-        return {
+        metrics: dict[str, Any] = {
             "metric": METRIC_NAME,
             "encounter_key": self.encounter_key,
+            "full_party_total_damage": self.team_total_damage,
             "team_total_damage_lower_bound": self.team_total_damage,
-            "enemy_hp_capacity": self.enemy_hp_capacity,
-            "damage_to_known_hp_ratio": round(self.damage_to_known_hp_ratio, 6),
-            "suspected_team_damage_ratio_threshold": self.suspected_team_damage_ratio_threshold,
-            "exceeds_suspected_threshold": self.exceeds_suspected_threshold,
         }
+        if self.has_known_enemy_hp_capacity:
+            metrics.update({
+                "enemy_hp_capacity": self.enemy_hp_capacity,
+                "damage_to_known_hp_ratio": round(self.damage_to_known_hp_ratio or 0, 6),
+                "suspected_team_damage_ratio_threshold": self.suspected_team_damage_ratio_threshold,
+                "exceeds_suspected_threshold": self.exceeds_suspected_threshold,
+            })
+        if self.has_required_full_party_damage_range:
+            metrics.update({
+                "required_full_party_damage_min": self.required_full_party_damage_min,
+                "required_full_party_damage_max": self.required_full_party_damage_max,
+                "matches_required_full_party_damage_range": self.matches_required_full_party_damage_range,
+            })
+        if self.has_maximum_full_party_damage:
+            metrics.update({
+                "maximum_full_party_damage": self.maximum_full_party_damage,
+                "exceeds_maximum_full_party_damage": self.exceeds_maximum_full_party_damage,
+            })
+        return metrics
 
 
 @dataclass(frozen=True)
@@ -127,6 +197,9 @@ class KnownEnemyCapacityPolicy:
             team_total_damage=team_total_damage,
             enemy_hp_capacity=rule.enemy_hp_capacity,
             suspected_team_damage_ratio_threshold=rule.suspected_team_damage_ratio_threshold,
+            required_full_party_damage_min=rule.required_full_party_damage_min,
+            required_full_party_damage_max=rule.required_full_party_damage_max,
+            maximum_full_party_damage=rule.maximum_full_party_damage,
         )
 
 
@@ -157,11 +230,47 @@ def load_known_enemy_capacity_policy(path: Path) -> KnownEnemyCapacityPolicy:
             raise RuntimeError("固定敵方生命池規則 encounters 含有無效項目。")
         capacity = _to_positive_int(entry.get("enemy_hp_capacity"))
         suspected_threshold = _to_number(entry.get("suspected_team_damage_ratio_threshold"))
-        if capacity is None or suspected_threshold is None or suspected_threshold <= 1:
+        has_capacity = "enemy_hp_capacity" in entry
+        has_suspected_threshold = "suspected_team_damage_ratio_threshold" in entry
+        if has_capacity != has_suspected_threshold:
+            raise RuntimeError(
+                f"固定敵方生命池規則 {encounter_key} 的生命池與疑似門檻必須成對設定。"
+            )
+        if has_capacity and (
+            capacity is None or suspected_threshold is None or suspected_threshold <= 1
+        ):
             raise RuntimeError(f"固定敵方生命池規則 {encounter_key} 缺少有效生命池或疑似門檻。")
+        required_min = _to_positive_int(entry.get("required_full_party_damage_min"))
+        required_max = _to_positive_int(entry.get("required_full_party_damage_max"))
+        has_required_min = "required_full_party_damage_min" in entry
+        has_required_max = "required_full_party_damage_max" in entry
+        if has_required_min != has_required_max:
+            raise RuntimeError(
+                f"固定敵方生命池規則 {encounter_key} 的完整隊伍總傷害範圍必須同時設定上下限。"
+            )
+        if has_required_min and (
+            required_min is None
+            or required_max is None
+            or required_min > required_max
+        ):
+            raise RuntimeError(
+                f"固定敵方生命池規則 {encounter_key} 的完整隊伍總傷害範圍無效。"
+            )
+        maximum_full_party_damage = _to_positive_int(entry.get("maximum_full_party_damage"))
+        if "maximum_full_party_damage" in entry and maximum_full_party_damage is None:
+            raise RuntimeError(
+                f"固定敵方生命池規則 {encounter_key} 的完整隊伍總傷害上限無效。"
+            )
+        if not has_capacity and not has_required_min and maximum_full_party_damage is None:
+            raise RuntimeError(
+                f"固定敵方生命池規則 {encounter_key} 至少要設定生命池、固定傷害範圍或傷害上限。"
+            )
         rules[encounter_key] = KnownEnemyCapacityRule(
             enemy_hp_capacity=capacity,
             suspected_team_damage_ratio_threshold=suspected_threshold,
+            required_full_party_damage_min=required_min,
+            required_full_party_damage_max=required_max,
+            maximum_full_party_damage=maximum_full_party_damage,
         )
 
     return KnownEnemyCapacityPolicy(enabled=True, rules=rules)
