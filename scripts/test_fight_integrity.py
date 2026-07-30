@@ -4,6 +4,7 @@ import unittest
 
 import fight_integrity as integrity
 import fight_integrity_baselines as baselines
+import fight_integrity_known_capacity as known_capacity
 
 
 class FightIntegrityTest(unittest.TestCase):
@@ -133,6 +134,45 @@ class FightIntegrityTest(unittest.TestCase):
         self.assertEqual(result["status"], "suspected")
         self.assertTrue(result["hidden_from_public"])
         self.assertIn("historical_team_damage_exceeds_screen_threshold", result["reasons"])
+
+    def test_known_capacity_lower_bound_hides_zelenia_style_anomaly_before_hp_query(self) -> None:
+        screen = known_capacity.KnownEnemyCapacityScreen(
+            encounter_key="extreme_zelenia",
+            team_total_damage=107_393,
+            enemy_hp_capacity=100_000,
+            suspected_team_damage_ratio_threshold=1.005,
+        )
+
+        result = integrity.evaluate(
+            checked_at_iso="2026-07-30T00:00:00Z",
+            enemy_damage=107_393,
+            enemy_hp_capacity=100_000,
+            target_count=2,
+            attack_marker=False,
+            hp_ratio_threshold=1.15,
+            suspected_hp_ratio_threshold=1.14,
+            known_capacity_screen=screen,
+        )
+
+        self.assertEqual(result["status"], "suspected")
+        self.assertTrue(result["hidden_from_public"])
+        self.assertIn("full_party_damage_exceeds_known_hp_suspected_ratio_threshold", result["reasons"])
+
+    def test_unverifiable_fight_is_fail_closed(self) -> None:
+        result = integrity.make_unverifiable_result(
+            checked_at_iso="2026-07-30T00:00:00Z",
+            reason="offline_measurement_not_available",
+            attack_marker=False,
+        )
+
+        self.assertEqual(result["status"], "unverifiable")
+        self.assertTrue(result["hidden_from_public"])
+
+    def test_unmarked_post_cutoff_fight_is_not_public(self) -> None:
+        cutoff = integrity.parse_iso_to_epoch_ms(integrity.DEFAULT_CUTOFF_ISO)
+        self.assertIsNotNone(cutoff)
+
+        self.assertTrue(integrity.is_hidden_from_public({"recorded_at": cutoff}))
 
 
 if __name__ == "__main__":

@@ -9,6 +9,7 @@ import backfill_fight_integrity as backfill
 import fight_integrity as integrity
 import fight_integrity_baselines as baselines
 import fight_integrity_cache as cache_module
+import fight_integrity_known_capacity as known_capacity
 
 
 class FightIntegrityBackfillCacheTest(unittest.TestCase):
@@ -130,7 +131,7 @@ class FightIntegrityBackfillCacheTest(unittest.TestCase):
         query_damage.assert_not_called()
         query_max_hp.assert_not_called()
 
-    def test_historical_high_damage_requires_hp_measurement_before_final_status(self) -> None:
+    def test_offline_historical_high_damage_is_hidden_without_api_measurement(self) -> None:
         self.candidate.encounter_key = "savage_m1s"
         self.candidate.fight["size"] = 8
         self.candidate.fight["players"] = [{"total_damage": 138} for _ in range(8)]
@@ -163,14 +164,50 @@ class FightIntegrityBackfillCacheTest(unittest.TestCase):
                 "2026-07-30T00:00:00Z",
                 self.cache,
                 refresh_cache=False,
+                offline_only=True,
             )
 
-        self.assertEqual(result["status"], "valid")
+        self.assertEqual(result["status"], "suspected")
         self.assertFalse(cache_hit)
-        self.assertTrue(api_queried)
+        self.assertFalse(api_queried)
         self.assertTrue(result["metrics"]["historical_team_damage"]["exceeds_threshold"])
-        query_damage.assert_called_once()
-        query_max_hp.assert_called_once()
+        query_damage.assert_not_called()
+        query_max_hp.assert_not_called()
+
+    def test_known_capacity_high_damage_is_hidden_without_api_measurement(self) -> None:
+        self.candidate.fight["size"] = 8
+        self.candidate.fight["players"] = [{"total_damage": 13_425} for _ in range(8)]
+        self.config.known_enemy_capacity = known_capacity.KnownEnemyCapacityPolicy(
+            enabled=True,
+            rules={
+                "extreme_zelenia": known_capacity.KnownEnemyCapacityRule(
+                    enemy_hp_capacity=100_000,
+                    suspected_team_damage_ratio_threshold=1.005,
+                )
+            },
+        )
+
+        with (
+            patch.object(backfill, "query_target_damage") as query_damage,
+            patch.object(backfill, "query_target_max_hp") as query_max_hp,
+        ):
+            result, cache_hit, api_queried = backfill.evaluate_candidate(
+                None,
+                None,
+                self.candidate,
+                self.config,
+                "2026-07-30T00:00:00Z",
+                self.cache,
+                refresh_cache=False,
+                offline_only=True,
+            )
+
+        self.assertEqual(result["status"], "suspected")
+        self.assertTrue(result["hidden_from_public"])
+        self.assertFalse(cache_hit)
+        self.assertFalse(api_queried)
+        query_damage.assert_not_called()
+        query_max_hp.assert_not_called()
 
     def test_existing_result_seeds_cache_without_an_api_query(self) -> None:
         self.candidate.fight["data_integrity"] = integrity.evaluate(

@@ -32,6 +32,7 @@ import gcd_coverage_core as gcd_core
 import fight_integrity as integrity
 import fight_integrity_baselines as historical_baselines
 import fight_integrity_cache as integrity_cache
+import fight_integrity_known_capacity as known_capacity
 
 
 # 本檔是資料管線的 Data Fetching Layer。
@@ -205,6 +206,9 @@ class 戰鬥完整性檢核設定:
     historical_damage_baselines: historical_baselines.HistoricalDamageBaselinePolicy = (
         historical_baselines.HistoricalDamageBaselinePolicy.disabled()
     )
+    known_enemy_capacity: known_capacity.KnownEnemyCapacityPolicy = (
+        known_capacity.KnownEnemyCapacityPolicy.disabled()
+    )
 
 
 def 解析布林設定值(值: Any, 預設值: bool) -> bool:
@@ -258,6 +262,13 @@ def 讀取戰鬥完整性檢核設定() -> 戰鬥完整性檢核設定:
     if not baseline_path.is_absolute():
         baseline_path = 專案根目錄 / baseline_path
     historical_damage_baselines = historical_baselines.load_historical_damage_baseline_policy(baseline_path)
+    known_capacity_file = 設定.get("known_enemy_capacity_file")
+    if not isinstance(known_capacity_file, str) or not known_capacity_file:
+        raise RuntimeError("fight_integrity_check.known_enemy_capacity_file 必須是設定檔路徑。")
+    known_capacity_path = Path(known_capacity_file)
+    if not known_capacity_path.is_absolute():
+        known_capacity_path = 專案根目錄 / known_capacity_path
+    known_enemy_capacity = known_capacity.load_known_enemy_capacity_policy(known_capacity_path)
     enabled = 解析布林設定值(設定.get("enabled"), True)
     enabled = 解析布林設定值(os.getenv("FFLOGS_FIGHT_INTEGRITY_ENABLED"), enabled)
     return 戰鬥完整性檢核設定(
@@ -268,6 +279,7 @@ def 讀取戰鬥完整性檢核設定() -> 戰鬥完整性檢核設定:
         suspected_hp_ratio_threshold=suspected_hp_ratio_threshold,
         excluded_encounter_keys=excluded_encounter_keys,
         historical_damage_baselines=historical_damage_baselines,
+        known_enemy_capacity=known_enemy_capacity,
     )
 
 
@@ -4328,6 +4340,7 @@ def 檢核戰鬥完整性(
         )
 
     歷史傷害預篩 = 設定.historical_damage_baselines.screen(副本鍵值, 戰鬥)
+    已知生命池預篩 = 設定.known_enemy_capacity.screen(副本鍵值, 戰鬥)
 
     快取結果 = 測量快取.get(報告代碼, 報告脈絡, 戰鬥)
     if 快取結果 is not None:
@@ -4337,9 +4350,21 @@ def 檢核戰鬥完整性(
                 reason=快取結果["reason"],
                 attack_marker=攻擊異常標記,
                 historical_screen=歷史傷害預篩,
+                known_capacity_screen=已知生命池預篩,
             )
         測量值 = 快取結果["measurement"]
     else:
+        # 已知固定生命池只把「完整隊伍傷害下限已超標」視為異常證據。它不能證明
+        # 下限未超標的 fight 正常，因為 Limit Break 等來源可能未列在 players 內。
+        if (
+            已知生命池預篩 is not None
+            and 已知生命池預篩.exceeds_suspected_threshold
+        ):
+            return integrity.make_known_capacity_result(
+                checked_at_iso=檢核時間,
+                known_capacity_screen=已知生命池預篩,
+                hp_ratio_threshold=設定.hp_ratio_threshold,
+            )
         # 完整繁中隊伍且仍在歷史高端範圍內的舊副本，不必為正常新紀錄重複查敵方 HP。
         # Attack 標記與高端候選仍進入量測路徑，以保留高信心 excluded 的可能性。
         if 歷史傷害預篩 is not None and not 歷史傷害預篩.exceeds_threshold and not 攻擊異常標記:
@@ -4353,6 +4378,7 @@ def 檢核戰鬥完整性(
                 reason="missing_fight_query_context",
                 attack_marker=攻擊異常標記,
                 historical_screen=歷史傷害預篩,
+                known_capacity_screen=已知生命池預篩,
             )
         目標列表 = 查詢戰鬥完整性目標傷害(session, 認證池, 報告代碼, 戰鬥)
         目標_id清單 = [目標["id"] for 目標 in 目標列表]
@@ -4376,6 +4402,7 @@ def 檢核戰鬥完整性(
                 reason="missing_enemy_max_hp",
                 attack_marker=攻擊異常標記,
                 historical_screen=歷史傷害預篩,
+                known_capacity_screen=已知生命池預篩,
             )
         測量值 = {
             "enemy_damage": sum(目標["damage"] for 目標 in 目標列表),
@@ -4402,6 +4429,7 @@ def 檢核戰鬥完整性(
         hp_ratio_threshold=設定.hp_ratio_threshold,
         suspected_hp_ratio_threshold=設定.suspected_hp_ratio_threshold,
         historical_screen=歷史傷害預篩,
+        known_capacity_screen=已知生命池預篩,
     )
 
 

@@ -18,11 +18,11 @@ from typing import Any
 
 
 DATA_INTEGRITY_KEY = "data_integrity"
-CALCULATION_VERSION = 3
-RULESET = "post_2026_07_28_basic_attack_v3_historical_screen"
+CALCULATION_VERSION = 4
+RULESET = "post_2026_07_28_basic_attack_v4_fail_closed_known_capacity"
 # v2 已保存目標承傷與最大 HP 的最終判定，規則門檻與其相同。保留它可避免只因新增
 # 「本地預篩」而對數百筆既有戰鬥重打 FFLogs；v3 只套用於尚未有生命池量測的新 fight。
-COMPATIBLE_CALCULATION_VERSIONS = frozenset({2, CALCULATION_VERSION})
+COMPATIBLE_CALCULATION_VERSIONS = frozenset({2, 3, CALCULATION_VERSION})
 DEFAULT_CUTOFF_ISO = "2026-07-28T18:00:00+08:00"
 DEFAULT_HP_RATIO_THRESHOLD = 1.15
 DEFAULT_SUSPECTED_HP_RATIO_THRESHOLD = 1.14
@@ -124,6 +124,24 @@ def attach_historical_damage_screen(
     return result
 
 
+def attach_known_capacity_screen(
+    result: dict[str, Any],
+    known_capacity_screen: Any | None,
+) -> dict[str, Any]:
+    """附上固定生命池的完整隊伍傷害下限，不把下限誤當成正常證據。"""
+
+    if known_capacity_screen is None:
+        return result
+    to_metrics = getattr(known_capacity_screen, "to_metrics", None)
+    if not callable(to_metrics):
+        return result
+    metrics = result.get("metrics")
+    normalized_metrics = dict(metrics) if isinstance(metrics, dict) else {}
+    normalized_metrics["known_full_party_damage"] = to_metrics()
+    result["metrics"] = normalized_metrics
+    return result
+
+
 def needs_check(fight: dict[str, Any]) -> bool:
     result = current_result(fight)
     return not result or result.get("calculation_version") not in COMPATIBLE_CALCULATION_VERSIONS
@@ -133,7 +151,13 @@ def is_hidden_from_public(fight: Any) -> bool:
     if not isinstance(fight, dict):
         return False
     result = current_result(fight)
-    return bool(result and result.get("hidden_from_public"))
+    if result is not None:
+        # 在這段資料品質事故期間，只有已證實 valid 或生命池語意不適用的 fight 可公開。
+        # `unverifiable` 不能視為正常，否則 FFLogs 暫時失敗時異常 rDPS 會先搶進排行榜。
+        return bool(result.get("hidden_from_public")) or result.get("status") not in {"valid", "not_applicable"}
+    cutoff_ms = parse_iso_to_epoch_ms(DEFAULT_CUTOFF_ISO)
+    # 回補尚未寫入標記的既有 fight 同樣採 fail-closed，直到離線批次處理完畢。
+    return cutoff_ms is not None and is_in_scope({}, fight, cutoff_ms)
 
 
 def make_not_applicable_result(
@@ -157,23 +181,64 @@ def make_unverifiable_result(
     reason: str,
     attack_marker: bool,
     historical_screen: Any | None = None,
+    known_capacity_screen: Any | None = None,
 ) -> dict[str, Any]:
     # 有 Attack 標記時，即使 FFLogs 已 Private 或 HP 資源缺漏，也不能把它重新視為正常。
     baseline_exceeded = bool(getattr(historical_screen, "exceeds_threshold", False))
-    status = "suspected" if attack_marker or baseline_exceeded else "unverifiable"
+    known_capacity_exceeded = bool(getattr(known_capacity_screen, "exceeds_suspected_threshold", False))
+    status = "suspected" if attack_marker or baseline_exceeded or known_capacity_exceeded else "unverifiable"
     reasons = [reason]
     if baseline_exceeded:
         reasons.append("historical_team_damage_exceeds_screen_threshold")
+    if known_capacity_exceeded:
+        reasons.append("full_party_damage_exceeds_known_hp_suspected_ratio_threshold")
     if attack_marker:
         reasons.append("fflogs_basic_attack_exploit_marker")
-    return attach_historical_damage_screen({
+    result = {
         "calculation_version": CALCULATION_VERSION,
         "ruleset": RULESET,
         "checked_at_iso": checked_at_iso,
         "status": status,
-        "hidden_from_public": attack_marker or baseline_exceeded,
+        # 無法驗證不是正常。這是避免新資料在 API 例外與回補尚未完成期間污染公開榜的
+        # fail-closed 防線；原始 report/fight 仍完整保存，不會被刪除。
+        "hidden_from_public": True,
         "reasons": reasons,
-    }, historical_screen)
+    }
+    return attach_known_capacity_screen(
+        attach_historical_damage_screen(result, historical_screen),
+        known_capacity_screen,
+    )
+
+
+def make_known_capacity_result(
+    *,
+    checked_at_iso: str,
+    known_capacity_screen: Any,
+    hp_ratio_threshold: float,
+) -> dict[str, Any]:
+    """以完整隊伍傷害下限直接隱藏已超過固定生命池的 fight。
+
+    這條路徑只會在下限已超標時使用。由於 Limit Break 等來源可能不在
+    `players[].total_damage` 內，低於門檻永遠不能據此寫入 valid。
+    """
+
+    ratio = getattr(known_capacity_screen, "damage_to_known_hp_ratio", 0.0)
+    if ratio > hp_ratio_threshold:
+        result = {
+            "calculation_version": CALCULATION_VERSION,
+            "ruleset": RULESET,
+            "checked_at_iso": checked_at_iso,
+            "status": "excluded",
+            "hidden_from_public": True,
+            "reasons": ["full_party_damage_exceeds_known_hp_ratio_threshold"],
+        }
+        return attach_known_capacity_screen(result, known_capacity_screen)
+    return make_unverifiable_result(
+        checked_at_iso=checked_at_iso,
+        reason="missing_enemy_hp_measurement",
+        attack_marker=False,
+        known_capacity_screen=known_capacity_screen,
+    )
 
 
 def make_historical_screen_valid_result(
@@ -203,6 +268,7 @@ def evaluate(
     hp_ratio_threshold: float,
     suspected_hp_ratio_threshold: float,
     historical_screen: Any | None = None,
+    known_capacity_screen: Any | None = None,
 ) -> dict[str, Any]:
     """建立唯一的判定結果；倍率是全隊傷害 / 目標最大 HP 總和。
 
@@ -216,6 +282,7 @@ def evaluate(
             reason="invalid_enemy_hp_measurement",
             attack_marker=attack_marker,
             historical_screen=historical_screen,
+            known_capacity_screen=known_capacity_screen,
         )
 
     ratio = enemy_damage / enemy_hp_capacity
@@ -224,17 +291,23 @@ def evaluate(
         reasons.append("enemy_damage_exceeds_hp_ratio_threshold")
     elif ratio >= suspected_hp_ratio_threshold:
         reasons.append("enemy_damage_reaches_suspected_hp_ratio_threshold")
+    known_capacity_ratio = getattr(known_capacity_screen, "damage_to_known_hp_ratio", 0.0)
+    known_capacity_suspected = bool(getattr(known_capacity_screen, "exceeds_suspected_threshold", False))
+    if known_capacity_ratio > hp_ratio_threshold:
+        reasons.append("full_party_damage_exceeds_known_hp_ratio_threshold")
+    elif known_capacity_suspected:
+        reasons.append("full_party_damage_exceeds_known_hp_suspected_ratio_threshold")
     if attack_marker:
         reasons.append("fflogs_basic_attack_exploit_marker")
 
-    if ratio > hp_ratio_threshold:
+    if ratio > hp_ratio_threshold or known_capacity_ratio > hp_ratio_threshold:
         status = "excluded"
-    elif ratio >= suspected_hp_ratio_threshold or attack_marker:
+    elif ratio >= suspected_hp_ratio_threshold or known_capacity_suspected or attack_marker:
         status = "suspected"
     else:
         status = "valid"
 
-    return attach_historical_damage_screen({
+    result = {
         "calculation_version": CALCULATION_VERSION,
         "ruleset": RULESET,
         "checked_at_iso": checked_at_iso,
@@ -250,4 +323,8 @@ def evaluate(
             "suspected_hp_ratio_threshold": suspected_hp_ratio_threshold,
             "target_count": target_count,
         },
-    }, historical_screen)
+    }
+    return attach_known_capacity_screen(
+        attach_historical_damage_screen(result, historical_screen),
+        known_capacity_screen,
+    )

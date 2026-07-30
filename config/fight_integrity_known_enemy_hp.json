@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "enabled": true,
+  "metric": "full_traditional_chinese_party_damage_lower_bound_vs_known_enemy_hp",
+  "encounters": {
+    "extreme_zelenia": {
+      "enemy_hp_capacity": 92086232,
+      "suspected_team_damage_ratio_threshold": 1.005
+    },
+    "unreal_suzaku": {
+      "enemy_hp_capacity": 127613543,
+      "suspected_team_damage_ratio_threshold": 1.005
+    }
+  }
+}

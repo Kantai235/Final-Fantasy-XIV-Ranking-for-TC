@@ -2090,6 +2090,19 @@ class FetchFFLogsBatchTest(unittest.TestCase):
         self.assertIn("data_integrity", ranking["reports"]["INTEGRITY"]["fights"][0])
         self.assertFalse(ranking["reports"]["INTEGRITY"].get("report_hidden", False))
 
+    def test_unchecked_post_cutoff_fight_is_fail_closed_from_ranking(self) -> None:
+        report = 建立測試排行榜報告("INTEGRITY-PENDING")
+        report["fights"][0]["recorded_at"] = fflogs.integrity.parse_iso_to_epoch_ms(
+            "2026-07-28T18:00:00+08:00"
+        )
+        ranking = {
+            "encounter": {"key": "fixture_encounter", "name": "測試副本", "category": "零式"},
+            "reports": {"INTEGRITY-PENDING": report},
+        }
+
+        self.assertEqual(fflogs.建立排行榜條目(ranking), [])
+        self.assertNotIn("data_integrity", ranking["reports"]["INTEGRITY-PENDING"]["fights"][0])
+
     def test_new_fight_integrity_check_hides_abnormal_rdps_before_ranking(self) -> None:
         """新收錄 fight 必須先取得敵方承傷／生命池，再交由排行榜索引處理。"""
 
@@ -2223,6 +2236,59 @@ class FetchFFLogsBatchTest(unittest.TestCase):
         self.assertIsNotNone(result)
         self.assertEqual(result["status"], "valid")
         self.assertFalse(result["metrics"]["historical_team_damage"]["exceeds_threshold"])
+        execute_graphql.assert_not_called()
+
+    def test_new_zelenia_known_capacity_screen_hides_before_hp_query(self) -> None:
+        """固定生命池下，完整隊伍傷害下限超標必須直接保守隱藏。"""
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            cache = fflogs.integrity_cache.FightIntegrityMeasurementCache.load(
+                Path(temporary_directory) / "measurements.json"
+            )
+            known_policy = fflogs.known_capacity.KnownEnemyCapacityPolicy(
+                enabled=True,
+                rules={
+                    "extreme_zelenia": fflogs.known_capacity.KnownEnemyCapacityRule(
+                        enemy_hp_capacity=100_000,
+                        suspected_team_damage_ratio_threshold=1.005,
+                    )
+                },
+            )
+            config = fflogs.戰鬥完整性檢核設定(
+                enabled=True,
+                cutoff_ms=0,
+                cutoff_iso="2026-07-28T18:00:00+08:00",
+                hp_ratio_threshold=1.15,
+                suspected_hp_ratio_threshold=1.14,
+                excluded_encounter_keys=set(),
+                known_enemy_capacity=known_policy,
+            )
+            fight = {
+                "fight_id": 8,
+                "encounter_id": 1080,
+                "difficulty": 100,
+                "start_time": 1_000,
+                "end_time": 601_000,
+                "recorded_at": 1_759_000_000_000,
+                "size": 8,
+                "players": [{"total_damage": 13_425} for _ in range(8)],
+                "damage_done_summary": {"exploitDetails": [{"exploit": 6, "abilities": []}]},
+            }
+            with patch.object(fflogs, "執行_graphql") as execute_graphql:
+                result = fflogs.檢核戰鬥完整性(
+                    object(),
+                    object(),
+                    副本鍵值="extreme_zelenia",
+                    報告代碼="KNOWN-CAPACITY",
+                    報告脈絡={"revision": 1, "start_time": 1_700_000_000_000, "end_time": 1_700_001_000_000},
+                    戰鬥=fight,
+                    設定=config,
+                    測量快取=cache,
+                )
+
+        self.assertIsNotNone(result)
+        self.assertEqual(result["status"], "suspected")
+        self.assertTrue(result["hidden_from_public"])
         execute_graphql.assert_not_called()
 
     def test_refetch_preserves_existing_fight_integrity_result(self) -> None:

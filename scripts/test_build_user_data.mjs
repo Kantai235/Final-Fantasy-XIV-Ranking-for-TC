@@ -390,6 +390,40 @@ async function createFixture(tempRoot) {
         },
       ],
     },
+    INTEGRITY_PENDING: {
+      report_code: "INTEGRITY_PENDING",
+      title: "Fixture unchecked post-cutoff fight",
+      url: "https://www.fflogs.com/reports/INTEGRITY_PENDING",
+      report_start_time_iso: "2026-07-29T04:50:00.000Z",
+      // 來源為 private，但唯一 fight 尚未完成 07/28 後的完整性檢核。
+      // 兩個索引都必須保留可回退至公開空白底稿的角色入口。
+      report_hidden: true,
+      fights: [
+        {
+          fight_id: 11,
+          fight_hash: "integrity-pending-fixture-fight",
+          clear_time_ms: 500000,
+          clear_time_seconds: 500,
+          damage_time_ms: 450000,
+          damage_time_seconds: 450,
+          recorded_at: 1785301200000,
+          recorded_at_iso: "2026-07-29T05:00:00.000Z",
+          players: [
+            {
+              name: "待檢核角色",
+              server: "鳳凰",
+              job: "Monk",
+              dps: 9999,
+              rdps: 9999,
+              adps: 9999,
+              total_damage: 4499550,
+              active_time_ms: 430000,
+              active_percent: 95.56,
+            },
+          ],
+        },
+      ],
+    },
   });
 }
 
@@ -409,7 +443,7 @@ async function assertFixtureOutput(tempRoot, expectedGlobalStatsText, expectedSe
 
   assert(usersIndex.generated_at_iso === "2026-01-02T03:04:05.000Z", "使用者索引應使用 ranking 更新時間作為 generated_at_iso。");
   assert(globalStats.generated_at_iso === "2026-01-02T03:04:05.000Z", "全服統計應使用 ranking 更新時間作為 generated_at_iso。");
-  assert(usersIndex.total_users === 6, "fixture 應產生五位有公開成績的使用者與一位空白入口。");
+  assert(usersIndex.total_users === 7, "fixture 應產生五位有公開成績的使用者與兩位空白入口。");
   assert(globalStats.total_character_count === 5, `全服角色數應把同名跨服角色視為不同玩家，實際 ${globalStats.total_character_count}。`);
   assert(globalStats.total_entry_count === 6, "全服 entry 數應包含六筆公開玩家成績。");
   const hiddenUser = usersIndex.users.find((user) => user.character_name === "隱藏角色");
@@ -417,7 +451,7 @@ async function assertFixtureOutput(tempRoot, expectedGlobalStatsText, expectedSe
   assert(hiddenUser.servers.includes("鳳凰"), "空白入口應保留伺服器，讓同名角色查詢仍可辨識。");
   assert(hiddenUser.best_rdps === null, "空白入口不可帶入最佳 rDPS。");
   assert(hiddenUser.last_recorded_at_iso === null, "空白入口不可帶入最後紀錄時間。");
-  assert(allUsersIndex.total_users === 6, "完整鏡像應納入所有 fixture 角色。");
+  assert(allUsersIndex.total_users === 7, "完整鏡像應保留所有公開索引角色。");
   assert(allGlobalStats.total_character_count === 6, "完整全服統計應納入所有 fixture 角色。");
   assert(allGlobalStats.total_entry_count === 7, "完整全服統計應納入所有 fixture 成績。");
   const allHiddenUser = allUsersIndex.users.find((user) => user.character_name === "隱藏角色");
@@ -437,6 +471,15 @@ async function assertFixtureOutput(tempRoot, expectedGlobalStatsText, expectedSe
   assert(hiddenUserData.frequent_teammates.length === 0, "空白成績單不可輸出隊友資料。");
   assert(!usersIndex.users.some((user) => user.character_name === "異常角色"), "完整性檢核隱藏的 fight 不可產生公開角色入口。");
   assert(!allUsersIndex.users.some((user) => user.character_name === "異常角色"), "完整性檢核隱藏的 fight 不可回流到 hidden delta。");
+  const pendingIntegrityUser = usersIndex.users.find((user) => user.character_name === "待檢核角色");
+  const allPendingIntegrityUser = allUsersIndex.users.find((user) => user.character_name === "待檢核角色");
+  assert(pendingIntegrityUser, "private 且未檢核的來源仍應保留公開空白使用者入口。");
+  assert(allPendingIntegrityUser, "完整鏡像索引不得遺漏公開空白使用者入口。");
+  assert(pendingIntegrityUser.public_entry_count === 0, "未檢核戰鬥不可成為公開成績。");
+  assert(
+    allPendingIntegrityUser.file_path === pendingIntegrityUser.file_path,
+    "完整鏡像沒有可補資料時應直接回退公開空白成績單，而非產生不完整 delta。",
+  );
 
   const allHiddenUserData = await readJson(
     path.join(tempRoot, "public", allHiddenUser.file_path),

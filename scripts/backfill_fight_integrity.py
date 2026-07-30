@@ -18,6 +18,7 @@ import fetch_fflogs as fflogs  # noqa: E402
 import fight_integrity as integrity  # noqa: E402
 import fight_integrity_baselines as historical_baselines  # noqa: E402
 import fight_integrity_cache as integrity_cache  # noqa: E402
+import fight_integrity_known_capacity as known_capacity  # noqa: E402
 from fflogs_pipeline.graphql_queries import (  # noqa: E402
     建立戰鬥完整性目標生命值查詢,
     戰鬥完整性目標傷害查詢,
@@ -52,6 +53,9 @@ class IntegrityConfig:
     default_report_limit: int
     historical_damage_baselines: historical_baselines.HistoricalDamageBaselinePolicy = field(
         default_factory=historical_baselines.HistoricalDamageBaselinePolicy.disabled
+    )
+    known_enemy_capacity: known_capacity.KnownEnemyCapacityPolicy = field(
+        default_factory=known_capacity.KnownEnemyCapacityPolicy.disabled
     )
 
 
@@ -117,6 +121,13 @@ def load_config() -> IntegrityConfig:
     if not baseline_path.is_absolute():
         baseline_path = PROJECT_ROOT / baseline_path
     historical_damage_baselines = historical_baselines.load_historical_damage_baseline_policy(baseline_path)
+    known_capacity_file = config.get("known_enemy_capacity_file")
+    if not isinstance(known_capacity_file, str) or not known_capacity_file:
+        raise RuntimeError("fight_integrity_check.known_enemy_capacity_file 必須是設定檔路徑。")
+    known_capacity_path = Path(known_capacity_file)
+    if not known_capacity_path.is_absolute():
+        known_capacity_path = PROJECT_ROOT / known_capacity_path
+    known_enemy_capacity = known_capacity.load_known_enemy_capacity_policy(known_capacity_path)
 
     enabled = parse_bool(config.get("enabled"), True)
     enabled = parse_bool(os.getenv("FFLOGS_FIGHT_INTEGRITY_ENABLED"), enabled)
@@ -129,6 +140,7 @@ def load_config() -> IntegrityConfig:
         excluded_encounter_keys=excluded_keys,
         default_report_limit=max(1, report_limit or 25),
         historical_damage_baselines=historical_damage_baselines,
+        known_enemy_capacity=known_enemy_capacity,
     )
 
 
@@ -159,6 +171,17 @@ def has_query_context(fight: dict[str, Any]) -> bool:
     ) and (integrity.to_number(fight.get("end_time")) or 0) > (integrity.to_number(fight.get("start_time")) or 0)
 
 
+def needs_known_capacity_recheck(candidate: Candidate, config: IntegrityConfig) -> bool:
+    """只挑選固定生命池下限已超標、但尚未寫入新證據的既有 fight。"""
+
+    screen = config.known_enemy_capacity.screen(candidate.encounter_key, candidate.fight)
+    if screen is None or not screen.exceeds_suspected_threshold:
+        return False
+    result = integrity.current_result(candidate.fight)
+    metrics = result.get("metrics") if isinstance(result, dict) else None
+    return not isinstance(metrics, dict) or "known_full_party_damage" not in metrics
+
+
 def find_candidates(
     encounters: dict[str, dict[str, Any]],
     config: IntegrityConfig,
@@ -186,19 +209,18 @@ def find_candidates(
                 if not isinstance(fight, dict) or not integrity.is_in_scope(report, fight, config.cutoff_ms):
                     continue
                 scoped_fights += 1
-                if not force and not integrity.needs_check(fight):
-                    continue
-                candidates.append(
-                    Candidate(
-                        encounter_key=encounter_key,
-                        encounter=encounter,
-                        ranking=ranking,
-                        report_code=report_code,
-                        report=report,
-                        fight=fight,
-                        sort_time=sort_time(report, fight),
-                    )
+                candidate = Candidate(
+                    encounter_key=encounter_key,
+                    encounter=encounter,
+                    ranking=ranking,
+                    report_code=report_code,
+                    report=report,
+                    fight=fight,
+                    sort_time=sort_time(report, fight),
                 )
+                if not force and not integrity.needs_check(fight) and not needs_known_capacity_recheck(candidate, config):
+                    continue
+                candidates.append(candidate)
 
     candidates.sort(key=lambda item: (item.sort_time, item.report_code), reverse=True)
     return candidates, rankings, scoped_fights
@@ -354,6 +376,7 @@ def evaluate_measurement(
     *,
     measurement: dict[str, float | int],
     historical_screen: historical_baselines.HistoricalDamageScreen | None,
+    known_capacity_screen: known_capacity.KnownEnemyCapacityScreen | None,
 ) -> dict[str, Any]:
     """以已快取或剛查得的最小測量資料重新套用完整性規則。"""
 
@@ -367,6 +390,7 @@ def evaluate_measurement(
         hp_ratio_threshold=config.hp_ratio_threshold,
         suspected_hp_ratio_threshold=config.suspected_hp_ratio_threshold,
         historical_screen=historical_screen,
+        known_capacity_screen=known_capacity_screen,
     )
 
 
@@ -379,6 +403,7 @@ def evaluate_candidate(
     measurement_cache: integrity_cache.FightIntegrityMeasurementCache,
     *,
     refresh_cache: bool,
+    offline_only: bool = False,
 ) -> tuple[dict[str, Any], bool, bool]:
     """優先以本機測量快取判定；只有未命中或要求刷新時才呼叫 FFLogs。"""
 
@@ -390,6 +415,10 @@ def evaluate_candidate(
         ), False, False
 
     historical_screen = config.historical_damage_baselines.screen(
+        candidate.encounter_key,
+        candidate.fight,
+    )
+    known_capacity_screen = config.known_enemy_capacity.screen(
         candidate.encounter_key,
         candidate.fight,
     )
@@ -406,6 +435,7 @@ def evaluate_candidate(
                 reason=cached["reason"],
                 attack_marker=attack_marker,
                 historical_screen=historical_screen,
+                known_capacity_screen=known_capacity_screen,
             ), True, False
         return evaluate_measurement(
             candidate,
@@ -413,14 +443,43 @@ def evaluate_candidate(
             checked_at_iso,
             measurement=cached["measurement"],
             historical_screen=historical_screen,
+            known_capacity_screen=known_capacity_screen,
         ), True, False
 
-    # 歷史基準只負責替完整繁中隊伍的舊副本正常場次省下生命池查詢。它從未自行排除：
-    # 一旦高於上緣，仍要以快取／FFLogs 目標生命池確認，避免多目標戰鬥被誤傷。
+    # 已知固定生命池只會用完整隊伍傷害下限認定異常，不能反過來判定正常。這讓極澤蓮尼亞
+    # 的誇張 log 可離線先隱藏，同時避免 Limit Break 未歸屬玩家時造成 false valid。
+    if known_capacity_screen is not None and known_capacity_screen.exceeds_suspected_threshold:
+        return integrity.make_known_capacity_result(
+            checked_at_iso=checked_at_iso,
+            known_capacity_screen=known_capacity_screen,
+            hp_ratio_threshold=config.hp_ratio_threshold,
+        ), False, False
+
+    # 歷史基準也只會把完整隊伍的極端高傷害標為疑似並隱藏，永不直接寫成 excluded。
+    # 這可在一次性離線回補時先阻斷明顯污染，而有量測快取時仍以目標生命池為最終判定。
+    if offline_only and historical_screen is not None and historical_screen.exceeds_threshold:
+        return integrity.make_unverifiable_result(
+            checked_at_iso=checked_at_iso,
+            reason="historical_team_damage_requires_enemy_hp_measurement",
+            attack_marker=attack_marker,
+            historical_screen=historical_screen,
+            known_capacity_screen=known_capacity_screen,
+        ), False, False
+
+    # 完整繁中隊伍且仍在歷史高端範圍內的舊副本，不必為正常新紀錄重複查敵方 HP。
     if historical_screen is not None and not historical_screen.exceeds_threshold and not attack_marker:
         return integrity.make_historical_screen_valid_result(
             checked_at_iso=checked_at_iso,
             historical_screen=historical_screen,
+        ), False, False
+
+    if offline_only:
+        return integrity.make_unverifiable_result(
+            checked_at_iso=checked_at_iso,
+            reason="offline_measurement_not_available",
+            attack_marker=attack_marker,
+            historical_screen=historical_screen,
+            known_capacity_screen=known_capacity_screen,
         ), False, False
 
     if not has_query_context(candidate.fight):
@@ -429,6 +488,7 @@ def evaluate_candidate(
             reason="missing_fight_query_context",
             attack_marker=attack_marker,
             historical_screen=historical_screen,
+            known_capacity_screen=known_capacity_screen,
         ), False, False
 
     targets, _ = query_target_damage(session, auth_pool, candidate)
@@ -447,6 +507,7 @@ def evaluate_candidate(
             reason="missing_enemy_max_hp",
             attack_marker=attack_marker,
             historical_screen=historical_screen,
+            known_capacity_screen=known_capacity_screen,
         ), False, True
 
     measurement = {
@@ -469,6 +530,7 @@ def evaluate_candidate(
         checked_at_iso,
         measurement=measurement,
         historical_screen=historical_screen,
+        known_capacity_screen=known_capacity_screen,
     ), False, True
 
 
@@ -492,6 +554,11 @@ def main() -> int:
         action="store_true",
         help="忽略有效快取並重新向 FFLogs 讀取本輪測量資料。",
     )
+    parser.add_argument(
+        "--offline-only",
+        action="store_true",
+        help="只使用已保存結果、本機快取與本地預篩；缺少量測時保守隱藏，完全不呼叫 FFLogs。",
+    )
     args = parser.parse_args()
 
     config = load_config()
@@ -506,7 +573,9 @@ def main() -> int:
 
     scoped_candidates, _, scoped_fights = find_candidates(load_encounters(), config, force=True)
     candidates = scoped_candidates if args.force else [
-        candidate for candidate in scoped_candidates if integrity.needs_check(candidate.fight)
+        candidate
+        for candidate in scoped_candidates
+        if integrity.needs_check(candidate.fight) or needs_known_capacity_recheck(candidate, config)
     ]
     selected = select_candidates(candidates, report_limit)
     print(
@@ -529,8 +598,13 @@ def main() -> int:
     if not selected:
         return 0
 
-    session = fflogs.requests.Session()
-    auth_pool = auth_pool_class(session, read_credentials())
+    session: Any | None = None
+    auth_pool: Any | None = None
+    if args.offline_only:
+        print("已啟用離線完整性回補：不建立 OAuth、不呼叫 FFLogs，未量測 fight 將保守隱藏。")
+    else:
+        session = fflogs.requests.Session()
+        auth_pool = auth_pool_class(session, read_credentials())
     changed_encounters: set[str] = set()
     counters = {"excluded": 0, "suspected": 0, "valid": 0, "unverifiable": 0, "not_applicable": 0, "failed": 0}
     cache_hits = 0
@@ -543,6 +617,10 @@ def main() -> int:
             candidate.encounter_key,
             candidate.fight,
         )
+        known_capacity_screen = config.known_enemy_capacity.screen(
+            candidate.encounter_key,
+            candidate.fight,
+        )
         try:
             result, cache_hit, api_queried = evaluate_candidate(
                 session,
@@ -552,6 +630,7 @@ def main() -> int:
                 checked_at_iso,
                 measurement_cache,
                 refresh_cache=args.refresh_cache,
+                offline_only=args.offline_only,
             )
             if cache_hit:
                 cache_hits += 1
@@ -570,6 +649,7 @@ def main() -> int:
                 reason="report_not_accessible",
                 attack_marker=integrity.has_basic_attack_exploit_marker(candidate.fight),
                 historical_screen=historical_screen,
+                known_capacity_screen=known_capacity_screen,
             )
         except graphql_error_class as error:
             print(f"  → FFLogs 查詢失敗，保留不可驗證狀態：{error}", file=sys.stderr)
@@ -578,6 +658,7 @@ def main() -> int:
                 reason="fflogs_graphql_query_failed",
                 attack_marker=integrity.has_basic_attack_exploit_marker(candidate.fight),
                 historical_screen=historical_screen,
+                known_capacity_screen=known_capacity_screen,
             )
             counters["failed"] += 1
         except (RuntimeError, ValueError, TypeError) as error:
@@ -587,6 +668,7 @@ def main() -> int:
                 reason="integrity_measurement_failed",
                 attack_marker=integrity.has_basic_attack_exploit_marker(candidate.fight),
                 historical_screen=historical_screen,
+                known_capacity_screen=known_capacity_screen,
             )
             counters["failed"] += 1
 

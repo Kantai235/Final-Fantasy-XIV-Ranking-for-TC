@@ -28,6 +28,7 @@
     "hp_ratio_threshold": 1.15,
     "suspected_hp_ratio_threshold": 1.14,
     "historical_baseline_file": "config/fight_integrity_baselines.json",
+    "known_enemy_capacity_file": "config/fight_integrity_known_enemy_hp.json",
     "report_limit": 25,
     "excluded_encounter_keys": [
       "ultimate_bahamut"

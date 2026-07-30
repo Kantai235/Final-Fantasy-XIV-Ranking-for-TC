@@ -365,10 +365,20 @@ function isHiddenEntry(entry) {
   return Boolean(entry?.report_hidden || entry?.hidden_report);
 }
 
-function isIntegrityHiddenFight(fight) {
+const fightIntegrityCutoffMs = Date.parse("2026-07-28T18:00:00+08:00");
+
+function isIntegrityHiddenFight(fight, report = {}) {
   // 普攻異常檢核是 fight 層而不是 report 層：保留 report 原始資料以供日後追溯，
-  // 但無論是否建置 hidden report delta，都不能讓已判定異常的 pull 回流到任何公開衍生資料。
-  return Boolean(fight?.data_integrity?.hidden_from_public);
+  // 但無論是否建置 hidden report delta，都不能讓異常或尚未驗證的 pull 回流到公開衍生資料。
+  const integrity = fight?.data_integrity;
+  if (integrity && typeof integrity === "object") {
+    return Boolean(integrity.hidden_from_public)
+      || !["valid", "not_applicable"].includes(String(integrity.status || ""));
+  }
+  // 回補尚未完成或 API 暫時失敗時，切點後沒有完整性結果的 fight 必須 fail-closed。
+  // 來源層仍保存 report/fight，待離線回補後只有明確 valid 的資料才會公開。
+  const recordedAt = fightRecordedAtMs(fight, report);
+  return Number.isFinite(recordedAt) && recordedAt >= fightIntegrityCutoffMs;
 }
 
 function hiddenReportFields(report) {
@@ -1434,7 +1444,7 @@ function collectEntriesFromReports({ ranking, encounter, includeHiddenReports = 
       if (!fight || typeof fight !== "object") {
         continue;
       }
-      if (isIntegrityHiddenFight(fight)) {
+      if (isIntegrityHiddenFight(fight, report)) {
         continue;
       }
 
@@ -1734,7 +1744,7 @@ function collectTeamRecordsFromReports({ ranking, encounter, includeHiddenReport
       if (!fight || typeof fight !== "object") {
         continue;
       }
-      if (isIntegrityHiddenFight(fight)) {
+      if (isIntegrityHiddenFight(fight, report)) {
         continue;
       }
 
@@ -2157,10 +2167,25 @@ function hasHiddenReportMarker(value) {
   return Boolean(value?.report_hidden || value?.hidden_report);
 }
 
-function buildUserHiddenDeltaPayload(payload, basePath) {
+function buildUserHiddenDeltaPayload(payload, basePath, basePayload = null) {
+  // hidden delta 不能只看 report_hidden。戰鬥完整性檢核也會讓一場戰鬥不進公開底稿，
+  // 但它不會把整份 FFLogs report 標為 private。若只依 report_hidden 篩選，完整鏡像
+  // 的 summary 會包含該筆成績，實際合併後的 encounters 卻遺失它，造成管理檢視與
+  // 公開資料的資料守恆失敗。因此以公開底稿已實際輸出的 entry id 為準：底稿沒有的
+  // entry 必須由 delta 補上；已公開但來源 report 已隱藏的代表 entry 則仍由 delta
+  // 覆寫，保留隱藏來源的正確變體與報告狀態。
+  const baseEntryIdsByEncounter = new Map(
+    (basePayload?.encounters || []).map((encounter) => [
+      encounter?.encounter_key,
+      new Set((encounter?.public_entries || []).map((entry) => entry?.id).filter(Boolean)),
+    ]),
+  );
   const deltaEncounters = (payload.encounters || [])
     .map((encounter) => {
-      const hiddenEntries = (encounter.public_entries || []).filter(hasHiddenReportMarker);
+      const baseEntryIds = baseEntryIdsByEncounter.get(encounter.encounter_key) || new Set();
+      const hiddenEntries = (encounter.public_entries || []).filter(
+        (entry) => hasHiddenReportMarker(entry) || !baseEntryIds.has(entry?.id),
+      );
       const hasHiddenBestEntry = hasHiddenReportMarker(encounter.best_entry);
       const hasHiddenBestByJob = (encounter.best_by_job || []).some(hasHiddenReportMarker);
       if (hiddenEntries.length === 0 && !hasHiddenBestEntry && !hasHiddenBestByJob) {
@@ -2471,7 +2496,7 @@ function addActivityLogsFromReports(
       if (!fight || typeof fight !== "object") {
         continue;
       }
-      if (isIntegrityHiddenFight(fight)) {
+      if (isIntegrityHiddenFight(fight, report)) {
         continue;
       }
 
@@ -3041,9 +3066,10 @@ async function buildDataset({
       teamRecords,
     });
 
-    if (!includeHiddenReports) {
-      hiddenUserStubs.push(...collectHiddenUserStubs(ranking));
-    }
+    // 公開與完整鏡像都必須保留同一批「只有非公開來源」的使用者入口。完整鏡像雖然
+    // 可讀取 private report，但戰鬥完整性仍可能排除其中所有 fight；此時若不建立
+    // stub，public/data/all 的索引就會比公開索引少人，且前端無法回退至公開底稿。
+    hiddenUserStubs.push(...collectHiddenUserStubs(ranking));
   }
 
   for (const item of pendingEncounterData) {
@@ -3065,10 +3091,8 @@ async function buildDataset({
     }
   }
 
-  if (!includeHiddenReports) {
-    for (const stub of hiddenUserStubs) {
-      addHiddenUserStub(usersByIdentity, stub);
-    }
+  for (const stub of hiddenUserStubs) {
+    addHiddenUserStub(usersByIdentity, stub);
   }
 
   attachRdpsPerformance(allEntries);
@@ -3113,7 +3137,8 @@ async function buildDataset({
     let indexFilePathText = publicFilePathText;
 
     if (userProfileMode === "hidden-delta") {
-      const deltaPayload = buildUserHiddenDeltaPayload(payload, publicFilePathText);
+      const basePayload = await readJson(path.join(basePublicDataDir, "users", fileName), null);
+      const deltaPayload = buildUserHiddenDeltaPayload(payload, publicFilePathText, basePayload);
       if (deltaPayload) {
         // public/data/all/users 只保存 hidden report 差量；沒有 hidden 成績的使用者直接指回公開成績單。
         // 這能避免完整鏡像把數千份公開個人成績單再複製一份，同時保留額外檢視需要的 hidden 來源。

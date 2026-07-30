@@ -105,7 +105,7 @@ README 只保留入口與最小操作脈絡，完整說明請依主題閱讀：
 | --- | --- |
 | `npm run build:public-rankings` | 只重建公開排行榜與副本清單，不呼叫 FFLogs API。 |
 | `npm run check:report-status -- <report code>` | 只查既有 report 目前是否仍可公開讀取；Private、刪除或無權限時將來源標記為 hidden，不推進掃描點。 |
-| `npm run backfill:fight-integrity` | 分批檢核台灣時間 2026-07-28 18:00 後的 fight：全隊敵方承傷／敵方最大生命池嚴格超過 1.15 倍時標記 `excluded`；介於 1.14 至 1.15 倍、或 FFLogs `Attack` 異常標記時標記 `suspected`。兩者都只從公開衍生資料隱藏，原始 report/fight 保留。敵方承傷與生命池會保存於不進 Git 的最小快取，重跑時不會重複耗用 API；只有 `--refresh-cache` 才會強制重新讀取。 |
+| `npm run backfill:fight-integrity` | 分批檢核台灣時間 2026-07-28 18:00 後的 fight：全隊敵方承傷／敵方最大生命池嚴格超過 1.15 倍時標記 `excluded`；介於 1.14 至 1.15 倍、或 FFLogs `Attack` 異常標記時標記 `suspected`。極澤蓮尼亞另以固定生命池 92,086,232 檢查完整隊伍角色傷害下限，超過 1.005 倍即隱藏。兩者都只從公開衍生資料隱藏，原始 report/fight 保留。敵方承傷與生命池會保存於不進 Git 的最小快取，重跑時不會重複耗用 API；`--offline-only` 完全不會呼叫 FFLogs，無法離線確認者會保守隱藏。 |
 | `npm run fetch:honey-fans` | 抓取 Honey B. Lovely 粉絲榜趣味資料，會呼叫 FFLogs API。 |
 | `npm run build:honey-fans` | 由 `data/fun/honey_b_fans.json` 重建公開趣味榜 JSON，不呼叫 FFLogs API。 |
 | `npm run build:ranking-tables` | 由公開排行榜產生前端薄索引與按需載入報告細節檔；會依 `config/game_versions.json` 在薄索引列寫入 `game_version`，供排行榜累積版本篩選使用。 |
@@ -144,6 +144,7 @@ README 只保留入口與最小操作脈絡，完整說明請依主題閱讀：
 - GitHub Actions 會先用 `FFLOGS_RECENT_GCD_BACKFILL_REPORT_LIMIT` 控制的非 stateful GCD 補洞追最新候選，再用 `FFLOGS_GCD_BACKFILL_REPORT_LIMIT` 控制的 stateful 回補從固定 cutoff 往舊追；前者處理 cutoff 後空洞，後者處理歷史追平。
 - GitHub Actions 的 `fetch_fflogs.py` 會在每筆新收錄的 7/28 後 fight 寫入排行來源前立即執行戰鬥完整性檢核；`config/fight_integrity_baselines.json` 以切點前、完整繁中隊伍且依 `fight_hash` 去重的 P99 傷害建立舊副本本地預篩，避免正常場次反覆查 API。預篩超標不是排除證據，仍須以生命池量測確認；僅在高端候選無法量測時保守隱藏為疑似。`FFLOGS_FIGHT_INTEGRITY_REPORT_LIMIT`（預設 25）只限制既有歷史資料的回補批次。可用 `FFLOGS_FIGHT_INTEGRITY_ENABLED=false` 停止新增檢核。兩個流程共用 Actions cache 接續 `data/local-cache/fight-integrity/measurements.json` 的最小測量資料；該資料只含彙總敵方承傷、生命池與目標數，不會進 Git。既有 `data_integrity.metrics` 也會直接植入快取，不會為了補快取重讀 API。規則重跑優先離線復查，僅在 report／fight 來源指紋變動或明確使用 `--refresh-cache` 時重新讀取 FFLogs。這是可撤除的暫時性防護：停用後既有 `data_integrity.hidden_from_public=true` 仍會從排行榜、個人成績、隊伍榜與近期動態隱藏，原始 report/fight 不會被移除。
 - `config/fight_integrity_baselines.json` 為具足夠歷史樣本的副本保存完整繁中隊伍傷害上緣。低於保守上緣的完整隊伍可離線通過初篩；超出上緣、出現 Attack 標記或缺少完整隊伍時，仍以敵方生命池檢核。若超出上緣但無法取得生命池，該 fight 會標為 `suspected` 並從公開資料隱藏。
+- `config/fight_integrity_known_enemy_hp.json` 是更嚴格、可獨立撤除的固定生命池規則，目前套用極澤蓮尼亞（92,086,232）與幻朱雀（127,613,543）：完整繁中隊伍的角色傷害總和超過固定生命池的 1.005 倍，即使尚未取得 FFLogs 敵方表格，也先標為疑似並隱藏；這是下限判定，未超過不代表正常。切點後沒有完整性結果、`unverifiable` 或其他非 `valid`／`not_applicable` 的 fight 一律不進公開衍生資料，避免尚未檢核的異常成績混入榜單。
 - GitHub Actions checkout 只抓目前分支的淺層 partial clone；這個資料 repo 的完整歷史 pack 已非常大，正式更新與緊急部署都不應改回 `fetch-depth: 0`，避免 runner 在 checkout 階段耗盡磁碟。
 - GitHub Actions 以 Node.js 24 執行前端與資料建置，官方 actions 也需使用支援 Node 24 的 major 版本；Pages 部署若遇到 `syncing_files` 後的暫時性失敗，workflow 會等待 60 秒後重試一次。
 - 正式 Pages artifact 只保留 `dist/data/users/index.json`，不保留個別玩家成績單 JSON、`dist/data/user-entry-details`、hidden 使用者差量 JSON、逐玩家靜態分享頁與 `dist/og/users` 玩家 OG 圖；前端仍由 `/user` route 與 users 專用 repo 讀取個別玩家成績單。這是為了讓高頻搜尋索引吃到主站 CDN 快取，同時避免 GitHub Pages 在 `syncing_files` 階段同步上萬個小檔時失敗。
