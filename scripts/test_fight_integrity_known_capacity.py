@@ -175,6 +175,20 @@ class KnownEnemyCapacityPolicyTest(unittest.TestCase):
             72_720_000,
         )
         self.assertEqual(
+            policy.rules["unreal_suzaku"].required_enemy_damage_min,
+            71_280_000,
+        )
+        self.assertEqual(
+            policy.rules["unreal_suzaku"].required_enemy_damage_max,
+            72_720_000,
+        )
+        suzaku_enemy_damage_screen = policy.screen_enemy_damage(
+            "unreal_suzaku",
+            80_962_111,
+        )
+        self.assertIsNotNone(suzaku_enemy_damage_screen)
+        self.assertFalse(suzaku_enemy_damage_screen.matches_required_enemy_damage_range)
+        self.assertEqual(
             policy.rules["ultimate_futures_rewritten"].maximum_full_party_damage,
             151_500_000,
         )

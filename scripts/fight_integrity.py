@@ -18,8 +18,8 @@ from typing import Any
 
 
 DATA_INTEGRITY_KEY = "data_integrity"
-CALCULATION_VERSION = 7
-RULESET = "post_2026_07_28_basic_attack_v7_enemy_damage_upper_limit"
+CALCULATION_VERSION = 8
+RULESET = "post_2026_07_28_basic_attack_v8_suzaku_enemy_damage_range"
 # 規則版本直接決定戰鬥是否可公開；舊版結論必須離線重判，不能視為相容的 valid。
 # 回補器會重用舊結果保存的最小量測資料，避免因此重新耗用 FFLogs API。
 DEFAULT_CUTOFF_ISO = "2026-07-28T18:00:00+08:00"

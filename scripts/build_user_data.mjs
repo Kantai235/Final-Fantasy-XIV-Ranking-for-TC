@@ -369,7 +369,7 @@ const fightIntegrityCutoffMs = Date.parse("2026-07-28T18:00:00+08:00");
 // 必須與 scripts/fight_integrity.py 的 CALCULATION_VERSION 同步。Python 來源層會先
 // 過濾舊版結果；此處再防禦一次，避免長時間 workflow 在規則更新後回寫舊版資料時，
 // 個人成績、隊伍榜與統計在下一次完整回補前重新納入過期的 valid 結論。
-const currentFightIntegrityCalculationVersion = 7;
+const currentFightIntegrityCalculationVersion = 8;
 
 function isIntegrityHiddenFight(fight, report = {}) {
   // 普攻異常檢核是 fight 層而不是 report 層：保留 report 原始資料以供日後追溯，
