@@ -65,11 +65,12 @@ class KnownEnemyCapacityRule:
     required_enemy_damage_min: int | None = None
     required_enemy_damage_max: int | None = None
     maximum_full_party_damage: int | None = None
+    maximum_enemy_damage: int | None = None
 
 
 @dataclass(frozen=True)
 class KnownEnemyCapacityScreen:
-    """完整隊伍傷害下限相對於已知敵方生命池的可追溯證據。"""
+    """完整隊伍傷害或已量測敵方承傷相對於已知規則的可追溯證據。"""
 
     encounter_key: str
     team_total_damage: int
@@ -80,6 +81,7 @@ class KnownEnemyCapacityScreen:
     required_enemy_damage_min: int | None = None
     required_enemy_damage_max: int | None = None
     maximum_full_party_damage: int | None = None
+    maximum_enemy_damage: int | None = None
     damage_source: str = "full_party_player_damage"
 
     @property
@@ -130,6 +132,19 @@ class KnownEnemyCapacityScreen:
         return (
             self.required_full_party_damage_min <= self.team_total_damage
             <= self.required_full_party_damage_max
+        )
+
+    @property
+    def has_maximum_enemy_damage(self) -> bool:
+        """是否有只能由 FFLogs Target Damage 驗證的敵方承傷上限。"""
+
+        return self.maximum_enemy_damage is not None
+
+    @property
+    def exceeds_maximum_enemy_damage(self) -> bool:
+        return (
+            self.maximum_enemy_damage is not None
+            and self.team_total_damage > self.maximum_enemy_damage
         )
 
     @property
@@ -187,6 +202,11 @@ class KnownEnemyCapacityScreen:
                 "maximum_full_party_damage": self.maximum_full_party_damage,
                 "exceeds_maximum_full_party_damage": self.exceeds_maximum_full_party_damage,
             })
+        if self.has_maximum_enemy_damage:
+            metrics.update({
+                "maximum_enemy_damage": self.maximum_enemy_damage,
+                "exceeds_maximum_enemy_damage": self.exceeds_maximum_enemy_damage,
+            })
         return metrics
 
 
@@ -239,6 +259,23 @@ class KnownEnemyCapacityPolicy:
             maximum_full_party_damage=rule.maximum_full_party_damage,
         )
 
+    def requires_enemy_damage_measurement(self, encounter_key: str) -> bool:
+        """是否必須量測 FFLogs Target Damage 才能套用副本專用規則。"""
+
+        if not self.enabled:
+            return False
+        rule = self.rules.get(encounter_key)
+        return bool(
+            rule is not None
+            and (
+                (
+                    rule.required_enemy_damage_min is not None
+                    and rule.required_enemy_damage_max is not None
+                )
+                or rule.maximum_enemy_damage is not None
+            )
+        )
+
     def screen_enemy_damage(
         self,
         encounter_key: str,
@@ -248,18 +285,14 @@ class KnownEnemyCapacityPolicy:
 
         部分 report 的繁中服玩家列可能不完整，不能以 ``players[].total_damage``
         判定固定總傷害；此時只有已保存或剛查得的 FFLogs 敵方承傷可作為完整隊伍
-        總量。此入口刻意只啟用設定了敵方承傷範圍的副本，避免把多目標副本的
-        敵方承傷誤當成角色傷害總和。
+        總量。此入口刻意只啟用設定了敵方承傷範圍或敵方承傷上限的副本，避免把
+        多目標副本的敵方承傷誤當成角色傷害總和。
         """
 
         if not self.enabled:
             return None
         rule = self.rules.get(encounter_key)
-        if (
-            rule is None
-            or rule.required_enemy_damage_min is None
-            or rule.required_enemy_damage_max is None
-        ):
+        if rule is None or not self.requires_enemy_damage_measurement(encounter_key):
             return None
         measured_damage = _to_number(enemy_damage)
         if measured_damage is None or measured_damage <= 0:
@@ -271,6 +304,7 @@ class KnownEnemyCapacityPolicy:
             suspected_team_damage_ratio_threshold=rule.suspected_team_damage_ratio_threshold,
             required_enemy_damage_min=rule.required_enemy_damage_min,
             required_enemy_damage_max=rule.required_enemy_damage_max,
+            maximum_enemy_damage=rule.maximum_enemy_damage,
             damage_source="enemy_damage",
         )
 
@@ -349,11 +383,17 @@ def load_known_enemy_capacity_policy(path: Path) -> KnownEnemyCapacityPolicy:
             raise RuntimeError(
                 f"固定敵方生命池規則 {encounter_key} 的完整隊伍總傷害上限無效。"
             )
+        maximum_enemy_damage = _to_positive_int(entry.get("maximum_enemy_damage"))
+        if "maximum_enemy_damage" in entry and maximum_enemy_damage is None:
+            raise RuntimeError(
+                f"固定敵方生命池規則 {encounter_key} 的敵方承傷上限無效。"
+            )
         if (
             not has_capacity
             and not has_required_min
             and not has_required_enemy_min
             and maximum_full_party_damage is None
+            and maximum_enemy_damage is None
         ):
             raise RuntimeError(
                 f"固定敵方生命池規則 {encounter_key} 至少要設定生命池、固定傷害範圍或傷害上限。"
@@ -366,6 +406,7 @@ def load_known_enemy_capacity_policy(path: Path) -> KnownEnemyCapacityPolicy:
             required_enemy_damage_min=required_enemy_min,
             required_enemy_damage_max=required_enemy_max,
             maximum_full_party_damage=maximum_full_party_damage,
+            maximum_enemy_damage=maximum_enemy_damage,
         )
 
     return KnownEnemyCapacityPolicy(enabled=True, rules=rules)

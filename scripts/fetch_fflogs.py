@@ -4366,6 +4366,7 @@ def 檢核戰鬥完整性(
     檢核時間 = 毫秒轉_iso(現在毫秒()) or ""
     歷史傷害預篩 = 設定.historical_damage_baselines.screen(副本鍵值, 戰鬥)
     已知生命池預篩 = 設定.known_enemy_capacity.screen(副本鍵值, 戰鬥)
+    需要敵方承傷量測 = 設定.known_enemy_capacity.requires_enemy_damage_measurement(副本鍵值)
 
     # 已驗證固定完整隊伍總傷害範圍或歷史硬上限的副本可直接離線判定。固定範圍同時攔截
     # 偏低與偏高資料；單向硬上限只攔截超標值，且完全不耗用 FFLogs API。
@@ -4415,9 +4416,15 @@ def 檢核戰鬥完整性(
                 hp_ratio_threshold=設定.hp_ratio_threshold,
                 attack_marker=攻擊異常標記,
             )
-        # 完整繁中隊伍且仍在歷史高端範圍內的舊副本，不必為正常新紀錄重複查敵方 HP。
-        # Attack 標記與高端候選仍進入量測路徑，以保留高信心 excluded 的可能性。
-        if 歷史傷害預篩 is not None and not 歷史傷害預篩.exceeds_threshold and not 攻擊異常標記:
+        # 完整繁中隊伍且仍在歷史高端範圍內、又沒有敵方承傷專用規則的舊副本，不必
+        # 為正常新紀錄重複查敵方 HP。Attack 標記、高端候選與已設定敵方承傷上限的
+        # 副本仍進入量測路徑，以保留高信心 excluded／專用上限的可能性。
+        if (
+            歷史傷害預篩 is not None
+            and not 歷史傷害預篩.exceeds_threshold
+            and not 攻擊異常標記
+            and not 需要敵方承傷量測
+        ):
             return integrity.make_historical_screen_valid_result(
                 checked_at_iso=檢核時間,
                 historical_screen=歷史傷害預篩,

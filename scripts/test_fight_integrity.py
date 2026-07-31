@@ -266,6 +266,31 @@ class FightIntegrityTest(unittest.TestCase):
             result["metrics"]["known_full_party_damage"].get("enemy_hp_capacity"),
         )
 
+    def test_confirmed_enemy_damage_upper_limit_hides_without_hp_ratio(self) -> None:
+        screen = known_capacity.KnownEnemyCapacityScreen(
+            encounter_key="ultimate_futures_rewritten",
+            team_total_damage=152_651_798,
+            maximum_enemy_damage=151_500_000,
+            damage_source="enemy_damage",
+        )
+
+        result = integrity.make_known_capacity_result(
+            checked_at_iso="2026-07-30T00:00:00Z",
+            known_capacity_screen=screen,
+            hp_ratio_threshold=1.15,
+            attack_marker=False,
+        )
+
+        self.assertEqual(result["status"], "suspected")
+        self.assertTrue(result["hidden_from_public"])
+        self.assertIn(
+            "enemy_damage_exceeds_confirmed_total_damage_upper_limit",
+            result["reasons"],
+        )
+        known_metrics = result["metrics"]["known_full_party_damage"]
+        self.assertEqual(known_metrics["damage_source"], "enemy_damage")
+        self.assertEqual(known_metrics["maximum_enemy_damage"], 151_500_000)
+
     def test_unverifiable_fight_is_fail_closed(self) -> None:
         result = integrity.make_unverifiable_result(
             checked_at_iso="2026-07-30T00:00:00Z",

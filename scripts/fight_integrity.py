@@ -18,8 +18,8 @@ from typing import Any
 
 
 DATA_INTEGRITY_KEY = "data_integrity"
-CALCULATION_VERSION = 6
-RULESET = "post_2026_07_28_basic_attack_v6_fail_closed_known_capacity"
+CALCULATION_VERSION = 7
+RULESET = "post_2026_07_28_basic_attack_v7_enemy_damage_upper_limit"
 # 規則版本直接決定戰鬥是否可公開；舊版結論必須離線重判，不能視為相容的 valid。
 # 回補器會重用舊結果保存的最小量測資料，避免因此重新耗用 FFLogs API。
 DEFAULT_CUTOFF_ISO = "2026-07-28T18:00:00+08:00"
@@ -259,8 +259,11 @@ def make_known_capacity_result(
         if has_required_enemy_damage_range
         else matches_required_full_party_range
     )
-    exceeds_maximum_total_damage = bool(
+    exceeds_maximum_full_party_damage = bool(
         getattr(known_capacity_screen, "exceeds_maximum_full_party_damage", False)
+    )
+    exceeds_maximum_enemy_damage = bool(
+        getattr(known_capacity_screen, "exceeds_maximum_enemy_damage", False)
     )
     if has_required_range:
         if not matches_required_range:
@@ -299,8 +302,12 @@ def make_known_capacity_result(
             "reasons": ["full_party_damage_matches_required_known_total_range"],
         }, known_capacity_screen)
 
-    if exceeds_maximum_total_damage:
-        reasons = ["full_party_damage_exceeds_confirmed_total_damage_upper_limit"]
+    if exceeds_maximum_full_party_damage or exceeds_maximum_enemy_damage:
+        reasons = [
+            "enemy_damage_exceeds_confirmed_total_damage_upper_limit"
+            if exceeds_maximum_enemy_damage
+            else "full_party_damage_exceeds_confirmed_total_damage_upper_limit"
+        ]
         if attack_marker:
             reasons.append("fflogs_basic_attack_exploit_marker")
         return attach_known_capacity_screen({
@@ -411,6 +418,9 @@ def evaluate(
     known_capacity_exceeds_maximum_total_damage = bool(
         getattr(known_capacity_screen, "exceeds_maximum_full_party_damage", False)
     )
+    known_capacity_exceeds_maximum_enemy_damage = bool(
+        getattr(known_capacity_screen, "exceeds_maximum_enemy_damage", False)
+    )
     if known_capacity_ratio is not None and known_capacity_ratio > hp_ratio_threshold:
         reasons.append("full_party_damage_exceeds_known_hp_ratio_threshold")
     elif known_capacity_suspected:
@@ -423,6 +433,8 @@ def evaluate(
         )
     if known_capacity_exceeds_maximum_total_damage:
         reasons.append("full_party_damage_exceeds_confirmed_total_damage_upper_limit")
+    if known_capacity_exceeds_maximum_enemy_damage:
+        reasons.append("enemy_damage_exceeds_confirmed_total_damage_upper_limit")
     if attack_marker:
         reasons.append("fflogs_basic_attack_exploit_marker")
 
@@ -436,6 +448,7 @@ def evaluate(
         or known_capacity_suspected
         or (known_capacity_has_required_range and not known_capacity_matches_required_range)
         or known_capacity_exceeds_maximum_total_damage
+        or known_capacity_exceeds_maximum_enemy_damage
         or attack_marker
     ):
         status = "suspected"

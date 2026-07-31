@@ -2379,6 +2379,99 @@ class FetchFFLogsBatchTest(unittest.TestCase):
         self.assertEqual(known_metrics["damage_source"], "enemy_damage")
         self.assertEqual(known_metrics["enemy_damage"], 103_000)
 
+    def test_new_eden_queries_enemy_damage_upper_limit_before_historical_valid(self) -> None:
+        """絕伊甸的玩家傷害未超標時，仍要量測敵方承傷攔截異常 rDPS 來源。"""
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            cache = fflogs.integrity_cache.FightIntegrityMeasurementCache.load(
+                Path(temporary_directory) / "measurements.json"
+            )
+            known_policy = fflogs.known_capacity.KnownEnemyCapacityPolicy(
+                enabled=True,
+                rules={
+                    "ultimate_futures_rewritten": fflogs.known_capacity.KnownEnemyCapacityRule(
+                        maximum_full_party_damage=100_100,
+                        maximum_enemy_damage=100_100,
+                    )
+                },
+            )
+            historical_policy = fflogs.historical_baselines.HistoricalDamageBaselinePolicy(
+                enabled=True,
+                reference_cutoff_iso="2026-07-28T18:00:00+08:00",
+                screening_multiplier=1.05,
+                baselines={
+                    "ultimate_futures_rewritten": fflogs.historical_baselines.HistoricalDamageBaseline(
+                        upper_reference_damage=100_100,
+                        sample_count=500,
+                        unique_fight_count=300,
+                    )
+                },
+            )
+            config = fflogs.戰鬥完整性檢核設定(
+                enabled=True,
+                cutoff_ms=0,
+                cutoff_iso="2026-07-28T18:00:00+08:00",
+                hp_ratio_threshold=1.15,
+                suspected_hp_ratio_threshold=1.14,
+                excluded_encounter_keys=set(),
+                known_enemy_capacity=known_policy,
+                historical_damage_baselines=historical_policy,
+            )
+            fight = {
+                "fight_id": 8,
+                "encounter_id": 1079,
+                "difficulty": 100,
+                "start_time": 1_000,
+                "end_time": 601_000,
+                "recorded_at": 1_759_000_000_000,
+                # 角色傷害仍在上限內，先前規則會在這裡寫成 valid。
+                "size": 8,
+                "players": [{"total_damage": 12_500} for _ in range(8)],
+                "damage_done_summary": {"exploitDetails": [{"exploit": 6, "abilities": []}]},
+            }
+            report_context = {
+                "revision": 1,
+                "start_time": 1_700_000_000_000,
+                "end_time": 1_700_001_000_000,
+            }
+            graphql_results = [
+                {
+                    "reportData": {
+                        "report": {
+                            "targetDamage": {"data": {"entries": [{"id": 10, "total": 101_500}]}},
+                            "fights": [{"enemyNPCs": [{"id": 10, "instanceCount": 1}]}],
+                        }
+                    }
+                },
+                {
+                    "reportData": {
+                        "report": {
+                            "target_0": {"data": [{"targetResources": {"maxHitPoints": 110_000}}]}
+                        }
+                    }
+                },
+            ]
+            with patch.object(fflogs, "執行_graphql", side_effect=graphql_results) as execute_graphql:
+                result = fflogs.檢核戰鬥完整性(
+                    object(),
+                    object(),
+                    副本鍵值="ultimate_futures_rewritten",
+                    報告代碼="EDEN-ENEMY-UPPER-LIMIT",
+                    報告脈絡=report_context,
+                    戰鬥=fight,
+                    設定=config,
+                    測量快取=cache,
+                )
+
+        self.assertIsNotNone(result)
+        self.assertEqual(result["status"], "suspected")
+        self.assertTrue(result["hidden_from_public"])
+        self.assertIn(
+            "enemy_damage_exceeds_confirmed_total_damage_upper_limit",
+            result["reasons"],
+        )
+        self.assertEqual(execute_graphql.call_count, 2)
+
     def test_multiphase_total_damage_upper_limit_precedes_not_applicable(self) -> None:
         """多階段副本仍須以完整隊伍傷害硬上限攔截明確異常。"""
 

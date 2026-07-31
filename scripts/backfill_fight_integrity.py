@@ -451,6 +451,9 @@ def evaluate_candidate(
         candidate.encounter_key,
         candidate.fight,
     )
+    requires_enemy_damage_measurement = config.known_enemy_capacity.requires_enemy_damage_measurement(
+        candidate.encounter_key,
+    )
 
     # 已驗證固定完整隊伍總傷害範圍或歷史硬上限的副本，優先於任何舊量測快取離線判定。
     # 固定範圍可同時攔截偏低與偏高資料；單向硬上限只攔截超標值，不能據此判定正常。
@@ -520,8 +523,15 @@ def evaluate_candidate(
             known_capacity_screen=known_capacity_screen,
         ), False, False
 
-    # 完整繁中隊伍且仍在歷史高端範圍內的舊副本，不必為正常新紀錄重複查敵方 HP。
-    if historical_screen is not None and not historical_screen.exceeds_threshold and not attack_marker:
+    # 完整繁中隊伍且仍在歷史高端範圍內、又沒有敵方承傷專用規則的舊副本，不必
+    # 為正常新紀錄重複查敵方 HP。已設定敵方承傷上限者仍必須量測，否則玩家列未
+    # 歸屬的 Limit Break 等來源會使角色總傷害看似正常卻漏過真正的總傷害異常。
+    if (
+        historical_screen is not None
+        and not historical_screen.exceeds_threshold
+        and not attack_marker
+        and not requires_enemy_damage_measurement
+    ):
         return integrity.make_historical_screen_valid_result(
             checked_at_iso=checked_at_iso,
             historical_screen=historical_screen,

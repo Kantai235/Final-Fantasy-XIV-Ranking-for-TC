@@ -107,6 +107,30 @@ class KnownEnemyCapacityPolicyTest(unittest.TestCase):
         self.assertFalse(screen.matches_required_enemy_damage_range)
         self.assertEqual(screen.to_metrics()["enemy_damage"], 101_500)
 
+    def test_enemy_damage_upper_limit_requires_target_damage_measurement(self) -> None:
+        policy = known_capacity.KnownEnemyCapacityPolicy(
+            enabled=True,
+            rules={
+                "fixture": known_capacity.KnownEnemyCapacityRule(
+                    maximum_enemy_damage=100_100,
+                )
+            },
+        )
+
+        # 玩家列傷害不能代替敵方承傷，因此一般 screen 不可攜帶這項上限。
+        self.assertIsNone(
+            policy.screen(
+                "fixture",
+                {"size": 8, "players": [{"total_damage": 12_700} for _ in range(8)]},
+            ).maximum_enemy_damage
+        )
+        screen = policy.screen_enemy_damage("fixture", 101_500)
+
+        self.assertIsNotNone(screen)
+        self.assertEqual(screen.damage_source, "enemy_damage")
+        self.assertTrue(screen.exceeds_maximum_enemy_damage)
+        self.assertEqual(screen.to_metrics()["maximum_enemy_damage"], 100_100)
+
     def test_loader_rejects_non_positive_tolerance(self) -> None:
         payload = {
             "schema_version": 1,
@@ -152,6 +176,10 @@ class KnownEnemyCapacityPolicyTest(unittest.TestCase):
         )
         self.assertEqual(
             policy.rules["ultimate_futures_rewritten"].maximum_full_party_damage,
+            151_500_000,
+        )
+        self.assertEqual(
+            policy.rules["ultimate_futures_rewritten"].maximum_enemy_damage,
             151_500_000,
         )
         self.assertEqual(

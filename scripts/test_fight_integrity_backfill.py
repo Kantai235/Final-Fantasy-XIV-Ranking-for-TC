@@ -323,6 +323,49 @@ class FightIntegrityBackfillCacheTest(unittest.TestCase):
         self.assertFalse(api_queried)
         query_damage.assert_not_called()
 
+    def test_enemy_damage_upper_limit_prevents_historical_valid_shortcut(self) -> None:
+        self.candidate.encounter_key = "ultimate_futures_rewritten"
+        self.candidate.fight["size"] = 8
+        self.candidate.fight["players"] = [{"total_damage": 12_500} for _ in range(8)]
+        self.config.historical_damage_baselines = baselines.HistoricalDamageBaselinePolicy(
+            enabled=True,
+            reference_cutoff_iso="2026-07-28T18:00:00+08:00",
+            screening_multiplier=1.05,
+            baselines={
+                "ultimate_futures_rewritten": baselines.HistoricalDamageBaseline(
+                    upper_reference_damage=100_100,
+                    sample_count=500,
+                    unique_fight_count=300,
+                )
+            },
+        )
+        self.config.known_enemy_capacity = known_capacity.KnownEnemyCapacityPolicy(
+            enabled=True,
+            rules={
+                "ultimate_futures_rewritten": known_capacity.KnownEnemyCapacityRule(
+                    maximum_enemy_damage=100_100,
+                )
+            },
+        )
+
+        with patch.object(backfill, "query_target_damage") as query_damage:
+            result, cache_hit, api_queried = backfill.evaluate_candidate(
+                None,
+                None,
+                self.candidate,
+                self.config,
+                "2026-07-30T00:00:00Z",
+                self.cache,
+                refresh_cache=False,
+                offline_only=True,
+            )
+
+        self.assertEqual(result["status"], "unverifiable")
+        self.assertTrue(result["hidden_from_public"])
+        self.assertFalse(cache_hit)
+        self.assertFalse(api_queried)
+        query_damage.assert_not_called()
+
     def test_existing_result_seeds_cache_without_an_api_query(self) -> None:
         self.candidate.fight["data_integrity"] = integrity.evaluate(
             checked_at_iso="2026-07-30T00:00:00Z",
