@@ -7,7 +7,9 @@
       "enemy_hp_capacity": 92086232,
       "suspected_team_damage_ratio_threshold": 1.005,
       "required_full_party_damage_min": 92086132,
-      "required_full_party_damage_max": 92086332
+      "required_full_party_damage_max": 92086332,
+      "required_enemy_damage_min": 92086132,
+      "required_enemy_damage_max": 92086332
     },
     "unreal_suzaku": {
       "enemy_hp_capacity": 127613543,

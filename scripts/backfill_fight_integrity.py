@@ -222,7 +222,12 @@ def find_candidates(
             continue
 
         for fallback_code, report in reports.items():
-            if not isinstance(report, dict) or report_is_hidden(report):
+            if not isinstance(report, dict):
+                continue
+            # 一般定期回補不必再次讀取已隱藏 report，避免對已不可讀來源浪費 API
+            # 額度；但 --force 代表人工全量稽核，仍須將它們的舊版 data_integrity
+            # 升級為現行 fail-closed 結果，確保所有切點後歷史資料都有一致版本。
+            if report_is_hidden(report) and not force:
                 continue
             report_code = str(report.get("report_code") or fallback_code)
             for fight in report.get("fights") or []:
@@ -263,11 +268,13 @@ def seed_measurement_cache_from_results(
 
     seeded = 0
     for candidate in candidates:
-        if integrity.needs_check(candidate.fight):
+        # 舊版結果的敵方承傷／生命池仍是可重用的最小量測資料。先植入快取再以
+        # 現行規則離線重判，避免規則升版使全量回補重新耗用 FFLogs API。
+        result = integrity.current_result(candidate.fight)
+        if result is None:
             continue
         if measurement_cache.get(candidate.report_code, candidate.report, candidate.fight) is not None:
             continue
-        result = integrity.current_result(candidate.fight)
         metrics = result.get("metrics") if isinstance(result, dict) else None
         checked_at_iso = str(result.get("checked_at_iso") or "") if isinstance(result, dict) else ""
         try:
@@ -401,6 +408,14 @@ def evaluate_measurement(
     """以已快取或剛查得的最小測量資料重新套用完整性規則。"""
 
     attack_marker = integrity.has_basic_attack_exploit_marker(candidate.fight)
+    # 部分 report 的繁中服玩家來源列少於實際隊伍人數時，玩家傷害總和不是全隊
+    # 總量，不能套用固定範圍。若副本明確設定敵方承傷範圍，改用已保存／查得的
+    # FFLogs 敵方承傷作為權威值；它能攔下極澤蓮尼亞 93.63m 類漏網資料。
+    enemy_damage_screen = config.known_enemy_capacity.screen_enemy_damage(
+        candidate.encounter_key,
+        measurement["enemy_damage"],
+    )
+    effective_known_capacity_screen = enemy_damage_screen or known_capacity_screen
     return integrity.evaluate(
         checked_at_iso=checked_at_iso,
         enemy_damage=measurement["enemy_damage"],
@@ -410,7 +425,7 @@ def evaluate_measurement(
         hp_ratio_threshold=config.hp_ratio_threshold,
         suspected_hp_ratio_threshold=config.suspected_hp_ratio_threshold,
         historical_screen=historical_screen,
-        known_capacity_screen=known_capacity_screen,
+        known_capacity_screen=effective_known_capacity_screen,
     )
 
 
@@ -610,7 +625,7 @@ def main() -> int:
         print("report limit 為 0，略過本輪戰鬥完整性檢核。")
         return 0
 
-    scoped_candidates, _, scoped_fights = find_candidates(load_encounters(), config, force=True)
+    scoped_candidates, _, scoped_fights = find_candidates(load_encounters(), config, force=args.force)
     candidates = scoped_candidates if args.force else [
         candidate
         for candidate in scoped_candidates

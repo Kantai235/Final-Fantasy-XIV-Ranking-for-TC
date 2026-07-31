@@ -2293,6 +2293,92 @@ class FetchFFLogsBatchTest(unittest.TestCase):
         self.assertTrue(result["hidden_from_public"])
         execute_graphql.assert_not_called()
 
+    def test_new_zelenia_partial_party_uses_measured_enemy_damage_range(self) -> None:
+        """新 report 缺少隊員時仍須以敵方承傷攔截固定生命池以外的數值。"""
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            cache = fflogs.integrity_cache.FightIntegrityMeasurementCache.load(
+                Path(temporary_directory) / "measurements.json"
+            )
+            known_policy = fflogs.known_capacity.KnownEnemyCapacityPolicy(
+                enabled=True,
+                rules={
+                    "extreme_zelenia": fflogs.known_capacity.KnownEnemyCapacityRule(
+                        enemy_hp_capacity=100_000,
+                        suspected_team_damage_ratio_threshold=1.005,
+                        required_full_party_damage_min=99_900,
+                        required_full_party_damage_max=100_100,
+                        required_enemy_damage_min=99_900,
+                        required_enemy_damage_max=100_100,
+                    )
+                },
+            )
+            config = fflogs.戰鬥完整性檢核設定(
+                enabled=True,
+                cutoff_ms=0,
+                cutoff_iso="2026-07-28T18:00:00+08:00",
+                hp_ratio_threshold=1.15,
+                suspected_hp_ratio_threshold=1.14,
+                excluded_encounter_keys=set(),
+                known_enemy_capacity=known_policy,
+            )
+            fight = {
+                "fight_id": 8,
+                "encounter_id": 1080,
+                "difficulty": 100,
+                "start_time": 1_000,
+                "end_time": 601_000,
+                "recorded_at": 1_759_000_000_000,
+                "size": 8,
+                # 報告只保留七位繁中服玩家時，這個合計不能作為全隊固定生命池判定。
+                "players": [{"total_damage": 13_000} for _ in range(7)],
+                "damage_done_summary": {"exploitDetails": []},
+            }
+            graphql_results = [
+                {
+                    "reportData": {
+                        "report": {
+                            "targetDamage": {"data": {"entries": [{"id": 10, "total": 103_000}]}},
+                            "fights": [{"enemyNPCs": [{"id": 10, "instanceCount": 1}]}],
+                        }
+                    }
+                },
+                {
+                    "reportData": {
+                        "report": {
+                            "target_0": {"data": [{"targetResources": {"maxHitPoints": 100_000}}]}
+                        }
+                    }
+                },
+            ]
+            with patch.object(fflogs, "執行_graphql", side_effect=graphql_results) as execute_graphql:
+                result = fflogs.檢核戰鬥完整性(
+                    object(),
+                    object(),
+                    副本鍵值="extreme_zelenia",
+                    報告代碼="PARTIAL-ZELENIA",
+                    報告脈絡={
+                        "revision": 1,
+                        "start_time": 1_700_000_000_000,
+                        "end_time": 1_700_001_000_000,
+                    },
+                    戰鬥=fight,
+                    設定=config,
+                    測量快取=cache,
+                )
+
+        self.assertEqual(execute_graphql.call_count, 2)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["status"], "suspected")
+        self.assertTrue(result["hidden_from_public"])
+        self.assertIn(
+            "enemy_damage_outside_required_confirmed_total_range",
+            result["reasons"],
+        )
+        known_metrics = result["metrics"]["known_full_party_damage"]
+        self.assertEqual(known_metrics["damage_source"], "enemy_damage")
+        self.assertEqual(known_metrics["enemy_damage"], 103_000)
+
     def test_multiphase_total_damage_upper_limit_precedes_not_applicable(self) -> None:
         """多階段副本仍須以完整隊伍傷害硬上限攔截明確異常。"""
 

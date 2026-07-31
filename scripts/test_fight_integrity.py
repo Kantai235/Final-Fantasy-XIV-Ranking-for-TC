@@ -98,10 +98,11 @@ class FightIntegrityTest(unittest.TestCase):
         self.assertFalse(integrity.is_in_scope(report, before, cutoff))
         self.assertTrue(integrity.is_in_scope(report, at_cutoff, cutoff))
 
-    def test_existing_v2_hp_measurement_is_compatible_without_requery(self) -> None:
+    def test_existing_v2_hp_measurement_requires_current_rule_recheck(self) -> None:
         fight = {"data_integrity": {"calculation_version": 2, "status": "valid"}}
 
-        self.assertFalse(integrity.needs_check(fight))
+        self.assertTrue(integrity.needs_check(fight))
+        self.assertTrue(integrity.is_hidden_from_public(fight))
 
     def test_unverifiable_attack_marker_stays_hidden(self) -> None:
         result = integrity.make_unverifiable_result(
@@ -218,6 +219,28 @@ class FightIntegrityTest(unittest.TestCase):
         self.assertIn("full_party_damage_outside_required_known_total_range", low_result["reasons"])
         self.assertEqual(attack_result["status"], "suspected")
         self.assertTrue(attack_result["hidden_from_public"])
+
+    def test_required_enemy_damage_range_hides_partial_party_anomaly(self) -> None:
+        screen = known_capacity.KnownEnemyCapacityScreen(
+            encounter_key="extreme_zelenia",
+            team_total_damage=101_500,
+            enemy_hp_capacity=100_000,
+            suspected_team_damage_ratio_threshold=1.005,
+            required_enemy_damage_min=99_900,
+            required_enemy_damage_max=100_100,
+            damage_source="enemy_damage",
+        )
+
+        result = integrity.make_known_capacity_result(
+            checked_at_iso="2026-07-30T00:00:00Z",
+            known_capacity_screen=screen,
+            hp_ratio_threshold=1.15,
+            attack_marker=False,
+        )
+
+        self.assertEqual(result["status"], "suspected")
+        self.assertTrue(result["hidden_from_public"])
+        self.assertIn("enemy_damage_outside_required_confirmed_total_range", result["reasons"])
 
     def test_confirmed_total_damage_upper_limit_hides_without_hp_ratio(self) -> None:
         screen = known_capacity.KnownEnemyCapacityScreen(

@@ -4077,6 +4077,37 @@ def 建立公開排行榜(
     return 公開排行榜
 
 
+def 建立隱藏公開排行榜差量(副本設定: dict[str, Any], 排行榜: dict[str, Any]) -> dict[str, Any]:
+    """只輸出 hidden report 相對於一般公開榜的差量，避免複製完整排行榜。
+
+    ``public/data/all/`` 是額外檢視時才合併的資料層，不能保存一般公開榜的完整
+    複本。戰鬥完整性被隱藏的 fight 不會放入此差量，因為它們只能保存在來源分片，
+    以避免異常 rDPS 被任何公開聚合重新採用。
+    """
+
+    完整排行榜 = 建立公開排行榜(排行榜, 包含隱藏報告=True)
+    完整條目 = 完整排行榜.get("ranking_entries") or []
+    return {
+        "schema_version": 完整排行榜.get("schema_version", 1),
+        "format": "ranking_hidden_delta_v1",
+        "base_path": f"data/rankings/{副本設定['key']}.json",
+        "encounter": 完整排行榜.get("encounter"),
+        "updated_at": 完整排行榜.get("updated_at"),
+        "updated_at_iso": 完整排行榜.get("updated_at_iso"),
+        "hidden_reports_included": True,
+        "ranking_entry_order": [
+            條目.get("id")
+            for 條目 in 完整條目
+            if isinstance(條目, dict) and 條目.get("id")
+        ],
+        "ranking_entries": [
+            條目
+            for 條目 in 完整條目
+            if isinstance(條目, dict) and 條目.get("report_hidden")
+        ],
+    }
+
+
 排行榜報告分片目標大小 = 45 * 1024 * 1024
 
 
@@ -4439,6 +4470,16 @@ def 檢核戰鬥完整性(
             cached_at_iso=檢核時間,
         )
 
+    # 極澤蓮尼亞等已驗證固定總傷害的副本，部分 report 可能只收錄 7/8 位繁中服
+    # 玩家。此時 players 合計不能代表全隊傷害，必須以剛量得（或由本機快取重用）的
+    # 敵方承傷套用專用範圍。不可把這個規則泛用到多目標副本，policy 只會對明確設定
+    # required_enemy_damage 範圍的副本回傳結果。
+    敵方承傷預篩 = 設定.known_enemy_capacity.screen_enemy_damage(
+        副本鍵值,
+        測量值["enemy_damage"],
+    )
+    有效已知生命池預篩 = 敵方承傷預篩 or 已知生命池預篩
+
     return integrity.evaluate(
         checked_at_iso=檢核時間,
         enemy_damage=測量值["enemy_damage"],
@@ -4448,7 +4489,7 @@ def 檢核戰鬥完整性(
         hp_ratio_threshold=設定.hp_ratio_threshold,
         suspected_hp_ratio_threshold=設定.suspected_hp_ratio_threshold,
         historical_screen=歷史傷害預篩,
-        known_capacity_screen=已知生命池預篩,
+        known_capacity_screen=有效已知生命池預篩,
     )
 
 
@@ -4728,7 +4769,7 @@ def 寫入排行榜檔案(副本設定: dict[str, Any], 排行榜: dict[str, Any
     寫入_json(排行榜檔案路徑(副本設定, public=True), 建立公開排行榜(排行榜), 緊湊格式=True)
     寫入_json(
         排行榜檔案路徑(副本設定, public=True, 包含隱藏公開資料=True),
-        建立公開排行榜(排行榜, 包含隱藏報告=True),
+        建立隱藏公開排行榜差量(副本設定, 排行榜),
         緊湊格式=True,
     )
 
@@ -4769,10 +4810,7 @@ def 重建公開排行榜檔案() -> None:
         )
         寫入_json(
             排行榜檔案路徑(副本設定, public=True, 包含隱藏公開資料=True),
-            建立公開排行榜(
-                排行榜,
-                包含隱藏報告=True,
-            ),
+            建立隱藏公開排行榜差量(副本設定, 排行榜),
             緊湊格式=True,
         )
         print(f"已重建公開排行榜：{副本設定['key']}")
@@ -4801,7 +4839,7 @@ def 分割排行榜儲存檔案() -> None:
         寫入_json(排行榜檔案路徑(副本設定, public=True), 建立公開排行榜(排行榜), 緊湊格式=True)
         寫入_json(
             排行榜檔案路徑(副本設定, public=True, 包含隱藏公開資料=True),
-            建立公開排行榜(排行榜, 包含隱藏報告=True),
+            建立隱藏公開排行榜差量(副本設定, 排行榜),
             緊湊格式=True,
         )
         print(f"已分割完整排行榜儲存檔案：{副本設定['key']}")

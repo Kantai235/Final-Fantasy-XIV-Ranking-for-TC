@@ -86,6 +86,27 @@ class KnownEnemyCapacityPolicyTest(unittest.TestCase):
         self.assertFalse(low.matches_required_full_party_damage_range)
         self.assertFalse(high.matches_required_full_party_damage_range)
 
+    def test_enemy_damage_range_handles_partial_party_source(self) -> None:
+        policy = known_capacity.KnownEnemyCapacityPolicy(
+            enabled=True,
+            rules={
+                "fixture": known_capacity.KnownEnemyCapacityRule(
+                    enemy_hp_capacity=100_000,
+                    suspected_team_damage_ratio_threshold=1.005,
+                    required_enemy_damage_min=99_900,
+                    required_enemy_damage_max=100_100,
+                )
+            },
+        )
+
+        screen = policy.screen_enemy_damage("fixture", 101_500)
+
+        self.assertIsNotNone(screen)
+        self.assertEqual(screen.damage_source, "enemy_damage")
+        self.assertTrue(screen.has_required_enemy_damage_range)
+        self.assertFalse(screen.matches_required_enemy_damage_range)
+        self.assertEqual(screen.to_metrics()["enemy_damage"], 101_500)
+
     def test_loader_rejects_non_positive_tolerance(self) -> None:
         payload = {
             "schema_version": 1,
@@ -114,6 +135,8 @@ class KnownEnemyCapacityPolicyTest(unittest.TestCase):
         self.assertEqual(policy.rules["extreme_zelenia"].enemy_hp_capacity, 92_086_232)
         self.assertEqual(policy.rules["extreme_zelenia"].required_full_party_damage_min, 92_086_132)
         self.assertEqual(policy.rules["extreme_zelenia"].required_full_party_damage_max, 92_086_332)
+        self.assertEqual(policy.rules["extreme_zelenia"].required_enemy_damage_min, 92_086_132)
+        self.assertEqual(policy.rules["extreme_zelenia"].required_enemy_damage_max, 92_086_332)
         self.assertEqual(policy.rules["unreal_suzaku"].enemy_hp_capacity, 127_613_543)
         self.assertEqual(
             policy.rules["unreal_suzaku"].suspected_team_damage_ratio_threshold,

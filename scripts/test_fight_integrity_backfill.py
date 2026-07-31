@@ -282,6 +282,47 @@ class FightIntegrityBackfillCacheTest(unittest.TestCase):
         self.assertIn("full_party_damage_outside_required_known_total_range", result["reasons"])
         query_damage.assert_not_called()
 
+    def test_enemy_damage_range_replaces_partial_party_valid_result_without_api(self) -> None:
+        self.candidate.fight["size"] = 8
+        self.candidate.fight["players"] = [{"total_damage": 12_500} for _ in range(7)]
+        self.config.known_enemy_capacity = known_capacity.KnownEnemyCapacityPolicy(
+            enabled=True,
+            rules={
+                "extreme_zelenia": known_capacity.KnownEnemyCapacityRule(
+                    enemy_hp_capacity=100_000,
+                    suspected_team_damage_ratio_threshold=1.005,
+                    required_enemy_damage_min=99_900,
+                    required_enemy_damage_max=100_100,
+                )
+            },
+        )
+        self.cache.put(
+            self.candidate.report_code,
+            self.candidate.report,
+            self.candidate.fight,
+            measurement={"enemy_damage": 101_500, "enemy_hp_capacity": 100_000, "target_count": 1},
+            cached_at_iso="2026-07-30T00:00:00Z",
+        )
+
+        with patch.object(backfill, "query_target_damage") as query_damage:
+            result, cache_hit, api_queried = backfill.evaluate_candidate(
+                None,
+                None,
+                self.candidate,
+                self.config,
+                "2026-07-30T00:00:00Z",
+                self.cache,
+                refresh_cache=False,
+                offline_only=True,
+            )
+
+        self.assertEqual(result["status"], "suspected")
+        self.assertTrue(result["hidden_from_public"])
+        self.assertIn("enemy_damage_outside_required_confirmed_total_range", result["reasons"])
+        self.assertTrue(cache_hit)
+        self.assertFalse(api_queried)
+        query_damage.assert_not_called()
+
     def test_existing_result_seeds_cache_without_an_api_query(self) -> None:
         self.candidate.fight["data_integrity"] = integrity.evaluate(
             checked_at_iso="2026-07-30T00:00:00Z",
@@ -292,6 +333,8 @@ class FightIntegrityBackfillCacheTest(unittest.TestCase):
             hp_ratio_threshold=1.15,
             suspected_hp_ratio_threshold=1.14,
         )
+        # 規則升版後仍應把既有最小量測值植入快取，讓全量回補不必重查 API。
+        self.candidate.fight["data_integrity"]["calculation_version"] = 4
 
         seeded = backfill.seed_measurement_cache_from_results([self.candidate], self.cache)
 

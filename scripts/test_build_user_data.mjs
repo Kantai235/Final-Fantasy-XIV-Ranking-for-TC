@@ -424,6 +424,43 @@ async function createFixture(tempRoot) {
         },
       ],
     },
+    INTEGRITY_STALE: {
+      report_code: "INTEGRITY_STALE",
+      title: "Fixture stale integrity result",
+      url: "https://www.fflogs.com/reports/INTEGRITY_STALE",
+      report_start_time_iso: "2026-07-29T05:50:00.000Z",
+      fights: [
+        {
+          fight_id: 12,
+          fight_hash: "integrity-stale-fixture-fight",
+          clear_time_ms: 500000,
+          clear_time_seconds: 500,
+          damage_time_ms: 450000,
+          damage_time_seconds: 450,
+          recorded_at: 1785304800000,
+          recorded_at_iso: "2026-07-29T06:00:00.000Z",
+          // 舊版曾判為 valid 並明示不隱藏；規則升版後仍必須 fail-closed。
+          data_integrity: {
+            calculation_version: 4,
+            status: "valid",
+            hidden_from_public: false,
+          },
+          players: [
+            {
+              name: "舊版檢核角色",
+              server: "曉月",
+              job: "Monk",
+              dps: 9999,
+              rdps: 9999,
+              adps: 9999,
+              total_damage: 4499550,
+              active_time_ms: 430000,
+              active_percent: 95.56,
+            },
+          ],
+        },
+      ],
+    },
   });
 }
 
@@ -440,6 +477,11 @@ async function assertFixtureOutput(tempRoot, expectedGlobalStatsText, expectedSe
   const allGlobalStats = await readJson(allGlobalStatsPath);
   const serverCompareText = await readFile(serverComparePath, "utf8");
   const serverCompare = JSON.parse(serverCompareText);
+
+  assert(
+    !usersIndex.users.some((user) => user.character_name === "舊版檢核角色"),
+    "舊版完整性 valid 結果不得重新進入公開使用者索引。",
+  );
 
   assert(usersIndex.generated_at_iso === "2026-01-02T03:04:05.000Z", "使用者索引應使用 ranking 更新時間作為 generated_at_iso。");
   assert(globalStats.generated_at_iso === "2026-01-02T03:04:05.000Z", "全服統計應使用 ranking 更新時間作為 generated_at_iso。");
