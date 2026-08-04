@@ -1,4 +1,4 @@
-export const 預設副本鍵值 = "extreme_zelenia";
+export const 預設副本鍵值 = "savage_m5s";
 export const 預設排序欄位 = "rdps";
 export const 預設排序方向 = "desc";
 export const 預設比較職能 = "role:tank";

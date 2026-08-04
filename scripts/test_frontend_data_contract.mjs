@@ -12,6 +12,7 @@ import {
   解析公告Markdown,
 } from "../src/utils/announcements.js";
 import { buildReportExternalLinks } from "../src/utils/reportLinks.js";
+import { 預設副本鍵值 } from "../src/composables/rankingApp/defaults.js";
 import { publicDataContracts, validateSchemaContract } from "../schemas/public_data_contracts.mjs";
 import { 建立職業佔比分組, 取得統計範圍計數 } from "../src/utils/statsDisplay.js";
 import {
@@ -136,6 +137,10 @@ function validatePercentileDisplayFormatting() {
   for (const [score, className] of expectedClasses) {
     assert(取得PR色彩類別(score) === className, `PR ${score} 應套用 ${className} 色彩類別。`);
   }
+}
+
+function validateRankingDefaults() {
+  assert(預設副本鍵值 === "savage_m5s", "排行榜目前必須預設顯示零式 M5S／熱舞綠光。");
 }
 
 function validateUserProfilePercentileSorting() {
@@ -2296,6 +2301,7 @@ async function main() {
   await validateFrontendFetchBoundary();
   await validateStaticSeoBuildOptions();
   await validateSiteFeatureFlags();
+  validateRankingDefaults();
   validatePercentileDisplayFormatting();
   validateUserProfilePercentileSorting();
   validateUserProfileBadges();
