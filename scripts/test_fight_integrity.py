@@ -242,6 +242,33 @@ class FightIntegrityTest(unittest.TestCase):
         self.assertTrue(result["hidden_from_public"])
         self.assertIn("enemy_damage_outside_required_confirmed_total_range", result["reasons"])
 
+    def test_required_enemy_damage_range_uses_enemy_source_when_both_ranges_exist(self) -> None:
+        screen = known_capacity.KnownEnemyCapacityScreen(
+            encounter_key="unreal_suzaku",
+            team_total_damage=71_943_449,
+            enemy_hp_capacity=127_613_543,
+            suspected_team_damage_ratio_threshold=1.005,
+            required_full_party_damage_min=71_280_000,
+            required_full_party_damage_max=72_720_000,
+            required_enemy_damage_min=71_280_000,
+            required_enemy_damage_max=72_720_000,
+            damage_source="enemy_damage",
+        )
+
+        result = integrity.make_known_capacity_result(
+            checked_at_iso="2026-08-04T00:00:00Z",
+            known_capacity_screen=screen,
+            hp_ratio_threshold=1.15,
+            attack_marker=False,
+        )
+
+        self.assertEqual(result["status"], "valid")
+        self.assertFalse(result["hidden_from_public"])
+        self.assertEqual(
+            result["reasons"],
+            ["enemy_damage_matches_required_confirmed_total_range"],
+        )
+
     def test_confirmed_total_damage_upper_limit_hides_without_hp_ratio(self) -> None:
         screen = known_capacity.KnownEnemyCapacityScreen(
             encounter_key="ultimate_bahamut",

@@ -16,6 +16,7 @@ from typing import Any
 
 
 CACHE_SCHEMA_VERSION = 3
+CACHEABLE_UNVERIFIABLE_REASONS = frozenset({"missing_enemy_max_hp"})
 
 
 def _to_int(value: Any) -> int | None:
@@ -120,7 +121,7 @@ class FightIntegrityMeasurementCache:
         if outcome == "measured":
             measurement = _normalize_measurement(entry.get("measurement"))
             return {"outcome": outcome, "measurement": measurement} if measurement is not None else None
-        if outcome == "unverifiable" and isinstance(entry.get("reason"), str) and entry["reason"]:
+        if outcome == "unverifiable" and entry.get("reason") in CACHEABLE_UNVERIFIABLE_REASONS:
             return {"outcome": outcome, "reason": entry["reason"]}
         return None
 
@@ -161,8 +162,8 @@ class FightIntegrityMeasurementCache:
         """快取可重現的無法量測結果，避免每輪重讀同一份缺漏資料。"""
 
         key = _cache_key(report_code, fight)
-        if key is None or not reason:
-            raise ValueError("無法快取缺少 fight 識別或原因的完整性量測失敗")
+        if key is None or reason not in CACHEABLE_UNVERIFIABLE_REASONS:
+            raise ValueError("無法快取缺少 fight 識別或不可重現的完整性量測失敗")
         self.entries[key] = {
             "source_fingerprint": _source_fingerprint(report, fight),
             "cached_at_iso": cached_at_iso,

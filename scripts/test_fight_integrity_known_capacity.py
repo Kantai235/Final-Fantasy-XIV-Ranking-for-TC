@@ -83,8 +83,44 @@ class KnownEnemyCapacityPolicyTest(unittest.TestCase):
         self.assertIsNotNone(matching)
         self.assertTrue(matching.has_required_full_party_damage_range)
         self.assertTrue(matching.matches_required_full_party_damage_range)
+        self.assertFalse(matching.is_below_required_full_party_damage_range)
+        self.assertFalse(matching.is_above_required_full_party_damage_range)
         self.assertFalse(low.matches_required_full_party_damage_range)
+        self.assertTrue(low.is_below_required_full_party_damage_range)
         self.assertFalse(high.matches_required_full_party_damage_range)
+        self.assertTrue(high.is_above_required_full_party_damage_range)
+
+    def test_low_player_damage_with_enemy_range_requires_target_measurement(self) -> None:
+        policy = known_capacity.KnownEnemyCapacityPolicy(
+            enabled=True,
+            rules={
+                "unreal_suzaku": known_capacity.KnownEnemyCapacityRule(
+                    enemy_hp_capacity=127_613_543,
+                    suspected_team_damage_ratio_threshold=1.005,
+                    required_full_party_damage_min=71_280_000,
+                    required_full_party_damage_max=72_720_000,
+                    required_enemy_damage_min=71_280_000,
+                    required_enemy_damage_max=72_720_000,
+                )
+            },
+        )
+
+        screen = policy.screen(
+            "unreal_suzaku",
+            {
+                "size": 8,
+                "players": [
+                    {"total_damage": 8_856_012} for _ in range(5)
+                ] + [
+                    {"total_damage": 8_856_011} for _ in range(3)
+                ],
+            },
+        )
+
+        self.assertIsNotNone(screen)
+        self.assertEqual(screen.team_total_damage, 70_848_093)
+        self.assertTrue(screen.needs_enemy_damage_for_low_full_party_total)
+        self.assertTrue(screen.to_metrics()["is_below_required_full_party_damage_range"])
 
     def test_enemy_damage_range_handles_partial_party_source(self) -> None:
         policy = known_capacity.KnownEnemyCapacityPolicy(

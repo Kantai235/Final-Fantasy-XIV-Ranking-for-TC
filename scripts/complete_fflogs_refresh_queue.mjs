@@ -25,6 +25,11 @@ const REPORT_CODE_PATTERN = /^[A-Za-z0-9]{8,32}$/;
 const QUEUED_STATUSES = new Set(["queued", "pending", "retry"]);
 const STATE_STATUS_NO_CLEAR = "skipped_no_clear";
 const STATE_STATUS_NO_TRADITIONAL_CHINESE_PLAYERS = "skipped_no_traditional_chinese_players";
+// 必須與 scripts/fight_integrity.py 及 build_user_data.mjs 同步。待收錄名單不能只看
+// report 已寫入來源分片；若所有 fight 都被現行完整性規則 fail-closed，應明確交由
+// 站務複核，而不是錯誤回覆使用者「公開資料已收錄」。
+const FIGHT_INTEGRITY_CUTOFF_MS = Date.parse("2026-07-28T18:00:00+08:00");
+const CURRENT_FIGHT_INTEGRITY_CALCULATION_VERSION = 9;
 
 // Apps Script 與 workflow 都以這組欄位順序存取同一份 Sheet。工作表可能曾被
 // 手動編修；若標題被覆蓋為重複欄位，依欄位名稱組裝的資料會把值寫進錯誤語意。
@@ -49,6 +54,7 @@ export const QUEUE_HEADERS = Object.freeze([
 const QUEUE_OUTCOME = {
   COLLECTED: "collected",
   HIDDEN: "hidden",
+  INTEGRITY_REVIEW: "integrity_review",
   NO_CLEAR: "no_clear",
   NO_TRADITIONAL_CHINESE_PLAYERS: "no_traditional_chinese_players",
 };
@@ -153,6 +159,46 @@ export function isHiddenEntry(entry) {
   return Boolean(entry?.report_hidden || entry?.hidden_report);
 }
 
+function fightRecordedAtMs(fight, report) {
+  for (const value of [
+    fight?.recorded_at,
+    fight?.recordedAt,
+    report?.report_end_time,
+    report?.endTime,
+  ]) {
+    const numericValue = Number(value);
+    if (Number.isFinite(numericValue) && numericValue >= 946684800000) {
+      return numericValue;
+    }
+  }
+
+  for (const value of [fight?.recorded_at_iso, report?.report_end_time_iso]) {
+    const parsedValue = Date.parse(String(value || ""));
+    if (Number.isFinite(parsedValue)) {
+      return parsedValue;
+    }
+  }
+  return null;
+}
+
+function isIntegrityHiddenFight(fight, report) {
+  const integrity = fight?.data_integrity;
+  if (!integrity || typeof integrity !== "object") {
+    // 與公開資料建置層一致：新制切點後缺少完整性結果本身就是待複核狀態，不能因
+    // report 已寫入來源分片便向申請者回覆「已收錄」。舊紀錄仍維持向後相容。
+    const recordedAtMs = fightRecordedAtMs(fight, report);
+    return Number.isFinite(recordedAtMs) && recordedAtMs >= FIGHT_INTEGRITY_CUTOFF_MS;
+  }
+  return Boolean(integrity.hidden_from_public)
+    || Number(integrity.calculation_version) !== CURRENT_FIGHT_INTEGRITY_CALCULATION_VERSION
+    || !["valid", "not_applicable"].includes(String(integrity.status || ""));
+}
+
+function reportOnlyHasIntegrityHiddenFights(report) {
+  const fights = Array.isArray(report?.fights) ? report.fights.filter(Boolean) : [];
+  return fights.length > 0 && fights.every((fight) => isIntegrityHiddenFight(fight, report));
+}
+
 export function rankingEntryGroups(ranking) {
   return [ranking?.ranking_entries].filter(Array.isArray);
 }
@@ -178,7 +224,7 @@ export function addSourceReportCodesFromRanking(ranking, indexedReportCodes, { i
 async function addReportShardCodesFromRanking(
   ranking,
   indexedReportCodes,
-  { includeHidden, repositoryRoot, loadedShardPaths },
+  { includeHidden, repositoryRoot, loadedShardPaths, integrityBlockedReportCodes },
 ) {
   for (const reportShardPath of Array.isArray(ranking?.report_shards) ? ranking.report_shards : []) {
     if (typeof reportShardPath !== "string" || !reportShardPath.trim()) {
@@ -202,9 +248,14 @@ async function addReportShardCodesFromRanking(
       if (!includeHidden && isHiddenEntry(report)) {
         continue;
       }
-      // report 分片是 reports -> fights -> players 的權威來源。即使其中任何玩家的成績
-      // 都沒有進入 ranking_entries，使用者送出的公開 report 仍已被成功收錄，必須結束 queue。
-      addReportCode(indexedReportCodes, report.report_code || reportCode);
+      const normalizedReportCode = normalizeReportCode(report.report_code || reportCode);
+      if (reportOnlyHasIntegrityHiddenFights(report)) {
+        addReportCode(integrityBlockedReportCodes, normalizedReportCode);
+        continue;
+      }
+      // report 分片是 reports -> fights -> players 的權威來源。只要至少有一場未被完整性
+      // 規則隱藏，即使該 report 沒有成為最佳 ranking_entries，仍代表來源已成功收錄。
+      addReportCode(indexedReportCodes, normalizedReportCode);
     }
   }
 }
@@ -213,6 +264,7 @@ export async function addSourceRankingReportCodes({
   sourceRankingsDir,
   indexedReportCodes,
   includeHidden,
+  integrityBlockedReportCodes = new Set(),
   repositoryRoot = rootDir,
 }) {
   if (!sourceRankingsDir || !existsSync(sourceRankingsDir)) {
@@ -233,6 +285,7 @@ export async function addSourceRankingReportCodes({
       includeHidden,
       repositoryRoot,
       loadedShardPaths,
+      integrityBlockedReportCodes,
     });
   }
 }
@@ -242,6 +295,7 @@ export async function buildIndexedReportSet({
   hiddenStatusIndexPath,
   sourceRankingsDir,
   includeHidden,
+  integrityBlockedReportCodes = new Set(),
   repositoryRoot = rootDir,
 }) {
   const indexedReportCodes = new Set();
@@ -253,6 +307,7 @@ export async function buildIndexedReportSet({
     sourceRankingsDir,
     indexedReportCodes,
     includeHidden,
+    integrityBlockedReportCodes,
     repositoryRoot,
   });
   return indexedReportCodes;
@@ -312,13 +367,23 @@ function isVisibilityReviewRequest(row) {
   return normalizeHeader(row?.requested_action || row?.request_type) === VISIBILITY_REVIEW_ACTION;
 }
 
-export function resolveQueueOutcome(row, indexedReportCodes, statusesByCode, hiddenReportCodes = new Set()) {
+export function resolveQueueOutcome(
+  row,
+  indexedReportCodes,
+  statusesByCode,
+  hiddenReportCodes = new Set(),
+  integrityBlockedReportCodes = new Set(),
+) {
   if (isVisibilityReviewRequest(row) && isRowIndexed(row, hiddenReportCodes)) {
     return QUEUE_OUTCOME.HIDDEN;
   }
 
   if (isRowIndexed(row, indexedReportCodes)) {
     return QUEUE_OUTCOME.COLLECTED;
+  }
+
+  if (isRowIndexed(row, integrityBlockedReportCodes)) {
+    return QUEUE_OUTCOME.INTEGRITY_REVIEW;
   }
 
   const reportCode = normalizeReportCode(row.report_code);
@@ -339,6 +404,8 @@ function queueOutcomeStatus(outcome) {
       return "done";
     case QUEUE_OUTCOME.HIDDEN:
       return "hidden";
+    case QUEUE_OUTCOME.INTEGRITY_REVIEW:
+      return "review_required_data_integrity";
     case QUEUE_OUTCOME.NO_CLEAR:
       return "not_eligible_no_clear";
     case QUEUE_OUTCOME.NO_TRADITIONAL_CHINESE_PLAYERS:
@@ -360,6 +427,9 @@ function queueOutcomeMessage(row, outcome) {
       ? "workflow 已送出整份 report 重掃，公開資料已收錄此 report。"
       : "workflow 已確認公開資料收錄 report。";
   }
+  if (outcome === QUEUE_OUTCOME.INTEGRITY_REVIEW) {
+    return "workflow 已抓取 report，但通關戰鬥被資料完整性規則暫時隱藏，需由站務複核後才能公開。";
+  }
   if (outcome === QUEUE_OUTCOME.NO_CLEAR) {
     return "workflow 已完成排查：未找到本站支援副本的通關戰鬥，因此不符合收錄條件。";
   }
@@ -375,6 +445,8 @@ function queueOutcomeFromTerminalStatus(status) {
       return QUEUE_OUTCOME.COLLECTED;
     case "hidden":
       return QUEUE_OUTCOME.HIDDEN;
+    case "review_required_data_integrity":
+      return QUEUE_OUTCOME.INTEGRITY_REVIEW;
     case "not_eligible_no_clear":
       return QUEUE_OUTCOME.NO_CLEAR;
     case "not_eligible_no_traditional_chinese_players":
@@ -399,6 +471,7 @@ export function buildUpdateRanges({
   indexedReportCodes,
   statusesByCode,
   hiddenReportCodes,
+  integrityBlockedReportCodes,
 }) {
   if (!Array.isArray(rows) || rows.length === 0) {
     return [];
@@ -416,7 +489,13 @@ export function buildUpdateRanges({
     const statusCell = `${columnNameFromIndex(statusIndex)}${rowNumber}`;
     const updatedAtCell = `${columnNameFromIndex(updatedAtIndex)}${rowNumber}`;
     const lastMessageCell = `${columnNameFromIndex(lastMessageIndex)}${rowNumber}`;
-    const outcome = resolveQueueOutcome(row, indexedReportCodes, statusesByCode, hiddenReportCodes);
+    const outcome = resolveQueueOutcome(
+      row,
+      indexedReportCodes,
+      statusesByCode,
+      hiddenReportCodes,
+      integrityBlockedReportCodes,
+    );
     if (!outcome) {
       return [];
     }
@@ -445,6 +524,7 @@ export function buildMalformedMessageRepairRanges({
   indexedReportCodes,
   statusesByCode,
   hiddenReportCodes,
+  integrityBlockedReportCodes,
   updatedRowNumbers = new Set(),
 }) {
   const lastMessageIndex = headers.indexOf("last_message");
@@ -457,7 +537,13 @@ export function buildMalformedMessageRepairRanges({
       return [];
     }
     const outcome = queueOutcomeFromTerminalStatus(row.status)
-      || resolveQueueOutcome(row, indexedReportCodes, statusesByCode, hiddenReportCodes);
+      || resolveQueueOutcome(
+        row,
+        indexedReportCodes,
+        statusesByCode,
+        hiddenReportCodes,
+        integrityBlockedReportCodes,
+      );
     if (!outcome) {
       return [];
     }
@@ -482,6 +568,7 @@ function writeStepSummary({ skippedReason, rowsRead, outcomeCounts, includeHidde
     `- 讀取列數：${rowsRead}`,
     `- 已收錄完成列數：${outcomeCounts[QUEUE_OUTCOME.COLLECTED] || 0}`,
     `- 已隱藏完成列數：${outcomeCounts[QUEUE_OUTCOME.HIDDEN] || 0}`,
+    `- 待完整性複核列數：${outcomeCounts[QUEUE_OUTCOME.INTEGRITY_REVIEW] || 0}`,
     `- 無通關終止列數：${outcomeCounts[QUEUE_OUTCOME.NO_CLEAR] || 0}`,
     `- 無繁中服玩家終止列數：${outcomeCounts[QUEUE_OUTCOME.NO_TRADITIONAL_CHINESE_PLAYERS] || 0}`,
     `- 修正欄位標題數：${repairedHeaderCount}`,
@@ -527,11 +614,13 @@ async function main() {
   const headers = canonicalizeQueueHeaders(rawHeaders);
   const { rows } = rowsToObjects(values, { headersOverride: headers });
   rowsRead = rows.length;
+  const integrityBlockedReportCodes = new Set();
   const indexedReports = await buildIndexedReportSet({
     statusIndexPath,
     hiddenStatusIndexPath,
     sourceRankingsDir,
     includeHidden,
+    integrityBlockedReportCodes,
   });
   const hiddenReportCodes = await buildHiddenReportSet({ hiddenStatusIndexPath });
   const queuedRows = rows.filter((row) => {
@@ -543,7 +632,13 @@ async function main() {
     queuedRows.map((row) => row.report_code),
   );
   const rowsToUpdate = queuedRows
-    .filter((row) => resolveQueueOutcome(row, indexedReports, statusesByCode, hiddenReportCodes))
+    .filter((row) => resolveQueueOutcome(
+      row,
+      indexedReports,
+      statusesByCode,
+      hiddenReportCodes,
+      integrityBlockedReportCodes,
+    ))
     .slice(0, maxRows);
   const outcomeUpdates = buildUpdateRanges({
     headers,
@@ -554,6 +649,7 @@ async function main() {
     indexedReportCodes: indexedReports,
     statusesByCode,
     hiddenReportCodes,
+    integrityBlockedReportCodes,
   });
   const updatedRowNumbers = new Set(rowsToUpdate.map((row) => row._row_number));
   const headerUpdates = buildHeaderRepairRanges({ headers: rawHeaders, sheetName });
@@ -564,6 +660,7 @@ async function main() {
     indexedReportCodes: indexedReports,
     statusesByCode,
     hiddenReportCodes,
+    integrityBlockedReportCodes,
     updatedRowNumbers,
   });
   const updates = [...headerUpdates, ...outcomeUpdates, ...malformedMessageUpdates];
@@ -573,7 +670,13 @@ async function main() {
   }
 
   for (const row of rowsToUpdate) {
-    const outcome = resolveQueueOutcome(row, indexedReports, statusesByCode, hiddenReportCodes);
+    const outcome = resolveQueueOutcome(
+      row,
+      indexedReports,
+      statusesByCode,
+      hiddenReportCodes,
+      integrityBlockedReportCodes,
+    );
     outcomeCounts[outcome] = (outcomeCounts[outcome] || 0) + 1;
   }
   writeStepSummary({
@@ -587,6 +690,7 @@ async function main() {
     "已更新 FFLogs 待收錄列："
       + `已收錄 ${outcomeCounts[QUEUE_OUTCOME.COLLECTED] || 0}、`
       + `已隱藏 ${outcomeCounts[QUEUE_OUTCOME.HIDDEN] || 0}、`
+      + `待完整性複核 ${outcomeCounts[QUEUE_OUTCOME.INTEGRITY_REVIEW] || 0}、`
       + `無通關 ${outcomeCounts[QUEUE_OUTCOME.NO_CLEAR] || 0}、`
       + `無繁中服玩家 ${outcomeCounts[QUEUE_OUTCOME.NO_TRADITIONAL_CHINESE_PLAYERS] || 0}、`
       + `修正欄位 ${headerUpdates.length}、修正訊息 ${malformedMessageUpdates.length}`,

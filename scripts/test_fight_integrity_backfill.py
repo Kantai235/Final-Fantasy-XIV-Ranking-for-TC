@@ -323,6 +323,63 @@ class FightIntegrityBackfillCacheTest(unittest.TestCase):
         self.assertFalse(api_queried)
         query_damage.assert_not_called()
 
+    def test_suzaku_low_player_total_uses_target_damage_and_becomes_valid(self) -> None:
+        self.candidate.encounter_key = "unreal_suzaku"
+        self.candidate.fight.update({
+            "size": 8,
+            "players": [
+                {"total_damage": 8_856_012} for _ in range(5)
+            ] + [
+                {"total_damage": 8_856_011} for _ in range(3)
+            ],
+        })
+        self.config.known_enemy_capacity = known_capacity.KnownEnemyCapacityPolicy(
+            enabled=True,
+            rules={
+                "unreal_suzaku": known_capacity.KnownEnemyCapacityRule(
+                    enemy_hp_capacity=127_613_543,
+                    suspected_team_damage_ratio_threshold=1.005,
+                    required_full_party_damage_min=71_280_000,
+                    required_full_party_damage_max=72_720_000,
+                    required_enemy_damage_min=71_280_000,
+                    required_enemy_damage_max=72_720_000,
+                )
+            },
+        )
+
+        with (
+            patch.object(
+                backfill,
+                "query_target_damage",
+                return_value=([{"id": 10, "damage": 71_943_449, "instance_count": 1}], {10: 1}),
+            ) as query_damage,
+            patch.object(
+                backfill,
+                "query_target_max_hp",
+                return_value={10: 127_613_543},
+            ) as query_max_hp,
+        ):
+            result, cache_hit, api_queried = backfill.evaluate_candidate(
+                None,
+                None,
+                self.candidate,
+                self.config,
+                "2026-08-04T00:00:00Z",
+                self.cache,
+                refresh_cache=False,
+            )
+
+        self.assertEqual(result["status"], "valid")
+        self.assertFalse(result["hidden_from_public"])
+        self.assertFalse(cache_hit)
+        self.assertTrue(api_queried)
+        self.assertEqual(
+            result["metrics"]["known_full_party_damage"]["damage_source"],
+            "enemy_damage",
+        )
+        query_damage.assert_called_once()
+        query_max_hp.assert_called_once()
+
     def test_enemy_damage_upper_limit_prevents_historical_valid_shortcut(self) -> None:
         self.candidate.encounter_key = "ultimate_futures_rewritten"
         self.candidate.fight["size"] = 8
@@ -403,6 +460,21 @@ class FightIntegrityBackfillCacheTest(unittest.TestCase):
         self.assertEqual(
             self.cache.get(self.candidate.report_code, self.candidate.report, self.candidate.fight),
             {"outcome": "unverifiable", "reason": "missing_enemy_max_hp"},
+        )
+
+    def test_rule_classification_does_not_seed_unverifiable_cache(self) -> None:
+        self.candidate.fight["data_integrity"] = {
+            "calculation_version": 8,
+            "status": "suspected",
+            "hidden_from_public": True,
+            "reasons": ["enemy_damage_outside_required_confirmed_total_range"],
+        }
+
+        seeded = backfill.seed_measurement_cache_from_results([self.candidate], self.cache)
+
+        self.assertEqual(seeded, 0)
+        self.assertIsNone(
+            self.cache.get(self.candidate.report_code, self.candidate.report, self.candidate.fight)
         )
 
 

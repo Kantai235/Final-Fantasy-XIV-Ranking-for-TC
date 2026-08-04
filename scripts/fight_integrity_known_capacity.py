@@ -135,6 +135,39 @@ class KnownEnemyCapacityScreen:
         )
 
     @property
+    def is_below_required_full_party_damage_range(self) -> bool:
+        """玩家傷害下限是否低於固定範圍，因而需要更完整的傷害來源佐證。"""
+
+        return (
+            self.has_required_full_party_damage_range
+            and self.team_total_damage < self.required_full_party_damage_min
+        )
+
+    @property
+    def is_above_required_full_party_damage_range(self) -> bool:
+        """玩家傷害下限是否已高於固定範圍，可直接視為異常證據。"""
+
+        return (
+            self.has_required_full_party_damage_range
+            and self.team_total_damage > self.required_full_party_damage_max
+        )
+
+    @property
+    def needs_enemy_damage_for_low_full_party_total(self) -> bool:
+        """是否不能只靠偏低的玩家傷害下限判定異常。
+
+        ``players[].total_damage`` 不包含 Limit Break 等未歸屬角色的來源。只有當
+        玩家合計已高於上限時，這個下限才足以直接證明異常；低於下限時若另有
+        FFLogs Target Damage 固定範圍，必須改用完整敵方承傷確認。
+        """
+
+        return (
+            self.damage_source == "full_party_player_damage"
+            and self.is_below_required_full_party_damage_range
+            and self.has_required_enemy_damage_range
+        )
+
+    @property
     def has_maximum_enemy_damage(self) -> bool:
         """是否有只能由 FFLogs Target Damage 驗證的敵方承傷上限。"""
 
@@ -190,6 +223,8 @@ class KnownEnemyCapacityScreen:
                 "required_full_party_damage_min": self.required_full_party_damage_min,
                 "required_full_party_damage_max": self.required_full_party_damage_max,
                 "matches_required_full_party_damage_range": self.matches_required_full_party_damage_range,
+                "is_below_required_full_party_damage_range": self.is_below_required_full_party_damage_range,
+                "is_above_required_full_party_damage_range": self.is_above_required_full_party_damage_range,
             })
         if self.has_required_enemy_damage_range:
             metrics.update({

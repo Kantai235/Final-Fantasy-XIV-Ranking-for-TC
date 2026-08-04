@@ -4368,12 +4368,16 @@ def 檢核戰鬥完整性(
     已知生命池預篩 = 設定.known_enemy_capacity.screen(副本鍵值, 戰鬥)
     需要敵方承傷量測 = 設定.known_enemy_capacity.requires_enemy_damage_measurement(副本鍵值)
 
-    # 已驗證固定完整隊伍總傷害範圍或歷史硬上限的副本可直接離線判定。固定範圍同時攔截
-    # 偏低與偏高資料；單向硬上限只攔截超標值，且完全不耗用 FFLogs API。
+    # 固定完整隊伍傷害落在範圍內或已高於上限時可直接離線判定；但低於下限只代表
+    # 玩家傷害下限不足。Limit Break 不會寫入 players，因此若副本另有 Target Damage
+    # 固定範圍，低值必須繼續量測敵方承傷，不能在此誤判為異常。
     if (
         已知生命池預篩 is not None
         and (
-            已知生命池預篩.has_required_full_party_damage_range
+            (
+                已知生命池預篩.has_required_full_party_damage_range
+                and not 已知生命池預篩.needs_enemy_damage_for_low_full_party_total
+            )
             or 已知生命池預篩.exceeds_maximum_full_party_damage
         )
     ):

@@ -18,8 +18,8 @@ from typing import Any
 
 
 DATA_INTEGRITY_KEY = "data_integrity"
-CALCULATION_VERSION = 8
-RULESET = "post_2026_07_28_basic_attack_v8_suzaku_enemy_damage_range"
+CALCULATION_VERSION = 9
+RULESET = "post_2026_07_28_basic_attack_v9_low_party_damage_target_fallback"
 # 規則版本直接決定戰鬥是否可公開；舊版結論必須離線重判，不能視為相容的 valid。
 # 回補器會重用舊結果保存的最小量測資料，避免因此重新耗用 FFLogs API。
 DEFAULT_CUTOFF_ISO = "2026-07-28T18:00:00+08:00"
@@ -241,13 +241,14 @@ def make_known_capacity_result(
 
     raw_ratio = getattr(known_capacity_screen, "damage_to_known_hp_ratio", None)
     ratio = raw_ratio if isinstance(raw_ratio, (int, float)) else None
-    has_required_full_party_range = bool(
+    damage_source = str(getattr(known_capacity_screen, "damage_source", ""))
+    has_required_full_party_range = damage_source != "enemy_damage" and bool(
         getattr(known_capacity_screen, "has_required_full_party_damage_range", False)
     )
     matches_required_full_party_range = bool(
         getattr(known_capacity_screen, "matches_required_full_party_damage_range", False)
     )
-    has_required_enemy_damage_range = bool(
+    has_required_enemy_damage_range = damage_source == "enemy_damage" and bool(
         getattr(known_capacity_screen, "has_required_enemy_damage_range", False)
     )
     matches_required_enemy_damage_range = bool(
@@ -299,7 +300,11 @@ def make_known_capacity_result(
             "checked_at_iso": checked_at_iso,
             "status": "valid",
             "hidden_from_public": False,
-            "reasons": ["full_party_damage_matches_required_known_total_range"],
+            "reasons": [
+                "enemy_damage_matches_required_confirmed_total_range"
+                if has_required_enemy_damage_range
+                else "full_party_damage_matches_required_known_total_range"
+            ],
         }, known_capacity_screen)
 
     if exceeds_maximum_full_party_damage or exceeds_maximum_enemy_damage:
@@ -394,14 +399,17 @@ def evaluate(
         else None
     )
     known_capacity_suspected = bool(getattr(known_capacity_screen, "exceeds_suspected_threshold", False))
-    known_capacity_has_required_full_party_range = bool(
-        getattr(known_capacity_screen, "has_required_full_party_damage_range", False)
+    known_capacity_damage_source = str(getattr(known_capacity_screen, "damage_source", ""))
+    known_capacity_has_required_full_party_range = (
+        known_capacity_damage_source != "enemy_damage"
+        and bool(getattr(known_capacity_screen, "has_required_full_party_damage_range", False))
     )
     known_capacity_matches_required_full_party_range = bool(
         getattr(known_capacity_screen, "matches_required_full_party_damage_range", False)
     )
-    known_capacity_has_required_enemy_damage_range = bool(
-        getattr(known_capacity_screen, "has_required_enemy_damage_range", False)
+    known_capacity_has_required_enemy_damage_range = (
+        known_capacity_damage_source == "enemy_damage"
+        and bool(getattr(known_capacity_screen, "has_required_enemy_damage_range", False))
     )
     known_capacity_matches_required_enemy_damage_range = bool(
         getattr(known_capacity_screen, "matches_required_enemy_damage_range", False)

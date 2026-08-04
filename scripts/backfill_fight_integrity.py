@@ -185,6 +185,15 @@ def needs_known_capacity_recheck(candidate: Candidate, config: IntegrityConfig) 
     metrics = result.get("metrics") if isinstance(result, dict) else None
     known_metrics = metrics.get("known_full_party_damage") if isinstance(metrics, dict) else None
     if screen.has_required_full_party_damage_range:
+        if screen.needs_enemy_damage_for_low_full_party_total:
+            return not (
+                isinstance(known_metrics, dict)
+                and known_metrics.get("damage_source") == "enemy_damage"
+                and known_metrics.get("required_enemy_damage_min")
+                == screen.required_enemy_damage_min
+                and known_metrics.get("required_enemy_damage_max")
+                == screen.required_enemy_damage_max
+            )
         return not (
             isinstance(known_metrics, dict)
             and known_metrics.get("required_full_party_damage_min")
@@ -295,7 +304,10 @@ def seed_measurement_cache_from_results(
                     continue
                 reasons = result.get("reasons") if isinstance(result, dict) else None
                 reason = reasons[0] if isinstance(reasons, list) and reasons and isinstance(reasons[0], str) else ""
-                if not reason:
+                # suspected 可能只是固定範圍或歷史預篩的規則結論，不代表 FFLogs
+                # 真的無法量測。只有底層查詢可重現的失敗原因能進快取，避免舊規則
+                # 的 false positive 永久擋住新版 Target Damage 重查。
+                if reason not in integrity_cache.CACHEABLE_UNVERIFIABLE_REASONS:
                     continue
                 measurement_cache.put_unverifiable(
                     candidate.report_code,
@@ -455,12 +467,16 @@ def evaluate_candidate(
         candidate.encounter_key,
     )
 
-    # 已驗證固定完整隊伍總傷害範圍或歷史硬上限的副本，優先於任何舊量測快取離線判定。
-    # 固定範圍可同時攔截偏低與偏高資料；單向硬上限只攔截超標值，不能據此判定正常。
+    # 固定完整隊伍傷害落在範圍內或已高於上限時，優先於任何舊快取離線判定。
+    # 低於下限時玩家合計仍可能只是漏掉 Limit Break；若有 Target Damage 固定範圍，
+    # 必須繼續讀取快取或 FFLogs 精準量測，不能用傷害下限直接隱藏正常紀錄。
     if (
         known_capacity_screen is not None
         and (
-            known_capacity_screen.has_required_full_party_damage_range
+            (
+                known_capacity_screen.has_required_full_party_damage_range
+                and not known_capacity_screen.needs_enemy_damage_for_low_full_party_total
+            )
             or known_capacity_screen.exceeds_maximum_full_party_damage
         )
     ):

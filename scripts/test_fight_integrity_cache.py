@@ -93,6 +93,18 @@ class FightIntegrityMeasurementCacheTest(unittest.TestCase):
             {"outcome": "unverifiable", "reason": "missing_enemy_max_hp"},
         )
 
+    def test_rule_classification_is_not_cacheable_as_measurement_failure(self) -> None:
+        cache = cache_module.FightIntegrityMeasurementCache.load(self.cache_path)
+
+        with self.assertRaises(ValueError):
+            cache.put_unverifiable(
+                "ABC123",
+                self.report,
+                self.fight,
+                reason="enemy_damage_outside_required_confirmed_total_range",
+                cached_at_iso="2026-08-04T00:00:00Z",
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
