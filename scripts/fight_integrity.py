@@ -20,8 +20,10 @@ from typing import Any
 DATA_INTEGRITY_KEY = "data_integrity"
 CALCULATION_VERSION = 9
 RULESET = "post_2026_07_28_basic_attack_v9_low_party_damage_target_fallback"
-# 規則版本直接決定戰鬥是否可公開；舊版結論必須離線重判，不能視為相容的 valid。
-# 回補器會重用舊結果保存的最小量測資料，避免因此重新耗用 FFLogs API。
+# v9 是為了重判 v8 的失敗案例而新增；v8 已明確通過的結果不應因規則升版而整批下架。
+# 更舊版本未具備相同的 7.2 檢核語意，仍維持 fail-closed 並等待現行規則重判。
+LEGACY_PUBLIC_COMPATIBLE_VERSIONS = frozenset({8})
+PUBLIC_STATUSES = frozenset({"valid", "not_applicable"})
 DEFAULT_CUTOFF_ISO = "2026-07-28T18:00:00+08:00"
 DEFAULT_HP_RATIO_THRESHOLD = 1.15
 DEFAULT_SUSPECTED_HP_RATIO_THRESHOLD = 1.14
@@ -105,6 +107,35 @@ def current_result(fight: dict[str, Any]) -> dict[str, Any] | None:
     return value if isinstance(value, dict) else None
 
 
+def is_legacy_public_compatible_result(result: Any) -> bool:
+    """判斷既有版本結果是否可沿用，避免規則升版時把已驗證正常資料整批下架。"""
+
+    if not isinstance(result, dict):
+        return False
+    return (
+        to_int(result.get("calculation_version")) in LEGACY_PUBLIC_COMPATIBLE_VERSIONS
+        and result.get("status") in PUBLIC_STATUSES
+        and not bool(result.get("hidden_from_public"))
+    )
+
+
+def is_public_compatible_result(result: Any) -> bool:
+    """只接受現行結論，或明確列入相容清單的舊版正常結論。"""
+
+    if not isinstance(result, dict):
+        return False
+    version = to_int(result.get("calculation_version"))
+    version_is_supported = (
+        version == CALCULATION_VERSION
+        or version in LEGACY_PUBLIC_COMPATIBLE_VERSIONS
+    )
+    return (
+        version_is_supported
+        and result.get("status") in PUBLIC_STATUSES
+        and not bool(result.get("hidden_from_public"))
+    )
+
+
 def attach_historical_damage_screen(
     result: dict[str, Any],
     historical_screen: Any | None,
@@ -143,7 +174,12 @@ def attach_known_capacity_screen(
 
 def needs_check(fight: dict[str, Any]) -> bool:
     result = current_result(fight)
-    return not result or result.get("calculation_version") != CALCULATION_VERSION
+    if result is None:
+        return True
+    if to_int(result.get("calculation_version")) == CALCULATION_VERSION:
+        return False
+    # v8 正常結論繼續公開且不占用日常回補額度；v8 失敗結果才逐批用 v9 重判。
+    return not is_legacy_public_compatible_result(result)
 
 
 def is_hidden_from_public(fight: Any) -> bool:
@@ -151,13 +187,9 @@ def is_hidden_from_public(fight: Any) -> bool:
         return False
     result = current_result(fight)
     if result is not None:
-        # 僅允許目前規則版本的明確結論進入公開衍生資料。這可避免長時間
-        # workflow 在規則更新後才完成、回寫舊版 valid 結果時使異常成績重新上榜。
-        if result.get("calculation_version") != CALCULATION_VERSION:
-            return True
-        # 在這段資料品質事故期間，只有已證實 valid 或生命池語意不適用的 fight 可公開。
-        # `unverifiable` 不能視為正常，否則 FFLogs 暫時失敗時異常 rDPS 會先搶進排行榜。
-        return bool(result.get("hidden_from_public")) or result.get("status") not in {"valid", "not_applicable"}
+        # v8 已證實正常的資料維持公開；v8 失敗、其他舊版或無法驗證的結果仍保守隱藏。
+        # 這讓 v9 能專注修正 v8 誤判案例，而不會在漫長回補期間撤下正常 7.2 成績。
+        return not is_public_compatible_result(result)
     cutoff_ms = parse_iso_to_epoch_ms(DEFAULT_CUTOFF_ISO)
     # 回補尚未寫入標記的既有 fight 同樣採 fail-closed，直到離線批次處理完畢。
     return cutoff_ms is not None and is_in_scope({}, fight, cutoff_ms)

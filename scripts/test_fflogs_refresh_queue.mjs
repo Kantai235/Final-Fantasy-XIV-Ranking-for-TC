@@ -55,6 +55,26 @@ async function main() {
           },
         }],
       },
+      IntegrityV8Valid123: {
+        report_code: "IntegrityV8Valid123",
+        fights: [{
+          data_integrity: {
+            calculation_version: 8,
+            status: "valid",
+            hidden_from_public: false,
+          },
+        }],
+      },
+      IntegrityV8Failed123: {
+        report_code: "IntegrityV8Failed123",
+        fights: [{
+          data_integrity: {
+            calculation_version: 8,
+            status: "suspected",
+            hidden_from_public: true,
+          },
+        }],
+      },
       MissingIntegrity123: {
         report_code: "MissingIntegrity123",
         report_end_time_iso: "2026-07-29T00:00:00.000Z",
@@ -85,6 +105,10 @@ async function main() {
     assert(!indexedReportCodes.has("HiddenOnly123"), "未啟用 hidden delta 時不得把隱藏 report 視為公開收錄");
     assert(!indexedReportCodes.has("IntegrityBlocked123"), "完整性隱藏 report 不得回覆為公開收錄");
     assert(integrityBlockedReportCodes.has("IntegrityBlocked123"), "完整性隱藏 report 必須進入站務複核集合");
+    assert(indexedReportCodes.has("IntegrityV8Valid123"), "v8 已驗證正常的 report 應維持公開收錄");
+    assert(!integrityBlockedReportCodes.has("IntegrityV8Valid123"), "v8 正常 report 不得誤列為站務複核");
+    assert(!indexedReportCodes.has("IntegrityV8Failed123"), "v8 失敗 report 不得回覆為公開收錄");
+    assert(integrityBlockedReportCodes.has("IntegrityV8Failed123"), "v8 失敗 report 必須等待 v9 複核");
     assert(!indexedReportCodes.has("MissingIntegrity123"), "新制切點後缺少完整性結果的 report 不得回覆為公開收錄");
     assert(integrityBlockedReportCodes.has("MissingIntegrity123"), "新制切點後缺少完整性結果的 report 必須進入站務複核集合");
     assert(indexedReportCodes.has("LegacyNoIntegrity123"), "新制切點前缺少完整性結果的 report 應維持向後相容");

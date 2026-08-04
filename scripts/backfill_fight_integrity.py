@@ -211,6 +211,15 @@ def needs_known_capacity_recheck(candidate: Candidate, config: IntegrityConfig) 
     return screen.exceeds_suspected_threshold and not isinstance(known_metrics, dict)
 
 
+def candidate_needs_check(candidate: Candidate, config: IntegrityConfig) -> bool:
+    """挑選日常 v9 候選；v8 已通過者即使缺新診斷欄位也不重排。"""
+
+    result = integrity.current_result(candidate.fight)
+    if integrity.is_legacy_public_compatible_result(result):
+        return False
+    return integrity.needs_check(candidate.fight) or needs_known_capacity_recheck(candidate, config)
+
+
 def find_candidates(
     encounters: dict[str, dict[str, Any]],
     config: IntegrityConfig,
@@ -234,8 +243,7 @@ def find_candidates(
             if not isinstance(report, dict):
                 continue
             # 一般定期回補不必再次讀取已隱藏 report，避免對已不可讀來源浪費 API
-            # 額度；但 --force 代表人工全量稽核，仍須將它們的舊版 data_integrity
-            # 升級為現行 fail-closed 結果，確保所有切點後歷史資料都有一致版本。
+            # 額度；但 --force 代表人工全量稽核，仍允許明確要求重判所有切點後資料。
             if report_is_hidden(report) and not force:
                 continue
             report_code = str(report.get("report_code") or fallback_code)
@@ -252,7 +260,7 @@ def find_candidates(
                     fight=fight,
                     sort_time=sort_time(report, fight),
                 )
-                if not force and not integrity.needs_check(fight) and not needs_known_capacity_recheck(candidate, config):
+                if not force and not candidate_needs_check(candidate, config):
                     continue
                 candidates.append(candidate)
 
@@ -653,9 +661,7 @@ def main() -> int:
 
     scoped_candidates, _, scoped_fights = find_candidates(load_encounters(), config, force=args.force)
     candidates = scoped_candidates if args.force else [
-        candidate
-        for candidate in scoped_candidates
-        if integrity.needs_check(candidate.fight) or needs_known_capacity_recheck(candidate, config)
+        candidate for candidate in scoped_candidates if candidate_needs_check(candidate, config)
     ]
     selected = select_candidates(candidates, report_limit)
     print(

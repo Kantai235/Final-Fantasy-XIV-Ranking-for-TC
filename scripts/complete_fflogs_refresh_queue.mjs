@@ -25,11 +25,12 @@ const REPORT_CODE_PATTERN = /^[A-Za-z0-9]{8,32}$/;
 const QUEUED_STATUSES = new Set(["queued", "pending", "retry"]);
 const STATE_STATUS_NO_CLEAR = "skipped_no_clear";
 const STATE_STATUS_NO_TRADITIONAL_CHINESE_PLAYERS = "skipped_no_traditional_chinese_players";
-// 必須與 scripts/fight_integrity.py 及 build_user_data.mjs 同步。待收錄名單不能只看
-// report 已寫入來源分片；若所有 fight 都被現行完整性規則 fail-closed，應明確交由
-// 站務複核，而不是錯誤回覆使用者「公開資料已收錄」。
+// 必須與 scripts/fight_integrity.py 及 build_user_data.mjs 同步。v8 已確認正常的 fight
+// 維持公開；v8 失敗、缺少判定或更舊版本才交由站務複核及 v9 回補。
 const FIGHT_INTEGRITY_CUTOFF_MS = Date.parse("2026-07-28T18:00:00+08:00");
 const CURRENT_FIGHT_INTEGRITY_CALCULATION_VERSION = 9;
+const LEGACY_PUBLIC_COMPATIBLE_FIGHT_INTEGRITY_VERSIONS = new Set([8]);
+const PUBLIC_FIGHT_INTEGRITY_STATUSES = new Set(["valid", "not_applicable"]);
 
 // Apps Script 與 workflow 都以這組欄位順序存取同一份 Sheet。工作表可能曾被
 // 手動編修；若標題被覆蓋為重複欄位，依欄位名稱組裝的資料會把值寫進錯誤語意。
@@ -189,9 +190,12 @@ function isIntegrityHiddenFight(fight, report) {
     const recordedAtMs = fightRecordedAtMs(fight, report);
     return Number.isFinite(recordedAtMs) && recordedAtMs >= FIGHT_INTEGRITY_CUTOFF_MS;
   }
+  const version = Number(integrity.calculation_version);
+  const versionIsSupported = version === CURRENT_FIGHT_INTEGRITY_CALCULATION_VERSION
+    || LEGACY_PUBLIC_COMPATIBLE_FIGHT_INTEGRITY_VERSIONS.has(version);
   return Boolean(integrity.hidden_from_public)
-    || Number(integrity.calculation_version) !== CURRENT_FIGHT_INTEGRITY_CALCULATION_VERSION
-    || !["valid", "not_applicable"].includes(String(integrity.status || ""));
+    || !versionIsSupported
+    || !PUBLIC_FIGHT_INTEGRITY_STATUSES.has(String(integrity.status || ""));
 }
 
 function reportOnlyHasIntegrityHiddenFights(report) {

@@ -104,6 +104,44 @@ class FightIntegrityTest(unittest.TestCase):
         self.assertTrue(integrity.needs_check(fight))
         self.assertTrue(integrity.is_hidden_from_public(fight))
 
+    def test_existing_v8_valid_result_remains_public_without_recheck(self) -> None:
+        fight = {
+            "data_integrity": {
+                "calculation_version": 8,
+                "status": "valid",
+                "hidden_from_public": False,
+            }
+        }
+
+        self.assertFalse(integrity.needs_check(fight))
+        self.assertFalse(integrity.is_hidden_from_public(fight))
+
+    def test_existing_v8_not_applicable_result_remains_public_without_recheck(self) -> None:
+        fight = {
+            "data_integrity": {
+                "calculation_version": 8,
+                "status": "not_applicable",
+                "hidden_from_public": False,
+            }
+        }
+
+        self.assertFalse(integrity.needs_check(fight))
+        self.assertFalse(integrity.is_hidden_from_public(fight))
+
+    def test_existing_v8_failed_result_stays_hidden_and_enters_v9_recheck(self) -> None:
+        for status in ("excluded", "suspected", "unverifiable"):
+            with self.subTest(status=status):
+                fight = {
+                    "data_integrity": {
+                        "calculation_version": 8,
+                        "status": status,
+                        "hidden_from_public": True,
+                    }
+                }
+
+                self.assertTrue(integrity.needs_check(fight))
+                self.assertTrue(integrity.is_hidden_from_public(fight))
+
     def test_unverifiable_attack_marker_stays_hidden(self) -> None:
         result = integrity.make_unverifiable_result(
             checked_at_iso="2026-07-30T00:00:00Z",

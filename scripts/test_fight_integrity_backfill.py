@@ -477,6 +477,40 @@ class FightIntegrityBackfillCacheTest(unittest.TestCase):
             self.cache.get(self.candidate.report_code, self.candidate.report, self.candidate.fight)
         )
 
+    def test_v8_valid_result_does_not_enter_v9_backfill_for_new_diagnostics(self) -> None:
+        self.candidate.fight.update({
+            "size": 8,
+            "players": [{"total_damage": 12_500} for _ in range(8)],
+            "data_integrity": {
+                "calculation_version": 8,
+                "status": "valid",
+                "hidden_from_public": False,
+            },
+        })
+        self.config.known_enemy_capacity = known_capacity.KnownEnemyCapacityPolicy(
+            enabled=True,
+            rules={
+                "extreme_zelenia": known_capacity.KnownEnemyCapacityRule(
+                    enemy_hp_capacity=100_000,
+                    suspected_team_damage_ratio_threshold=1.005,
+                    required_full_party_damage_min=99_900,
+                    required_full_party_damage_max=100_100,
+                )
+            },
+        )
+
+        self.assertTrue(backfill.needs_known_capacity_recheck(self.candidate, self.config))
+        self.assertFalse(backfill.candidate_needs_check(self.candidate, self.config))
+
+    def test_v8_failed_result_enters_v9_backfill(self) -> None:
+        self.candidate.fight["data_integrity"] = {
+            "calculation_version": 8,
+            "status": "suspected",
+            "hidden_from_public": True,
+        }
+
+        self.assertTrue(backfill.candidate_needs_check(self.candidate, self.config))
+
 
 if __name__ == "__main__":
     unittest.main()

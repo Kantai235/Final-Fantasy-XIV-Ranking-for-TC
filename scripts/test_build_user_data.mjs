@@ -461,6 +461,43 @@ async function createFixture(tempRoot) {
         },
       ],
     },
+    INTEGRITY_V8_VALID: {
+      report_code: "INTEGRITY_V8_VALID",
+      title: "Fixture v8 compatible integrity result",
+      url: "https://www.fflogs.com/reports/INTEGRITY_V8_VALID",
+      report_start_time_iso: "2026-07-29T06:50:00.000Z",
+      fights: [
+        {
+          fight_id: 13,
+          fight_hash: "integrity-v8-valid-fixture-fight",
+          clear_time_ms: 500000,
+          clear_time_seconds: 500,
+          damage_time_ms: 450000,
+          damage_time_seconds: 450,
+          recorded_at: 1785308400000,
+          recorded_at_iso: "2026-07-29T07:00:00.000Z",
+          // v9 僅重判 v8 失敗案例；v8 已確認正常的戰鬥必須維持公開。
+          data_integrity: {
+            calculation_version: 8,
+            status: "valid",
+            hidden_from_public: false,
+          },
+          players: [
+            {
+              name: "測試角色",
+              server: "鳳凰",
+              job: "Paladin",
+              dps: 80,
+              rdps: 80,
+              adps: 80,
+              total_damage: 36000,
+              active_time_ms: 430000,
+              active_percent: 95.56,
+            },
+          ],
+        },
+      ],
+    },
   });
 }
 
@@ -487,7 +524,7 @@ async function assertFixtureOutput(tempRoot, expectedGlobalStatsText, expectedSe
   assert(globalStats.generated_at_iso === "2026-01-02T03:04:05.000Z", "全服統計應使用 ranking 更新時間作為 generated_at_iso。");
   assert(usersIndex.total_users === 7, "fixture 應產生五位有公開成績的使用者與兩位空白入口。");
   assert(globalStats.total_character_count === 5, `全服角色數應把同名跨服角色視為不同玩家，實際 ${globalStats.total_character_count}。`);
-  assert(globalStats.total_entry_count === 6, "全服 entry 數應包含六筆公開玩家成績。");
+  assert(globalStats.total_entry_count === 7, "全服 entry 數應包含六筆既有成績與一筆 v8 正常成績。");
   const hiddenUser = usersIndex.users.find((user) => user.character_name === "隱藏角色");
   assert(hiddenUser, "預設使用者索引應保留空白成績單入口。");
   assert(hiddenUser.servers.includes("鳳凰"), "空白入口應保留伺服器，讓同名角色查詢仍可辨識。");
@@ -495,7 +532,7 @@ async function assertFixtureOutput(tempRoot, expectedGlobalStatsText, expectedSe
   assert(hiddenUser.last_recorded_at_iso === null, "空白入口不可帶入最後紀錄時間。");
   assert(allUsersIndex.total_users === 7, "完整鏡像應保留所有公開索引角色。");
   assert(allGlobalStats.total_character_count === 6, "完整全服統計應納入所有 fixture 角色。");
-  assert(allGlobalStats.total_entry_count === 7, "完整全服統計應納入所有 fixture 成績。");
+  assert(allGlobalStats.total_entry_count === 8, "完整全服統計應納入所有 fixture 成績。");
   const allHiddenUser = allUsersIndex.users.find((user) => user.character_name === "隱藏角色");
   assert(allHiddenUser, "完整鏡像使用者索引應包含對應角色。");
   assert(Array.isArray(globalStats.job_profiles) && globalStats.job_profiles.length === 4, "全服統計應產生職業專頁資料。");
@@ -560,7 +597,11 @@ async function assertFixtureOutput(tempRoot, expectedGlobalStatsText, expectedSe
   assert(mainUser, "使用者索引應包含測試角色。");
   const mainUserData = await readJson(path.join(tempRoot, "public", mainUser.file_path));
   assert(mainUserData.summary.best_rdps === 250, "測試角色最佳 rDPS 應正確彙整。");
-  assert(mainUserData.summary.public_entry_count === 2, "同一場戰鬥由多份 report 上傳時，個人成績單只能保留一筆公開成績。");
+  assert(mainUserData.summary.public_entry_count === 3, "重複 report 應合併，且 v8 已驗證正常的戰鬥應維持公開。");
+  assert(
+    mainUserData.encounters[0]?.public_entries?.some((entry) => entry.report_code === "INTEGRITY_V8_VALID"),
+    "個人成績單必須保留 v8 已驗證正常的戰鬥。",
+  );
   assert(mainUserData.summary.profile_job === "Paladin", "個人成績單代表職業應優先採用同職排名最高的職業。");
   assert(mainUserData.summary.profile_job_rank === 1, "個人成績單代表職業應保留最高職業 Rank。");
   assert(mainUserData.encounters[0]?.best_entry?.job === "Paladin", "個人成績單副本代表列應優先顯示最高排名職業。");
@@ -585,7 +626,7 @@ async function assertFixtureOutput(tempRoot, expectedGlobalStatsText, expectedSe
   assert(mainUserBlackMageEntry?.job_rank === 2, "fixture 需保留較高 rDPS 但職業 Rank 較低的輸出紀錄。");
   assert(mainUserBlackMageEntry?.fflogs_source_id === 202, "個人成績歷史列應保留 FFLogs sourceID 供外部工具深連結使用。");
   assert(mainUserBlackMageEntry?.game_version === "7.0", "版本切點前的個人成績應保留舊版本。");
-  const mainUserEntry = mainUserData.encounters[0]?.public_entries?.[0];
+  const mainUserEntry = mainUserData.encounters[0]?.public_entries?.find((entry) => entry.report_code === "RPT1");
   assert(mainUserEntry?.game_version === "7.05", "版本切點當下的個人成績應歸入新版本。");
   assert(mainUserEntry?.gcd_coverage?.percent === 94.43, "個人成績單應保留 GCD 覆蓋率。");
   assert(!Object.hasOwn(mainUserEntry.gcd_coverage || {}, "raw_graph_downtime_percent"), "個人成績單不應輸出 GCD 內部診斷欄位。");
