@@ -123,7 +123,7 @@
   },
   {
     "key": "savage_m6s",
-    "name": "零式 M6S / 狂熱糖潮",
+    "name": "零式 M6S / 糖彩狂潮",
     "category": "零式",
     "zone_id": 68,
     "encounter_id": 98,
@@ -141,7 +141,7 @@
   },
   {
     "key": "savage_m7s",
-    "name": "零式 M7S / 野蠻恨心",
+    "name": "零式 M7S / 野蠻憎惡",
     "category": "零式",
     "zone_id": 68,
     "encounter_id": 99,
@@ -159,7 +159,7 @@
   },
   {
     "key": "savage_m8s",
-    "name": "零式 M8S / 劍嚎",
+    "name": "零式 M8S / 呼嘯之劍",
     "category": "零式",
     "zone_id": 68,
     "encounter_id": 100,

@@ -843,7 +843,7 @@ function validateUserProfileClearSummary() {
     },
     {
       key: "savage_m6s",
-      name: "零式 M6S / 狂熱糖潮",
+      name: "零式 M6S / 糖彩狂潮",
       category: "零式",
       current_high_end: true,
       profile_summary_available_from: "7.2",
@@ -851,7 +851,7 @@ function validateUserProfileClearSummary() {
     },
     {
       key: "savage_m7s",
-      name: "零式 M7S / 野蠻恨心",
+      name: "零式 M7S / 野蠻憎惡",
       category: "零式",
       current_high_end: true,
       profile_summary_available_from: "7.2",
@@ -859,7 +859,7 @@ function validateUserProfileClearSummary() {
     },
     {
       key: "savage_m8s",
-      name: "零式 M8S / 劍嚎",
+      name: "零式 M8S / 呼嘯之劍",
       category: "零式",
       current_high_end: true,
       profile_summary_available_from: "7.2",
@@ -913,7 +913,7 @@ function validateUserProfileClearSummary() {
       && savageGroup.selected_tier_key === "cruiserweight"
       && savageGroup.tiers?.map((tier) => tier.label).join(",") === "輕量級,次重量級"
       && savageGroup.tiers?.find((tier) => tier.key === "cruiserweight")?.is_current_version_complete
-      && savageGroup.encounters.map((encounter) => encounter.name).join(",") === "M5S / 熱舞綠光,M6S / 狂熱糖潮,M7S / 野蠻恨心,M8S / 劍嚎",
+      && savageGroup.encounters.map((encounter) => encounter.name).join(",") === "M5S / 熱舞綠光,M6S / 糖彩狂潮,M7S / 野蠻憎惡,M8S / 呼嘯之劍",
     "零式簡表必須列出所選版本已開放量級、預設選取最新量級，並在四層皆有效通關時標示完成。",
   );
   assert(ultimateGroup?.encounters.length === 1, "簡表必須保留所有絕本。");
