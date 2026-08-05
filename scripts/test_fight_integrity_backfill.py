@@ -534,6 +534,79 @@ class FightIntegrityBackfillCacheTest(unittest.TestCase):
 
         self.assertTrue(backfill.candidate_needs_check(self.candidate, self.config))
 
+    def test_find_candidates_limits_encounter_and_recorded_time(self) -> None:
+        encounters = {
+            "savage_m5s": {"key": "savage_m5s"},
+            "savage_m6s": {"key": "savage_m6s"},
+        }
+        rankings = {
+            "savage_m5s": {
+                "reports": {
+                    "M5": {
+                        "report_code": "M5",
+                        "report_start_time": 1_800_000_000_000,
+                        "fights": [
+                            {
+                                "fight_id": 1,
+                                "start_time": 0,
+                                "end_time": 1_000,
+                                "recorded_at": 1_800_000_002_999,
+                            },
+                            {
+                                "fight_id": 2,
+                                "start_time": 1_000,
+                                "end_time": 2_000,
+                                "recorded_at": 1_800_000_003_000,
+                            },
+                        ],
+                    }
+                }
+            },
+            "savage_m6s": {
+                "reports": {
+                    "M6": {
+                        "report_code": "M6",
+                        "report_start_time": 1_800_000_004_000,
+                        "fights": [
+                            {
+                                "fight_id": 3,
+                                "start_time": 0,
+                                "end_time": 1_000,
+                                "recorded_at": 1_800_000_004_000,
+                            }
+                        ],
+                    }
+                }
+            },
+        }
+
+        with (
+            patch.object(backfill, "ranking_path") as ranking_path,
+            patch.object(
+                backfill,
+                "load_ranking_file",
+                side_effect=lambda encounter: rankings[encounter["key"]],
+            ),
+            patch.object(backfill.integrity, "is_in_scope", return_value=True),
+        ):
+            ranking_path.return_value.exists.return_value = True
+            candidates, _, scoped_fights = backfill.find_candidates(
+                encounters,
+                self.config,
+                force=True,
+                encounter_keys={"savage_m5s"},
+                recorded_at_or_after_ms=1_800_000_003_000,
+            )
+
+        self.assertEqual(scoped_fights, 1)
+        self.assertEqual(
+            [
+                (candidate.encounter_key, candidate.report_code, candidate.fight["fight_id"])
+                for candidate in candidates
+            ],
+            [("savage_m5s", "M5", 2)],
+        )
+
     def test_team_basic_attack_anomaly_skips_enemy_hp_query_and_reuses_cache(self) -> None:
         self.candidate.encounter_key = "savage_m6s"
         self.candidate.fight.update({

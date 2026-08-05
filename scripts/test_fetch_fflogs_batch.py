@@ -2041,6 +2041,21 @@ class FetchFFLogsBatchTest(unittest.TestCase):
         self.assertEqual(報告["hidden_detected_at"], 1779123456789)
         self.assertIn("permission to view this report", 報告["hidden_detail"])
 
+    def test_basic_attack_query_treats_empty_report_as_inaccessible(self) -> None:
+        戰鬥 = {
+            "fight_id": 7,
+            "start_time": 1_000,
+            "end_time": 2_000,
+        }
+
+        with patch.object(
+            fflogs,
+            "執行_graphql",
+            return_value={"reportData": {"report": None}},
+        ):
+            with self.assertRaises(fflogs.FFLogs報告存取錯誤):
+                fflogs.查詢戰鬥完整性普攻事件(None, None, "private-code", 戰鬥)
+
     def test_mark_ranking_report_status_checked_keeps_public_report_eligible(self) -> None:
         排行榜 = {
             "reports": {

@@ -4407,8 +4407,19 @@ def 查詢戰鬥完整性普攻事件(
                 "endTime": 結束時間,
             },
         )
-        報告 = ((payload.get("reportData") or {}).get("report")) or {}
-        事件區塊 = 報告.get("basicAttacks") if isinstance(報告, dict) else {}
+        報告 = (payload.get("reportData") or {}).get("report")
+        if not isinstance(報告, dict) or not 報告:
+            # reportData.report=null 通常表示報告已刪除、轉為 Private 或目前憑證無權
+            # 讀取；FFLogs 不一定會在這種情況附帶 GraphQL errors。將它提升成既有的
+            # 存取錯誤類型，讓回補工具能在來源 report 節點留下 hidden 追溯標記，
+            # 而不是只把單一 fight 留在不可驗證狀態後繼續公開。
+            raise FFLogs報告存取錯誤([
+                {
+                    "message": f"FFLogs 無法讀取 report {報告代碼} 的普攻事件",
+                    "path": ["reportData", "report"],
+                }
+            ])
+        事件區塊 = 報告.get("basicAttacks")
         本頁事件 = 事件區塊.get("data") if isinstance(事件區塊, dict) else None
         if not isinstance(本頁事件, list):
             raise RuntimeError("FFLogs 普攻事件回應缺少 data 陣列")

@@ -241,12 +241,16 @@ def find_candidates(
     config: IntegrityConfig,
     *,
     force: bool,
+    encounter_keys: set[str] | None = None,
+    recorded_at_or_after_ms: int | None = None,
 ) -> tuple[list[Candidate], dict[str, dict[str, Any]], int]:
     candidates: list[Candidate] = []
     rankings: dict[str, dict[str, Any]] = {}
     scoped_fights = 0
 
     for encounter_key, encounter in sorted(encounters.items()):
+        if encounter_keys and encounter_key not in encounter_keys:
+            continue
         if not ranking_path(encounter).exists():
             continue
         ranking = load_ranking_file(encounter)
@@ -265,6 +269,15 @@ def find_candidates(
             report_code = str(report.get("report_code") or fallback_code)
             for fight in report.get("fights") or []:
                 if not isinstance(fight, dict) or not integrity.is_in_scope(report, fight, config.cutoff_ms):
+                    continue
+                # 人工全量稽核通常只針對特定版本或副本開放後的紀錄。使用 fight 的
+                # recorded_at（缺值時由 fight_integrity 依 report 時間回退）篩選，
+                # 避免把同一 report 內較早的戰鬥或其他版本資料一起重判。
+                recorded_at_ms = integrity.fight_recorded_at_ms(report, fight)
+                if (
+                    recorded_at_or_after_ms is not None
+                    and (recorded_at_ms is None or recorded_at_ms < recorded_at_or_after_ms)
+                ):
                     continue
                 scoped_fights += 1
                 candidate = Candidate(
@@ -739,6 +752,17 @@ def main() -> int:
         default=[],
         help="只處理指定 report code；可重複提供，且不受 report-limit 截斷。",
     )
+    parser.add_argument(
+        "--encounter-key",
+        action="append",
+        default=[],
+        help="只處理指定副本 key；可重複提供。",
+    )
+    parser.add_argument(
+        "--recorded-at-or-after",
+        default=None,
+        help="只處理此 ISO 時間（含）之後記錄的 fight；時間必須包含時區。",
+    )
     args = parser.parse_args()
 
     config = load_config()
@@ -751,7 +775,27 @@ def main() -> int:
         print("report limit 為 0，略過本輪戰鬥完整性檢核。")
         return 0
 
-    scoped_candidates, _, scoped_fights = find_candidates(load_encounters(), config, force=args.force)
+    encounters = load_encounters()
+    requested_encounter_keys = {
+        str(value).strip() for value in args.encounter_key if str(value).strip()
+    }
+    unknown_encounter_keys = requested_encounter_keys - set(encounters)
+    if unknown_encounter_keys:
+        parser.error("找不到副本 key：" + "、".join(sorted(unknown_encounter_keys)))
+
+    recorded_at_or_after_ms: int | None = None
+    if args.recorded_at_or_after:
+        recorded_at_or_after_ms = integrity.parse_iso_to_epoch_ms(str(args.recorded_at_or_after))
+        if recorded_at_or_after_ms is None:
+            parser.error("--recorded-at-or-after 必須是含時區的有效 ISO 時間。")
+
+    scoped_candidates, _, scoped_fights = find_candidates(
+        encounters,
+        config,
+        force=args.force,
+        encounter_keys=requested_encounter_keys or None,
+        recorded_at_or_after_ms=recorded_at_or_after_ms,
+    )
     candidates = scoped_candidates if args.force else [
         candidate for candidate in scoped_candidates if candidate_needs_check(candidate, config)
     ]
