@@ -29,6 +29,35 @@
     "suspected_hp_ratio_threshold": 1.14,
     "historical_baseline_file": "config/fight_integrity_baselines.json",
     "known_enemy_capacity_file": "config/fight_integrity_known_enemy_hp.json",
+    "basic_attack_distribution": {
+      "enabled": true,
+      "reference_version": "7.2_m5s_m8s_reviewed_2026-08-06",
+      "encounter_keys": [
+        "savage_m5s",
+        "savage_m6s",
+        "savage_m7s",
+        "savage_m8s"
+      ],
+      "reference_hit_median": 4805.7,
+      "reference_attack_share": 0.0861,
+      "minimum_attack_event_count": 60,
+      "minimum_pure_normal_count": 30,
+      "minimum_player_hit_median": 10000,
+      "hit_reference_multiplier": 2.0,
+      "minimum_player_attack_share": 0.15,
+      "share_reference_multiplier": 1.5,
+      "suspected_minimum_eligible_players": 3,
+      "suspected_minimum_flagged_players": 3,
+      "suspected_minimum_flagged_ratio": 0.6,
+      "excluded_minimum_eligible_players": 4,
+      "excluded_minimum_flagged_players": 4,
+      "excluded_minimum_flagged_ratio": 0.75,
+      "excluded_minimum_group_hit_median": 15000,
+      "excluded_minimum_group_attack_share": 0.2,
+      "support_minimum_pure_normal_count": 3,
+      "support_minimum_hit_median": 10000,
+      "job_references": {}
+    },
     "report_limit": 25,
     "excluded_encounter_keys": [
       "ultimate_bahamut"

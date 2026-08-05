@@ -1,9 +1,9 @@
 """戰鬥完整性檢核的本機測量快取。
 
-快取只保存已彙整的敵方承傷、敵方最大生命池與目標數，或可重現的無法量測
-原因，讓倍率規則或 Attack 標記規則調整時可離線重新判定，不必重複讀取
-FFLogs。這不是排行榜資料的一部分：預設路徑由 .gitignore 排除，GitHub
-Actions 只透過 Actions cache 在執行輪次之間接續使用。
+快取只保存已彙整的敵方承傷、敵方最大生命池、目標數，以及玩家層 Attack 命中數、
+中位數與占比，或可重現的無法量測原因。它不保存 raw events、玩家名稱或完整 FFLogs
+payload，讓門檻調整時仍能離線重新判定。這不是排行榜資料的一部分：預設路徑由
+.gitignore 排除，GitHub Actions 只透過 Actions cache 在執行輪次之間接續使用。
 """
 
 from __future__ import annotations
@@ -15,7 +15,8 @@ from pathlib import Path
 from typing import Any
 
 
-CACHE_SCHEMA_VERSION = 3
+CACHE_SCHEMA_VERSION = 4
+SUPPORTED_CACHE_SCHEMA_VERSIONS = frozenset({3, CACHE_SCHEMA_VERSION})
 CACHEABLE_UNVERIFIABLE_REASONS = frozenset({"missing_enemy_max_hp"})
 
 
@@ -36,6 +37,16 @@ def _to_number(value: Any) -> float | None:
     except (TypeError, ValueError):
         return None
     return number if number > 0 else None
+
+
+def _to_nonnegative_number(value: Any) -> float | None:
+    if isinstance(value, bool):
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if number >= 0 else None
 
 
 def _source_fingerprint(report: dict[str, Any], fight: dict[str, Any]) -> str:
@@ -80,6 +91,63 @@ def _normalize_measurement(raw: Any) -> dict[str, float | int] | None:
     }
 
 
+def _normalize_basic_attack_measurement(raw: Any) -> dict[str, Any] | None:
+    if not isinstance(raw, dict):
+        return None
+    actual_event_count = _to_int(raw.get("actual_event_count"))
+    mapped_event_count = _to_int(raw.get("mapped_event_count"))
+    raw_players = raw.get("players")
+    if (
+        actual_event_count is None
+        or actual_event_count < 0
+        or mapped_event_count is None
+        or mapped_event_count < 0
+        or not isinstance(raw_players, list)
+    ):
+        return None
+
+    players: list[dict[str, Any]] = []
+    for raw_player in raw_players:
+        if not isinstance(raw_player, dict):
+            return None
+        source_id = _to_int(raw_player.get("source_id"))
+        attack_event_count = _to_int(raw_player.get("attack_event_count"))
+        pure_normal_count = _to_int(raw_player.get("pure_normal_count"))
+        # Attack 事件可能包含免疫／零傷害事件；零值仍是合法的完整彙總，不能因為
+        # 本機快取驗證拒絕它，就把原本可判定的戰鬥降級成 unverifiable。
+        attack_damage = _to_nonnegative_number(raw_player.get("attack_damage"))
+        attack_share = _to_nonnegative_number(raw_player.get("attack_share"))
+        pure_normal_median = raw_player.get("pure_normal_median")
+        normalized_median = (
+            None if pure_normal_median is None else _to_number(pure_normal_median)
+        )
+        if (
+            source_id is None
+            or attack_event_count is None
+            or attack_event_count < 0
+            or pure_normal_count is None
+            or pure_normal_count < 0
+            or attack_damage is None
+            or attack_share is None
+            or (pure_normal_median is not None and normalized_median is None)
+        ):
+            return None
+        players.append({
+            "source_id": source_id,
+            "job": str(raw_player.get("job") or ""),
+            "attack_event_count": attack_event_count,
+            "pure_normal_count": pure_normal_count,
+            "pure_normal_median": normalized_median,
+            "attack_damage": attack_damage,
+            "attack_share": attack_share,
+        })
+    return {
+        "actual_event_count": actual_event_count,
+        "mapped_event_count": mapped_event_count,
+        "players": players,
+    }
+
+
 class FightIntegrityMeasurementCache:
     """以原子寫入保存每一場已成功取得的最小測量資料。"""
 
@@ -98,7 +166,10 @@ class FightIntegrityMeasurementCache:
             # 快取損毀只會造成下一輪重新查詢，不能讓完整性檢核整輪中斷。
             return cls(path)
 
-        if not isinstance(raw, dict) or raw.get("schema_version") != CACHE_SCHEMA_VERSION:
+        if (
+            not isinstance(raw, dict)
+            or raw.get("schema_version") not in SUPPORTED_CACHE_SCHEMA_VERSIONS
+        ):
             return cls(path)
         entries = raw.get("entries")
         if not isinstance(entries, dict):
@@ -125,6 +196,22 @@ class FightIntegrityMeasurementCache:
             return {"outcome": outcome, "reason": entry["reason"]}
         return None
 
+    def get_basic_attack(
+        self,
+        report_code: str,
+        report: dict[str, Any],
+        fight: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        key = _cache_key(report_code, fight)
+        if key is None:
+            return None
+        entry = self.entries.get(key)
+        if not isinstance(entry, dict):
+            return None
+        if entry.get("source_fingerprint") != _source_fingerprint(report, fight):
+            return None
+        return _normalize_basic_attack_measurement(entry.get("basic_attack_measurement"))
+
     def put(
         self,
         report_code: str,
@@ -140,7 +227,15 @@ class FightIntegrityMeasurementCache:
         if key is None or normalized_measurement is None:
             raise ValueError("無法快取缺少 fight 識別或格式不正確的完整性測量資料")
 
+        existing = self.entries.get(key)
+        preserved = (
+            dict(existing)
+            if isinstance(existing, dict)
+            and existing.get("source_fingerprint") == _source_fingerprint(report, fight)
+            else {}
+        )
         self.entries[key] = {
+            **preserved,
             "source_fingerprint": _source_fingerprint(report, fight),
             "cached_at_iso": cached_at_iso,
             "outcome": "measured",
@@ -164,11 +259,51 @@ class FightIntegrityMeasurementCache:
         key = _cache_key(report_code, fight)
         if key is None or reason not in CACHEABLE_UNVERIFIABLE_REASONS:
             raise ValueError("無法快取缺少 fight 識別或不可重現的完整性量測失敗")
+        existing = self.entries.get(key)
+        preserved = (
+            dict(existing)
+            if isinstance(existing, dict)
+            and existing.get("source_fingerprint") == _source_fingerprint(report, fight)
+            else {}
+        )
         self.entries[key] = {
+            **preserved,
             "source_fingerprint": _source_fingerprint(report, fight),
             "cached_at_iso": cached_at_iso,
             "outcome": "unverifiable",
             "reason": reason,
+        }
+        if persist:
+            self.save()
+
+    def put_basic_attack(
+        self,
+        report_code: str,
+        report: dict[str, Any],
+        fight: dict[str, Any],
+        *,
+        measurement: dict[str, Any],
+        cached_at_iso: str,
+        persist: bool = True,
+    ) -> None:
+        """保存可重判的玩家層彙總，不保存事件、名稱或 FFLogs 完整回應。"""
+
+        key = _cache_key(report_code, fight)
+        normalized = _normalize_basic_attack_measurement(measurement)
+        if key is None or normalized is None:
+            raise ValueError("無法快取缺少 fight 識別或格式不正確的普攻分布測量資料")
+        existing = self.entries.get(key)
+        preserved = (
+            dict(existing)
+            if isinstance(existing, dict)
+            and existing.get("source_fingerprint") == _source_fingerprint(report, fight)
+            else {}
+        )
+        self.entries[key] = {
+            **preserved,
+            "source_fingerprint": _source_fingerprint(report, fight),
+            "cached_at_iso": cached_at_iso,
+            "basic_attack_measurement": normalized,
         }
         if persist:
             self.save()

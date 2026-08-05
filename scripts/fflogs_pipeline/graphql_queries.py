@@ -324,6 +324,37 @@ query FightIntegrityTargets(
 """
 
 
+# M5S～M8S 的異常變體不一定會讓敵方承傷／生命池超過既有門檻，也不一定帶有
+# exploitDetails Attack 標記。因此只針對設定中的現行零式查詢 ability 7；呼叫端會
+# 完整分頁後立刻壓成玩家層命中數、中位數與占比，不會保存這段 raw events。
+戰鬥完整性普攻事件查詢 = """
+query FightIntegrityBasicAttackEvents(
+  $code: String!
+  $fightID: Int!
+  $startTime: Float!
+  $endTime: Float!
+) {
+  reportData {
+    report(code: $code) {
+      basicAttacks: events(
+        dataType: DamageDone
+        fightIDs: [$fightID]
+        startTime: $startTime
+        endTime: $endTime
+        abilityID: 7
+        hostilityType: Friendlies
+        limit: 10000
+        translate: true
+      ) {
+        data
+        nextPageTimestamp
+      }
+    }
+  }
+}
+"""
+
+
 def 建立戰鬥完整性目標生命值查詢(目標_id清單: list[int]) -> str:
     # GraphQL 的 targetID 只能逐目標指定；用 alias 合併成一個 request，避免每個王／小怪
     # 都各打一次 API。targetResources.maxHitPoints 只需前幾筆傷害事件即可取得，無須保存 raw events。

@@ -13,21 +13,39 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from statistics import median
 from typing import Any
 
 
 DATA_INTEGRITY_KEY = "data_integrity"
-CALCULATION_VERSION = 9
-RULESET = "post_2026_07_28_basic_attack_v9_low_party_damage_target_fallback"
-# v9 是為了重判 v8 的失敗案例而新增；v8 已明確通過的結果不應因規則升版而整批下架。
-# 更舊版本未具備相同的 7.2 檢核語意，仍維持 fail-closed 並等待現行規則重判。
-LEGACY_PUBLIC_COMPATIBLE_VERSIONS = frozenset({8})
+CALCULATION_VERSION = 10
+RULESET = "post_2026_07_28_basic_attack_v10_team_distribution"
+# v10 新增 M5S～M8S 的 Attack 事件分布檢核。v8、v9 已明確通過的其他副本不能因
+# 規則升版整批下架；回補器會另外挑出這四層缺少新分布證據的 v9 場次逐批重判。
+LEGACY_PUBLIC_COMPATIBLE_VERSIONS = frozenset({8, 9})
 PUBLIC_STATUSES = frozenset({"valid", "not_applicable"})
 DEFAULT_CUTOFF_ISO = "2026-07-28T18:00:00+08:00"
 DEFAULT_HP_RATIO_THRESHOLD = 1.15
 DEFAULT_SUSPECTED_HP_RATIO_THRESHOLD = 1.14
 DEFAULT_EXCLUDED_ENCOUNTER_KEYS = ("ultimate_bahamut",)
+
+PHYSICAL_AUTO_ATTACK_JOBS = frozenset({
+    "Paladin",
+    "Warrior",
+    "DarkKnight",
+    "Gunbreaker",
+    "Monk",
+    "Dragoon",
+    "Ninja",
+    "Samurai",
+    "Reaper",
+    "Viper",
+    "Bard",
+    "Machinist",
+    "Dancer",
+})
 
 
 def to_number(value: Any) -> float | None:
@@ -41,6 +59,342 @@ def to_number(value: Any) -> float | None:
 def to_int(value: Any) -> int | None:
     number = to_number(value)
     return int(number) if number is not None and number.is_integer() else None
+
+
+@dataclass(frozen=True)
+class BasicAttackDistributionScreen:
+    """保存 Attack 事件分布的純計算結果，不攜帶或落地 raw events。"""
+
+    status: str
+    reason: str | None
+    metrics: dict[str, Any]
+
+    @property
+    def is_abnormal(self) -> bool:
+        return self.status in {"excluded", "suspected"}
+
+
+@dataclass(frozen=True)
+class BasicAttackDistributionPolicy:
+    """M5S～M8S 同場多人普攻異常的版本化門檻。
+
+    玩家必須同時跨過「純一般普攻每擊中位數」與「普攻占個人總傷比例」兩道門檻；
+    戰鬥層再要求多名物理職業同時命中。這樣不會因單一玩家死亡、低 GCD 覆蓋率、
+    少數暴擊或直擊尖峰，就把正常戰鬥誤判為整場資料異常。
+    """
+
+    enabled: bool = False
+    encounter_keys: frozenset[str] = field(default_factory=frozenset)
+    reference_version: str = ""
+    reference_hit_median: float = 4_805.7
+    reference_attack_share: float = 0.0861
+    job_hit_references: dict[str, float] = field(default_factory=dict)
+    job_share_references: dict[str, float] = field(default_factory=dict)
+    minimum_attack_event_count: int = 60
+    minimum_pure_normal_count: int = 30
+    minimum_player_hit_median: float = 10_000.0
+    hit_reference_multiplier: float = 2.0
+    minimum_player_attack_share: float = 0.15
+    share_reference_multiplier: float = 1.5
+    suspected_minimum_eligible_players: int = 3
+    suspected_minimum_flagged_players: int = 3
+    suspected_minimum_flagged_ratio: float = 0.60
+    excluded_minimum_eligible_players: int = 4
+    excluded_minimum_flagged_players: int = 4
+    excluded_minimum_flagged_ratio: float = 0.75
+    excluded_minimum_group_hit_median: float = 15_000.0
+    excluded_minimum_group_attack_share: float = 0.20
+    support_minimum_pure_normal_count: int = 3
+    support_minimum_hit_median: float = 10_000.0
+
+    @classmethod
+    def disabled(cls) -> "BasicAttackDistributionPolicy":
+        return cls()
+
+    @classmethod
+    def from_mapping(cls, raw: Any) -> "BasicAttackDistributionPolicy":
+        if not isinstance(raw, dict) or raw.get("enabled") is False:
+            return cls.disabled()
+
+        encounter_keys = raw.get("encounter_keys")
+        if not isinstance(encounter_keys, list) or not encounter_keys:
+            raise RuntimeError("basic_attack_distribution.encounter_keys 必須是非空陣列。")
+
+        def positive_number(name: str, default: float) -> float:
+            value = to_number(raw.get(name))
+            normalized = default if value is None else value
+            if normalized <= 0:
+                raise RuntimeError(f"basic_attack_distribution.{name} 必須大於 0。")
+            return normalized
+
+        def positive_int(name: str, default: int) -> int:
+            value = to_int(raw.get(name))
+            normalized = default if value is None else value
+            if normalized <= 0:
+                raise RuntimeError(f"basic_attack_distribution.{name} 必須是正整數。")
+            return normalized
+
+        def ratio(name: str, default: float) -> float:
+            value = positive_number(name, default)
+            if value > 1:
+                raise RuntimeError(f"basic_attack_distribution.{name} 必須介於 0 與 1。")
+            return value
+
+        job_references = raw.get("job_references")
+        job_hit_references: dict[str, float] = {}
+        job_share_references: dict[str, float] = {}
+        if isinstance(job_references, dict):
+            for job, reference in job_references.items():
+                if not isinstance(job, str) or not isinstance(reference, dict):
+                    continue
+                hit = to_number(reference.get("hit_median"))
+                share = to_number(reference.get("attack_share"))
+                if hit is not None and hit > 0:
+                    job_hit_references[job] = hit
+                if share is not None and 0 < share <= 1:
+                    job_share_references[job] = share
+
+        return cls(
+            enabled=True,
+            encounter_keys=frozenset(str(value) for value in encounter_keys if isinstance(value, str) and value),
+            reference_version=str(raw.get("reference_version") or ""),
+            reference_hit_median=positive_number("reference_hit_median", 4_805.7),
+            reference_attack_share=ratio("reference_attack_share", 0.0861),
+            job_hit_references=job_hit_references,
+            job_share_references=job_share_references,
+            minimum_attack_event_count=positive_int("minimum_attack_event_count", 60),
+            minimum_pure_normal_count=positive_int("minimum_pure_normal_count", 30),
+            minimum_player_hit_median=positive_number("minimum_player_hit_median", 10_000),
+            hit_reference_multiplier=positive_number("hit_reference_multiplier", 2.0),
+            minimum_player_attack_share=ratio("minimum_player_attack_share", 0.15),
+            share_reference_multiplier=positive_number("share_reference_multiplier", 1.5),
+            suspected_minimum_eligible_players=positive_int("suspected_minimum_eligible_players", 3),
+            suspected_minimum_flagged_players=positive_int("suspected_minimum_flagged_players", 3),
+            suspected_minimum_flagged_ratio=ratio("suspected_minimum_flagged_ratio", 0.60),
+            excluded_minimum_eligible_players=positive_int("excluded_minimum_eligible_players", 4),
+            excluded_minimum_flagged_players=positive_int("excluded_minimum_flagged_players", 4),
+            excluded_minimum_flagged_ratio=ratio("excluded_minimum_flagged_ratio", 0.75),
+            excluded_minimum_group_hit_median=positive_number(
+                "excluded_minimum_group_hit_median", 15_000
+            ),
+            excluded_minimum_group_attack_share=ratio(
+                "excluded_minimum_group_attack_share", 0.20
+            ),
+            support_minimum_pure_normal_count=positive_int(
+                "support_minimum_pure_normal_count", 3
+            ),
+            support_minimum_hit_median=positive_number("support_minimum_hit_median", 10_000),
+        )
+
+    def applies(self, encounter_key: str, fight: dict[str, Any]) -> bool:
+        return (
+            self.enabled
+            and encounter_key in self.encounter_keys
+            and fight.get("kill") is True
+            and fight.get("has_echo") is not True
+            and to_int(fight.get("size")) == 8
+            and fight.get("standard_composition") is not False
+        )
+
+    def screen(self, measurement: dict[str, Any]) -> BasicAttackDistributionScreen:
+        raw_players = measurement.get("players") if isinstance(measurement, dict) else None
+        players = raw_players if isinstance(raw_players, list) else []
+        eligible: list[dict[str, Any]] = []
+        flagged: list[dict[str, Any]] = []
+        supporting_nonphysical: list[dict[str, Any]] = []
+
+        for raw_player in players:
+            if not isinstance(raw_player, dict):
+                continue
+            job = str(raw_player.get("job") or "")
+            attack_count = to_int(raw_player.get("attack_event_count")) or 0
+            pure_count = to_int(raw_player.get("pure_normal_count")) or 0
+            hit_median = to_number(raw_player.get("pure_normal_median"))
+            attack_share = to_number(raw_player.get("attack_share"))
+            if hit_median is None or attack_share is None:
+                continue
+
+            if job not in PHYSICAL_AUTO_ATTACK_JOBS:
+                if (
+                    pure_count >= self.support_minimum_pure_normal_count
+                    and hit_median >= self.support_minimum_hit_median
+                ):
+                    supporting_nonphysical.append(raw_player)
+                continue
+            if (
+                attack_count < self.minimum_attack_event_count
+                or pure_count < self.minimum_pure_normal_count
+            ):
+                continue
+
+            eligible.append(raw_player)
+            hit_reference = self.job_hit_references.get(job, self.reference_hit_median)
+            share_reference = self.job_share_references.get(job, self.reference_attack_share)
+            hit_threshold = max(
+                self.minimum_player_hit_median,
+                hit_reference * self.hit_reference_multiplier,
+            )
+            share_threshold = max(
+                self.minimum_player_attack_share,
+                share_reference * self.share_reference_multiplier,
+            )
+            if hit_median < hit_threshold or attack_share < share_threshold:
+                continue
+            flagged.append({
+                "source_id": to_int(raw_player.get("source_id")),
+                "job": job,
+                "attack_event_count": attack_count,
+                "pure_normal_count": pure_count,
+                "pure_normal_median": round(hit_median, 3),
+                "attack_share": round(attack_share, 6),
+                "hit_reference_ratio": round(hit_median / hit_reference, 6),
+                "share_reference_ratio": round(attack_share / share_reference, 6),
+            })
+
+        eligible_count = len(eligible)
+        flagged_count = len(flagged)
+        flagged_ratio = flagged_count / eligible_count if eligible_count else 0.0
+        group_hit_median = (
+            median(float(player["pure_normal_median"]) for player in flagged)
+            if flagged
+            else None
+        )
+        group_attack_share = (
+            median(float(player["attack_share"]) for player in flagged)
+            if flagged
+            else None
+        )
+
+        excluded = (
+            eligible_count >= self.excluded_minimum_eligible_players
+            and flagged_count >= self.excluded_minimum_flagged_players
+            and flagged_ratio >= self.excluded_minimum_flagged_ratio
+            and group_hit_median is not None
+            and group_hit_median >= self.excluded_minimum_group_hit_median
+            and group_attack_share is not None
+            and group_attack_share >= self.excluded_minimum_group_attack_share
+        )
+        suspected = (
+            (
+                eligible_count >= self.suspected_minimum_eligible_players
+                and flagged_count >= self.suspected_minimum_flagged_players
+                and flagged_ratio >= self.suspected_minimum_flagged_ratio
+            )
+            or (flagged_count >= 2 and bool(supporting_nonphysical))
+        )
+        if excluded:
+            status = "excluded"
+            reason = "team_basic_attack_damage_distribution_abnormal"
+        elif suspected:
+            status = "suspected"
+            reason = "multiple_players_basic_attack_metrics_abnormal"
+        elif eligible_count >= self.suspected_minimum_eligible_players:
+            status = "valid"
+            reason = None
+        else:
+            status = "insufficient_sample"
+            reason = None
+
+        metrics: dict[str, Any] = {
+            "reference_version": self.reference_version,
+            "actual_event_count": to_int(measurement.get("actual_event_count")) or 0,
+            "mapped_event_count": to_int(measurement.get("mapped_event_count")) or 0,
+            "eligible_player_count": eligible_count,
+            "flagged_player_count": flagged_count,
+            "flagged_player_ratio": round(flagged_ratio, 6),
+            "supporting_nonphysical_count": len(supporting_nonphysical),
+            "minimum_player_hit_median": self.minimum_player_hit_median,
+            "minimum_player_attack_share": self.minimum_player_attack_share,
+            "group_hit_median": round(group_hit_median, 3) if group_hit_median is not None else None,
+            "group_attack_share": (
+                round(group_attack_share, 6) if group_attack_share is not None else None
+            ),
+        }
+        if flagged:
+            metrics["flagged_players"] = flagged
+        return BasicAttackDistributionScreen(status=status, reason=reason, metrics=metrics)
+
+
+def summarize_basic_attack_events(
+    events: list[Any],
+    players: list[Any],
+) -> dict[str, Any]:
+    """把 ability 7 raw events 壓成可重判的最小玩家彙總。
+
+    FFLogs 同一個命中通常同時回傳 ``calculateddamage`` 與 ``damage``；只能採後者，
+    否則命中數與普攻總傷會重複兩次。純一般普攻另排除暴擊與直擊，再除以 FFLogs
+    ``multiplier``，避免團輔、目標減傷或易傷直接污染每擊基準。
+    """
+
+    player_by_source: dict[int, dict[str, Any]] = {}
+    for raw_player in players:
+        if not isinstance(raw_player, dict):
+            continue
+        source_id = to_int(raw_player.get("fflogs_id"))
+        if source_id is not None:
+            player_by_source[source_id] = raw_player
+
+    grouped: dict[int, list[dict[str, Any]]] = {}
+    seen: set[tuple[Any, ...]] = set()
+    actual_event_count = 0
+    for raw_event in events:
+        if not isinstance(raw_event, dict) or raw_event.get("type") != "damage":
+            continue
+        ability_id = to_int(raw_event.get("abilityGameID"))
+        if ability_id is not None and ability_id != 7:
+            continue
+        source_id = to_int(raw_event.get("sourceID"))
+        amount = to_number(raw_event.get("amount"))
+        if source_id is None or amount is None or amount <= 0:
+            continue
+        identity = (
+            raw_event.get("timestamp"),
+            raw_event.get("packetID"),
+            source_id,
+            raw_event.get("targetID"),
+            amount,
+            raw_event.get("hitType"),
+            bool(raw_event.get("directHit")),
+        )
+        if identity in seen:
+            continue
+        seen.add(identity)
+        actual_event_count += 1
+        grouped.setdefault(source_id, []).append(raw_event)
+
+    summaries: list[dict[str, Any]] = []
+    mapped_event_count = 0
+    for source_id, source_events in sorted(grouped.items()):
+        player = player_by_source.get(source_id)
+        total_damage = to_number(player.get("total_damage")) if player is not None else None
+        if player is None or total_damage is None or total_damage <= 0:
+            continue
+        mapped_event_count += len(source_events)
+        attack_damage = sum(to_number(event.get("amount")) or 0 for event in source_events)
+        pure_normal: list[float] = []
+        for event in source_events:
+            if to_int(event.get("hitType")) != 1 or bool(event.get("directHit")):
+                continue
+            amount = to_number(event.get("amount"))
+            if amount is None or amount <= 0:
+                continue
+            multiplier = to_number(event.get("multiplier")) or 1.0
+            pure_normal.append(amount / multiplier)
+        summaries.append({
+            "source_id": source_id,
+            "job": str(player.get("job") or ""),
+            "attack_event_count": len(source_events),
+            "pure_normal_count": len(pure_normal),
+            "pure_normal_median": round(median(pure_normal), 3) if pure_normal else None,
+            "attack_damage": round(attack_damage, 3),
+            "attack_share": round(attack_damage / total_damage, 6),
+        })
+
+    return {
+        "actual_event_count": actual_event_count,
+        "mapped_event_count": mapped_event_count,
+        "players": summaries,
+    }
 
 
 def parse_iso_to_epoch_ms(value: Any) -> int | None:
@@ -172,13 +526,63 @@ def attach_known_capacity_screen(
     return result
 
 
+def apply_basic_attack_distribution_screen(
+    result: dict[str, Any],
+    screen: BasicAttackDistributionScreen | None,
+) -> dict[str, Any]:
+    """把事件分布作為獨立 OR 分支合併，不讓正常事件結果覆蓋其他異常證據。"""
+
+    if screen is None:
+        return result
+    metrics = result.get("metrics")
+    normalized_metrics = dict(metrics) if isinstance(metrics, dict) else {}
+    normalized_metrics["basic_attack_distribution"] = dict(screen.metrics)
+    result["metrics"] = normalized_metrics
+    if not screen.is_abnormal:
+        return result
+
+    reasons = result.get("reasons")
+    normalized_reasons = list(reasons) if isinstance(reasons, list) else []
+    if screen.reason and screen.reason not in normalized_reasons:
+        normalized_reasons.append(screen.reason)
+    result["reasons"] = normalized_reasons
+    if screen.status == "excluded" or result.get("status") != "excluded":
+        result["status"] = screen.status
+    result["hidden_from_public"] = True
+    return result
+
+
+def make_basic_attack_distribution_result(
+    *,
+    checked_at_iso: str,
+    screen: BasicAttackDistributionScreen,
+) -> dict[str, Any]:
+    """事件分布已足以判定異常時，不再為同一場額外消耗敵方生命池 API。"""
+
+    return apply_basic_attack_distribution_screen({
+        "calculation_version": CALCULATION_VERSION,
+        "ruleset": RULESET,
+        "checked_at_iso": checked_at_iso,
+        "status": "valid",
+        "hidden_from_public": False,
+        "reasons": [],
+    }, screen)
+
+
 def needs_check(fight: dict[str, Any]) -> bool:
     result = current_result(fight)
     if result is None:
         return True
     if to_int(result.get("calculation_version")) == CALCULATION_VERSION:
-        return False
-    # v8 正常結論繼續公開且不占用日常回補額度；v8 失敗結果才逐批用 v9 重判。
+        # 可重現的 missing_enemy_max_hp 等結果不應每輪重查；但執行期例外只是一時失敗，
+        # 必須重新排入後續批次，避免程式修正後仍永久停在 unverifiable。
+        reasons = result.get("reasons")
+        return (
+            result.get("status") == "unverifiable"
+            and isinstance(reasons, list)
+            and "integrity_measurement_failed" in reasons
+        )
+    # v8/v9 正常結論繼續公開且不占用日常回補額度；失敗結果才逐批用現行規則重判。
     return not is_legacy_public_compatible_result(result)
 
 
@@ -187,8 +591,8 @@ def is_hidden_from_public(fight: Any) -> bool:
         return False
     result = current_result(fight)
     if result is not None:
-        # v8 已證實正常的資料維持公開；v8 失敗、其他舊版或無法驗證的結果仍保守隱藏。
-        # 這讓 v9 能專注修正 v8 誤判案例，而不會在漫長回補期間撤下正常 7.2 成績。
+        # v8/v9 已證實正常的資料維持公開；舊版失敗、未知版本或無法驗證的結果仍保守隱藏。
+        # 這讓 v10 能優先補 M5S～M8S 的普攻分布，而不會在漫長回補期間撤下其他正常成績。
         return not is_public_compatible_result(result)
     cutoff_ms = parse_iso_to_epoch_ms(DEFAULT_CUTOFF_ISO)
     # 回補尚未寫入標記的既有 fight 同樣採 fail-closed，直到離線批次處理完畢。
@@ -402,6 +806,7 @@ def evaluate(
     suspected_hp_ratio_threshold: float,
     historical_screen: Any | None = None,
     known_capacity_screen: Any | None = None,
+    basic_attack_screen: BasicAttackDistributionScreen | None = None,
 ) -> dict[str, Any]:
     """建立唯一的判定結果；倍率是全隊傷害 / 目標最大 HP 總和。
 
@@ -410,13 +815,13 @@ def evaluate(
     漏報標記，因此不能再依賴泛用 exploit:6 補判。
     """
     if enemy_damage < 0 or enemy_hp_capacity <= 0 or target_count <= 0:
-        return make_unverifiable_result(
+        return apply_basic_attack_distribution_screen(make_unverifiable_result(
             checked_at_iso=checked_at_iso,
             reason="invalid_enemy_hp_measurement",
             attack_marker=attack_marker,
             historical_screen=historical_screen,
             known_capacity_screen=known_capacity_screen,
-        )
+        ), basic_attack_screen)
 
     ratio = enemy_damage / enemy_hp_capacity
     reasons: list[str] = []
@@ -512,7 +917,8 @@ def evaluate(
             "target_count": target_count,
         },
     }
-    return attach_known_capacity_screen(
+    result = attach_known_capacity_screen(
         attach_historical_damage_screen(result, historical_screen),
         known_capacity_screen,
     )
+    return apply_basic_attack_distribution_screen(result, basic_attack_screen)

@@ -8,6 +8,197 @@ import fight_integrity_known_capacity as known_capacity
 
 
 class FightIntegrityTest(unittest.TestCase):
+    def make_basic_attack_policy(self) -> integrity.BasicAttackDistributionPolicy:
+        return integrity.BasicAttackDistributionPolicy.from_mapping({
+            "enabled": True,
+            "reference_version": "fixture",
+            "encounter_keys": ["savage_m6s"],
+            "reference_hit_median": 4_805.7,
+            "reference_attack_share": 0.0861,
+        })
+
+    @staticmethod
+    def basic_attack_player(
+        source_id: int,
+        job: str,
+        hit_median: float,
+        attack_share: float,
+        *,
+        attack_count: int = 180,
+        pure_count: int = 80,
+    ) -> dict[str, object]:
+        return {
+            "source_id": source_id,
+            "job": job,
+            "attack_event_count": attack_count,
+            "pure_normal_count": pure_count,
+            "pure_normal_median": hit_median,
+            "attack_damage": 4_000_000,
+            "attack_share": attack_share,
+        }
+
+    def test_basic_attack_summary_uses_only_actual_non_crit_non_direct_hits(self) -> None:
+        players = [{"fflogs_id": 10, "job": "Reaper", "total_damage": 1_000}]
+        events = [
+            {
+                "timestamp": 1,
+                "packetID": 1,
+                "type": "calculateddamage",
+                "sourceID": 10,
+                "targetID": 20,
+                "abilityGameID": 7,
+                "hitType": 1,
+                "amount": 200,
+                "multiplier": 2,
+            },
+            {
+                "timestamp": 2,
+                "packetID": 1,
+                "type": "damage",
+                "sourceID": 10,
+                "targetID": 20,
+                "abilityGameID": 7,
+                "hitType": 1,
+                "amount": 200,
+                "multiplier": 2,
+            },
+            {
+                "timestamp": 3,
+                "packetID": 2,
+                "type": "damage",
+                "sourceID": 10,
+                "targetID": 20,
+                "abilityGameID": 7,
+                "hitType": 1,
+                "directHit": True,
+                "amount": 250,
+                "multiplier": 1,
+            },
+            {
+                "timestamp": 4,
+                "packetID": 3,
+                "type": "damage",
+                "sourceID": 10,
+                "targetID": 20,
+                "abilityGameID": 7,
+                "hitType": 2,
+                "amount": 300,
+                "multiplier": 1,
+            },
+        ]
+
+        measurement = integrity.summarize_basic_attack_events(events, players)
+
+        self.assertEqual(measurement["actual_event_count"], 3)
+        self.assertEqual(measurement["mapped_event_count"], 3)
+        player = measurement["players"][0]
+        self.assertEqual(player["attack_event_count"], 3)
+        self.assertEqual(player["pure_normal_count"], 1)
+        self.assertEqual(player["pure_normal_median"], 100)
+        self.assertEqual(player["attack_damage"], 750)
+        self.assertEqual(player["attack_share"], 0.75)
+
+    def test_basic_attack_normal_team_is_valid(self) -> None:
+        policy = self.make_basic_attack_policy()
+        measurement = {
+            "actual_event_count": 900,
+            "mapped_event_count": 900,
+            "players": [
+                self.basic_attack_player(index, job, 5_000, 0.09)
+                for index, job in enumerate(
+                    ("Warrior", "Paladin", "Samurai", "Viper", "Dancer"),
+                    start=1,
+                )
+            ],
+        }
+
+        screen = policy.screen(measurement)
+
+        self.assertEqual(screen.status, "valid")
+        self.assertEqual(screen.metrics["eligible_player_count"], 5)
+        self.assertEqual(screen.metrics["flagged_player_count"], 0)
+
+    def test_basic_attack_four_of_five_abnormal_players_are_excluded(self) -> None:
+        policy = self.make_basic_attack_policy()
+        measurement = {
+            "actual_event_count": 900,
+            "mapped_event_count": 900,
+            "players": [
+                self.basic_attack_player(1, "Warrior", 17_000, 0.23),
+                self.basic_attack_player(2, "Paladin", 23_000, 0.28),
+                self.basic_attack_player(3, "Samurai", 17_100, 0.24),
+                self.basic_attack_player(4, "Reaper", 19_800, 0.18),
+                self.basic_attack_player(5, "Dancer", 5_700, 0.10),
+            ],
+        }
+
+        screen = policy.screen(measurement)
+
+        self.assertEqual(screen.status, "excluded")
+        self.assertEqual(screen.reason, "team_basic_attack_damage_distribution_abnormal")
+        self.assertEqual(screen.metrics["flagged_player_count"], 4)
+        self.assertGreaterEqual(screen.metrics["group_hit_median"], 15_000)
+        self.assertGreaterEqual(screen.metrics["group_attack_share"], 0.20)
+
+    def test_basic_attack_three_of_five_abnormal_players_are_suspected(self) -> None:
+        policy = self.make_basic_attack_policy()
+        measurement = {
+            "actual_event_count": 900,
+            "mapped_event_count": 900,
+            "players": [
+                self.basic_attack_player(1, "Warrior", 16_000, 0.18),
+                self.basic_attack_player(2, "Samurai", 16_500, 0.19),
+                self.basic_attack_player(3, "Viper", 17_000, 0.20),
+                self.basic_attack_player(4, "Paladin", 3_300, 0.09),
+                self.basic_attack_player(5, "Dancer", 5_700, 0.10),
+            ],
+        }
+
+        screen = policy.screen(measurement)
+
+        self.assertEqual(screen.status, "suspected")
+        self.assertEqual(screen.reason, "multiple_players_basic_attack_metrics_abnormal")
+        self.assertEqual(screen.metrics["flagged_player_ratio"], 0.6)
+
+    def test_basic_attack_requires_both_hit_and_share_thresholds(self) -> None:
+        policy = self.make_basic_attack_policy()
+        measurement = {
+            "actual_event_count": 700,
+            "mapped_event_count": 700,
+            "players": [
+                self.basic_attack_player(1, "Warrior", 16_000, 0.10),
+                self.basic_attack_player(2, "Samurai", 5_000, 0.20),
+                self.basic_attack_player(3, "Viper", 5_000, 0.09),
+                self.basic_attack_player(4, "Paladin", 3_300, 0.09),
+            ],
+        }
+
+        screen = policy.screen(measurement)
+
+        self.assertEqual(screen.status, "valid")
+        self.assertEqual(screen.metrics["flagged_player_count"], 0)
+
+    def test_basic_attack_screen_never_downgrades_existing_excluded_result(self) -> None:
+        screen = self.make_basic_attack_policy().screen({
+            "actual_event_count": 700,
+            "mapped_event_count": 700,
+            "players": [
+                self.basic_attack_player(index, job, 5_000, 0.09)
+                for index, job in enumerate(("Warrior", "Paladin", "Samurai"), start=1)
+            ],
+        })
+        result = {
+            "status": "excluded",
+            "hidden_from_public": True,
+            "reasons": ["enemy_damage_exceeds_hp_ratio_threshold"],
+        }
+
+        merged = integrity.apply_basic_attack_distribution_screen(result, screen)
+
+        self.assertEqual(merged["status"], "excluded")
+        self.assertTrue(merged["hidden_from_public"])
+        self.assertIn("basic_attack_distribution", merged["metrics"])
+
     def test_hp_ratio_over_threshold_is_excluded(self) -> None:
         result = integrity.evaluate(
             checked_at_iso="2026-07-30T00:00:00Z",
@@ -128,7 +319,7 @@ class FightIntegrityTest(unittest.TestCase):
         self.assertFalse(integrity.needs_check(fight))
         self.assertFalse(integrity.is_hidden_from_public(fight))
 
-    def test_existing_v8_failed_result_stays_hidden_and_enters_v9_recheck(self) -> None:
+    def test_existing_v8_failed_result_stays_hidden_and_enters_current_recheck(self) -> None:
         for status in ("excluded", "suspected", "unverifiable"):
             with self.subTest(status=status):
                 fight = {
@@ -141,6 +332,30 @@ class FightIntegrityTest(unittest.TestCase):
 
                 self.assertTrue(integrity.needs_check(fight))
                 self.assertTrue(integrity.is_hidden_from_public(fight))
+
+    def test_current_transient_measurement_failure_is_retried(self) -> None:
+        fight = {
+            "data_integrity": {
+                "calculation_version": integrity.CALCULATION_VERSION,
+                "status": "unverifiable",
+                "hidden_from_public": True,
+                "reasons": ["integrity_measurement_failed"],
+            }
+        }
+
+        self.assertTrue(integrity.needs_check(fight))
+
+    def test_current_reproducible_unverifiable_result_is_not_retried_each_run(self) -> None:
+        fight = {
+            "data_integrity": {
+                "calculation_version": integrity.CALCULATION_VERSION,
+                "status": "unverifiable",
+                "hidden_from_public": True,
+                "reasons": ["missing_enemy_max_hp"],
+            }
+        }
+
+        self.assertFalse(integrity.needs_check(fight))
 
     def test_unverifiable_attack_marker_stays_hidden(self) -> None:
         result = integrity.make_unverifiable_result(

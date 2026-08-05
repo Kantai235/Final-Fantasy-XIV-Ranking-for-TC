@@ -511,6 +511,112 @@ class FightIntegrityBackfillCacheTest(unittest.TestCase):
 
         self.assertTrue(backfill.candidate_needs_check(self.candidate, self.config))
 
+    def test_v9_m6s_valid_result_enters_v10_distribution_recheck(self) -> None:
+        self.candidate.encounter_key = "savage_m6s"
+        self.candidate.fight.update({
+            "kill": True,
+            "has_echo": False,
+            "size": 8,
+            "standard_composition": True,
+            "data_integrity": {
+                "calculation_version": 9,
+                "status": "valid",
+                "hidden_from_public": False,
+            },
+        })
+        self.config.basic_attack_distribution = (
+            integrity.BasicAttackDistributionPolicy.from_mapping({
+                "enabled": True,
+                "reference_version": "fixture",
+                "encounter_keys": ["savage_m6s"],
+            })
+        )
+
+        self.assertTrue(backfill.candidate_needs_check(self.candidate, self.config))
+
+    def test_team_basic_attack_anomaly_skips_enemy_hp_query_and_reuses_cache(self) -> None:
+        self.candidate.encounter_key = "savage_m6s"
+        self.candidate.fight.update({
+            "kill": True,
+            "has_echo": False,
+            "size": 8,
+            "standard_composition": True,
+            "players": [
+                {
+                    "fflogs_id": source_id,
+                    "job": job,
+                    "total_damage": 20_000_000,
+                }
+                for source_id, job in enumerate(
+                    ("Warrior", "Paladin", "Samurai", "Reaper", "Dancer"),
+                    start=1,
+                )
+            ],
+        })
+        self.config.basic_attack_distribution = (
+            integrity.BasicAttackDistributionPolicy.from_mapping({
+                "enabled": True,
+                "reference_version": "fixture",
+                "encounter_keys": ["savage_m6s"],
+            })
+        )
+        basic_measurement = {
+            "actual_event_count": 900,
+            "mapped_event_count": 900,
+            "players": [
+                {
+                    "source_id": source_id,
+                    "job": job,
+                    "attack_event_count": 180,
+                    "pure_normal_count": 80,
+                    "pure_normal_median": 17_000,
+                    "attack_damage": 4_600_000,
+                    "attack_share": 0.23,
+                }
+                for source_id, job in enumerate(
+                    ("Warrior", "Paladin", "Samurai", "Reaper", "Dancer"),
+                    start=1,
+                )
+            ],
+        }
+
+        with (
+            patch.object(backfill, "query_basic_attack_events", return_value=[{"type": "damage"}]) as query_basic,
+            patch.object(
+                backfill.integrity,
+                "summarize_basic_attack_events",
+                return_value=basic_measurement,
+            ),
+            patch.object(backfill, "query_target_damage") as query_target,
+        ):
+            first, first_cache_hit, first_api_queried = backfill.evaluate_candidate(
+                None,
+                None,
+                self.candidate,
+                self.config,
+                "2026-08-06T00:00:00Z",
+                self.cache,
+                refresh_cache=False,
+            )
+            second, second_cache_hit, second_api_queried = backfill.evaluate_candidate(
+                None,
+                None,
+                self.candidate,
+                self.config,
+                "2026-08-06T00:01:00Z",
+                self.cache,
+                refresh_cache=False,
+            )
+
+        self.assertEqual(first["status"], "excluded")
+        self.assertEqual(second["status"], "excluded")
+        self.assertFalse(first_cache_hit)
+        self.assertTrue(first_api_queried)
+        self.assertTrue(second_cache_hit)
+        self.assertFalse(second_api_queried)
+        self.assertEqual(query_basic.call_count, 1)
+        query_target.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

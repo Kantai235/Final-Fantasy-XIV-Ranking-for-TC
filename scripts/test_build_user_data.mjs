@@ -390,6 +390,43 @@ async function createFixture(tempRoot) {
         },
       ],
     },
+    INTEGRITY1_MIRROR: {
+      report_code: "INTEGRITY1_MIRROR",
+      title: "Fixture mirrored integrity-hidden fight",
+      url: "https://www.fflogs.com/reports/INTEGRITY1_MIRROR",
+      report_start_time_iso: "2026-01-03T04:51:00.000Z",
+      fights: [
+        {
+          fight_id: 18,
+          fight_hash: "integrity-hidden-fixture-fight",
+          clear_time_ms: 500000,
+          clear_time_seconds: 500,
+          damage_time_ms: 450000,
+          damage_time_seconds: 450,
+          recorded_at: 1767416400000,
+          recorded_at_iso: "2026-01-03T05:00:00.000Z",
+          // 另一份上傳本身看似正常，但 fight_hash 已由 INTEGRITY1 證實為同一場異常戰鬥。
+          data_integrity: {
+            calculation_version: 10,
+            status: "valid",
+            hidden_from_public: false,
+          },
+          players: [
+            {
+              name: "異常鏡像角色",
+              server: "鳳凰",
+              job: "Monk",
+              dps: 8888,
+              rdps: 8888,
+              adps: 8888,
+              total_damage: 3999600,
+              active_time_ms: 430000,
+              active_percent: 95.56,
+            },
+          ],
+        },
+      ],
+    },
     INTEGRITY_PENDING: {
       report_code: "INTEGRITY_PENDING",
       title: "Fixture unchecked post-cutoff fight",
@@ -550,6 +587,14 @@ async function assertFixtureOutput(tempRoot, expectedGlobalStatsText, expectedSe
   assert(hiddenUserData.frequent_teammates.length === 0, "空白成績單不可輸出隊友資料。");
   assert(!usersIndex.users.some((user) => user.character_name === "異常角色"), "完整性檢核隱藏的 fight 不可產生公開角色入口。");
   assert(!allUsersIndex.users.some((user) => user.character_name === "異常角色"), "完整性檢核隱藏的 fight 不可回流到 hidden delta。");
+  assert(
+    !usersIndex.users.some((user) => user.character_name === "異常鏡像角色"),
+    "同一 fight_hash 的其他 report 變體不可把已確認異常的戰鬥帶回公開索引。",
+  );
+  assert(
+    !allUsersIndex.users.some((user) => user.character_name === "異常鏡像角色"),
+    "同一 fight_hash 的異常戰鬥也不可回流到 hidden delta。",
+  );
   const pendingIntegrityUser = usersIndex.users.find((user) => user.character_name === "待檢核角色");
   const allPendingIntegrityUser = allUsersIndex.users.find((user) => user.character_name === "待檢核角色");
   assert(pendingIntegrityUser, "private 且未檢核的來源仍應保留公開空白使用者入口。");

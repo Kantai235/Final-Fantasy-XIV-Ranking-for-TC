@@ -24,6 +24,7 @@ from fflogs_pipeline.graphql_queries import (
     戰鬥清單全部查詢,
     建立戰鬥完整性目標生命值查詢,
     淺層掃描查詢,
+    戰鬥完整性普攻事件查詢,
     戰鬥完整性目標傷害查詢,
     玩家成績查詢,
     玩家成績全部查詢,
@@ -209,6 +210,9 @@ class 戰鬥完整性檢核設定:
     known_enemy_capacity: known_capacity.KnownEnemyCapacityPolicy = (
         known_capacity.KnownEnemyCapacityPolicy.disabled()
     )
+    basic_attack_distribution: integrity.BasicAttackDistributionPolicy = (
+        integrity.BasicAttackDistributionPolicy.disabled()
+    )
 
 
 def 解析布林設定值(值: Any, 預設值: bool) -> bool:
@@ -269,6 +273,9 @@ def 讀取戰鬥完整性檢核設定() -> 戰鬥完整性檢核設定:
     if not known_capacity_path.is_absolute():
         known_capacity_path = 專案根目錄 / known_capacity_path
     known_enemy_capacity = known_capacity.load_known_enemy_capacity_policy(known_capacity_path)
+    basic_attack_distribution = integrity.BasicAttackDistributionPolicy.from_mapping(
+        設定.get("basic_attack_distribution")
+    )
     enabled = 解析布林設定值(設定.get("enabled"), True)
     enabled = 解析布林設定值(os.getenv("FFLOGS_FIGHT_INTEGRITY_ENABLED"), enabled)
     return 戰鬥完整性檢核設定(
@@ -280,6 +287,7 @@ def 讀取戰鬥完整性檢核設定() -> 戰鬥完整性檢核設定:
         excluded_encounter_keys=excluded_encounter_keys,
         historical_damage_baselines=historical_damage_baselines,
         known_enemy_capacity=known_enemy_capacity,
+        basic_attack_distribution=basic_attack_distribution,
     )
 
 
@@ -3646,6 +3654,19 @@ def 戰鬥已標記資料完整性隱藏(戰鬥: Any) -> bool:
     return integrity.is_hidden_from_public(戰鬥)
 
 
+def 戰鬥已確認資料完整性異常(戰鬥: Any) -> bool:
+    """只有明確 excluded／suspected 才能把同一 fight_hash 的其他上傳一併隱藏。"""
+
+    if not isinstance(戰鬥, dict):
+        return False
+    結果 = 戰鬥.get(integrity.DATA_INTEGRITY_KEY)
+    return (
+        isinstance(結果, dict)
+        and 結果.get("status") in {"excluded", "suspected"}
+        and bool(結果.get("hidden_from_public"))
+    )
+
+
 def 標記排行榜報告隱藏(
     排行榜: dict[str, Any],
     報告代碼: str,
@@ -3916,6 +3937,22 @@ def 建立排行榜條目(
             if isinstance(條目, dict):
                 登記排行榜條目(條目, 精確成績索引)
 
+    # 完整性判定屬於物理戰鬥，不屬於單一上傳 report。同一場可由多名隊員上傳，
+    # 若只隱藏其中一份，去重器會改選另一份來源，使完全相同的異常 rDPS 回到榜單。
+    # 先為所有來源建立 fight_hash，再彙整已確認異常的 hash；unverifiable 不傳播，
+    # 避免一份暫時查詢失敗的上傳壓過另一份已驗證正常來源。
+    已確認異常戰鬥簽章: set[str] = set()
+    for 報告 in 報告索引.values():
+        if not isinstance(報告, dict):
+            continue
+        for 戰鬥 in 報告.get("fights") or []:
+            if not isinstance(戰鬥, dict):
+                continue
+            戰鬥簽章 = 建立戰鬥簽章(戰鬥)
+            戰鬥["fight_hash"] = 戰鬥簽章
+            if 戰鬥已確認資料完整性異常(戰鬥):
+                已確認異常戰鬥簽章.add(戰鬥簽章)
+
     for 報告代碼, 報告 in 報告索引.items():
         if 報告代碼已排除(報告代碼):
             continue
@@ -3929,11 +3966,12 @@ def 建立排行榜條目(
         for 戰鬥 in 報告.get("fights") or []:
             if not isinstance(戰鬥, dict):
                 continue
-            if 戰鬥已標記資料完整性隱藏(戰鬥):
+            戰鬥簽章 = str(戰鬥.get("fight_hash") or 建立戰鬥簽章(戰鬥))
+            if (
+                戰鬥已標記資料完整性隱藏(戰鬥)
+                or 戰鬥簽章 in 已確認異常戰鬥簽章
+            ):
                 continue
-
-            戰鬥簽章 = 建立戰鬥簽章(戰鬥)
-            戰鬥["fight_hash"] = 戰鬥簽章
 
             for 玩家 in 戰鬥.get("players") or []:
                 if not isinstance(玩家, dict):
@@ -4341,6 +4379,50 @@ def 查詢戰鬥完整性目標生命值(
     return 目標生命值索引
 
 
+def 查詢戰鬥完整性普攻事件(
+    session: requests.Session,
+    認證池: FFLogs認證池,
+    報告代碼: str,
+    戰鬥: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """完整分頁讀取 ability 7，呼叫端只保存玩家層彙總而不落地 raw events。"""
+
+    戰鬥_id = integrity.to_int(戰鬥.get("fight_id"))
+    開始時間 = integrity.to_number(戰鬥.get("start_time"))
+    結束時間 = integrity.to_number(戰鬥.get("end_time"))
+    if 戰鬥_id is None or 開始時間 is None or 結束時間 is None or 結束時間 <= 開始時間:
+        raise RuntimeError("普攻分布查詢缺少完整 fight ID 或相對時間範圍")
+
+    事件列表: list[dict[str, Any]] = []
+    游標 = 開始時間
+    for _ in range(100):
+        payload = 執行_graphql(
+            session,
+            認證池,
+            戰鬥完整性普攻事件查詢,
+            {
+                "code": 報告代碼,
+                "fightID": 戰鬥_id,
+                "startTime": 游標,
+                "endTime": 結束時間,
+            },
+        )
+        報告 = ((payload.get("reportData") or {}).get("report")) or {}
+        事件區塊 = 報告.get("basicAttacks") if isinstance(報告, dict) else {}
+        本頁事件 = 事件區塊.get("data") if isinstance(事件區塊, dict) else None
+        if not isinstance(本頁事件, list):
+            raise RuntimeError("FFLogs 普攻事件回應缺少 data 陣列")
+        事件列表.extend(事件 for 事件 in 本頁事件 if isinstance(事件, dict))
+
+        下一頁 = integrity.to_number(事件區塊.get("nextPageTimestamp"))
+        if 下一頁 is None or 下一頁 >= 結束時間:
+            return 事件列表
+        if 下一頁 <= 游標:
+            raise RuntimeError("FFLogs 普攻事件分頁游標沒有前進")
+        游標 = 下一頁
+    raise RuntimeError("FFLogs 普攻事件分頁超過 100 頁安全上限")
+
+
 def 檢核戰鬥完整性(
     session: requests.Session,
     認證池: FFLogs認證池,
@@ -4364,6 +4446,40 @@ def 檢核戰鬥完整性(
 
     攻擊異常標記 = integrity.has_basic_attack_exploit_marker(戰鬥)
     檢核時間 = 毫秒轉_iso(現在毫秒()) or ""
+    普攻分布結果: integrity.BasicAttackDistributionScreen | None = None
+    if 設定.basic_attack_distribution.applies(副本鍵值, 戰鬥):
+        if not 戰鬥完整性查詢脈絡完整(戰鬥):
+            return integrity.make_unverifiable_result(
+                checked_at_iso=檢核時間,
+                reason="missing_basic_attack_query_context",
+                attack_marker=攻擊異常標記,
+            )
+        普攻彙總 = 測量快取.get_basic_attack(報告代碼, 報告脈絡, 戰鬥)
+        if 普攻彙總 is None:
+            普攻事件 = 查詢戰鬥完整性普攻事件(session, 認證池, 報告代碼, 戰鬥)
+            普攻彙總 = integrity.summarize_basic_attack_events(
+                普攻事件,
+                戰鬥.get("players") if isinstance(戰鬥.get("players"), list) else [],
+            )
+            測量快取.put_basic_attack(
+                報告代碼,
+                報告脈絡,
+                戰鬥,
+                measurement=普攻彙總,
+                cached_at_iso=檢核時間,
+            )
+        普攻分布結果 = 設定.basic_attack_distribution.screen(普攻彙總)
+        if 普攻分布結果.is_abnormal:
+            # 同場多人同時跨過每擊傷害與占比門檻時，事件證據已足以隱藏，不再為
+            # 同一場追加敵方生命池 request。原始 report/fight/players 仍完整保留。
+            return integrity.make_basic_attack_distribution_result(
+                checked_at_iso=檢核時間,
+                screen=普攻分布結果,
+            )
+
+    def 合併普攻分布(結果: dict[str, Any]) -> dict[str, Any]:
+        return integrity.apply_basic_attack_distribution_screen(結果, 普攻分布結果)
+
     歷史傷害預篩 = 設定.historical_damage_baselines.screen(副本鍵值, 戰鬥)
     已知生命池預篩 = 設定.known_enemy_capacity.screen(副本鍵值, 戰鬥)
     需要敵方承傷量測 = 設定.known_enemy_capacity.requires_enemy_damage_measurement(副本鍵值)
@@ -4381,31 +4497,31 @@ def 檢核戰鬥完整性(
             or 已知生命池預篩.exceeds_maximum_full_party_damage
         )
     ):
-        return integrity.make_known_capacity_result(
+        return 合併普攻分布(integrity.make_known_capacity_result(
             checked_at_iso=檢核時間,
             known_capacity_screen=已知生命池預篩,
             hp_ratio_threshold=設定.hp_ratio_threshold,
             attack_marker=攻擊異常標記,
-        )
+        ))
 
     # 多階段副本不以單一目標生命池判定正常；但完整隊伍傷害越過獨立確認的硬上限時，
     # 仍可不查詢 API 直接隱藏，避免「不適用」繞過明確的傷害異常證據。
     if 副本鍵值 in 設定.excluded_encounter_keys:
-        return integrity.make_not_applicable_result(
+        return 合併普攻分布(integrity.make_not_applicable_result(
             checked_at_iso=檢核時間,
             reason="encounter_hp_pool_semantics_not_supported",
-        )
+        ))
 
     快取結果 = 測量快取.get(報告代碼, 報告脈絡, 戰鬥)
     if 快取結果 is not None:
         if 快取結果["outcome"] == "unverifiable":
-            return integrity.make_unverifiable_result(
+            return 合併普攻分布(integrity.make_unverifiable_result(
                 checked_at_iso=檢核時間,
                 reason=快取結果["reason"],
                 attack_marker=攻擊異常標記,
                 historical_screen=歷史傷害預篩,
                 known_capacity_screen=已知生命池預篩,
-            )
+            ))
         測量值 = 快取結果["measurement"]
     else:
         # 已知固定生命池只把「完整隊伍傷害下限已超標」視為異常證據。它不能證明
@@ -4414,12 +4530,12 @@ def 檢核戰鬥完整性(
             已知生命池預篩 is not None
             and 已知生命池預篩.exceeds_suspected_threshold
         ):
-            return integrity.make_known_capacity_result(
+            return 合併普攻分布(integrity.make_known_capacity_result(
                 checked_at_iso=檢核時間,
                 known_capacity_screen=已知生命池預篩,
                 hp_ratio_threshold=設定.hp_ratio_threshold,
                 attack_marker=攻擊異常標記,
-            )
+            ))
         # 完整繁中隊伍且仍在歷史高端範圍內、又沒有敵方承傷專用規則的舊副本，不必
         # 為正常新紀錄重複查敵方 HP。Attack 標記、高端候選與已設定敵方承傷上限的
         # 副本仍進入量測路徑，以保留高信心 excluded／專用上限的可能性。
@@ -4429,18 +4545,18 @@ def 檢核戰鬥完整性(
             and not 攻擊異常標記
             and not 需要敵方承傷量測
         ):
-            return integrity.make_historical_screen_valid_result(
+            return 合併普攻分布(integrity.make_historical_screen_valid_result(
                 checked_at_iso=檢核時間,
                 historical_screen=歷史傷害預篩,
-            )
+            ))
         if not 戰鬥完整性查詢脈絡完整(戰鬥):
-            return integrity.make_unverifiable_result(
+            return 合併普攻分布(integrity.make_unverifiable_result(
                 checked_at_iso=檢核時間,
                 reason="missing_fight_query_context",
                 attack_marker=攻擊異常標記,
                 historical_screen=歷史傷害預篩,
                 known_capacity_screen=已知生命池預篩,
-            )
+            ))
         目標列表 = 查詢戰鬥完整性目標傷害(session, 認證池, 報告代碼, 戰鬥)
         目標_id清單 = [目標["id"] for 目標 in 目標列表]
         目標生命值索引 = 查詢戰鬥完整性目標生命值(
@@ -4458,13 +4574,13 @@ def 檢核戰鬥完整性(
                 reason="missing_enemy_max_hp",
                 cached_at_iso=檢核時間,
             )
-            return integrity.make_unverifiable_result(
+            return 合併普攻分布(integrity.make_unverifiable_result(
                 checked_at_iso=檢核時間,
                 reason="missing_enemy_max_hp",
                 attack_marker=攻擊異常標記,
                 historical_screen=歷史傷害預篩,
                 known_capacity_screen=已知生命池預篩,
-            )
+            ))
         測量值 = {
             "enemy_damage": sum(目標["damage"] for 目標 in 目標列表),
             "enemy_hp_capacity": sum(
@@ -4501,6 +4617,7 @@ def 檢核戰鬥完整性(
         suspected_hp_ratio_threshold=設定.suspected_hp_ratio_threshold,
         historical_screen=歷史傷害預篩,
         known_capacity_screen=有效已知生命池預篩,
+        basic_attack_screen=普攻分布結果,
     )
 
 
@@ -5226,7 +5343,8 @@ def main() -> int:
         print(
             "已啟用新 report 戰鬥完整性檢核："
             f"切點={完整性檢核設定.cutoff_iso}、"
-            f"異常倍率門檻={完整性檢核設定.hp_ratio_threshold}。"
+            f"異常倍率門檻={完整性檢核設定.hp_ratio_threshold}、"
+            f"普攻事件分布={'啟用' if 完整性檢核設定.basic_attack_distribution.enabled else '停用'}。"
         )
     else:
         print("新 report 戰鬥完整性檢核已停用；既有 hidden_from_public 標記仍會保留。")

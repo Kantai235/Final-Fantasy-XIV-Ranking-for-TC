@@ -368,9 +368,10 @@ function isHiddenEntry(entry) {
 const fightIntegrityCutoffMs = Date.parse("2026-07-28T18:00:00+08:00");
 // 必須與 scripts/fight_integrity.py 同步。v9 用來重判 v8 失敗案例；v8 已確認正常的
 // fight 繼續公開，避免規則升版時把已驗證的 7.2 個人成績、隊伍榜與統計整批撤下。
-const currentFightIntegrityCalculationVersion = 9;
-const legacyPublicCompatibleFightIntegrityVersions = new Set([8]);
+const currentFightIntegrityCalculationVersion = 10;
+const legacyPublicCompatibleFightIntegrityVersions = new Set([8, 9]);
 const publicFightIntegrityStatuses = new Set(["valid", "not_applicable"]);
+const confirmedFightIntegrityAnomalyStatuses = new Set(["excluded", "suspected"]);
 
 function isPublicCompatibleIntegrityResult(integrity) {
   const version = Number(integrity?.calculation_version);
@@ -392,6 +393,31 @@ function isIntegrityHiddenFight(fight, report = {}) {
   // 來源層仍保存 report/fight，待離線回補後只有明確 valid 的資料才會公開。
   const recordedAt = fightRecordedAtMs(fight, report);
   return Number.isFinite(recordedAt) && recordedAt >= fightIntegrityCutoffMs;
+}
+
+function isConfirmedFightIntegrityAnomaly(fight) {
+  const integrity = fight?.data_integrity;
+  return Boolean(integrity?.hidden_from_public)
+    && confirmedFightIntegrityAnomalyStatuses.has(String(integrity?.status || ""));
+}
+
+function collectConfirmedAnomalousFightHashes(ranking) {
+  const fightHashes = new Set();
+  for (const report of Object.values(ranking?.reports || {})) {
+    for (const fight of report?.fights || []) {
+      // 同一場戰鬥可能被多位隊員分別上傳。只要任一來源已取得明確異常證據，
+      // 就必須排除相同 fight_hash 的所有變體，否則換一份 report 仍會把異常成績帶回公開產物。
+      if (fight?.fight_hash && isConfirmedFightIntegrityAnomaly(fight)) {
+        fightHashes.add(fight.fight_hash);
+      }
+    }
+  }
+  return fightHashes;
+}
+
+function isIntegrityHiddenFightOrDuplicate(fight, report, confirmedAnomalousFightHashes) {
+  return isIntegrityHiddenFight(fight, report)
+    || Boolean(fight?.fight_hash && confirmedAnomalousFightHashes.has(fight.fight_hash));
 }
 
 function hiddenReportFields(report) {
@@ -1443,6 +1469,7 @@ function collectEntriesFromReports({ ranking, encounter, includeHiddenReports = 
   // 避免同一場戰鬥因不同上傳者的 table 細節差異被拆成多筆個人成績。
   const entriesByExactKey = new Map();
   const rankIndex = buildJobRankIndex(ranking.ranking_entries || []);
+  const confirmedAnomalousFightHashes = collectConfirmedAnomalousFightHashes(ranking);
 
   for (const [fallbackReportCode, report] of Object.entries(ranking.reports || {})) {
     if (!report || typeof report !== "object") {
@@ -1457,7 +1484,7 @@ function collectEntriesFromReports({ ranking, encounter, includeHiddenReports = 
       if (!fight || typeof fight !== "object") {
         continue;
       }
-      if (isIntegrityHiddenFight(fight, report)) {
+      if (isIntegrityHiddenFightOrDuplicate(fight, report, confirmedAnomalousFightHashes)) {
         continue;
       }
 
@@ -1743,6 +1770,7 @@ function collectTeamRecordsFromReports({ ranking, encounter, includeHiddenReport
   // 隊伍榜以 fight 為單位，和個人榜不同：同一場戰鬥若被不同隊員上傳，只保留一筆並累計 duplicate_count。
   // fight_hash 是最佳識別來源；缺少時才退回 report/fight/player 簽章，避免誤合併不同隊伍的相近時間紀錄。
   const recordsByFight = new Map();
+  const confirmedAnomalousFightHashes = collectConfirmedAnomalousFightHashes(ranking);
 
   for (const [fallbackReportCode, report] of Object.entries(ranking.reports || {})) {
     if (!report || typeof report !== "object") {
@@ -1757,7 +1785,7 @@ function collectTeamRecordsFromReports({ ranking, encounter, includeHiddenReport
       if (!fight || typeof fight !== "object") {
         continue;
       }
-      if (isIntegrityHiddenFight(fight, report)) {
+      if (isIntegrityHiddenFightOrDuplicate(fight, report, confirmedAnomalousFightHashes)) {
         continue;
       }
 
@@ -2496,6 +2524,7 @@ function addActivityLogsFromReports(
   // 近期動態的 Logs 曲線以 reports/fights/players 權威來源建立：
   // report_code 回答「有多少份 FFLogs 日誌」，fight_hash 回答「去重後有多少場通關」。
   // 這兩個口徑若在 Vue 端用 ranking_entries 反推，會把同場多份上傳或同一 report 內多場戰鬥混在一起。
+  const confirmedAnomalousFightHashes = collectConfirmedAnomalousFightHashes(ranking);
   for (const [fallbackReportCode, report] of Object.entries(ranking.reports || {})) {
     if (!report || typeof report !== "object") {
       continue;
@@ -2509,7 +2538,7 @@ function addActivityLogsFromReports(
       if (!fight || typeof fight !== "object") {
         continue;
       }
-      if (isIntegrityHiddenFight(fight, report)) {
+      if (isIntegrityHiddenFightOrDuplicate(fight, report, confirmedAnomalousFightHashes)) {
         continue;
       }
 

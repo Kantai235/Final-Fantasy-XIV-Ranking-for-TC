@@ -209,6 +209,35 @@ class FetchFFLogsBatchTest(unittest.TestCase):
         )
         self.assertTrue(all("original_server" not in 條目 for 條目 in 公開排行榜["ranking_entries"]))
 
+    def test_confirmed_integrity_anomaly_hides_all_same_fight_hash_variants(self) -> None:
+        異常報告 = 建立測試排行榜報告("ANOMALOUS")
+        鏡像報告 = 建立測試排行榜報告("MIRROR")
+        異常報告["fights"][0]["data_integrity"] = {
+            "calculation_version": 10,
+            "status": "excluded",
+            "hidden_from_public": True,
+        }
+        鏡像報告["fights"][0]["data_integrity"] = {
+            "calculation_version": 10,
+            "status": "valid",
+            "hidden_from_public": False,
+        }
+        排行榜 = {
+            "encounter": {"key": "savage_m6s", "name": "M6S", "category": "零式"},
+            "reports": {
+                "ANOMALOUS": 異常報告,
+                "MIRROR": 鏡像報告,
+            },
+        }
+
+        條目列表 = fflogs.建立排行榜條目(排行榜)
+
+        self.assertEqual(條目列表, [])
+        self.assertEqual(
+            異常報告["fights"][0]["fight_hash"],
+            鏡像報告["fights"][0]["fight_hash"],
+        )
+
     def test_public_ranking_keeps_legacy_flat_character_key_server(self) -> None:
         排行榜 = {
             "encounter": {
@@ -2181,6 +2210,140 @@ class FetchFFLogsBatchTest(unittest.TestCase):
             "reports": {"NEW-INTEGRITY": report},
         }
         self.assertEqual(fflogs.建立排行榜條目(ranking), [])
+
+    def test_new_m6s_fight_uses_team_basic_attack_distribution_before_hp_query(self) -> None:
+        """同場多人普攻每擊與占比皆異常時，不必等生命池倍率超標才隱藏。"""
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            cache = fflogs.integrity_cache.FightIntegrityMeasurementCache.load(
+                Path(temporary_directory) / "measurements.json"
+            )
+            policy = fflogs.integrity.BasicAttackDistributionPolicy.from_mapping({
+                "enabled": True,
+                "reference_version": "fixture",
+                "encounter_keys": ["savage_m6s"],
+            })
+            config = fflogs.戰鬥完整性檢核設定(
+                enabled=True,
+                cutoff_ms=0,
+                cutoff_iso="2026-07-28T18:00:00+08:00",
+                hp_ratio_threshold=1.15,
+                suspected_hp_ratio_threshold=1.14,
+                excluded_encounter_keys=set(),
+                basic_attack_distribution=policy,
+            )
+            fight = {
+                "fight_id": 28,
+                "encounter_id": 98,
+                "difficulty": 101,
+                "start_time": 1_000,
+                "end_time": 601_000,
+                "recorded_at": 1_785_000_000_000,
+                "kill": True,
+                "has_echo": False,
+                "size": 8,
+                "standard_composition": True,
+                "players": [
+                    {"fflogs_id": source_id, "job": job, "total_damage": 20_000_000}
+                    for source_id, job in enumerate(
+                        ("Warrior", "Paladin", "Samurai", "Reaper", "Dancer"),
+                        start=1,
+                    )
+                ],
+                "damage_done_summary": {"exploitDetails": []},
+            }
+            measurement = {
+                "actual_event_count": 900,
+                "mapped_event_count": 900,
+                "players": [
+                    {
+                        "source_id": source_id,
+                        "job": job,
+                        "attack_event_count": 180,
+                        "pure_normal_count": 80,
+                        "pure_normal_median": 17_000,
+                        "attack_damage": 4_600_000,
+                        "attack_share": 0.23,
+                    }
+                    for source_id, job in enumerate(
+                        ("Warrior", "Paladin", "Samurai", "Reaper", "Dancer"),
+                        start=1,
+                    )
+                ],
+            }
+            with (
+                patch.object(
+                    fflogs,
+                    "查詢戰鬥完整性普攻事件",
+                    return_value=[{"type": "damage"}],
+                ) as query_basic,
+                patch.object(
+                    fflogs.integrity,
+                    "summarize_basic_attack_events",
+                    return_value=measurement,
+                ),
+                patch.object(fflogs, "執行_graphql") as execute_graphql,
+            ):
+                result = fflogs.檢核戰鬥完整性(
+                    object(),
+                    object(),
+                    副本鍵值="savage_m6s",
+                    報告代碼="M6S-ATTACK-DISTRIBUTION",
+                    報告脈絡={
+                        "revision": 1,
+                        "start_time": 1_700_000_000_000,
+                        "end_time": 1_700_001_000_000,
+                    },
+                    戰鬥=fight,
+                    設定=config,
+                    測量快取=cache,
+                )
+
+        self.assertEqual(result["status"], "excluded")
+        self.assertTrue(result["hidden_from_public"])
+        self.assertIn("team_basic_attack_damage_distribution_abnormal", result["reasons"])
+        self.assertEqual(
+            result["metrics"]["basic_attack_distribution"]["flagged_player_count"],
+            5,
+        )
+        query_basic.assert_called_once()
+        execute_graphql.assert_not_called()
+
+    def test_basic_attack_integrity_query_follows_event_pagination(self) -> None:
+        pages = [
+            {
+                "reportData": {
+                    "report": {
+                        "basicAttacks": {
+                            "data": [{"timestamp": 100, "type": "damage"}],
+                            "nextPageTimestamp": 500,
+                        }
+                    }
+                }
+            },
+            {
+                "reportData": {
+                    "report": {
+                        "basicAttacks": {
+                            "data": [{"timestamp": 600, "type": "damage"}],
+                            "nextPageTimestamp": None,
+                        }
+                    }
+                }
+            },
+        ]
+        with patch.object(fflogs, "執行_graphql", side_effect=pages) as execute_graphql:
+            events = fflogs.查詢戰鬥完整性普攻事件(
+                object(),
+                object(),
+                "PAGINATED",
+                {"fight_id": 2, "start_time": 10, "end_time": 1_000},
+            )
+
+        self.assertEqual([event["timestamp"] for event in events], [100, 600])
+        self.assertEqual(execute_graphql.call_count, 2)
+        self.assertEqual(execute_graphql.call_args_list[0].args[3]["startTime"], 10)
+        self.assertEqual(execute_graphql.call_args_list[1].args[3]["startTime"], 500)
 
     def test_new_fight_integrity_historical_normal_screen_skips_hp_query(self) -> None:
         """舊副本完整隊伍落在歷史高端內時，必須不讀取 FFLogs 生命池。"""
