@@ -1178,6 +1178,31 @@ async function validateUserDataset(dataDir, label, { countFiles = false } = {}) 
   if (index?.total_users !== users.length) {
     reportIssue(`${label}/users/index.json 的 total_users=${index?.total_users} 與 users 長度 ${users.length} 不一致`);
   }
+  const achievements = Array.isArray(index?.achievements) ? index.achievements : [];
+  const achievementIds = new Set();
+  if (achievements.length === 0) {
+    reportIssue(`${label}/users/index.json 缺少成就手冊統計`);
+  }
+  for (const achievement of achievements) {
+    if (achievementIds.has(achievement?.id)) {
+      reportIssue(`${label}/users/index.json 的成就 ID 重複：${achievement?.id || "(空白)"}`);
+      continue;
+    }
+    achievementIds.add(achievement?.id);
+
+    const holderCount = achievement?.holder_count;
+    const holderPercentage = achievement?.holder_percentage;
+    if (!Number.isInteger(holderCount) || holderCount < 0 || holderCount > users.length) {
+      reportIssue(`${label}/users/index.json 的成就 ${achievement?.id || "(未知)"} holder_count 超出玩家總數`);
+      continue;
+    }
+    const expectedPercentage = users.length > 0 ? Number(((holderCount / users.length) * 100).toFixed(2)) : 0;
+    if (!isFiniteNumber(holderPercentage) || Math.abs(holderPercentage - expectedPercentage) > 0.001) {
+      reportIssue(
+        `${label}/users/index.json 的成就 ${achievement?.id || "(未知)"} holder_percentage 與 holder_count 不一致`,
+      );
+    }
+  }
 
   for (const user of users) {
     const filePathText = user?.file_path;

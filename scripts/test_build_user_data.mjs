@@ -632,6 +632,16 @@ async function assertFixtureOutput(tempRoot, expectedGlobalStatsText, expectedSe
   assert(usersIndex.generated_at_iso === "2026-01-02T03:04:05.000Z", "使用者索引應使用 ranking 更新時間作為 generated_at_iso。");
   assert(globalStats.generated_at_iso === "2026-01-02T03:04:05.000Z", "全服統計應使用 ranking 更新時間作為 generated_at_iso。");
   assert(usersIndex.total_users === 7, "fixture 應產生五位有公開成績的使用者與兩位空白入口。");
+  assert(usersIndex.achievements?.length === 12, "使用者索引應輸出十二項成就手冊統計。");
+  const recentAchievement = usersIndex.achievements.find((achievement) => achievement.id === "recently-active");
+  const highActivityAchievement = usersIndex.achievements.find((achievement) => achievement.id === "high-activity");
+  assert(recentAchievement?.holder_count > 0, "fixture 的最近公開紀錄應取得近期活躍成就。");
+  assert(
+    recentAchievement?.holder_percentage
+      === Number(((recentAchievement.holder_count / usersIndex.total_users) * 100).toFixed(2)),
+    "成就獲得占比應以使用者索引總人數為分母。",
+  );
+  assert(highActivityAchievement?.holder_count === 0, "fixture 沒有玩家達到一百筆公開成績，不可取得高活躍成就。");
   assert(globalStats.total_character_count === 5, `全服角色數應把同名跨服角色視為不同玩家，實際 ${globalStats.total_character_count}。`);
   assert(globalStats.total_entry_count === 9, "全服 entry 數應包含六筆既有成績與 v8／v10／v11 正常成績。");
   const hiddenUser = usersIndex.users.find((user) => user.character_name === "隱藏角色");
@@ -640,6 +650,7 @@ async function assertFixtureOutput(tempRoot, expectedGlobalStatsText, expectedSe
   assert(hiddenUser.best_rdps === null, "空白入口不可帶入最佳 rDPS。");
   assert(hiddenUser.last_recorded_at_iso === null, "空白入口不可帶入最後紀錄時間。");
   assert(allUsersIndex.total_users === 7, "完整鏡像應保留所有公開索引角色。");
+  assert(allUsersIndex.achievements?.length === usersIndex.achievements.length, "Hidden delta 索引也必須輸出完整成就手冊目錄。");
   assert(allGlobalStats.total_character_count === 6, "完整全服統計應納入所有 fixture 角色。");
   assert(allGlobalStats.total_entry_count === 10, "完整全服統計應納入所有 fixture 成績。");
   const allHiddenUser = allUsersIndex.users.find((user) => user.character_name === "隱藏角色");

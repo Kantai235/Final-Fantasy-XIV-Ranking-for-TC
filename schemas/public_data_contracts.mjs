@@ -33,6 +33,14 @@
  * @property {"user_entry_details_v1"} format
  * @property {Record<string, { report_variants: Array<object>, source_reports: Array<string> }>} entries
  *
+ * @typedef {Object} UserAchievementStatistic
+ * @property {string} id
+ * @property {string} name
+ * @property {string} description
+ * @property {string} category
+ * @property {number} holder_count
+ * @property {number} holder_percentage
+ *
  * @typedef {Object} TeamRankingsPayload
  * @property {1} schema_version
  * @property {Array<TeamEncounter>} encounters
@@ -403,6 +411,15 @@ const userIndexEntrySchema = objectOf({
   last_recorded_at_iso: nullableIsoTimestampSchema,
 });
 
+const userAchievementStatisticSchema = objectOf({
+  id: stringSchema,
+  name: stringSchema,
+  description: stringSchema,
+  category: stringSchema,
+  holder_count: integerSchema,
+  holder_percentage: numberSchema,
+});
+
 const teammateEncounterSchema = objectOf({
   encounter_key: stringSchema,
   encounter_name: stringSchema,
@@ -514,6 +531,7 @@ const userIndexPayloadSchema = objectOf({
   generated_at_iso: isoTimestampSchema,
   rankings_updated_at_iso: nullableIsoTimestampSchema,
   total_users: integerSchema,
+  achievements: arrayOf(userAchievementStatisticSchema),
   users: arrayOf(userIndexEntrySchema),
 });
 

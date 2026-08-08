@@ -32,6 +32,7 @@ import {
   建立個人成績徽章,
   六絕踏破稱號,
   建立零式量級踏破徽章,
+  取得個人成績成就目錄,
 } from "../src/utils/userProfileBadges.js";
 import {
   建立個人成績趨勢版本切點,
@@ -232,6 +233,8 @@ function validateUserProfileBadges() {
     取得職能代碼: (job) => 職業職能[job] || "",
   });
   const 徽章名稱 = new Set(徽章.map((徽章) => 徽章.名稱));
+  const 成就目錄 = 取得個人成績成就目錄();
+  const 成就Id = new Set(成就目錄.map((成就) => 成就.id));
   const 多職說明 = 徽章.find((徽章) => 徽章.名稱 === "多職玩家")?.說明 || "";
   const 三色豆說明 = 徽章.find((徽章) => 徽章.名稱 === "三色豆")?.說明 || "";
 
@@ -249,6 +252,15 @@ function validateUserProfileBadges() {
     "徽章必須依序顯示網站作者、六絕全通、次重量級與輕量級。",
   );
   assert(!徽章名稱.has("零式全通"), "零式成就應改為依量級命名，不可保留固定的「零式全通」。");
+  assert(成就目錄.length === 12 && 成就Id.size === 成就目錄.length, "成就手冊必須列出十二項具有穩定 ID 的可取得成就。");
+  assert(
+    徽章.filter((項目) => 項目.是成就 !== false).every((項目) => 成就Id.has(項目.id)),
+    "每一枚玩家成就徽章都必須能以固定 ID 對應成就手冊目錄。",
+  );
+  assert(
+    徽章.find((項目) => 項目.名稱 === "網站作者")?.是成就 === false,
+    "網站作者屬於身分標示，不可混入全站成就獲得率。",
+  );
   assert(多職說明.includes("6 個職業各有至少 10 場"), "多職玩家應要求至少六職各有十場公開通關紀錄。");
   assert(三色豆說明.includes("5 種職能各有至少 10 場"), "三色豆應以各職能的十場公開通關紀錄判定。");
 
@@ -398,9 +410,10 @@ function validateUserProfileBadges() {
 }
 
 async function validateUserProfileBadgeDataScope() {
-  const [source, profileSource, profileStyles] = await Promise.all([
+  const [source, profileSource, handbookSource, profileStyles] = await Promise.all([
     readText(path.join(srcDir, "composables", "useRankingApp.js")),
     readText(path.join(srcDir, "pages", "UserProfilePage.vue")),
+    readText(path.join(srcDir, "components", "AchievementHandbook.vue")),
     readText(path.join(srcDir, "styles", "pages-profile.css")),
   ]);
   assert(
@@ -436,6 +449,20 @@ async function validateUserProfileBadgeDataScope() {
       && profileStyles.includes("@keyframes 量級踏破掃光")
       && profileStyles.includes(".使用者徽章.量級踏破徽章::after"),
     "量級踏破徽章必須依輕／次量級與金／銀／銅階級套用背景字、掃光及亮色主題樣式。",
+  );
+  assert(
+    source.includes("const 使用者成就手冊 = computed(() => {")
+      && source.includes("使用者索引.value?.achievements")
+      && profileSource.includes("<AchievementHandbook")
+      && handbookSource.includes('class="成就手冊浮動按鈕"')
+      && handbookSource.includes('role="dialog"')
+      && handbookSource.includes('event.key === "Escape"')
+      && profileStyles.includes(".成就手冊浮動按鈕")
+      && profileStyles.includes("right: calc(18px + env(safe-area-inset-right));")
+      && profileStyles.includes(".報告彈窗.成就手冊彈窗")
+      && profileStyles.includes("width: min(1080px, 100%);")
+      && profileStyles.includes(".成就手冊清單"),
+    "個人成績單必須提供右下角書本入口、可關閉的寬版無障礙成就手冊彈窗與全成就清單。",
   );
 }
 
@@ -1398,6 +1425,26 @@ async function validatePublicDataForFrontend() {
   }
   assert(Array.isArray(userIndex?.users) && userIndex.users.length > 0, "public/data/users/index.json 必須包含 users");
   assert(userIndex?.total_users === userIndex?.users?.length, "public/data/users/index.json total_users 必須等於 users 長度");
+  const achievementCatalogIds = new Set(取得個人成績成就目錄().map((achievement) => achievement.id));
+  const achievementStats = Array.isArray(userIndex?.achievements) ? userIndex.achievements : [];
+  assert(
+    achievementStats.length === achievementCatalogIds.size
+      && achievementStats.every((achievement) => achievementCatalogIds.has(achievement?.id)),
+    "public/data/users/index.json 必須輸出完整成就手冊目錄與固定 ID。",
+  );
+  for (const achievement of achievementStats) {
+    const expectedPercentage = Number(((Number(achievement?.holder_count || 0) / userIndex.total_users) * 100).toFixed(2));
+    assert(
+      Number.isInteger(achievement?.holder_count)
+        && achievement.holder_count >= 0
+        && achievement.holder_count <= userIndex.total_users,
+      `${achievement?.id || "未知成就"} 的獲得人數必須落在玩家總數範圍內。`,
+    );
+    assert(
+      Number(achievement?.holder_percentage) === expectedPercentage,
+      `${achievement?.id || "未知成就"} 的獲得占比必須由獲得人數與玩家總數計算。`,
+    );
+  }
   const userDetailCache = new Map();
   const gameVersionsConfig = await readJson(path.join(rootDir, "config", "game_versions.json"), "config/game_versions.json");
   const gameVersions = Array.isArray(gameVersionsConfig?.versions)

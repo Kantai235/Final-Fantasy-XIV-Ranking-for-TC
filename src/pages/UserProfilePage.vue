@@ -1,5 +1,6 @@
 <script>
 import { onBeforeUnmount, onMounted, ref } from "vue";
+import AchievementHandbook from "../components/AchievementHandbook.vue";
 import JobIcon from "../components/JobIcon.vue";
 import PlayerSearchHistoryPanel from "../components/PlayerSearchHistoryPanel.vue";
 import ReportDetailDialog from "../components/ReportDetailDialog.vue";
@@ -8,6 +9,7 @@ import { injectRankingApp } from "../composables/useRankingApp";
 export default {
   name: "UserProfilePage",
   components: {
+    AchievementHandbook,
     JobIcon,
     PlayerSearchHistoryPanel,
     ReportDetailDialog,
@@ -1106,6 +1108,13 @@ export default {
       </template>
     </template>
   </section>
+
+  <AchievementHandbook
+    v-if="使用者資料"
+    :achievements="使用者成就手冊"
+    :player-name="使用者資料.character_name"
+    :total-users="使用者成就手冊收錄玩家數"
+  />
 
   <ReportDetailDialog :details="報告彈窗資料" @close="關閉個人成績報告彈窗" />
 </template>

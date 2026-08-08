@@ -4,6 +4,7 @@ import { mkdir, open, readFile, readdir, rename, rm, writeFile } from "node:fs/p
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
+import { 建立個人成績徽章, 取得個人成績成就目錄 } from "../src/utils/userProfileBadges.js";
 
 // 本檔是資料管線的 Data Building Layer。
 // 它讀取 data/rankings 的可追溯原始資料與 ranking_entries，聚合成前端可直接讀取的靜態 JSON。
@@ -1110,6 +1111,46 @@ function getJobRole(job) {
       role_name: "其他職業",
     }
   );
+}
+
+function buildAchievementStatistics(users, baselineAtMs) {
+  const catalog = 取得個人成績成就目錄();
+  const holderCountById = new Map(catalog.map((achievement) => [achievement.id, 0]));
+  const totalUsers = users.length;
+
+  for (const user of users) {
+    const publicEntries = Array.from(user.entriesByEncounter.values()).flat();
+    const earnedAchievementIds = new Set(
+      建立個人成績徽章({
+        角色名稱: user.character_name,
+        公開成績: publicEntries,
+        公開同場玩家數: user.teammates.size,
+        最後紀錄時間: user.last_recorded_at_iso,
+        近期動態基準時間: baselineAtMs,
+        取得職能代碼: (job) => getJobRole(job).role,
+      })
+        .filter((achievement) => achievement.是成就 !== false && holderCountById.has(achievement.id))
+        .map((achievement) => achievement.id),
+    );
+
+    // 一位玩家對同一成就最多計一次。零式首週／次週／一般雖由產品規則保證
+    // 互斥，這層去重仍可防止未來新增條件時把同一角色重複灌入全站人數。
+    for (const achievementId of earnedAchievementIds) {
+      holderCountById.set(achievementId, (holderCountById.get(achievementId) || 0) + 1);
+    }
+  }
+
+  return catalog.map((achievement) => {
+    const holderCount = holderCountById.get(achievement.id) || 0;
+    return {
+      id: achievement.id,
+      name: achievement.名稱,
+      description: achievement.說明,
+      category: achievement.分類,
+      holder_count: holderCount,
+      holder_percentage: toPercent(holderCount, totalUsers),
+    };
+  });
 }
 
 function addDistributionRecord(distribution, key, recordKey) {
@@ -3154,8 +3195,7 @@ async function buildDataset({
   const indexUsers = [];
   let writtenUserFileCount = 0;
   let writtenUserDetailFileCount = 0;
-
-  for (const user of Array.from(usersByIdentity.values()).sort((left, right) => {
+  const sortedUsers = Array.from(usersByIdentity.values()).sort((left, right) => {
     const nameCompare = compareByLocale(left.character_name, right.character_name);
     if (nameCompare) {
       return nameCompare;
@@ -3163,7 +3203,13 @@ async function buildDataset({
     const leftServer = Array.from(left.servers).sort(compareByLocale)[0] || "";
     const rightServer = Array.from(right.servers).sort(compareByLocale)[0] || "";
     return compareByLocale(leftServer, rightServer);
-  })) {
+  });
+  const achievementBaselineAtMs = allEntries.reduce(
+    (latest, entry) => Math.max(latest, entryRecordedAtMs(entry)),
+    0,
+  );
+
+  for (const user of sortedUsers) {
     user.canonical_server = Array.from(user.servers).sort(compareByLocale)[0] || "";
     user.server_aliases = new Set();
     const fileBaseName = normalizeFileBaseName(user.character_name, usedFileBaseNames);
@@ -3233,6 +3279,7 @@ async function buildDataset({
     generated_at_iso: generatedAtIso,
     rankings_updated_at_iso: latestRankingUpdatedAt,
     total_users: indexUsers.length,
+    achievements: buildAchievementStatistics(sortedUsers, achievementBaselineAtMs),
     users: indexUsers,
   });
 

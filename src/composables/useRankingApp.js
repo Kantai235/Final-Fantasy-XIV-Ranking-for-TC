@@ -78,7 +78,7 @@ import {
   取得成績PR值,
   取得成績前段百分位,
 } from "../utils/userProfileSorting";
-import { 建立個人成績徽章 } from "../utils/userProfileBadges";
+import { 建立個人成績徽章, 取得個人成績成就目錄 } from "../utils/userProfileBadges";
 import {
   建立個人成績趨勢版本切點,
   建立個人成績簡表可選版本,
@@ -141,6 +141,7 @@ const 使用者歷史排序欄位 = Object.freeze([
   { value: "clearTime", label: "通關時間" },
 ]);
 const 使用者歷史排序欄位集合 = new Set(使用者歷史排序欄位.map((欄位) => 欄位.value));
+const 個人成績成就目錄 = Object.freeze(取得個人成績成就目錄());
 const 使用者歷史排序預設方向 = Object.freeze({
   recordedAt: "desc",
   performance: "desc",
@@ -4633,6 +4634,45 @@ const 使用者徽章 = computed(() => {
   });
 });
 
+const 使用者成就手冊收錄玩家數 = computed(() => {
+  const 索引總數 = Number(使用者索引.value?.total_users);
+  return Number.isFinite(索引總數) && 索引總數 >= 0 ? Math.trunc(索引總數) : 使用者索引列表.value.length;
+});
+
+const 使用者成就手冊 = computed(() => {
+  if (!使用者資料.value) {
+    return [];
+  }
+
+  const 已獲得成就Id = new Set(
+    使用者徽章.value
+      .filter((徽章) => 徽章.是成就 !== false && 徽章.id)
+      .map((徽章) => 徽章.id),
+  );
+  const 索引統計 = new Map(
+    (Array.isArray(使用者索引.value?.achievements) ? 使用者索引.value.achievements : [])
+      .filter((成就) => 成就?.id)
+      .map((成就) => [成就.id, 成就]),
+  );
+
+  // 舊版 users/index.json 沒有成就統計時仍顯示完整目錄，僅將人數標成待更新；
+  // 這讓前端新版部署與 users 專用 repo／CDN 的短暫同步差不會造成按鈕或清單消失。
+  return 個人成績成就目錄.map((定義) => {
+    const 統計 = 索引統計.get(定義.id);
+    const 獲得人數 = Number(統計?.holder_count);
+    const 獲得占比 = Number(統計?.holder_percentage);
+    return {
+      id: 定義.id,
+      名稱: 統計?.name || 定義.名稱,
+      說明: 統計?.description || 定義.說明,
+      分類: 統計?.category || 定義.分類,
+      獲得人數: Number.isFinite(獲得人數) && 獲得人數 >= 0 ? Math.trunc(獲得人數) : null,
+      獲得占比: Number.isFinite(獲得占比) && 獲得占比 >= 0 ? 獲得占比 : null,
+      已獲得: 已獲得成就Id.has(定義.id),
+    };
+  });
+});
+
 const 隊友副本交集 = computed(() => {
   const 副本索引 = new Map();
 
@@ -6359,6 +6399,8 @@ onUnmounted(() => {
     隊友職能分布,
     隊友關係摘要,
     使用者徽章,
+    使用者成就手冊,
+    使用者成就手冊收錄玩家數,
     隊友副本交集,
     過濾後排行列,
     總頁數,

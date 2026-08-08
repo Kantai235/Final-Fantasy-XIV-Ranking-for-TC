@@ -659,6 +659,373 @@
   }
 }
 
+/* 成就手冊沿用 Honey B. Lovely 左下浮動入口的操作概念，但固定在右下角，
+ * 讓兩個趣味入口在桌面與手機都不會互相遮擋。書本完全以向量與 CSS 繪製，
+ * 不增加圖片請求，也能隨亮暗主題維持清楚對比。 */
+.成就手冊浮動按鈕 {
+  position: fixed;
+  z-index: 92;
+  right: calc(18px + env(safe-area-inset-right));
+  bottom: calc(18px + env(safe-area-inset-bottom));
+  width: 82px;
+  min-width: 82px;
+  height: 82px;
+  min-height: 82px;
+  display: grid;
+  place-items: center;
+  overflow: visible;
+  border: 1px solid rgba(214, 163, 84, 0.72);
+  border-radius: 50%;
+  padding: 0;
+  color: #f7d999;
+  background:
+    radial-gradient(circle at 34% 24%, rgba(255, 255, 255, 0.17), transparent 23%),
+    linear-gradient(145deg, #3d2a16 0%, #261b12 54%, #17191d 100%);
+  box-shadow:
+    0 16px 34px rgba(0, 0, 0, 0.32),
+    inset 0 0 0 1px rgba(255, 235, 188, 0.08);
+  transition:
+    border-color 0.18s ease,
+    box-shadow 0.18s ease,
+    transform 0.18s ease;
+}
+
+.成就手冊浮動按鈕:hover:not(:disabled),
+.成就手冊浮動按鈕:focus-visible {
+  border-color: #f0c766;
+  box-shadow:
+    0 20px 40px rgba(0, 0, 0, 0.4),
+    0 0 0 5px var(--焦點陰影),
+    inset 0 0 0 1px rgba(255, 235, 188, 0.16);
+  transform: translateY(-3px) scale(1.03);
+}
+
+.成就手冊浮動光環 {
+  position: absolute;
+  inset: 7px;
+  border: 1px dashed rgba(247, 217, 153, 0.34);
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.成就手冊浮動書本 {
+  width: 52px;
+  height: 52px;
+  margin-top: -6px;
+  overflow: visible;
+  filter: drop-shadow(0 5px 7px rgba(0, 0, 0, 0.28));
+}
+
+.成就手冊書封 {
+  fill: #b9853d;
+  stroke: #f5d994;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+
+.成就手冊書頁 {
+  fill: #fff3d2;
+  stroke: #69471f;
+  stroke-linejoin: round;
+  stroke-width: 1.1;
+}
+
+.成就手冊書脊,
+.成就手冊書紋 {
+  fill: none;
+  stroke: #7c5529;
+  stroke-linecap: round;
+}
+
+.成就手冊書脊 {
+  stroke-width: 2;
+}
+
+.成就手冊書紋 {
+  opacity: 0.76;
+  stroke-width: 1.2;
+}
+
+.成就手冊浮動進度 {
+  position: absolute;
+  right: 5px;
+  bottom: 5px;
+  min-width: 31px;
+  border: 1px solid rgba(255, 241, 204, 0.38);
+  border-radius: 999px;
+  padding: 3px 5px;
+  color: #fff4d5;
+  background: rgba(24, 19, 14, 0.9);
+  font-size: 0.62rem;
+  font-weight: 860;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.成就手冊浮動提示 {
+  position: absolute;
+  right: calc(100% + 10px);
+  width: max-content;
+  max-width: 120px;
+  border: 1px solid var(--邊框色);
+  border-radius: 999px;
+  padding: 6px 9px;
+  color: var(--主要文字);
+  background: var(--表面背景);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.24);
+  font-size: 0.74rem;
+  font-weight: 820;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(6px);
+  transition:
+    opacity 0.16s ease,
+    transform 0.16s ease;
+}
+
+.成就手冊浮動按鈕:hover .成就手冊浮動提示,
+.成就手冊浮動按鈕:focus-visible .成就手冊浮動提示 {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+:root[data-theme="light"] .成就手冊浮動按鈕 {
+  color: #80500d;
+  background:
+    radial-gradient(circle at 34% 24%, rgba(255, 255, 255, 0.9), transparent 24%),
+    linear-gradient(145deg, #fff9e9 0%, #f2d69a 58%, #c28b3b 100%);
+  box-shadow:
+    0 14px 30px rgba(106, 72, 25, 0.22),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.56);
+}
+
+:root[data-theme="light"] .成就手冊浮動進度 {
+  border-color: rgba(128, 80, 13, 0.24);
+  color: #fffaf0;
+  background: rgba(90, 55, 12, 0.92);
+}
+
+.報告彈窗.成就手冊彈窗 {
+  width: min(1080px, 100%);
+  max-height: min(820px, calc(100vh - 48px));
+  display: grid;
+  gap: 18px;
+  padding: 22px;
+  background:
+    radial-gradient(circle at 92% 0%, rgba(214, 163, 84, 0.14), transparent 30%),
+    var(--表面背景);
+}
+
+.成就手冊標題列 h2 {
+  color: var(--重點色);
+}
+
+.成就手冊摘要 {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  border: 1px solid rgba(214, 163, 84, 0.3);
+  border-radius: 12px;
+  padding: 13px 15px;
+  background:
+    linear-gradient(115deg, rgba(214, 163, 84, 0.14), transparent 62%),
+    var(--表面背景柔和);
+}
+
+.成就手冊摘要印章 {
+  width: 58px;
+  min-width: 58px;
+  height: 58px;
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  border: 1px solid rgba(214, 163, 84, 0.62);
+  border-radius: 50%;
+  padding-top: 14px;
+  color: var(--重點色);
+  background: rgba(214, 163, 84, 0.09);
+  box-shadow: inset 0 0 0 4px var(--表面背景柔和);
+  font-variant-numeric: tabular-nums;
+}
+
+.成就手冊摘要印章 strong {
+  font-size: 1.2rem;
+  font-weight: 900;
+}
+
+.成就手冊摘要印章 span {
+  color: var(--次要文字);
+  font-size: 0.7rem;
+  font-weight: 780;
+}
+
+.成就手冊摘要 > div:last-child {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.成就手冊摘要 > div:last-child > strong {
+  color: var(--主要文字);
+  font-size: 1rem;
+}
+
+.成就手冊摘要 > div:last-child > span {
+  color: var(--次要文字);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.成就手冊清單 {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.成就手冊項目 {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 10px;
+  border: 1px solid var(--邊框色);
+  border-radius: 10px;
+  padding: 12px;
+  background: rgba(23, 27, 31, 0.7);
+}
+
+:root[data-theme="light"] .成就手冊項目 {
+  background: rgba(255, 255, 255, 0.76);
+}
+
+.成就手冊項目.已取得 {
+  border-color: rgba(214, 163, 84, 0.52);
+  background:
+    linear-gradient(135deg, rgba(214, 163, 84, 0.13), transparent 58%),
+    var(--表面背景柔和);
+  box-shadow: inset 3px 0 0 var(--重點色);
+}
+
+.成就手冊項目.尚未取得 {
+  opacity: 0.72;
+}
+
+.成就手冊狀態圖示 {
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--輸入邊框);
+  border-radius: 50%;
+  color: var(--靜音文字);
+  background: var(--輸入背景);
+  font-size: 1rem;
+  font-weight: 900;
+}
+
+.成就手冊項目.已取得 .成就手冊狀態圖示 {
+  border-color: var(--重點色);
+  color: var(--重點文字);
+  background: var(--重點色);
+  box-shadow: 0 0 0 4px rgba(214, 163, 84, 0.12);
+}
+
+.成就手冊項目內容 {
+  min-width: 0;
+  display: grid;
+  align-content: start;
+  gap: 7px;
+}
+
+.成就手冊項目標題 {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 3px 8px;
+}
+
+.成就手冊分類 {
+  grid-column: 1 / -1;
+  color: var(--重點色);
+  font-size: 0.66rem;
+  font-weight: 840;
+  letter-spacing: 0.06em;
+}
+
+.成就手冊項目標題 strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--主要文字);
+  font-size: 0.9rem;
+  line-height: 1.28;
+}
+
+.成就手冊取得狀態 {
+  border: 1px solid var(--邊框色);
+  border-radius: 999px;
+  padding: 3px 6px;
+  color: var(--靜音文字);
+  background: var(--輸入背景);
+  font-size: 0.64rem;
+  font-weight: 820;
+  white-space: nowrap;
+}
+
+.成就手冊項目.已取得 .成就手冊取得狀態 {
+  border-color: rgba(214, 163, 84, 0.4);
+  color: var(--重點色);
+  background: rgba(214, 163, 84, 0.1);
+}
+
+.成就手冊項目 p {
+  margin: 0;
+  color: var(--次要文字);
+  font-size: 0.74rem;
+  line-height: 1.45;
+}
+
+.成就手冊稀有度 {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--次要文字);
+  font-size: 0.7rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+.成就手冊稀有度 strong {
+  color: var(--主要文字);
+  font-size: 0.78rem;
+}
+
+.成就手冊占比軌道 {
+  height: 4px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--邊框柔和色);
+}
+
+.成就手冊占比軌道 > span {
+  height: 100%;
+  display: block;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--重點色深), var(--重點色));
+}
+
+.成就手冊資料說明 {
+  margin: -2px 0 0;
+  color: var(--靜音文字);
+  font-size: 0.72rem;
+  line-height: 1.5;
+}
+
 .個人分位區 {
   overflow: hidden;
   border: 1px solid var(--邊框色);

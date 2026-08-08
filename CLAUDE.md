@@ -77,6 +77,7 @@
 7. 個人成績一般模式的零式量級踏破徽章採互斥階級，只顯示同量級最高階的一枚。輕量級的首週／次週截止為繁中服時間 2026-03-17／03-24 16:00，次重量級為 2026-08-11／08-18 16:00，且截止當下仍列入。判定必須使用未套用頁面篩選的完整公開成績，要求量級四層各有一筆非 `is_obsolete_record` 的紀錄，並以 `recorded_at_iso`（舊資料可退回 `recorded_at`）加上 `clear_time_ms`（可退回 `clear_time_seconds`）計算實際通關完成時間；缺少可解析的開始或通關時間時不得猜測限時成就，但四層完整仍可取得一般踏破。這些固定產品規則集中在 `src/utils/userProfileBadges.js`，不可由 `profile_summary_savage_tier` 或 `scan_start_date` 自動衍生。
 8. 量級踏破徽章的視覺由 `量級踏破徽章`、量級與階級三組語意類別組合：輕量級使用傾斜的「輕」背景字、次重量級使用「次」；首週、次週、一般分別採金、銀、銅色，掃光與光暈強度依序降低。動畫必須尊重 `prefers-reduced-motion`，亮色主題也需維持文字對比；不得在 Vue 元件內依成就名稱重做樣式判斷。
 9. 個人成績徽章的顯示順序固定為：唯一的網站作者識別置頂；六絕全通是一般成就中的最高優先；次重量級第二；輕量級第三；其餘一般成就接續顯示。非作者角色從六絕全通開始。量級排序必須使用 `src/utils/userProfileBadges.js` 內的明確優先值，不可依名稱、開放日期或 Vue 元件中的條件判斷重排。
+10. 個人成績單的「成就手冊」與既有徽章共用 `src/utils/userProfileBadges.js` 的固定成就 ID 與判定規則；網站作者是身分標示，不納入成就目錄。`scripts/build_user_data.mjs` 必須以完整角色公開成績、完整同場玩家數與最新公開紀錄時間聚合全站獲得人數，將 `achievements[].holder_count`／`holder_percentage` 寫入 `users/index.json`；占比分母固定使用同一索引的 `total_users`，Vue 只能讀取該靜態統計並標示目前角色是否取得，不得掃描所有玩家檔案重算。
 
 ### C. 排行榜與去重規則
 1. `data/rankings/*.json` 主檔保留 `ranking_entries`、副本摘要、更新時間與 `report_shards`；report/fight/player 脈絡保存在同名 `*.reports/*.json` 分片。

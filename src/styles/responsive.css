@@ -103,6 +103,64 @@
     flex-direction: column;
   }
 
+  .成就手冊浮動按鈕 {
+    right: calc(12px + env(safe-area-inset-right));
+    bottom: calc(12px + env(safe-area-inset-bottom));
+    width: 70px;
+    min-width: 70px;
+    height: 70px;
+    min-height: 70px;
+  }
+
+  .成就手冊浮動書本 {
+    width: 45px;
+    height: 45px;
+  }
+
+  .成就手冊浮動進度 {
+    right: 3px;
+    bottom: 3px;
+    min-width: 29px;
+    font-size: 0.58rem;
+  }
+
+  .成就手冊浮動提示 {
+    display: none;
+  }
+
+  .成就手冊彈窗 {
+    gap: 14px;
+    max-height: calc(100vh - 24px);
+    padding: 16px;
+  }
+
+  .成就手冊摘要 {
+    align-items: flex-start;
+    padding: 11px 12px;
+  }
+
+  .成就手冊摘要印章 {
+    width: 50px;
+    min-width: 50px;
+    height: 50px;
+    padding-top: 11px;
+  }
+
+  .成就手冊清單 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .成就手冊項目 {
+    grid-template-columns: 30px minmax(0, 1fr);
+    gap: 9px;
+    padding: 11px;
+  }
+
+  .成就手冊狀態圖示 {
+    width: 29px;
+    height: 29px;
+  }
+
   .搜尋歷程管理列 {
     align-items: center;
     flex-direction: row;
@@ -153,7 +211,9 @@
 
 @media (prefers-reduced-motion: reduce) {
   .報告彈窗遮罩,
-  .報告彈窗 {
+  .報告彈窗,
+  .成就手冊浮動按鈕,
+  .成就手冊浮動提示 {
     transition: none;
   }
 }
