@@ -989,7 +989,7 @@ function validateUserProfileClearSummary() {
       category: "幻",
       current_high_end: true,
       profile_summary_available_from: "7.1",
-      profile_summary_available_until: "7.15",
+      profile_summary_available_until: "7.2",
     },
     { key: "unreal_suzaku", name: "幻 朱雀", category: "幻", current_high_end: true, profile_summary_available_from: "7.2" },
     { key: "current-chaotic", name: "滅 測試", category: "滅", current_high_end: true, profile_summary_available_from: "7.15" },
@@ -1035,9 +1035,9 @@ function validateUserProfileClearSummary() {
   assert(ultimateGroup?.encounters.length === 1, "簡表必須保留所有絕本。");
   assert(
     extremeGroup?.encounters.length === 2
-      && unrealGroup?.encounters.map((encounter) => encounter.name).join(",") === "朱雀"
+      && unrealGroup?.encounters.map((encounter) => encounter.name).join(",") === "白虎,朱雀"
       && chaoticGroup?.encounters.length === 1,
-    "7.2 簡表應完整列出極本，並以朱雀取代已關閉的白虎，保留目前高難的滅本。",
+    "7.2 簡表應完整列出極本，幻本固定同時保留白虎與朱雀，並保留目前高難的滅本。",
   );
   assert(
     savageGroup?.encounters[0]?.狀態 === "pr" && savageGroup.encounters[0]?.pr_value === 96 && savageGroup.encounters[0]?.job === "BlackMage",
@@ -1056,7 +1056,11 @@ function validateUserProfileClearSummary() {
   assert(ultimateGroup?.encounters[0]?.狀態 === "obsolete-clear", "僅有過版成績時應改顯示灰色通關勾勾。");
   assert(extremeGroup?.encounters[0]?.狀態 === "valid-clear", "有效通關缺少 PR 時仍應保留有效通關勾勾。");
   assert(extremeGroup?.encounters[1]?.狀態 === "obsolete-clear", "過版極本有公開成績時應顯示灰色通關勾勾。");
-  assert(!unrealGroup?.encounters[0]?.已收錄通關 && !chaoticGroup?.encounters[0]?.已收錄通關, "沒有公開成績的目標副本應標示為尚未收錄。");
+  assert(
+    unrealGroup?.encounters.find((encounter) => encounter.key === "unreal_byakko")?.狀態 === "unrecorded"
+      && !chaoticGroup?.encounters[0]?.已收錄通關,
+    "玩家即使沒有白虎公開成績，7.2 仍必須顯示白虎並標示為尚未收錄。",
+  );
 
   const version70Groups = 建立個人成績簡表群組(encounters, [
     { encounter_key: "old-extreme", public_entries: [{ job: "BlackMage", recorded_at_iso: "2026-03-09T23:59:59.000Z" }] },
@@ -1091,11 +1095,11 @@ function validateUserProfileClearSummary() {
       && 暫時固定現在時間(
         version72OpenedAt,
         () => 副本符合個人成績簡表版本(byakkoEncounter, "7.15")
-          && !副本符合個人成績簡表版本(byakkoEncounter, "7.2")
+          && 副本符合個人成績簡表版本(byakkoEncounter, "7.2")
           && !副本符合個人成績簡表版本(suzakuEncounter, "7.15")
           && 副本符合個人成績簡表版本(suzakuEncounter, "7.2"),
       ),
-    "幻白虎只應保留至 7.15 快照，7.2 必須改由幻朱雀呈現。",
+    "幻白虎應保留至 7.2 快照，7.2 必須同時呈現幻白虎與幻朱雀。",
   );
   assert(成績符合個人成績簡表版本({ recorded_at_iso: "2026-07-28T04:59:59.000Z" }, "7.15"), "7.15 應保留 7.2 開放前的戰鬥。");
   assert(!成績符合個人成績簡表版本({ recorded_at_iso: "2026-07-28T05:00:00.000Z" }, "7.15"), "7.15 不可混入 7.2 開放後的戰鬥。");

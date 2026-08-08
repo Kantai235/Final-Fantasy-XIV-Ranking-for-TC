@@ -255,7 +255,7 @@
     "enabled": true,
     "current_high_end": true,
     "profile_summary_available_from": "7.1",
-    "profile_summary_available_until": "7.15",
+    "profile_summary_available_until": "7.2",
     "scan_start_date": "2026-04-21",
     "scan_end_date": "2026-07-28T13:00:00+08:00"
   },
