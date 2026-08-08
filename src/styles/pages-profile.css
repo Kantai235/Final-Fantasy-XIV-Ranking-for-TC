@@ -1080,8 +1080,10 @@
   overflow: visible;
 }
 
-/* 此偏好套用在根節點，讓 Teleport 到 body 的報告彈窗也會一併隱藏說明提示。 */
-:root[data-show-help-tooltips="false"] .說明提示 {
+/* 此偏好套用在根節點，讓 Teleport 到 body 的報告彈窗也會一併隱藏一般說明提示。
+ * 作者勾勾屬於玩家身分識別，不是可選擇隱藏的欄位說明；即使它沿用提示泡泡的
+ * 互動樣式，也必須排除在這項使用者偏好之外。 */
+:root[data-show-help-tooltips="false"] .說明提示:not(.作者提示) {
   display: none;
 }
 
