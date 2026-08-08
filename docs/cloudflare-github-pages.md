@@ -160,6 +160,32 @@ npm run cloudflare:estimate
 GitHub Actions 會在 payload 稽核與 history commit 後執行這個估算並寫入 Step Summary，和 `data/pages_payload_history.jsonl` 的 artifact 體積趨勢一起作為成本觀測資料。
 正式 workflow 會先執行 `npm run prune:pages-user-data`，因此估算中的個人成績單情境會顯示為「主站殼層與搜尋索引；users repo 外部載入」。若本機完整 build 尚未清掉 `dist/data/users` 內的個別玩家檔，估算會改列 artifact 內含使用者檔的中位數與前 5% 大檔案情境。
 
+## HTTPS 526 維運流程
+
+Cloudflare 在 `Full (strict)` 模式回傳 526，代表 Cloudflare 無法驗證 GitHub Pages origin 提供的憑證；這是 CDN 與 origin 之間的 TLS 問題，不是 Vue、Vite 或 Pages artifact 內容錯誤。先直接以 GitHub Pages IP 與正式 hostname 測試來源憑證，避免把 Cloudflare 邊緣憑證誤判為 origin 憑證：
+
+```powershell
+$originIps = Resolve-DnsName kantai235.github.io -Type A |
+  Select-Object -ExpandProperty IPAddress -Unique
+
+foreach ($originIp in $originIps) {
+  curl.exe --resolve "ranking.init.engineer:443:$originIp" `
+    -I https://ranking.init.engineer/
+}
+```
+
+若上述請求回報來源憑證過期，且 GitHub repository 的 **Settings → Pages** 顯示憑證簽發失敗，可依下列順序處理：
+
+1. 將 Cloudflare SSL/TLS 暫時從 `Full (strict)` 改成 `Full`，先恢復網站服務。`Full` 仍會加密 Cloudflare 到 origin 的連線，但不驗證來源憑證；只能作為事故處理期間的短暫措施，禁止改成 `Flexible` 或 `Off`。
+2. 將 `ranking.init.engineer` 的 Cloudflare DNS Proxy 暫時改為 **DNS only**，讓 GitHub 與憑證機構能直接確認 `CNAME → kantai235.github.io`。此時使用者會直接遇到舊來源憑證，因此維護窗應盡量縮短。
+3. 在 GitHub Pages 移除自訂網域；確認頁面已回到預設 `*.github.io` 網址後，再加入 `ranking.init.engineer`，重新觸發 DNS 檢查與憑證簽發。不要在 GitHub 尚未完成移除時立即重填，否則舊的 ACME `bad_authz` 狀態可能仍被沿用。
+4. 等 GitHub Pages 顯示憑證已核准且到期日在未來；若使用 API 觀察，正常狀態會依序經過 `authorization_pending`、`authorized`、`approved`。不得只看到「重試中」就判定修復完成。
+5. 再次用 `--resolve` 驗證 `kantai235.github.io` 解析到的每個 IPv4 origin；所有節點都必須通過 hostname、信任鏈與到期日驗證，且首頁回傳 200。
+6. 將 Cloudflare DNS Proxy 恢復為 **Proxied**，再把 SSL/TLS 恢復為自動模式下的 `Full (strict)`，並啟用 GitHub Pages 的 **Enforce HTTPS**。
+7. 最後分別指定 Cloudflare 的兩個公開 IPv4 測試首頁與 `/data/encounters.json`，確認 HTTPS 為 200、HTTP 為 301 到 HTTPS，避免本機 DNS 快取誤連到 GitHub origin。
+
+GitHub Pages 是代管來源，無法自行安裝 Cloudflare Origin CA 憑證；長期修復必須讓 GitHub 重新核發公開信任的自訂網域憑證，而不是永久停留在 `Full`。
+
 ## 流量估算公式
 
 簡化公式：
