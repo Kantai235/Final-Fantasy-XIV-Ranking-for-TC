@@ -12,7 +12,7 @@ import {
   解析公告Markdown,
 } from "../src/utils/announcements.js";
 import { buildReportExternalLinks } from "../src/utils/reportLinks.js";
-import { 預設副本鍵值 } from "../src/composables/rankingApp/defaults.js";
+import { 預設副本鍵值, 預設隊伍榜副本鍵值 } from "../src/composables/rankingApp/defaults.js";
 import { publicDataContracts, validateSchemaContract } from "../schemas/public_data_contracts.mjs";
 import { 建立職業佔比分組, 取得統計範圍計數 } from "../src/utils/statsDisplay.js";
 import {
@@ -141,6 +141,7 @@ function validatePercentileDisplayFormatting() {
 
 function validateRankingDefaults() {
   assert(預設副本鍵值 === "savage_m5s", "排行榜目前必須預設顯示零式 M5S／熱舞綠光。");
+  assert(預設隊伍榜副本鍵值 === "savage_m5s", "隊伍榜目前必須預設顯示零式 M5S／熱舞綠光。");
 }
 
 function validateUserProfilePercentileSorting() {

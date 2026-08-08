@@ -8,7 +8,7 @@ export const 預設統計副本鍵值 = "all";
 export const 預設統計職業範圍 = "all";
 export const 預設伺服器拆分模式 = "none";
 export const 預設統計傷害指標 = "rdps";
-export const 預設隊伍榜副本鍵值 = "savage_m4s";
+export const 預設隊伍榜副本鍵值 = "savage_m5s";
 export const 預設職業分析範圍 = "role:tank";
 
 export const 作者角色名稱 = "乾太";
