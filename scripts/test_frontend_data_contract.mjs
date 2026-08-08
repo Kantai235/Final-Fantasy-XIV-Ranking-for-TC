@@ -191,10 +191,9 @@ function validateUserProfilePercentileSorting() {
 }
 
 function validateUserProfileBadges() {
-  const 零式副本鍵值 = [
-    "savage_m1s", "savage_m2s", "savage_m3s", "savage_m4s",
-    "savage_m5s", "savage_m6s", "savage_m7s", "savage_m8s",
-  ];
+  const 輕量級副本鍵值 = ["savage_m1s", "savage_m2s", "savage_m3s", "savage_m4s"];
+  const 次重量級副本鍵值 = ["savage_m5s", "savage_m6s", "savage_m7s", "savage_m8s"];
+  const 零式副本鍵值 = [...輕量級副本鍵值, ...次重量級副本鍵值];
   const 六絕副本鍵值 = [
     "ultimate_bahamut",
     "ultimate_ultima_weapon",
@@ -250,9 +249,77 @@ function validateUserProfileBadges() {
   assert(多職說明.includes("6 個職業各有至少 10 場"), "多職玩家應要求至少六職各有十場公開通關紀錄。");
   assert(三色豆說明.includes("5 種職能各有至少 10 場"), "三色豆應以各職能的十場公開通關紀錄判定。");
 
+  const 建立量級成績 = (副本鍵值, 預設完成時間, 最後一層完成時間 = 預設完成時間) => {
+    const 建立單層成績 = (encounterKey, 完成時間) => {
+      const 通關時間毫秒 = 10 * 60 * 1000;
+      return {
+        encounter_key: encounterKey,
+        job: "Paladin",
+        recorded_at_iso: new Date(Date.parse(完成時間) - 通關時間毫秒).toISOString(),
+        clear_time_ms: 通關時間毫秒,
+      };
+    };
+    return 副本鍵值.map((encounterKey, index) => 建立單層成績(
+      encounterKey,
+      index === 副本鍵值.length - 1 ? 最後一層完成時間 : 預設完成時間,
+    ));
+  };
+  const 驗證量級互斥徽章 = (量級名稱, 量級成績, 預期名稱) => {
+    const 量級徽章 = 建立零式量級踏破徽章(量級成績)
+      .filter((徽章) => 徽章.名稱.startsWith(量級名稱));
+    assert(量級徽章.length === 1, `${量級名稱}同一時間只能顯示一枚最高階踏破徽章。`);
+    assert(量級徽章[0]?.名稱 === 預期名稱, `${量級名稱}應依四層完成時間顯示「${預期名稱}」。`);
+  };
+
+  // 「以前」包含門檻當下；最後一層晚 1ms 就應降到下一級，明確鎖定邊界與
+  // 首週 > 次週 > 一般的互斥優先順序。
+  驗證量級互斥徽章(
+    "輕量級",
+    建立量級成績(輕量級副本鍵值, "2026-03-17T08:00:00.000Z"),
+    "輕量級【首週】踏破",
+  );
+  驗證量級互斥徽章(
+    "輕量級",
+    [
+      ...建立量級成績(輕量級副本鍵值, "2026-03-17T08:00:00.000Z"),
+      {
+        encounter_key: "savage_m4s",
+        job: "Paladin",
+        recorded_at_iso: "2026-04-01T07:50:00.000Z",
+        clear_time_ms: 10 * 60 * 1000,
+      },
+    ],
+    "輕量級【首週】踏破",
+  );
+  驗證量級互斥徽章(
+    "輕量級",
+    建立量級成績(輕量級副本鍵值, "2026-03-17T08:00:00.000Z", "2026-03-17T08:00:00.001Z"),
+    "輕量級【次週】踏破",
+  );
+  驗證量級互斥徽章(
+    "輕量級",
+    建立量級成績(輕量級副本鍵值, "2026-03-17T08:00:00.000Z", "2026-03-24T08:00:00.001Z"),
+    "輕量級踏破",
+  );
+  驗證量級互斥徽章(
+    "次重量級",
+    建立量級成績(次重量級副本鍵值, "2026-08-11T08:00:00.000Z"),
+    "次重量級【首週】踏破",
+  );
+  驗證量級互斥徽章(
+    "次重量級",
+    建立量級成績(次重量級副本鍵值, "2026-08-11T08:00:00.000Z", "2026-08-11T08:00:00.001Z"),
+    "次重量級【次週】踏破",
+  );
+  驗證量級互斥徽章(
+    "次重量級",
+    建立量級成績(次重量級副本鍵值, "2026-08-11T08:00:00.000Z", "2026-08-18T08:00:00.001Z"),
+    "次重量級踏破",
+  );
+
   const 未完整量級 = 建立零式量級踏破徽章(公開成績.filter((成績) => 成績.encounter_key !== "savage_m8s"));
   assert(
-    !未完整量級.some((徽章) => 徽章.名稱 === "次重量級踏破"),
+    !未完整量級.some((徽章) => 徽章.名稱.startsWith("次重量級")),
     "少任一 M5S～M8S 有效版本公開成績時，不可發放次重量級踏破徽章。",
   );
 
@@ -261,7 +328,7 @@ function validateUserProfileBadges() {
   ));
   const 過版量級 = 建立零式量級踏破徽章(M8過版成績);
   assert(
-    !過版量級.some((徽章) => 徽章.名稱 === "次重量級踏破"),
+    !過版量級.some((徽章) => 徽章.名稱.startsWith("次重量級")),
     "M5S～M8S 任一層只有過版紀錄時，不可發放次重量級踏破徽章。",
   );
 
@@ -451,9 +518,10 @@ async function validateUserProfileGameVersionFilter() {
 }
 
 async function validateHelpTooltipPreference() {
-  const [source, headerSource, profileStyles] = await Promise.all([
+  const [source, headerSource, rankingPageSource, profileStyles] = await Promise.all([
     readText(path.join(srcDir, "composables", "useRankingApp.js")),
     readText(path.join(srcDir, "components", "AppHeader.vue")),
+    readText(path.join(srcDir, "pages", "RankingPage.vue")),
     readText(path.join(srcDir, "styles", "pages-profile.css")),
   ]);
 
@@ -471,8 +539,9 @@ async function validateHelpTooltipPreference() {
     "設定視窗必須提供說明提示按鈕的顯示與隱藏切換。",
   );
   assert(
-    profileStyles.includes(':root[data-show-help-tooltips="false"] .說明提示 {'),
-    "關閉說明提示按鈕時，所有頁面與 Teleport 彈窗中的提示都必須一併隱藏。",
+    profileStyles.includes(':root[data-show-help-tooltips="false"] .說明提示:not(.作者提示) {')
+      && rankingPageSource.includes('class="說明提示 作者提示"'),
+    "關閉說明提示按鈕時，所有一般頁面與 Teleport 彈窗提示都必須隱藏，但作者身分標示必須保留。",
   );
 }
 

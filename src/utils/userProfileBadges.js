@@ -14,13 +14,41 @@ export const 個人成績徽章門檻 = Object.freeze({
 // 重量級等成就時，應在這裡補上一筆固定副本清單與對應測試。
 const 零式量級踏破定義 = Object.freeze([
   {
-    名稱: "輕量級踏破",
-    說明: "M1S～M4S 皆有有效版本公開成績",
+    一般徽章: Object.freeze({
+      名稱: "輕量級踏破",
+      說明: "M1S～M4S 皆有有效版本公開成績",
+    }),
+    時限徽章: Object.freeze([
+      Object.freeze({
+        名稱: "輕量級【首週】踏破",
+        說明: "2026/03/17 16:00（繁中服時間）以前通關 M1S～M4S",
+        截止時間Iso: "2026-03-17T16:00:00+08:00",
+      }),
+      Object.freeze({
+        名稱: "輕量級【次週】踏破",
+        說明: "2026/03/24 16:00（繁中服時間）以前通關 M1S～M4S",
+        截止時間Iso: "2026-03-24T16:00:00+08:00",
+      }),
+    ]),
     副本鍵值: Object.freeze(["savage_m1s", "savage_m2s", "savage_m3s", "savage_m4s"]),
   },
   {
-    名稱: "次重量級踏破",
-    說明: "M5S～M8S 皆有有效版本公開成績",
+    一般徽章: Object.freeze({
+      名稱: "次重量級踏破",
+      說明: "M5S～M8S 皆有有效版本公開成績",
+    }),
+    時限徽章: Object.freeze([
+      Object.freeze({
+        名稱: "次重量級【首週】踏破",
+        說明: "2026/08/11 16:00（繁中服時間）以前通關 M5S～M8S",
+        截止時間Iso: "2026-08-11T16:00:00+08:00",
+      }),
+      Object.freeze({
+        名稱: "次重量級【次週】踏破",
+        說明: "2026/08/18 16:00（繁中服時間）以前通關 M5S～M8S",
+        截止時間Iso: "2026-08-18T16:00:00+08:00",
+      }),
+    ]),
     副本鍵值: Object.freeze(["savage_m5s", "savage_m6s", "savage_m7s", "savage_m8s"]),
   },
 ]);
@@ -59,6 +87,72 @@ function 取得達標種類數(次數索引, 最低次數) {
   return Array.from(次數索引.values()).filter((次數) => 次數 >= 最低次數).length;
 }
 
+function 取得成績開始時間戳記(成績) {
+  const Iso時間 = String(成績?.recorded_at_iso || "").trim();
+  if (Iso時間) {
+    const Iso時間戳記 = new Date(Iso時間).getTime();
+    if (Number.isFinite(Iso時間戳記)) {
+      return Iso時間戳記;
+    }
+  }
+
+  // `recorded_at_iso` 是目前個人成績檔的正式欄位；數字時間只作為舊資料的
+  // 向後相容 fallback。缺少或無法解析時間時仍可取得一般踏破徽章，但不能
+  // 猜測為首週／次週通關，避免把資料空洞誤判成更稀有的限時成就。
+  const 數字時間戳記 = Number(成績?.recorded_at);
+  return Number.isFinite(數字時間戳記) && 數字時間戳記 > 0 ? 數字時間戳記 : null;
+}
+
+function 取得通關完成時間戳記(成績) {
+  const 開始時間戳記 = 取得成績開始時間戳記(成績);
+  if (開始時間戳記 === null) {
+    return null;
+  }
+
+  // FFLogs 的 `recorded_at_iso` 對應 fight 開始時間；成就門檻描述的是「完成
+  // 通關」的時間，因此必須加上 clear time。若舊資料缺少戰鬥時間，寧可只
+  // 發一般踏破徽章，也不能用開始時間把跨過 16:00 的戰鬥誤判為限時成就。
+  const 通關時間毫秒 = Number(成績?.clear_time_ms);
+  if (Number.isFinite(通關時間毫秒) && 通關時間毫秒 >= 0) {
+    return 開始時間戳記 + 通關時間毫秒;
+  }
+  const 通關時間秒數 = Number(成績?.clear_time_seconds);
+  if (Number.isFinite(通關時間秒數) && 通關時間秒數 >= 0) {
+    return 開始時間戳記 + 通關時間秒數 * 1000;
+  }
+  return null;
+}
+
+function 建立有效版本成績副本索引(公開成績) {
+  const 副本索引 = new Map();
+  for (const 成績 of Array.isArray(公開成績) ? 公開成績 : []) {
+    if (成績?.is_obsolete_record || !成績?.encounter_key) {
+      continue;
+    }
+    const 副本成績 = 副本索引.get(成績.encounter_key) || [];
+    副本成績.push(成績);
+    副本索引.set(成績.encounter_key, 副本成績);
+  }
+  return 副本索引;
+}
+
+function 是否在截止時間前踏破量級(量級, 有效版本成績副本索引, 截止時間Iso) {
+  const 截止時間戳記 = new Date(截止時間Iso).getTime();
+  if (!Number.isFinite(截止時間戳記)) {
+    return false;
+  }
+
+  // 「以前」包含門檻當下，因此使用 <=。每層只要有任一筆有效版本公開紀錄
+  // 落在門檻內即視為該層已完成；不能只看角色最後完成的樓層，因為較早樓層
+  // 可能在之後重刷並留下更晚的紀錄。
+  return 量級.副本鍵值.every((副本鍵值) => (
+    (有效版本成績副本索引.get(副本鍵值) || []).some((成績) => {
+      const 通關完成時間戳記 = 取得通關完成時間戳記(成績);
+      return 通關完成時間戳記 !== null && 通關完成時間戳記 <= 截止時間戳記;
+    })
+  ));
+}
+
 /**
  * 依固定副本集合建立量級踏破徽章。
  */
@@ -66,15 +160,22 @@ export function 建立零式量級踏破徽章(公開成績) {
   // 量級踏破表達的是該量級仍屬現行難度時的完成度。過版後同一角色可能因
   // 裝備品級、可跳過機制而取得新的公開紀錄，不能反過來補發現行量級成就；
   // 因此只採用資料建置層已標記為非 obsolete 的有效版本通關。
-  const 有效版本公開成績副本 = new Set(
-    (Array.isArray(公開成績) ? 公開成績 : [])
-      .filter((成績) => !成績?.is_obsolete_record)
-      .map((成績) => 成績?.encounter_key)
-      .filter(Boolean),
-  );
-  return 零式量級踏破定義
-    .filter((量級) => 量級.副本鍵值.every((副本鍵值) => 有效版本公開成績副本.has(副本鍵值)))
-    .map(({ 名稱, 說明 }) => ({ 名稱, 說明 }));
+  const 有效版本成績副本索引 = 建立有效版本成績副本索引(公開成績);
+  return 零式量級踏破定義.flatMap((量級) => {
+    if (!量級.副本鍵值.every((副本鍵值) => 有效版本成績副本索引.has(副本鍵值))) {
+      return [];
+    }
+
+    // 時限徽章由最稀有的首週依序往一般踏破判定，命中後立即回傳，確保同一
+    // 量級只顯示最高階的一枚徽章，不會同時堆疊首週、次週與一般三種成就。
+    const 時限徽章 = 量級.時限徽章.find((徽章) => (
+      是否在截止時間前踏破量級(量級, 有效版本成績副本索引, 徽章.截止時間Iso)
+    ));
+    if (時限徽章) {
+      return [{ 名稱: 時限徽章.名稱, 說明: 時限徽章.說明 }];
+    }
+    return [{ 名稱: 量級.一般徽章.名稱, 說明: 量級.一般徽章.說明 }];
+  });
 }
 
 /**
