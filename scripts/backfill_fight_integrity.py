@@ -223,13 +223,30 @@ def candidate_needs_check(candidate: Candidate, config: IntegrityConfig) -> bool
     """只重判現行規則需要的新證據；其他已通過舊版結果繼續公開。"""
 
     result = integrity.current_result(candidate.fight)
+    target_profile = config.known_enemy_capacity.target_damage_profile(
+        candidate.encounter_key
+    )
+    if target_profile is not None:
+        metrics = result.get("metrics") if isinstance(result, dict) else None
+        target_metrics = (
+            metrics.get("target_damage_profile") if isinstance(metrics, dict) else None
+        )
+        if (
+            integrity.to_int((result or {}).get("calculation_version"))
+            != integrity.CALCULATION_VERSION
+            or not isinstance(target_metrics, dict)
+            or target_metrics.get("profile_version") != target_profile.version
+        ):
+            # v11 的逐目標證據只適用設定了固定 profile 的副本。這個明示分支讓
+            # M5S～M8S 的 v10 正常與異常結果全部重判，同時讓其他 v8～v10 已驗證
+            # 結果維持公開，不會因全域版號升級整批下架。
+            return True
     if (
         config.basic_attack_distribution.applies(candidate.encounter_key, candidate.fight)
         and integrity.to_int((result or {}).get("calculation_version"))
         != integrity.CALCULATION_VERSION
     ):
-        # v10 的事件分布只適用 M5S～M8S。這個明示分支讓四層 v9 正常結果進入
-        # 重判，同時保留其他 v8/v9 正常副本的公開相容性，不會因升版整批下架。
+        # 事件分布只適用 M5S～M8S；逐目標 profile 未啟用時仍以此分支補齊新版證據。
         return True
     if integrity.is_legacy_public_compatible_result(result):
         return False
@@ -327,11 +344,37 @@ def seed_measurement_cache_from_results(
             if isinstance(metrics, dict) and all(
                 key in metrics for key in ("enemy_damage", "enemy_hp_capacity", "target_count")
             ):
+                measurement = {
+                    "enemy_damage": metrics["enemy_damage"],
+                    "enemy_hp_capacity": metrics["enemy_hp_capacity"],
+                    "target_count": metrics["target_count"],
+                }
+                target_metrics = metrics.get("target_damage_profile")
+                target_results = (
+                    target_metrics.get("target_results")
+                    if isinstance(target_metrics, dict)
+                    else None
+                )
+                if isinstance(target_results, list):
+                    target_measurements = [
+                        {
+                            "guid": target.get("guid"),
+                            "damage": target.get("observed_damage"),
+                            "max_hp": target.get("observed_max_hp"),
+                            "instance_count": target.get("observed_instance_count"),
+                        }
+                        for target in target_results
+                        if isinstance(target, dict)
+                        and target.get("observed_damage") is not None
+                        and target.get("observed_max_hp") is not None
+                    ]
+                    if len(target_measurements) == integrity.to_int(metrics.get("target_count")):
+                        measurement["targets"] = target_measurements
                 measurement_cache.put(
                     candidate.report_code,
                     candidate.report,
                     candidate.fight,
-                    measurement=metrics,
+                    measurement=measurement,
                     cached_at_iso=checked_at_iso,
                     persist=False,
                 )
@@ -406,6 +449,7 @@ def query_target_damage(
         targets.append(
             {
                 "id": actor_id,
+                "guid": integrity.to_int(entry.get("guid")),
                 "damage": total,
                 "instance_count": instance_counts.get(actor_id, 1),
             }
@@ -450,7 +494,7 @@ def evaluate_measurement(
     config: IntegrityConfig,
     checked_at_iso: str,
     *,
-    measurement: dict[str, float | int],
+    measurement: dict[str, Any],
     historical_screen: historical_baselines.HistoricalDamageScreen | None,
     known_capacity_screen: known_capacity.KnownEnemyCapacityScreen | None,
     basic_attack_screen: integrity.BasicAttackDistributionScreen | None = None,
@@ -466,6 +510,12 @@ def evaluate_measurement(
         measurement["enemy_damage"],
     )
     effective_known_capacity_screen = enemy_damage_screen or known_capacity_screen
+    target_damage_profile_screen = (
+        config.known_enemy_capacity.screen_target_damage_profile(
+            candidate.encounter_key,
+            measurement,
+        )
+    )
     return integrity.evaluate(
         checked_at_iso=checked_at_iso,
         enemy_damage=measurement["enemy_damage"],
@@ -477,6 +527,7 @@ def evaluate_measurement(
         historical_screen=historical_screen,
         known_capacity_screen=effective_known_capacity_screen,
         basic_attack_screen=basic_attack_screen,
+        target_damage_profile_screen=target_damage_profile_screen,
     )
 
 
@@ -504,6 +555,11 @@ def evaluate_candidate(
     )
     requires_enemy_damage_measurement = config.known_enemy_capacity.requires_enemy_damage_measurement(
         candidate.encounter_key,
+    )
+    requires_target_details = (
+        config.known_enemy_capacity.requires_target_damage_profile_measurement(
+            candidate.encounter_key
+        )
     )
     basic_attack_screen: integrity.BasicAttackDistributionScreen | None = None
     basic_cache_hit = False
@@ -554,7 +610,7 @@ def evaluate_candidate(
                 cached_at_iso=checked_at_iso,
             )
         basic_attack_screen = config.basic_attack_distribution.screen(basic_measurement)
-        if basic_attack_screen.is_abnormal:
+        if basic_attack_screen.is_abnormal and not requires_target_details:
             return integrity.make_basic_attack_distribution_result(
                 checked_at_iso=checked_at_iso,
                 screen=basic_attack_screen,
@@ -604,6 +660,7 @@ def evaluate_candidate(
         candidate.report_code,
         candidate.report,
         candidate.fight,
+        require_target_details=requires_target_details,
     )
     if cached is not None:
         if cached["outcome"] == "unverifiable":
@@ -696,13 +753,39 @@ def evaluate_candidate(
             known_capacity_screen=known_capacity_screen,
         ), api_queried=True)
 
+    if requires_target_details and any(target.get("guid") is None for target in targets):
+        measurement_cache.put_unverifiable(
+            candidate.report_code,
+            candidate.report,
+            candidate.fight,
+            reason="missing_enemy_target_guid",
+            cached_at_iso=checked_at_iso,
+        )
+        return finish(integrity.make_unverifiable_result(
+            checked_at_iso=checked_at_iso,
+            reason="missing_enemy_target_guid",
+            attack_marker=attack_marker,
+            historical_screen=historical_screen,
+            known_capacity_screen=known_capacity_screen,
+        ), api_queried=True)
+
     measurement = {
         "enemy_damage": sum(target["damage"] for target in targets),
         "enemy_hp_capacity": sum(target_hp[target["id"]] * target["instance_count"] for target in targets),
         "target_count": len(targets),
     }
-    # 落地的是最小彙總值，不保存依目標表格或 raw events；若 FFLogs 之後修正
-    # 同一 report，來源指紋變更時快取自然會失效。
+    if all(target.get("guid") is not None for target in targets):
+        measurement["targets"] = [
+            {
+                "guid": target["guid"],
+                "damage": target["damage"],
+                "max_hp": target_hp[target["id"]],
+                "instance_count": target["instance_count"],
+            }
+            for target in targets
+        ]
+    # 落地的是彙總值與逐目標 NPC GUID／承傷／生命值／實例數，不保存 report 內
+    # actor ID、完整 Target table 或 raw events；FFLogs 修正 report 時來源指紋會失效。
     measurement_cache.put(
         candidate.report_code,
         candidate.report,

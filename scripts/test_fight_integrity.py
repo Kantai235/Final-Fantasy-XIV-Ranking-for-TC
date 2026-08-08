@@ -319,6 +319,18 @@ class FightIntegrityTest(unittest.TestCase):
         self.assertFalse(integrity.needs_check(fight))
         self.assertFalse(integrity.is_hidden_from_public(fight))
 
+    def test_existing_v10_valid_result_remains_generically_public(self) -> None:
+        fight = {
+            "data_integrity": {
+                "calculation_version": 10,
+                "status": "valid",
+                "hidden_from_public": False,
+            }
+        }
+
+        self.assertFalse(integrity.needs_check(fight))
+        self.assertFalse(integrity.is_hidden_from_public(fight))
+
     def test_existing_v8_failed_result_stays_hidden_and_enters_current_recheck(self) -> None:
         for status in ("excluded", "suspected", "unverifiable"):
             with self.subTest(status=status):
@@ -365,6 +377,34 @@ class FightIntegrityTest(unittest.TestCase):
         )
         self.assertEqual(result["status"], "suspected")
         self.assertTrue(result["hidden_from_public"])
+
+    def test_target_profile_mismatch_is_independent_hidden_evidence(self) -> None:
+        screen = known_capacity.KnownTargetDamageProfileScreen(
+            encounter_key="savage_m8s",
+            profile_version="fixture-v1",
+            status="suspected",
+            reason="target_damage_profile_mismatch",
+            metrics={"mismatched_target_guids": [18219]},
+        )
+
+        result = integrity.evaluate(
+            checked_at_iso="2026-08-09T00:00:00Z",
+            enemy_damage=100_000,
+            enemy_hp_capacity=100_000,
+            target_count=1,
+            attack_marker=False,
+            hp_ratio_threshold=1.15,
+            suspected_hp_ratio_threshold=1.14,
+            target_damage_profile_screen=screen,
+        )
+
+        self.assertEqual(result["status"], "suspected")
+        self.assertTrue(result["hidden_from_public"])
+        self.assertIn("target_damage_profile_mismatch", result["reasons"])
+        self.assertEqual(
+            result["metrics"]["target_damage_profile"]["profile_version"],
+            "fixture-v1",
+        )
 
     def test_unverifiable_historical_high_damage_stays_hidden_as_suspected(self) -> None:
         screen = baselines.HistoricalDamageScreen(

@@ -1,8 +1,9 @@
 """戰鬥完整性檢核的本機測量快取。
 
-快取只保存已彙整的敵方承傷、敵方最大生命池、目標數，以及玩家層 Attack 命中數、
-中位數與占比，或可重現的無法量測原因。它不保存 raw events、玩家名稱或完整 FFLogs
-payload，讓門檻調整時仍能離線重新判定。這不是排行榜資料的一部分：預設路徑由
+快取只保存已彙整的敵方承傷、敵方最大生命池、目標數、逐目標 NPC GUID／生命值／
+有效承傷／實例數，以及玩家層 Attack 命中數、中位數與占比，或可重現的無法量測
+原因。它不保存 raw events、玩家名稱、report 內 actor ID 或完整 FFLogs payload，讓
+門檻調整時仍能離線重新判定。這不是排行榜資料的一部分：預設路徑由
 .gitignore 排除，GitHub Actions 只透過 Actions cache 在執行輪次之間接續使用。
 """
 
@@ -15,9 +16,12 @@ from pathlib import Path
 from typing import Any
 
 
-CACHE_SCHEMA_VERSION = 4
-SUPPORTED_CACHE_SCHEMA_VERSIONS = frozenset({3, CACHE_SCHEMA_VERSION})
-CACHEABLE_UNVERIFIABLE_REASONS = frozenset({"missing_enemy_max_hp"})
+CACHE_SCHEMA_VERSION = 5
+SUPPORTED_CACHE_SCHEMA_VERSIONS = frozenset({3, 4, CACHE_SCHEMA_VERSION})
+CACHEABLE_UNVERIFIABLE_REASONS = frozenset({
+    "missing_enemy_max_hp",
+    "missing_enemy_target_guid",
+})
 
 
 def _to_int(value: Any) -> int | None:
@@ -76,7 +80,37 @@ def _cache_key(report_code: str, fight: dict[str, Any]) -> str | None:
     return f"{report_code}:{fight_id}"
 
 
-def _normalize_measurement(raw: Any) -> dict[str, float | int] | None:
+def _normalize_target_measurements(raw: Any) -> list[dict[str, float | int]] | None:
+    if not isinstance(raw, list) or not raw:
+        return None
+    targets: list[dict[str, float | int]] = []
+    for raw_target in raw:
+        if not isinstance(raw_target, dict):
+            return None
+        guid = _to_int(raw_target.get("guid"))
+        damage = _to_number(raw_target.get("damage"))
+        max_hp = _to_number(raw_target.get("max_hp"))
+        instance_count = _to_int(raw_target.get("instance_count"))
+        if (
+            guid is None
+            or guid <= 0
+            or damage is None
+            or max_hp is None
+            or instance_count is None
+            or instance_count <= 0
+        ):
+            return None
+        targets.append({
+            "guid": guid,
+            "damage": damage,
+            "max_hp": max_hp,
+            "instance_count": instance_count,
+        })
+    targets.sort(key=lambda target: int(target["guid"]))
+    return targets
+
+
+def _normalize_measurement(raw: Any) -> dict[str, Any] | None:
     if not isinstance(raw, dict):
         return None
     enemy_damage = _to_number(raw.get("enemy_damage"))
@@ -84,11 +118,17 @@ def _normalize_measurement(raw: Any) -> dict[str, float | int] | None:
     target_count = _to_int(raw.get("target_count"))
     if enemy_damage is None or enemy_hp_capacity is None or target_count is None or target_count <= 0:
         return None
-    return {
+    measurement: dict[str, Any] = {
         "enemy_damage": enemy_damage,
         "enemy_hp_capacity": enemy_hp_capacity,
         "target_count": target_count,
     }
+    if "targets" in raw:
+        targets = _normalize_target_measurements(raw.get("targets"))
+        if targets is None or len(targets) != target_count:
+            return None
+        measurement["targets"] = targets
+    return measurement
 
 
 def _normalize_basic_attack_measurement(raw: Any) -> dict[str, Any] | None:
@@ -179,7 +219,14 @@ class FightIntegrityMeasurementCache:
     def __len__(self) -> int:
         return len(self.entries)
 
-    def get(self, report_code: str, report: dict[str, Any], fight: dict[str, Any]) -> dict[str, Any] | None:
+    def get(
+        self,
+        report_code: str,
+        report: dict[str, Any],
+        fight: dict[str, Any],
+        *,
+        require_target_details: bool = False,
+    ) -> dict[str, Any] | None:
         key = _cache_key(report_code, fight)
         if key is None:
             return None
@@ -191,6 +238,12 @@ class FightIntegrityMeasurementCache:
         outcome = entry.get("outcome")
         if outcome == "measured":
             measurement = _normalize_measurement(entry.get("measurement"))
+            if (
+                measurement is not None
+                and require_target_details
+                and "targets" not in measurement
+            ):
+                return None
             return {"outcome": outcome, "measurement": measurement} if measurement is not None else None
         if outcome == "unverifiable" and entry.get("reason") in CACHEABLE_UNVERIFIABLE_REASONS:
             return {"outcome": outcome, "reason": entry["reason"]}

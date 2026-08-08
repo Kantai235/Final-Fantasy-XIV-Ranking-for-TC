@@ -66,6 +66,64 @@ class KnownEnemyCapacityRule:
     required_enemy_damage_max: int | None = None
     maximum_full_party_damage: int | None = None
     maximum_enemy_damage: int | None = None
+    target_damage_profile: "KnownTargetDamageProfile | None" = None
+
+
+@dataclass(frozen=True)
+class KnownTargetDamageRule:
+    """單一敵方 NPC 在標準通關中的固定生命值與有效承傷語意。
+
+    ``expected_damage_instances`` 不等同 FFLogs ``enemyNPCs.instanceCount``。M6S、
+    M7S 的 fight metadata 會列出未實際擊殺或只在場景中生成的同 GUID actor；若直接
+    乘上 instanceCount，會把未承傷的生命池誤算進上限。此欄位只描述經多份正常
+    report 交叉確認、實際需要打掉的等效實例數，再由 ``expected_damage_ratio`` 表達
+    M8S 狼打至剩餘 60% 血量便轉場（因此有效承傷為 40%）之類的固定比例。
+    """
+
+    guid: int
+    name: str
+    max_hp: int
+    expected_damage_instances: int
+    expected_damage_ratio: float
+    damage_tolerance: int
+
+    @property
+    def expected_damage(self) -> int:
+        return round(
+            self.max_hp
+            * self.expected_damage_instances
+            * self.expected_damage_ratio
+        )
+
+
+@dataclass(frozen=True)
+class KnownTargetDamageProfile:
+    """副本專用逐目標生命值／轉場比例規則。"""
+
+    version: str
+    targets: dict[int, KnownTargetDamageRule]
+
+
+@dataclass(frozen=True)
+class KnownTargetDamageProfileScreen:
+    """逐目標量測相對於副本固定 profile 的可追溯判定。"""
+
+    encounter_key: str
+    profile_version: str
+    status: str
+    reason: str | None
+    metrics: dict[str, Any]
+
+    @property
+    def is_abnormal(self) -> bool:
+        return self.status in {"excluded", "suspected", "unverifiable"}
+
+    def to_metrics(self) -> dict[str, Any]:
+        return {
+            "profile_version": self.profile_version,
+            "status": self.status,
+            **self.metrics,
+        }
 
 
 @dataclass(frozen=True)
@@ -256,6 +314,164 @@ class KnownEnemyCapacityPolicy:
     def disabled(cls) -> "KnownEnemyCapacityPolicy":
         return cls(enabled=False, rules={})
 
+    def target_damage_profile(
+        self,
+        encounter_key: str,
+    ) -> KnownTargetDamageProfile | None:
+        if not self.enabled:
+            return None
+        rule = self.rules.get(encounter_key)
+        return rule.target_damage_profile if rule is not None else None
+
+    def requires_target_damage_profile_measurement(self, encounter_key: str) -> bool:
+        """是否必須保存逐目標最小量測，不能只沿用舊版彙總生命池快取。"""
+
+        return self.target_damage_profile(encounter_key) is not None
+
+    def screen_target_damage_profile(
+        self,
+        encounter_key: str,
+        measurement: dict[str, Any],
+    ) -> KnownTargetDamageProfileScreen | None:
+        """比對逐目標生命值、有效承傷與固定轉場比例。
+
+        這裡只接受 FFLogs Target Damage 與少量 resource events 壓縮後的最小量測；
+        actor id 是 report 區域值，不能跨上傳比對，因此規則與結果都以 NPC GUID
+        作為穩定主鍵。若舊快取只有敵方總傷害，必須回報 unverifiable，讓呼叫端
+        重新查詢，而不是用缺少逐目標證據的彙總值誤判為有效。
+        """
+
+        profile = self.target_damage_profile(encounter_key)
+        if profile is None:
+            return None
+
+        raw_targets = measurement.get("targets") if isinstance(measurement, dict) else None
+        if not isinstance(raw_targets, list) or not raw_targets:
+            return KnownTargetDamageProfileScreen(
+                encounter_key=encounter_key,
+                profile_version=profile.version,
+                status="unverifiable",
+                reason="missing_target_damage_profile_measurement",
+                metrics={
+                    "expected_target_guids": sorted(profile.targets),
+                    "target_results": [],
+                },
+            )
+
+        observed_by_guid: dict[int, dict[str, int]] = {}
+        invalid_measurement = False
+        for raw_target in raw_targets:
+            if not isinstance(raw_target, dict):
+                invalid_measurement = True
+                continue
+            guid = _to_positive_int(raw_target.get("guid"))
+            damage_value = _to_number(raw_target.get("damage"))
+            max_hp = _to_positive_int(raw_target.get("max_hp"))
+            instance_count = _to_positive_int(raw_target.get("instance_count"))
+            if guid is None or damage_value is None or damage_value <= 0 or max_hp is None:
+                invalid_measurement = True
+                continue
+            damage = round(damage_value)
+            existing = observed_by_guid.get(guid)
+            if existing is None:
+                observed_by_guid[guid] = {
+                    "damage": damage,
+                    "max_hp": max_hp,
+                    "instance_count": instance_count or 1,
+                }
+                continue
+            # 同一 GUID 若在 Target table 被拆成多個 actor id，可安全合併承傷與
+            # instanceCount；但 max HP 不一致代表 resource 語意不完整，不能猜測。
+            if existing["max_hp"] != max_hp:
+                invalid_measurement = True
+                continue
+            existing["damage"] += damage
+            existing["instance_count"] += instance_count or 1
+
+        if invalid_measurement:
+            return KnownTargetDamageProfileScreen(
+                encounter_key=encounter_key,
+                profile_version=profile.version,
+                status="unverifiable",
+                reason="invalid_target_damage_profile_measurement",
+                metrics={
+                    "expected_target_guids": sorted(profile.targets),
+                    "observed_target_guids": sorted(observed_by_guid),
+                    "target_results": [],
+                },
+            )
+
+        missing_guids = sorted(set(profile.targets) - set(observed_by_guid))
+        unexpected_guids = sorted(set(observed_by_guid) - set(profile.targets))
+        target_results: list[dict[str, Any]] = []
+        mismatched_guids: list[int] = []
+        for guid, target_rule in sorted(profile.targets.items()):
+            observed = observed_by_guid.get(guid)
+            expected_damage = target_rule.expected_damage
+            damage_min = expected_damage - target_rule.damage_tolerance
+            damage_max = expected_damage + target_rule.damage_tolerance
+            if observed is None:
+                target_results.append({
+                    "guid": guid,
+                    "name": target_rule.name,
+                    "expected_max_hp": target_rule.max_hp,
+                    "expected_damage_instances": target_rule.expected_damage_instances,
+                    "expected_damage_ratio": target_rule.expected_damage_ratio,
+                    "expected_damage": expected_damage,
+                    "damage_min": damage_min,
+                    "damage_max": damage_max,
+                    "matches": False,
+                })
+                mismatched_guids.append(guid)
+                continue
+
+            max_hp_matches = observed["max_hp"] == target_rule.max_hp
+            damage_matches = damage_min <= observed["damage"] <= damage_max
+            matches = max_hp_matches and damage_matches
+            if not matches:
+                mismatched_guids.append(guid)
+            target_results.append({
+                "guid": guid,
+                "name": target_rule.name,
+                "observed_damage": observed["damage"],
+                "observed_max_hp": observed["max_hp"],
+                "observed_instance_count": observed["instance_count"],
+                "observed_damage_ratio": round(
+                    observed["damage"]
+                    / (target_rule.max_hp * target_rule.expected_damage_instances),
+                    6,
+                ),
+                "expected_max_hp": target_rule.max_hp,
+                "expected_damage_instances": target_rule.expected_damage_instances,
+                "expected_damage_ratio": target_rule.expected_damage_ratio,
+                "expected_damage": expected_damage,
+                "damage_min": damage_min,
+                "damage_max": damage_max,
+                "max_hp_matches": max_hp_matches,
+                "damage_matches": damage_matches,
+                "matches": matches,
+            })
+
+        expected_enemy_damage = sum(
+            target_rule.expected_damage for target_rule in profile.targets.values()
+        )
+        observed_enemy_damage = sum(target["damage"] for target in observed_by_guid.values())
+        has_mismatch = bool(missing_guids or unexpected_guids or mismatched_guids)
+        return KnownTargetDamageProfileScreen(
+            encounter_key=encounter_key,
+            profile_version=profile.version,
+            status="suspected" if has_mismatch else "valid",
+            reason="target_damage_profile_mismatch" if has_mismatch else None,
+            metrics={
+                "expected_enemy_damage": expected_enemy_damage,
+                "observed_enemy_damage": observed_enemy_damage,
+                "missing_target_guids": missing_guids,
+                "unexpected_target_guids": unexpected_guids,
+                "mismatched_target_guids": sorted(set(mismatched_guids)),
+                "target_results": target_results,
+            },
+        )
+
     def screen(self, encounter_key: str, fight: dict[str, Any]) -> KnownEnemyCapacityScreen | None:
         """只在完整繁中隊伍的玩家傷害齊全時提供傷害下限證據。"""
 
@@ -308,6 +524,7 @@ class KnownEnemyCapacityPolicy:
                     and rule.required_enemy_damage_max is not None
                 )
                 or rule.maximum_enemy_damage is not None
+                or rule.target_damage_profile is not None
             )
         )
 
@@ -423,12 +640,77 @@ def load_known_enemy_capacity_policy(path: Path) -> KnownEnemyCapacityPolicy:
             raise RuntimeError(
                 f"固定敵方生命池規則 {encounter_key} 的敵方承傷上限無效。"
             )
+        target_damage_profile: KnownTargetDamageProfile | None = None
+        raw_target_profile = entry.get("target_damage_profile")
+        if raw_target_profile is not None:
+            if not isinstance(raw_target_profile, dict):
+                raise RuntimeError(f"逐目標生命值規則必須是物件：{encounter_key}")
+            profile_version = raw_target_profile.get("version")
+            raw_target_rules = raw_target_profile.get("targets")
+            default_tolerance = _to_positive_int(
+                raw_target_profile.get("damage_tolerance")
+            )
+            if (
+                not isinstance(profile_version, str)
+                or not profile_version.strip()
+                or not isinstance(raw_target_rules, list)
+                or not raw_target_rules
+                or default_tolerance is None
+            ):
+                raise RuntimeError(
+                    f"逐目標生命值規則缺少版本、容許值或目標清單：{encounter_key}"
+                )
+
+            parsed_targets: dict[int, KnownTargetDamageRule] = {}
+            for raw_target_rule in raw_target_rules:
+                if not isinstance(raw_target_rule, dict):
+                    raise RuntimeError(f"逐目標生命值規則含有無效目標：{encounter_key}")
+                guid = _to_positive_int(raw_target_rule.get("guid"))
+                name = raw_target_rule.get("name")
+                max_hp = _to_positive_int(raw_target_rule.get("max_hp"))
+                expected_instances = _to_positive_int(
+                    raw_target_rule.get("expected_damage_instances")
+                )
+                expected_ratio = _to_number(
+                    raw_target_rule.get("expected_damage_ratio")
+                )
+                tolerance = _to_positive_int(
+                    raw_target_rule.get("damage_tolerance")
+                ) or default_tolerance
+                if (
+                    guid is None
+                    or guid in parsed_targets
+                    or not isinstance(name, str)
+                    or not name.strip()
+                    or max_hp is None
+                    or expected_instances is None
+                    or expected_ratio is None
+                    or expected_ratio <= 0
+                    or expected_ratio > 1
+                    or tolerance is None
+                ):
+                    raise RuntimeError(
+                        f"逐目標生命值規則欄位無效或 GUID 重複：{encounter_key}"
+                    )
+                parsed_targets[guid] = KnownTargetDamageRule(
+                    guid=guid,
+                    name=name.strip(),
+                    max_hp=max_hp,
+                    expected_damage_instances=expected_instances,
+                    expected_damage_ratio=expected_ratio,
+                    damage_tolerance=tolerance,
+                )
+            target_damage_profile = KnownTargetDamageProfile(
+                version=profile_version.strip(),
+                targets=parsed_targets,
+            )
         if (
             not has_capacity
             and not has_required_min
             and not has_required_enemy_min
             and maximum_full_party_damage is None
             and maximum_enemy_damage is None
+            and target_damage_profile is None
         ):
             raise RuntimeError(
                 f"固定敵方生命池規則 {encounter_key} 至少要設定生命池、固定傷害範圍或傷害上限。"
@@ -442,6 +724,7 @@ def load_known_enemy_capacity_policy(path: Path) -> KnownEnemyCapacityPolicy:
             required_enemy_damage_max=required_enemy_max,
             maximum_full_party_damage=maximum_full_party_damage,
             maximum_enemy_damage=maximum_enemy_damage,
+            target_damage_profile=target_damage_profile,
         )
 
     return KnownEnemyCapacityPolicy(enabled=True, rules=rules)

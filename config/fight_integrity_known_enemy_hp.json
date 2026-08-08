@@ -34,6 +34,137 @@
     },
     "savage_m4s": {
       "maximum_full_party_damage": 114526000
+    },
+    "savage_m5s": {
+      "required_enemy_damage_min": 105549582,
+      "required_enemy_damage_max": 105549782,
+      "target_damage_profile": {
+        "version": "7.2_cruiserweight_reviewed_2026-08-09",
+        "damage_tolerance": 100,
+        "targets": [
+          {
+            "guid": 18361,
+            "name": "Dancing Green",
+            "max_hp": 105549682,
+            "expected_damage_instances": 1,
+            "expected_damage_ratio": 1.0
+          }
+        ]
+      }
+    },
+    "savage_m6s": {
+      "required_enemy_damage_min": 130231946,
+      "required_enemy_damage_max": 130232146,
+      "target_damage_profile": {
+        "version": "7.2_cruiserweight_reviewed_2026-08-09",
+        "damage_tolerance": 100,
+        "targets": [
+          {
+            "guid": 18335,
+            "name": "Sugar Riot",
+            "max_hp": 93010785,
+            "expected_damage_instances": 1,
+            "expected_damage_ratio": 1.0
+          },
+          {
+            "guid": 18343,
+            "name": "Mu",
+            "max_hp": 2591008,
+            "expected_damage_instances": 6,
+            "expected_damage_ratio": 1.0
+          },
+          {
+            "guid": 18344,
+            "name": "Yan",
+            "max_hp": 2835798,
+            "expected_damage_instances": 3,
+            "expected_damage_ratio": 1.0
+          },
+          {
+            "guid": 18345,
+            "name": "Jabberwock",
+            "max_hp": 1673987,
+            "expected_damage_instances": 2,
+            "expected_damage_ratio": 1.0
+          },
+          {
+            "guid": 18346,
+            "name": "Feather Ray",
+            "max_hp": 1628795,
+            "expected_damage_instances": 4,
+            "expected_damage_ratio": 1.0
+          },
+          {
+            "guid": 18347,
+            "name": "Gimme Cat",
+            "max_hp": 1101555,
+            "expected_damage_instances": 3,
+            "expected_damage_ratio": 1.0
+          }
+        ]
+      }
+    },
+    "savage_m7s": {
+      "required_enemy_damage_min": 121558848,
+      "required_enemy_damage_max": 121559048,
+      "target_damage_profile": {
+        "version": "7.2_cruiserweight_reviewed_2026-08-09",
+        "damage_tolerance": 100,
+        "targets": [
+          {
+            "guid": 18307,
+            "name": "Brute Abombinator",
+            "max_hp": 118583808,
+            "expected_damage_instances": 1,
+            "expected_damage_ratio": 1.0
+          },
+          {
+            "guid": 18308,
+            "name": "Blooming Abomination",
+            "max_hp": 743785,
+            "expected_damage_instances": 4,
+            "expected_damage_ratio": 1.0
+          }
+        ]
+      }
+    },
+    "savage_m8s": {
+      "required_enemy_damage_min": 148748991,
+      "required_enemy_damage_max": 148749191,
+      "target_damage_profile": {
+        "version": "7.2_cruiserweight_reviewed_2026-08-09",
+        "damage_tolerance": 100,
+        "targets": [
+          {
+            "guid": 18215,
+            "name": "Howling Blade P1",
+            "max_hp": 67582753,
+            "expected_damage_instances": 1,
+            "expected_damage_ratio": 1.0
+          },
+          {
+            "guid": 18219,
+            "name": "Wolf of Wind",
+            "max_hp": 10518438,
+            "expected_damage_instances": 1,
+            "expected_damage_ratio": 0.4
+          },
+          {
+            "guid": 18222,
+            "name": "Howling Blade P2",
+            "max_hp": 72751588,
+            "expected_damage_instances": 1,
+            "expected_damage_ratio": 1.0
+          },
+          {
+            "guid": 18225,
+            "name": "Wolf of Stone",
+            "max_hp": 10518438,
+            "expected_damage_instances": 1,
+            "expected_damage_ratio": 0.4
+          }
+        ]
+      }
     }
   }
 }

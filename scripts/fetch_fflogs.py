@@ -4332,6 +4332,9 @@ def 查詢戰鬥完整性目標傷害(
         目標列表.append(
             {
                 "id": actor_id,
+                # actor id 只在單一 report 內有效；NPC GUID 才能和副本固定生命值
+                # profile 對應，因此逐目標快取與落地證據都不得使用本地 actor id。
+                "guid": integrity.to_int(條目.get("guid")),
                 "damage": 傷害總量,
                 "instance_count": instance_counts.get(actor_id, 1),
             }
@@ -4457,6 +4460,9 @@ def 檢核戰鬥完整性(
 
     攻擊異常標記 = integrity.has_basic_attack_exploit_marker(戰鬥)
     檢核時間 = 毫秒轉_iso(現在毫秒()) or ""
+    需要逐目標明細 = 設定.known_enemy_capacity.requires_target_damage_profile_measurement(
+        副本鍵值
+    )
     普攻分布結果: integrity.BasicAttackDistributionScreen | None = None
     if 設定.basic_attack_distribution.applies(副本鍵值, 戰鬥):
         if not 戰鬥完整性查詢脈絡完整(戰鬥):
@@ -4480,9 +4486,10 @@ def 檢核戰鬥完整性(
                 cached_at_iso=檢核時間,
             )
         普攻分布結果 = 設定.basic_attack_distribution.screen(普攻彙總)
-        if 普攻分布結果.is_abnormal:
+        if 普攻分布結果.is_abnormal and not 需要逐目標明細:
             # 同場多人同時跨過每擊傷害與占比門檻時，事件證據已足以隱藏，不再為
-            # 同一場追加敵方生命池 request。原始 report/fight/players 仍完整保留。
+            # 沒有固定目標 profile 的副本追加生命池 request。M5S～M8S 仍需完成
+            # 逐目標量測，讓本輪所有通關都能以 v11 留下完整證據。
             return integrity.make_basic_attack_distribution_result(
                 checked_at_iso=檢核時間,
                 screen=普攻分布結果,
@@ -4523,7 +4530,12 @@ def 檢核戰鬥完整性(
             reason="encounter_hp_pool_semantics_not_supported",
         ))
 
-    快取結果 = 測量快取.get(報告代碼, 報告脈絡, 戰鬥)
+    快取結果 = 測量快取.get(
+        報告代碼,
+        報告脈絡,
+        戰鬥,
+        require_target_details=需要逐目標明細,
+    )
     if 快取結果 is not None:
         if 快取結果["outcome"] == "unverifiable":
             return 合併普攻分布(integrity.make_unverifiable_result(
@@ -4592,6 +4604,21 @@ def 檢核戰鬥完整性(
                 historical_screen=歷史傷害預篩,
                 known_capacity_screen=已知生命池預篩,
             ))
+        if 需要逐目標明細 and any(目標.get("guid") is None for 目標 in 目標列表):
+            測量快取.put_unverifiable(
+                報告代碼,
+                報告脈絡,
+                戰鬥,
+                reason="missing_enemy_target_guid",
+                cached_at_iso=檢核時間,
+            )
+            return 合併普攻分布(integrity.make_unverifiable_result(
+                checked_at_iso=檢核時間,
+                reason="missing_enemy_target_guid",
+                attack_marker=攻擊異常標記,
+                historical_screen=歷史傷害預篩,
+                known_capacity_screen=已知生命池預篩,
+            ))
         測量值 = {
             "enemy_damage": sum(目標["damage"] for 目標 in 目標列表),
             "enemy_hp_capacity": sum(
@@ -4600,6 +4627,16 @@ def 檢核戰鬥完整性(
             ),
             "target_count": len(目標列表),
         }
+        if all(目標.get("guid") is not None for 目標 in 目標列表):
+            測量值["targets"] = [
+                {
+                    "guid": 目標["guid"],
+                    "damage": 目標["damage"],
+                    "max_hp": 目標生命值索引[目標["id"]],
+                    "instance_count": 目標["instance_count"],
+                }
+                for 目標 in 目標列表
+            ]
         測量快取.put(
             報告代碼,
             報告脈絡,
@@ -4617,6 +4654,10 @@ def 檢核戰鬥完整性(
         測量值["enemy_damage"],
     )
     有效已知生命池預篩 = 敵方承傷預篩 or 已知生命池預篩
+    逐目標生命值預篩 = 設定.known_enemy_capacity.screen_target_damage_profile(
+        副本鍵值,
+        測量值,
+    )
 
     return integrity.evaluate(
         checked_at_iso=檢核時間,
@@ -4629,6 +4670,7 @@ def 檢核戰鬥完整性(
         historical_screen=歷史傷害預篩,
         known_capacity_screen=有效已知生命池預篩,
         basic_attack_screen=普攻分布結果,
+        target_damage_profile_screen=逐目標生命值預篩,
     )
 
 

@@ -68,6 +68,38 @@ class FightIntegrityMeasurementCacheTest(unittest.TestCase):
         changed_report = {**self.report, "revision": 4}
         self.assertIsNone(cache.get("ABC123", changed_report, self.fight))
 
+    def test_target_measurements_persist_and_can_be_required(self) -> None:
+        cache = cache_module.FightIntegrityMeasurementCache.load(self.cache_path)
+        cache.put(
+            "ABC123",
+            self.report,
+            self.fight,
+            measurement={
+                "enemy_damage": 200_000,
+                "enemy_hp_capacity": 350_000,
+                "target_count": 2,
+                "targets": [
+                    {"guid": 102, "damage": 100_000, "max_hp": 250_000, "instance_count": 1},
+                    {"guid": 101, "damage": 100_000, "max_hp": 100_000, "instance_count": 1},
+                ],
+            },
+            cached_at_iso="2026-08-09T00:00:00Z",
+        )
+
+        reloaded = cache_module.FightIntegrityMeasurementCache.load(self.cache_path)
+        cached = reloaded.get(
+            "ABC123",
+            self.report,
+            self.fight,
+            require_target_details=True,
+        )
+
+        self.assertIsNotNone(cached)
+        self.assertEqual([target["guid"] for target in cached["measurement"]["targets"]], [101, 102])
+        content = self.cache_path.read_text(encoding="utf-8")
+        self.assertNotIn('"id"', content)
+        self.assertNotIn("raw_events", content)
+
     def test_invalid_measurement_is_not_cacheable(self) -> None:
         cache = cache_module.FightIntegrityMeasurementCache.load(self.cache_path)
         with self.assertRaises(ValueError):
@@ -181,6 +213,14 @@ class FightIntegrityMeasurementCacheTest(unittest.TestCase):
         cache = cache_module.FightIntegrityMeasurementCache.load(self.cache_path)
 
         self.assertIsNotNone(cache.get("ABC123", self.report, self.fight))
+        self.assertIsNone(
+            cache.get(
+                "ABC123",
+                self.report,
+                self.fight,
+                require_target_details=True,
+            )
+        )
         self.assertIsNone(cache.get_basic_attack("ABC123", self.report, self.fight))
 
 

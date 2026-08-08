@@ -20,6 +20,39 @@ class KnownEnemyCapacityPolicyTest(unittest.TestCase):
             },
         )
 
+    @staticmethod
+    def make_target_profile_policy() -> known_capacity.KnownEnemyCapacityPolicy:
+        return known_capacity.KnownEnemyCapacityPolicy(
+            enabled=True,
+            rules={
+                "fixture": known_capacity.KnownEnemyCapacityRule(
+                    required_enemy_damage_min=199_900,
+                    required_enemy_damage_max=200_100,
+                    target_damage_profile=known_capacity.KnownTargetDamageProfile(
+                        version="fixture-v1",
+                        targets={
+                            101: known_capacity.KnownTargetDamageRule(
+                                guid=101,
+                                name="第一目標",
+                                max_hp=100_000,
+                                expected_damage_instances=1,
+                                expected_damage_ratio=1.0,
+                                damage_tolerance=100,
+                            ),
+                            102: known_capacity.KnownTargetDamageRule(
+                                guid=102,
+                                name="轉場目標",
+                                max_hp=250_000,
+                                expected_damage_instances=1,
+                                expected_damage_ratio=0.4,
+                                damage_tolerance=100,
+                            ),
+                        },
+                    ),
+                )
+            },
+        )
+
     def test_complete_party_over_known_capacity_threshold_is_evidence(self) -> None:
         fight = {"size": 8, "players": [{"total_damage": 13_425} for _ in range(8)]}
 
@@ -167,6 +200,54 @@ class KnownEnemyCapacityPolicyTest(unittest.TestCase):
         self.assertTrue(screen.exceeds_maximum_enemy_damage)
         self.assertEqual(screen.to_metrics()["maximum_enemy_damage"], 100_100)
 
+    def test_target_profile_accepts_fixed_hp_and_transition_ratio(self) -> None:
+        screen = self.make_target_profile_policy().screen_target_damage_profile(
+            "fixture",
+            {
+                "targets": [
+                    {"guid": 101, "damage": 99_950, "max_hp": 100_000, "instance_count": 1},
+                    {"guid": 102, "damage": 100_050, "max_hp": 250_000, "instance_count": 1},
+                ]
+            },
+        )
+
+        self.assertIsNotNone(screen)
+        self.assertEqual(screen.status, "valid")
+        self.assertFalse(screen.is_abnormal)
+        self.assertEqual(screen.metrics["expected_enemy_damage"], 200_000)
+        transition = next(
+            target for target in screen.metrics["target_results"] if target["guid"] == 102
+        )
+        self.assertEqual(transition["expected_damage_ratio"], 0.4)
+        self.assertEqual(transition["observed_damage_ratio"], 0.4002)
+
+    def test_target_profile_rejects_shifted_damage_even_when_total_matches(self) -> None:
+        screen = self.make_target_profile_policy().screen_target_damage_profile(
+            "fixture",
+            {
+                "targets": [
+                    {"guid": 101, "damage": 110_000, "max_hp": 100_000, "instance_count": 1},
+                    {"guid": 102, "damage": 90_000, "max_hp": 250_000, "instance_count": 1},
+                ]
+            },
+        )
+
+        self.assertIsNotNone(screen)
+        self.assertEqual(screen.metrics["observed_enemy_damage"], 200_000)
+        self.assertEqual(screen.status, "suspected")
+        self.assertEqual(screen.reason, "target_damage_profile_mismatch")
+        self.assertEqual(screen.metrics["mismatched_target_guids"], [101, 102])
+
+    def test_target_profile_without_per_target_measurement_is_unverifiable(self) -> None:
+        screen = self.make_target_profile_policy().screen_target_damage_profile(
+            "fixture",
+            {"enemy_damage": 200_000, "enemy_hp_capacity": 350_000, "target_count": 2},
+        )
+
+        self.assertIsNotNone(screen)
+        self.assertEqual(screen.status, "unverifiable")
+        self.assertEqual(screen.reason, "missing_target_damage_profile_measurement")
+
     def test_loader_rejects_non_positive_tolerance(self) -> None:
         payload = {
             "schema_version": 1,
@@ -239,6 +320,33 @@ class KnownEnemyCapacityPolicyTest(unittest.TestCase):
         self.assertEqual(policy.rules["savage_m1s"].maximum_full_party_damage, 75_870_000)
         self.assertEqual(policy.rules["savage_m3s"].maximum_full_party_damage, 96_523_000)
         self.assertEqual(policy.rules["savage_m4s"].maximum_full_party_damage, 114_526_000)
+        self.assertEqual(policy.rules["savage_m5s"].required_enemy_damage_min, 105_549_582)
+        self.assertEqual(policy.rules["savage_m6s"].required_enemy_damage_max, 130_232_146)
+        self.assertEqual(policy.rules["savage_m7s"].required_enemy_damage_min, 121_558_848)
+        self.assertEqual(policy.rules["savage_m8s"].required_enemy_damage_max, 148_749_191)
+        expected_totals = {
+            "savage_m5s": 105_549_682,
+            "savage_m6s": 130_232_046,
+            "savage_m7s": 121_558_948,
+            "savage_m8s": 148_749_091,
+        }
+        for encounter_key, expected_total in expected_totals.items():
+            with self.subTest(encounter_key=encounter_key):
+                rule = policy.rules[encounter_key]
+                profile = policy.target_damage_profile(encounter_key)
+                self.assertIsNotNone(profile)
+                self.assertEqual(
+                    sum(target.expected_damage for target in profile.targets.values()),
+                    expected_total,
+                )
+                self.assertEqual(rule.required_enemy_damage_min, expected_total - 100)
+                self.assertEqual(rule.required_enemy_damage_max, expected_total + 100)
+        m8_profile = policy.target_damage_profile("savage_m8s")
+        self.assertIsNotNone(m8_profile)
+        self.assertEqual(m8_profile.targets[18215].max_hp, 67_582_753)
+        self.assertEqual(m8_profile.targets[18222].max_hp, 72_751_588)
+        self.assertEqual(m8_profile.targets[18219].expected_damage_ratio, 0.4)
+        self.assertEqual(m8_profile.targets[18225].expected_damage_ratio, 0.4)
 
 
 if __name__ == "__main__":

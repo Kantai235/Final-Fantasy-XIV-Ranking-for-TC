@@ -3,7 +3,8 @@
 2026-07-28 後，部分 FFLogs 日誌的普攻解析會讓 rDPS 與全隊傷害偏高。本模組
 只定義可追溯的 fight 層資料契約與純計算，不讀寫檔案，也不直接呼叫 API：
 
-* ``backfill_fight_integrity.py`` 以小批次查詢敵方承傷與最大 HP，逐步寫入結果；
+* ``backfill_fight_integrity.py`` 以小批次查詢敵方承傷、最大 HP 與逐目標轉場比例，
+  逐步寫入結果；
 * ``fetch_fflogs.py`` 與 ``build_user_data.mjs`` 只根據 ``hidden_from_public`` 隱藏
   已標記 fight，原始 report / fight / 玩家列始終保留。
 
@@ -20,11 +21,12 @@ from typing import Any
 
 
 DATA_INTEGRITY_KEY = "data_integrity"
-CALCULATION_VERSION = 10
-RULESET = "post_2026_07_28_basic_attack_v10_team_distribution"
-# v10 新增 M5S～M8S 的 Attack 事件分布檢核。v8、v9 已明確通過的其他副本不能因
-# 規則升版整批下架；回補器會另外挑出這四層缺少新分布證據的 v9 場次逐批重判。
-LEGACY_PUBLIC_COMPATIBLE_VERSIONS = frozenset({8, 9})
+CALCULATION_VERSION = 11
+RULESET = "post_2026_07_28_target_damage_profile_v11"
+# v11 在 v10 的 M5S～M8S Attack 事件分布上，再加入固定敵方有效承傷與逐目標
+# 生命值／轉場比例。v8～v10 已明確通過的其他副本不能因規則升版整批下架；
+# 回補器會另外挑出這四層缺少 v11 profile 證據的場次逐批重判。
+LEGACY_PUBLIC_COMPATIBLE_VERSIONS = frozenset({8, 9, 10})
 PUBLIC_STATUSES = frozenset({"valid", "not_applicable"})
 DEFAULT_CUTOFF_ISO = "2026-07-28T18:00:00+08:00"
 DEFAULT_HP_RATIO_THRESHOLD = 1.15
@@ -552,6 +554,44 @@ def apply_basic_attack_distribution_screen(
     return result
 
 
+def apply_target_damage_profile_screen(
+    result: dict[str, Any],
+    screen: Any | None,
+) -> dict[str, Any]:
+    """把逐目標固定生命值／轉場比例作為獨立 OR 分支合併。
+
+    ``KnownTargetDamageProfileScreen`` 位於固定生命池模組；這裡只依賴其穩定的
+    ``status``、``reason`` 與 ``to_metrics`` 介面，避免純判定核心反向匯入設定載入器。
+    """
+
+    if screen is None:
+        return result
+    to_metrics = getattr(screen, "to_metrics", None)
+    if not callable(to_metrics):
+        return result
+    metrics = result.get("metrics")
+    normalized_metrics = dict(metrics) if isinstance(metrics, dict) else {}
+    normalized_metrics["target_damage_profile"] = to_metrics()
+    result["metrics"] = normalized_metrics
+
+    screen_status = str(getattr(screen, "status", "") or "")
+    if screen_status == "valid":
+        return result
+    reason = getattr(screen, "reason", None)
+    reasons = result.get("reasons")
+    normalized_reasons = list(reasons) if isinstance(reasons, list) else []
+    if isinstance(reason, str) and reason and reason not in normalized_reasons:
+        normalized_reasons.append(reason)
+    result["reasons"] = normalized_reasons
+
+    priority = {"valid": 0, "not_applicable": 0, "unverifiable": 1, "suspected": 2, "excluded": 3}
+    current_status = str(result.get("status") or "")
+    if priority.get(screen_status, 1) > priority.get(current_status, 0):
+        result["status"] = screen_status or "unverifiable"
+    result["hidden_from_public"] = True
+    return result
+
+
 def make_basic_attack_distribution_result(
     *,
     checked_at_iso: str,
@@ -582,7 +622,8 @@ def needs_check(fight: dict[str, Any]) -> bool:
             and isinstance(reasons, list)
             and "integrity_measurement_failed" in reasons
         )
-    # v8/v9 正常結論繼續公開且不占用日常回補額度；失敗結果才逐批用現行規則重判。
+    # v8～v10 正常結論繼續公開且不占用日常回補額度；需要新版副本專用證據的
+    # 挑選由回補器處理，其他舊版失敗結果才逐批用現行規則重判。
     return not is_legacy_public_compatible_result(result)
 
 
@@ -591,8 +632,8 @@ def is_hidden_from_public(fight: Any) -> bool:
         return False
     result = current_result(fight)
     if result is not None:
-        # v8/v9 已證實正常的資料維持公開；舊版失敗、未知版本或無法驗證的結果仍保守隱藏。
-        # 這讓 v10 能優先補 M5S～M8S 的普攻分布，而不會在漫長回補期間撤下其他正常成績。
+        # v8～v10 已證實正常的資料維持公開；舊版失敗、未知版本或無法驗證的結果仍
+        # 保守隱藏。副本專用新版重驗由回補器明示挑選，避免升版時撤下其他正常成績。
         return not is_public_compatible_result(result)
     cutoff_ms = parse_iso_to_epoch_ms(DEFAULT_CUTOFF_ISO)
     # 回補尚未寫入標記的既有 fight 同樣採 fail-closed，直到離線批次處理完畢。
@@ -807,6 +848,7 @@ def evaluate(
     historical_screen: Any | None = None,
     known_capacity_screen: Any | None = None,
     basic_attack_screen: BasicAttackDistributionScreen | None = None,
+    target_damage_profile_screen: Any | None = None,
 ) -> dict[str, Any]:
     """建立唯一的判定結果；倍率是全隊傷害 / 目標最大 HP 總和。
 
@@ -815,13 +857,17 @@ def evaluate(
     漏報標記，因此不能再依賴泛用 exploit:6 補判。
     """
     if enemy_damage < 0 or enemy_hp_capacity <= 0 or target_count <= 0:
-        return apply_basic_attack_distribution_screen(make_unverifiable_result(
+        result = make_unverifiable_result(
             checked_at_iso=checked_at_iso,
             reason="invalid_enemy_hp_measurement",
             attack_marker=attack_marker,
             historical_screen=historical_screen,
             known_capacity_screen=known_capacity_screen,
-        ), basic_attack_screen)
+        )
+        return apply_basic_attack_distribution_screen(
+            apply_target_damage_profile_screen(result, target_damage_profile_screen),
+            basic_attack_screen,
+        )
 
     ratio = enemy_damage / enemy_hp_capacity
     reasons: list[str] = []
@@ -921,4 +967,7 @@ def evaluate(
         attach_historical_damage_screen(result, historical_screen),
         known_capacity_screen,
     )
-    return apply_basic_attack_distribution_screen(result, basic_attack_screen)
+    return apply_basic_attack_distribution_screen(
+        apply_target_damage_profile_screen(result, target_damage_profile_screen),
+        basic_attack_screen,
+    )

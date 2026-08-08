@@ -534,6 +534,48 @@ class FightIntegrityBackfillCacheTest(unittest.TestCase):
 
         self.assertTrue(backfill.candidate_needs_check(self.candidate, self.config))
 
+    def test_v10_m6s_valid_result_enters_v11_target_profile_recheck(self) -> None:
+        self.candidate.encounter_key = "savage_m6s"
+        self.candidate.fight["data_integrity"] = {
+            "calculation_version": 10,
+            "status": "valid",
+            "hidden_from_public": False,
+        }
+        self.config.known_enemy_capacity = known_capacity.KnownEnemyCapacityPolicy(
+            enabled=True,
+            rules={
+                "savage_m6s": known_capacity.KnownEnemyCapacityRule(
+                    required_enemy_damage_min=99_900,
+                    required_enemy_damage_max=100_100,
+                    target_damage_profile=known_capacity.KnownTargetDamageProfile(
+                        version="fixture-v1",
+                        targets={
+                            18335: known_capacity.KnownTargetDamageRule(
+                                guid=18335,
+                                name="Sugar Riot",
+                                max_hp=100_000,
+                                expected_damage_instances=1,
+                                expected_damage_ratio=1.0,
+                                damage_tolerance=100,
+                            )
+                        },
+                    ),
+                )
+            },
+        )
+
+        self.assertTrue(backfill.candidate_needs_check(self.candidate, self.config))
+
+        self.candidate.fight["data_integrity"] = {
+            "calculation_version": integrity.CALCULATION_VERSION,
+            "status": "valid",
+            "hidden_from_public": False,
+            "metrics": {
+                "target_damage_profile": {"profile_version": "fixture-v1"},
+            },
+        }
+        self.assertFalse(backfill.candidate_needs_check(self.candidate, self.config))
+
     def test_find_candidates_limits_encounter_and_recorded_time(self) -> None:
         encounters = {
             "savage_m5s": {"key": "savage_m5s"},

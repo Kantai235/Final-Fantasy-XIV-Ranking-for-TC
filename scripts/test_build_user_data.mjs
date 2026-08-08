@@ -535,6 +535,78 @@ async function createFixture(tempRoot) {
         },
       ],
     },
+    INTEGRITY_V10_VALID: {
+      report_code: "INTEGRITY_V10_VALID",
+      title: "Fixture v10 compatible integrity result",
+      url: "https://www.fflogs.com/reports/INTEGRITY_V10_VALID",
+      report_start_time_iso: "2026-07-29T07:50:00.000Z",
+      fights: [
+        {
+          fight_id: 14,
+          fight_hash: "integrity-v10-valid-fixture-fight",
+          clear_time_ms: 500000,
+          clear_time_seconds: 500,
+          damage_time_ms: 450000,
+          damage_time_seconds: 450,
+          recorded_at: 1785312000000,
+          recorded_at_iso: "2026-07-29T08:00:00.000Z",
+          data_integrity: {
+            calculation_version: 10,
+            status: "valid",
+            hidden_from_public: false,
+          },
+          players: [
+            {
+              name: "測試角色",
+              server: "鳳凰",
+              job: "Paladin",
+              dps: 79,
+              rdps: 79,
+              adps: 79,
+              total_damage: 35550,
+              active_time_ms: 430000,
+              active_percent: 95.56,
+            },
+          ],
+        },
+      ],
+    },
+    INTEGRITY_V11_VALID: {
+      report_code: "INTEGRITY_V11_VALID",
+      title: "Fixture v11 current integrity result",
+      url: "https://www.fflogs.com/reports/INTEGRITY_V11_VALID",
+      report_start_time_iso: "2026-07-29T08:50:00.000Z",
+      fights: [
+        {
+          fight_id: 15,
+          fight_hash: "integrity-v11-valid-fixture-fight",
+          clear_time_ms: 500000,
+          clear_time_seconds: 500,
+          damage_time_ms: 450000,
+          damage_time_seconds: 450,
+          recorded_at: 1785315600000,
+          recorded_at_iso: "2026-07-29T09:00:00.000Z",
+          data_integrity: {
+            calculation_version: 11,
+            status: "valid",
+            hidden_from_public: false,
+          },
+          players: [
+            {
+              name: "測試角色",
+              server: "鳳凰",
+              job: "Paladin",
+              dps: 78,
+              rdps: 78,
+              adps: 78,
+              total_damage: 35100,
+              active_time_ms: 430000,
+              active_percent: 95.56,
+            },
+          ],
+        },
+      ],
+    },
   });
 }
 
@@ -561,7 +633,7 @@ async function assertFixtureOutput(tempRoot, expectedGlobalStatsText, expectedSe
   assert(globalStats.generated_at_iso === "2026-01-02T03:04:05.000Z", "全服統計應使用 ranking 更新時間作為 generated_at_iso。");
   assert(usersIndex.total_users === 7, "fixture 應產生五位有公開成績的使用者與兩位空白入口。");
   assert(globalStats.total_character_count === 5, `全服角色數應把同名跨服角色視為不同玩家，實際 ${globalStats.total_character_count}。`);
-  assert(globalStats.total_entry_count === 7, "全服 entry 數應包含六筆既有成績與一筆 v8 正常成績。");
+  assert(globalStats.total_entry_count === 9, "全服 entry 數應包含六筆既有成績與 v8／v10／v11 正常成績。");
   const hiddenUser = usersIndex.users.find((user) => user.character_name === "隱藏角色");
   assert(hiddenUser, "預設使用者索引應保留空白成績單入口。");
   assert(hiddenUser.servers.includes("鳳凰"), "空白入口應保留伺服器，讓同名角色查詢仍可辨識。");
@@ -569,7 +641,7 @@ async function assertFixtureOutput(tempRoot, expectedGlobalStatsText, expectedSe
   assert(hiddenUser.last_recorded_at_iso === null, "空白入口不可帶入最後紀錄時間。");
   assert(allUsersIndex.total_users === 7, "完整鏡像應保留所有公開索引角色。");
   assert(allGlobalStats.total_character_count === 6, "完整全服統計應納入所有 fixture 角色。");
-  assert(allGlobalStats.total_entry_count === 8, "完整全服統計應納入所有 fixture 成績。");
+  assert(allGlobalStats.total_entry_count === 10, "完整全服統計應納入所有 fixture 成績。");
   const allHiddenUser = allUsersIndex.users.find((user) => user.character_name === "隱藏角色");
   assert(allHiddenUser, "完整鏡像使用者索引應包含對應角色。");
   assert(Array.isArray(globalStats.job_profiles) && globalStats.job_profiles.length === 4, "全服統計應產生職業專頁資料。");
@@ -642,10 +714,18 @@ async function assertFixtureOutput(tempRoot, expectedGlobalStatsText, expectedSe
   assert(mainUser, "使用者索引應包含測試角色。");
   const mainUserData = await readJson(path.join(tempRoot, "public", mainUser.file_path));
   assert(mainUserData.summary.best_rdps === 250, "測試角色最佳 rDPS 應正確彙整。");
-  assert(mainUserData.summary.public_entry_count === 3, "重複 report 應合併，且 v8 已驗證正常的戰鬥應維持公開。");
+  assert(mainUserData.summary.public_entry_count === 5, "重複 report 應合併，且 v8／v10／v11 已驗證正常的戰鬥應維持公開。");
   assert(
     mainUserData.encounters[0]?.public_entries?.some((entry) => entry.report_code === "INTEGRITY_V8_VALID"),
     "個人成績單必須保留 v8 已驗證正常的戰鬥。",
+  );
+  assert(
+    mainUserData.encounters[0]?.public_entries?.some((entry) => entry.report_code === "INTEGRITY_V10_VALID"),
+    "個人成績單必須保留 v10 已驗證正常的戰鬥。",
+  );
+  assert(
+    mainUserData.encounters[0]?.public_entries?.some((entry) => entry.report_code === "INTEGRITY_V11_VALID"),
+    "個人成績單必須保留 v11 現行規則已驗證正常的戰鬥。",
   );
   assert(mainUserData.summary.profile_job === "Paladin", "個人成績單代表職業應優先採用同職排名最高的職業。");
   assert(mainUserData.summary.profile_job_rank === 1, "個人成績單代表職業應保留最高職業 Rank。");
