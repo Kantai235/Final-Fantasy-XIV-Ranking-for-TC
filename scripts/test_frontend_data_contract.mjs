@@ -241,9 +241,11 @@ function validateUserProfileBadges() {
     徽章.find((徽章) => 徽章.名稱 === 六絕踏破稱號)?.樣式類別 === "六絕傳奇稱號",
     "六絕全通稱號必須帶有專屬的傳奇樣式類別。",
   );
+  const 預期前四枚徽章 = ["網站作者", 六絕踏破稱號, "次重量級踏破", "輕量級踏破"];
   assert(
-    徽章[0]?.名稱 === 六絕踏破稱號,
-    "六絕全通稱號必須排在包含作者識別在內的所有徽章最前方。",
+    JSON.stringify(徽章.slice(0, 預期前四枚徽章.length).map((徽章) => 徽章.名稱))
+      === JSON.stringify(預期前四枚徽章),
+    "徽章必須依序顯示網站作者、六絕全通、次重量級與輕量級。",
   );
   assert(!徽章名稱.has("零式全通"), "零式成就應改為依量級命名，不可保留固定的「零式全通」。");
   assert(多職說明.includes("6 個職業各有至少 10 場"), "多職玩家應要求至少六職各有十場公開通關紀錄。");
@@ -264,11 +266,36 @@ function validateUserProfileBadges() {
       index === 副本鍵值.length - 1 ? 最後一層完成時間 : 預設完成時間,
     ));
   };
+  const 量級徽章預期說明 = new Map([
+    ["輕量級【首週】踏破", "開放首週即通關輕量級所有樓層"],
+    ["輕量級【次週】踏破", "開放次週即通關輕量級所有樓層"],
+    ["輕量級踏破", "輕量級每層皆有有效版本公開成績"],
+    ["次重量級【首週】踏破", "開放首週即通關次重量級所有樓層"],
+    ["次重量級【次週】踏破", "開放次週即通關次重量級所有樓層"],
+    ["次重量級踏破", "次重量級每層皆有有效版本公開成績"],
+  ]);
   const 驗證量級互斥徽章 = (量級名稱, 量級成績, 預期名稱) => {
     const 量級徽章 = 建立零式量級踏破徽章(量級成績)
       .filter((徽章) => 徽章.名稱.startsWith(量級名稱));
     assert(量級徽章.length === 1, `${量級名稱}同一時間只能顯示一枚最高階踏破徽章。`);
     assert(量級徽章[0]?.名稱 === 預期名稱, `${量級名稱}應依四層完成時間顯示「${預期名稱}」。`);
+    assert(
+      量級徽章[0]?.說明 === 量級徽章預期說明.get(預期名稱),
+      `「${預期名稱}」必須顯示約定的精簡取得條件。`,
+    );
+    const 樣式類別 = new Set(String(量級徽章[0]?.樣式類別 || "").split(/\s+/).filter(Boolean));
+    const 量級樣式類別 = 量級名稱 === "輕量級" ? "輕量級踏破徽章" : "次重量級踏破徽章";
+    const 階級樣式類別 = 預期名稱.includes("【首週】")
+      ? "首週踏破徽章"
+      : 預期名稱.includes("【次週】")
+        ? "次週踏破徽章"
+        : "一般踏破徽章";
+    for (const 必要樣式類別 of ["量級踏破徽章", 量級樣式類別, 階級樣式類別]) {
+      assert(
+        樣式類別.has(必要樣式類別),
+        `「${預期名稱}」必須帶有「${必要樣式類別}」語意樣式類別。`,
+      );
+    }
   };
 
   // 「以前」包含門檻當下；最後一層晚 1ms 就應降到下一級，明確鎖定邊界與
@@ -342,6 +369,11 @@ function validateUserProfileBadges() {
     六絕含過版紀錄.some((徽章) => 徽章.名稱 === 六絕踏破稱號),
     "六絕全通稱號是歷史成就，任一絕本標記過版後仍須保留。",
   );
+  assert(
+    JSON.stringify(六絕含過版紀錄.slice(0, 3).map((徽章) => 徽章.名稱))
+      === JSON.stringify([六絕踏破稱號, "次重量級踏破", "輕量級踏破"]),
+    "非作者角色必須依序顯示六絕全通、次重量級與輕量級。",
+  );
 
   const 缺少一絕稱號 = 建立個人成績徽章({
     公開成績: 公開成績.filter((成績) => 成績.encounter_key !== "ultimate_omega"),
@@ -389,6 +421,20 @@ async function validateUserProfileBadgeDataScope() {
       && profileStyles.includes("@keyframes 六絕傳奇虹彩流轉")
       && profileStyles.includes("@media (prefers-reduced-motion: reduce)"),
     "六絕全通稱號必須套用虹彩循環邊框，並尊重減少動態效果偏好。",
+  );
+  assert(
+    profileStyles.includes(".使用者徽章.量級踏破徽章")
+      && profileStyles.includes(".使用者徽章.輕量級踏破徽章::before")
+      && profileStyles.includes('content: "輕"')
+      && profileStyles.includes(".使用者徽章.次重量級踏破徽章::before")
+      && profileStyles.includes('content: "次"')
+      && profileStyles.includes(".使用者徽章.首週踏破徽章")
+      && profileStyles.includes(".使用者徽章.次週踏破徽章")
+      && profileStyles.includes(".使用者徽章.一般踏破徽章")
+      && profileStyles.includes(':root[data-theme="light"] .使用者徽章.首週踏破徽章')
+      && profileStyles.includes("@keyframes 量級踏破掃光")
+      && profileStyles.includes(".使用者徽章.量級踏破徽章::after"),
+    "量級踏破徽章必須依輕／次量級與金／銀／銅階級套用背景字、掃光及亮色主題樣式。",
   );
 }
 
