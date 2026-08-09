@@ -110,9 +110,9 @@ export function buildReportExternalLinks(record = {}) {
     ffreplayUrl
       ? {
           key: "ffreplay",
-          label: "FF Repley",
+          label: "FF Replay",
           url: ffreplayUrl,
-          title: "在 FF Repley 開啟這場戰鬥",
+          title: "在 FF Replay 開啟這場戰鬥",
         }
       : null,
   ].filter(Boolean);

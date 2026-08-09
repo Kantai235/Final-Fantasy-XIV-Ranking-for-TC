@@ -2271,7 +2271,7 @@ function validateReportExternalLinks() {
       "https://ffreplay.vjoi.cn/ffreplay.html?url=https%3A%2F%2Fwww.fflogs.com%2Freports%2FBAgFha92HkfQ4vKP%3Ffight%3D15",
     "報告工具連結應把含 fight 的 FFLogs URL 編碼後交給 ffreplay。",
   );
-  assert(labelsByKey.get("ffreplay") === "FF Repley", "報告工具連結應顯示 FF Repley。");
+  assert(labelsByKey.get("ffreplay") === "FF Replay", "報告工具連結應顯示 FF Replay。");
 
   const teamLinks = buildReportExternalLinks({
     report_code: "BAgFha92HkfQ4vKP",
