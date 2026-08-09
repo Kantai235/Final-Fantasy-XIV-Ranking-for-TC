@@ -131,7 +131,7 @@ export default {
             <p class="報告彈窗副標">角色累積紀錄</p>
             <h2 id="achievement-handbook-title">成就手冊</h2>
             <p id="achievement-handbook-description" class="報告彈窗身份">
-              {{ playerName || "目前玩家" }} · 查看所有成就與全站稀有度
+              {{ playerName || "目前玩家" }} · 查看目前適用成就與全站稀有度
             </p>
           </div>
           <button
@@ -157,7 +157,7 @@ export default {
           </div>
         </section>
 
-        <ol class="成就手冊清單" aria-label="所有成就">
+        <ol class="成就手冊清單" aria-label="目前適用成就">
           <li
             v-for="成就 in achievements"
             :key="成就.id"

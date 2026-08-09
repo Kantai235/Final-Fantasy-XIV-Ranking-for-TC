@@ -78,7 +78,11 @@ import {
   取得成績PR值,
   取得成績前段百分位,
 } from "../utils/userProfileSorting";
-import { 建立個人成績徽章, 取得個人成績成就目錄 } from "../utils/userProfileBadges";
+import {
+  建立個人成績徽章,
+  取得個人成績成就目錄,
+  篩選成就手冊適用成就,
+} from "../utils/userProfileBadges";
 import {
   建立個人成績趨勢版本切點,
   建立個人成績簡表可選版本,
@@ -142,6 +146,8 @@ const 使用者歷史排序欄位 = Object.freeze([
 ]);
 const 使用者歷史排序欄位集合 = new Set(使用者歷史排序欄位.map((欄位) => 欄位.value));
 const 個人成績成就目錄 = Object.freeze(取得個人成績成就目錄());
+const 成就手冊目前時間戳記 = ref(Date.now());
+let 成就手冊時間計時器 = null;
 const 使用者歷史排序預設方向 = Object.freeze({
   recordedAt: "desc",
   performance: "desc",
@@ -4654,10 +4660,15 @@ const 使用者成就手冊 = computed(() => {
       .filter((成就) => 成就?.id)
       .map((成就) => [成就.id, 成就]),
   );
+  const 適用成就目錄 = 篩選成就手冊適用成就(
+    個人成績成就目錄,
+    已獲得成就Id,
+    成就手冊目前時間戳記.value,
+  );
 
-  // 舊版 users/index.json 沒有成就統計時仍顯示完整目錄，僅將人數標成待更新；
+  // 舊版 users/index.json 沒有成就統計時仍顯示目前適用的目錄，僅將人數標成待更新；
   // 這讓前端新版部署與 users 專用 repo／CDN 的短暫同步差不會造成按鈕或清單消失。
-  return 個人成績成就目錄.map((定義) => {
+  return 適用成就目錄.map((定義) => {
     const 統計 = 索引統計.get(定義.id);
     const 獲得人數 = Number(統計?.holder_count);
     const 獲得占比 = Number(統計?.holder_percentage);
@@ -5900,6 +5911,15 @@ onMounted(() => {
   初始化說明提示顯示偏好();
   初始化玩家搜尋歷史();
   if (typeof window !== "undefined") {
+    成就手冊目前時間戳記.value = Date.now();
+    if (成就手冊時間計時器) {
+      window.clearInterval(成就手冊時間計時器);
+    }
+    // 頁面跨過首週或次週截止時不必重新整理；短週期只更新一個時間 ref，
+    // 不會重新載入角色檔案或重算全站成就統計。
+    成就手冊時間計時器 = window.setInterval(() => {
+      成就手冊目前時間戳記.value = Date.now();
+    }, 30_000);
     window.addEventListener("popstate", 處理瀏覽紀錄變更);
   }
   套用網址狀態();
@@ -5917,6 +5937,10 @@ onMounted(() => {
 onUnmounted(() => {
   if (typeof window !== "undefined") {
     window.removeEventListener("popstate", 處理瀏覽紀錄變更);
+    if (成就手冊時間計時器) {
+      window.clearInterval(成就手冊時間計時器);
+      成就手冊時間計時器 = null;
+    }
     if (分享狀態計時器) {
       window.clearTimeout(分享狀態計時器);
       分享狀態計時器 = null;

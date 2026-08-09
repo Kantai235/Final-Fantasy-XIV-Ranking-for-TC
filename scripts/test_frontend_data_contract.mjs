@@ -33,6 +33,7 @@ import {
   六絕踏破稱號,
   建立零式量級踏破徽章,
   取得個人成績成就目錄,
+  篩選成就手冊適用成就,
 } from "../src/utils/userProfileBadges.js";
 import {
   建立個人成績趨勢版本切點,
@@ -253,6 +254,75 @@ function validateUserProfileBadges() {
   );
   assert(!徽章名稱.has("零式全通"), "零式成就應改為依量級命名，不可保留固定的「零式全通」。");
   assert(成就目錄.length === 14 && 成就Id.size === 成就目錄.length, "成就手冊必須列出十四項具有穩定 ID 的可取得成就。");
+  const 量級成就Ids = new Set([
+    "savage-light-heavyweight-week-one",
+    "savage-light-heavyweight-week-two",
+    "savage-light-heavyweight-clear",
+    "savage-light-heavyweight-all-floors-clear",
+    "savage-cruiserweight-week-one",
+    "savage-cruiserweight-week-two",
+    "savage-cruiserweight-clear",
+    "savage-cruiserweight-all-floors-clear",
+  ]);
+  const 取得手冊量級成就Ids = (時間, 已獲得成就Ids = []) => 篩選成就手冊適用成就(
+    成就目錄,
+    已獲得成就Ids,
+    Date.parse(時間),
+  ).filter((成就) => 量級成就Ids.has(成就.id)).map((成就) => 成就.id);
+  const 當前適用成就 = 篩選成就手冊適用成就(
+    成就目錄,
+    [],
+    Date.parse("2026-08-10T12:00:00+08:00"),
+  );
+  assert(當前適用成就.length === 8, "成就手冊應保留六項一般成就，並將兩個零式量級各收斂為一項。");
+  assert(
+    JSON.stringify(當前適用成就.filter((成就) => 量級成就Ids.has(成就.id)).map((成就) => 成就.id))
+      === JSON.stringify(["savage-cruiserweight-week-one", "savage-light-heavyweight-all-floors-clear"]),
+    "2026-08-10 未取得量級成就時，應顯示次重量級首週踏破與輕量級通關。",
+  );
+
+  const 時間邊界案例 = [
+    ["2026-03-17T16:00:00+08:00", "savage-light-heavyweight-week-one"],
+    ["2026-03-17T16:00:00.001+08:00", "savage-light-heavyweight-week-two"],
+    ["2026-03-24T16:00:00+08:00", "savage-light-heavyweight-week-two"],
+    ["2026-03-24T16:00:00.001+08:00", "savage-light-heavyweight-clear"],
+    ["2026-06-23T13:00:00+08:00", "savage-light-heavyweight-clear"],
+    ["2026-06-23T13:00:00.001+08:00", "savage-light-heavyweight-all-floors-clear"],
+    ["2026-08-11T16:00:00+08:00", "savage-cruiserweight-week-one"],
+    ["2026-08-11T16:00:00.001+08:00", "savage-cruiserweight-week-two"],
+    ["2026-08-18T16:00:00+08:00", "savage-cruiserweight-week-two"],
+    ["2026-08-18T16:00:00.001+08:00", "savage-cruiserweight-clear"],
+  ];
+  for (const [時間, 預期成就Id] of 時間邊界案例) {
+    assert(
+      取得手冊量級成就Ids(時間).includes(預期成就Id),
+      `成就手冊在 ${時間} 應顯示 ${預期成就Id}。`,
+    );
+  }
+
+  for (const 已獲得成就Id of 量級成就Ids) {
+    const 同量級前綴 = 已獲得成就Id.startsWith("savage-light-heavyweight-")
+      ? "savage-light-heavyweight-"
+      : "savage-cruiserweight-";
+    const 顯示同量級成就 = 取得手冊量級成就Ids("2026-08-10T12:00:00+08:00", [已獲得成就Id])
+      .filter((成就Id值) => 成就Id值.startsWith(同量級前綴));
+    assert(
+      JSON.stringify(顯示同量級成就) === JSON.stringify([已獲得成就Id]),
+      `已取得 ${已獲得成就Id} 時，同量級只能顯示該成就。`,
+    );
+  }
+  assert(
+    取得手冊量級成就Ids("2026-08-10T12:00:00+08:00", [
+      "savage-light-heavyweight-week-two",
+      "savage-light-heavyweight-week-one",
+    ]).includes("savage-light-heavyweight-week-one"),
+    "舊資料若同時保存多個互斥階級，成就手冊應只保留固定優先序最高的首週踏破。",
+  );
+  const 非量級成就Ids = 成就目錄.filter((成就) => !量級成就Ids.has(成就.id)).map((成就) => 成就.id);
+  assert(
+    非量級成就Ids.every((成就Id值) => 當前適用成就.some((成就) => 成就.id === 成就Id值)),
+    "成就手冊的時間篩選不可移除六絕、多職等非量級成就。",
+  );
   assert(
     徽章.filter((項目) => 項目.是成就 !== false).every((項目) => 成就Id.has(項目.id)),
     "每一枚玩家成就徽章都必須能以固定 ID 對應成就手冊目錄。",
@@ -548,16 +618,22 @@ async function validateUserProfileBadgeDataScope() {
   assert(
     source.includes("const 使用者成就手冊 = computed(() => {")
       && source.includes("使用者索引.value?.achievements")
+      && source.includes("篩選成就手冊適用成就(")
+      && source.includes("成就手冊目前時間戳記.value")
+      && source.includes("window.setInterval")
+      && source.includes("window.clearInterval")
       && profileSource.includes("<AchievementHandbook")
       && handbookSource.includes('class="成就手冊浮動按鈕"')
       && handbookSource.includes('role="dialog"')
       && handbookSource.includes('event.key === "Escape"')
+      && handbookSource.includes("查看目前適用成就與全站稀有度")
+      && handbookSource.includes('aria-label="目前適用成就"')
       && profileStyles.includes(".成就手冊浮動按鈕")
       && profileStyles.includes("right: calc(18px + env(safe-area-inset-right));")
       && profileStyles.includes(".報告彈窗.成就手冊彈窗")
       && profileStyles.includes("width: min(1080px, 100%);")
       && profileStyles.includes(".成就手冊清單"),
-    "個人成績單必須提供右下角書本入口、可關閉的寬版無障礙成就手冊彈窗與全成就清單。",
+    "個人成績單必須提供右下角書本入口、可關閉的寬版無障礙彈窗與依時間更新的適用成就清單。",
   );
 }
 
