@@ -1,10 +1,11 @@
 """戰鬥完整性檢核的本機測量快取。
 
 快取只保存已彙整的敵方承傷、敵方最大生命池、目標數、逐目標 NPC GUID／生命值／
-有效承傷／實例數，以及玩家層 Attack 命中數、中位數與占比，或可重現的無法量測
-原因。它不保存 raw events、玩家名稱、report 內 actor ID 或完整 FFLogs payload，讓
-門檻調整時仍能離線重新判定。這不是排行榜資料的一部分：預設路徑由
-.gitignore 排除，GitHub Actions 只透過 Actions cache 在執行輪次之間接續使用。
+有效承傷／實例數，以及玩家層普攻技能 ID、命中數、中位數、占比與每秒傷害，或
+可重現的無法量測原因。它不保存 raw events、玩家名稱、report 內 actor ID 或完整
+FFLogs payload，讓門檻調整時仍能離線重新判定。這不是排行榜資料的一部分：
+預設路徑由 .gitignore 排除，GitHub Actions 只透過 Actions cache 在執行輪次之間
+接續使用。
 """
 
 from __future__ import annotations
@@ -16,8 +17,8 @@ from pathlib import Path
 from typing import Any
 
 
-CACHE_SCHEMA_VERSION = 5
-SUPPORTED_CACHE_SCHEMA_VERSIONS = frozenset({3, 4, CACHE_SCHEMA_VERSION})
+CACHE_SCHEMA_VERSION = 6
+SUPPORTED_CACHE_SCHEMA_VERSIONS = frozenset({3, 4, 5, CACHE_SCHEMA_VERSION})
 CACHEABLE_UNVERIFIABLE_REASONS = frozenset({
     "missing_enemy_max_hp",
     "missing_enemy_target_guid",
@@ -146,6 +147,18 @@ def _normalize_basic_attack_measurement(raw: Any) -> dict[str, Any] | None:
     ):
         return None
 
+    ability_ids: list[int] | None = None
+    raw_ability_ids = raw.get("ability_ids")
+    if raw_ability_ids is not None:
+        if not isinstance(raw_ability_ids, list) or not raw_ability_ids:
+            return None
+        ability_ids = []
+        for raw_ability_id in raw_ability_ids:
+            ability_id = _to_int(raw_ability_id)
+            if ability_id not in {7, 8} or ability_id in ability_ids:
+                return None
+            ability_ids.append(ability_id)
+
     players: list[dict[str, Any]] = []
     for raw_player in raw_players:
         if not isinstance(raw_player, dict):
@@ -157,6 +170,12 @@ def _normalize_basic_attack_measurement(raw: Any) -> dict[str, Any] | None:
         # 本機快取驗證拒絕它，就把原本可判定的戰鬥降級成 unverifiable。
         attack_damage = _to_nonnegative_number(raw_player.get("attack_damage"))
         attack_share = _to_nonnegative_number(raw_player.get("attack_share"))
+        raw_attack_dps = raw_player.get("attack_dps")
+        attack_dps = (
+            None
+            if raw_attack_dps is None
+            else _to_nonnegative_number(raw_attack_dps)
+        )
         pure_normal_median = raw_player.get("pure_normal_median")
         normalized_median = (
             None if pure_normal_median is None else _to_number(pure_normal_median)
@@ -169,10 +188,11 @@ def _normalize_basic_attack_measurement(raw: Any) -> dict[str, Any] | None:
             or pure_normal_count < 0
             or attack_damage is None
             or attack_share is None
+            or (raw_attack_dps is not None and attack_dps is None)
             or (pure_normal_median is not None and normalized_median is None)
         ):
             return None
-        players.append({
+        player = {
             "source_id": source_id,
             "job": str(raw_player.get("job") or ""),
             "attack_event_count": attack_event_count,
@@ -180,12 +200,18 @@ def _normalize_basic_attack_measurement(raw: Any) -> dict[str, Any] | None:
             "pure_normal_median": normalized_median,
             "attack_damage": attack_damage,
             "attack_share": attack_share,
-        })
-    return {
+        }
+        if attack_dps is not None:
+            player["attack_dps"] = attack_dps
+        players.append(player)
+    measurement = {
         "actual_event_count": actual_event_count,
         "mapped_event_count": mapped_event_count,
         "players": players,
     }
+    if ability_ids is not None:
+        measurement["ability_ids"] = ability_ids
+    return measurement
 
 
 class FightIntegrityMeasurementCache:

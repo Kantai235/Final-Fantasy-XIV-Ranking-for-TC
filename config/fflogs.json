@@ -36,7 +36,8 @@
         "savage_m5s",
         "savage_m6s",
         "savage_m7s",
-        "savage_m8s"
+        "savage_m8s",
+        "unreal_suzaku"
       ],
       "reference_hit_median": 4805.7,
       "reference_attack_share": 0.0861,
@@ -56,7 +57,185 @@
       "excluded_minimum_group_attack_share": 0.2,
       "support_minimum_pure_normal_count": 3,
       "support_minimum_hit_median": 10000,
-      "job_references": {}
+      "job_references": {},
+      "encounter_job_rules": {
+        "unreal_suzaku": {
+          "reference_version": "7.2_unreal_suzaku_all_jobs_reviewed_2026-08-10",
+          "ability_ids": [
+            7,
+            8
+          ],
+          "jobs": {
+            "Paladin": {
+              "hit_median": 2393.5,
+              "attack_share": 0.094137,
+              "attack_dps": 1071.624,
+              "minimum_player_hit_median": 4800,
+              "single_player_suspected": true
+            },
+            "Warrior": {
+              "hit_median": 3666.954,
+              "attack_share": 0.097628,
+              "attack_dps": 1136.991,
+              "single_player_suspected": true
+            },
+            "DarkKnight": {
+              "hit_median": 3537.556,
+              "attack_share": 0.097021,
+              "attack_dps": 1131.467,
+              "single_player_suspected": true
+            },
+            "Gunbreaker": {
+              "hit_median": 2987.37,
+              "attack_share": 0.089721,
+              "attack_dps": 1095.563,
+              "single_player_suspected": true
+            },
+            "Monk": {
+              "hit_median": 3357.264,
+              "attack_share": 0.124826,
+              "attack_dps": 2059.867,
+              "single_player_suspected": true
+            },
+            "Dragoon": {
+              "hit_median": 3699.52,
+              "attack_share": 0.096497,
+              "attack_dps": 1565.004,
+              "single_player_suspected": true
+            },
+            "Ninja": {
+              "hit_median": 3350.787,
+              "attack_share": 0.091153,
+              "attack_dps": 1507.431,
+              "single_player_suspected": true
+            },
+            "Samurai": {
+              "hit_median": 3474.72,
+              "attack_share": 0.087228,
+              "attack_dps": 1638.43,
+              "single_player_suspected": true
+            },
+            "Reaper": {
+              "hit_median": 4268.863,
+              "attack_share": 0.083716,
+              "attack_dps": 1440.542,
+              "single_player_suspected": true
+            },
+            "Viper": {
+              "hit_median": 3447.105,
+              "attack_share": 0.091249,
+              "attack_dps": 1629.374,
+              "single_player_suspected": true
+            },
+            "Bard": {
+              "hit_median": 3643.485,
+              "attack_share": 0.099307,
+              "attack_dps": 1381.357,
+              "single_player_suspected": true
+            },
+            "Machinist": {
+              "hit_median": 3147.25,
+              "attack_share": 0.070203,
+              "attack_dps": 1213.532,
+              "single_player_suspected": true
+            },
+            "Dancer": {
+              "hit_median": 4169.106,
+              "attack_share": 0.109809,
+              "attack_dps": 1485.496,
+              "single_player_suspected": true
+            },
+            "WhiteMage": {
+              "hit_median": 1,
+              "attack_share": 0.000005,
+              "attack_dps": 0.04,
+              "minimum_attack_event_count": 3,
+              "minimum_pure_normal_count": 3,
+              "minimum_player_hit_median": 1000,
+              "minimum_player_attack_share": 0.02,
+              "minimum_player_attack_dps": 100,
+              "single_player_suspected": true
+            },
+            "Scholar": {
+              "hit_median": 151.5,
+              "attack_share": 0.000541,
+              "attack_dps": 3.475,
+              "minimum_attack_event_count": 3,
+              "minimum_pure_normal_count": 3,
+              "minimum_player_hit_median": 1000,
+              "minimum_player_attack_share": 0.02,
+              "minimum_player_attack_dps": 100,
+              "single_player_suspected": true
+            },
+            "Astrologian": {
+              "hit_median": 1,
+              "attack_share": 0.000004,
+              "attack_dps": 0.026,
+              "minimum_attack_event_count": 3,
+              "minimum_pure_normal_count": 3,
+              "minimum_player_hit_median": 1000,
+              "minimum_player_attack_share": 0.02,
+              "minimum_player_attack_dps": 100,
+              "single_player_suspected": true
+            },
+            "Sage": {
+              "hit_median": 15.455,
+              "attack_share": 0.000067,
+              "attack_dps": 0.465,
+              "minimum_attack_event_count": 3,
+              "minimum_pure_normal_count": 3,
+              "minimum_player_hit_median": 1000,
+              "minimum_player_attack_share": 0.02,
+              "minimum_player_attack_dps": 100,
+              "single_player_suspected": true
+            },
+            "BlackMage": {
+              "hit_median": 1,
+              "attack_share": 0.000004,
+              "attack_dps": 0.07,
+              "minimum_attack_event_count": 3,
+              "minimum_pure_normal_count": 3,
+              "minimum_player_hit_median": 1000,
+              "minimum_player_attack_share": 0.02,
+              "minimum_player_attack_dps": 100,
+              "single_player_suspected": true
+            },
+            "Summoner": {
+              "hit_median": 149,
+              "attack_share": 0.001782,
+              "attack_dps": 25.835,
+              "minimum_attack_event_count": 3,
+              "minimum_pure_normal_count": 3,
+              "minimum_player_hit_median": 1000,
+              "minimum_player_attack_share": 0.02,
+              "minimum_player_attack_dps": 100,
+              "single_player_suspected": true
+            },
+            "RedMage": {
+              "hit_median": 1,
+              "attack_share": 0.000011,
+              "attack_dps": 0.178,
+              "minimum_attack_event_count": 3,
+              "minimum_pure_normal_count": 3,
+              "minimum_player_hit_median": 1000,
+              "minimum_player_attack_share": 0.02,
+              "minimum_player_attack_dps": 100,
+              "single_player_suspected": true
+            },
+            "Pictomancer": {
+              "hit_median": 1,
+              "attack_share": 0.00001,
+              "attack_dps": 0.1,
+              "minimum_attack_event_count": 3,
+              "minimum_pure_normal_count": 3,
+              "minimum_player_hit_median": 1000,
+              "minimum_player_attack_share": 0.02,
+              "minimum_player_attack_dps": 100,
+              "single_player_suspected": true
+            }
+          }
+        }
+      }
     },
     "report_limit": 25,
     "excluded_encounter_keys": [

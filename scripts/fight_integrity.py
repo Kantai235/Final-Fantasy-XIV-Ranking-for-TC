@@ -21,12 +21,12 @@ from typing import Any
 
 
 DATA_INTEGRITY_KEY = "data_integrity"
-CALCULATION_VERSION = 11
-RULESET = "post_2026_07_28_target_damage_profile_v11"
-# v11 在 v10 的 M5S～M8S Attack 事件分布上，再加入固定敵方有效承傷與逐目標
-# 生命值／轉場比例。v8～v10 已明確通過的其他副本不能因規則升版整批下架；
-# 回補器會另外挑出這四層缺少 v11 profile 證據的場次逐批重判。
-LEGACY_PUBLIC_COMPATIBLE_VERSIONS = frozenset({8, 9, 10})
+CALCULATION_VERSION = 13
+RULESET = "post_2026_07_28_all_job_basic_attack_v13"
+# v13 在 v12 的幻朱雀騎士規則上，補齊所有職業及 ability 8（遠程物理 Shot）。
+# v8～v11 已明確通過、且不需要新版副本專用證據的結果不能因全域版號升級整批
+# 下架；回補器會依各子規則的 reference/profile version 精準挑出待重驗場次。
+LEGACY_PUBLIC_COMPATIBLE_VERSIONS = frozenset({8, 9, 10, 11, 12})
 PUBLIC_STATUSES = frozenset({"valid", "not_applicable"})
 DEFAULT_CUTOFF_ISO = "2026-07-28T18:00:00+08:00"
 DEFAULT_HP_RATIO_THRESHOLD = 1.15
@@ -48,6 +48,18 @@ PHYSICAL_AUTO_ATTACK_JOBS = frozenset({
     "Machinist",
     "Dancer",
 })
+SUPPORTED_AUTO_ATTACK_JOBS = PHYSICAL_AUTO_ATTACK_JOBS | frozenset(
+    {
+        "WhiteMage",
+        "Scholar",
+        "Astrologian",
+        "Sage",
+        "BlackMage",
+        "Summoner",
+        "RedMage",
+        "Pictomancer",
+    }
+)
 
 
 def to_number(value: Any) -> float | None:
@@ -77,12 +89,36 @@ class BasicAttackDistributionScreen:
 
 
 @dataclass(frozen=True)
-class BasicAttackDistributionPolicy:
-    """M5S～M8S 同場多人普攻異常的版本化門檻。
+class EncounterJobBasicAttackRule:
+    """單一副本／職業已人工驗證的普攻分布基準。
 
-    玩家必須同時跨過「純一般普攻每擊中位數」與「普攻占個人總傷比例」兩道門檻；
-    戰鬥層再要求多名物理職業同時命中。這樣不會因單一玩家死亡、低 GCD 覆蓋率、
-    少數暴擊或直擊尖峰，就把正常戰鬥誤判為整場資料異常。
+    全域多人規則用來攔截整隊同時放大的高幅異常；幻朱雀另有只影響少數玩家、
+    且不限職業的較低幅樣態，全隊總傷仍可能落在固定範圍內。這類規則必須同時
+    命中每擊中位數、普攻占比與普攻 DPS，不能只憑單一尖峰或排名隱藏戰鬥。
+    """
+
+    reference_hit_median: float
+    reference_attack_share: float
+    reference_attack_dps: float
+    minimum_attack_event_count: int
+    minimum_pure_normal_count: int
+    minimum_player_hit_median: float
+    hit_reference_multiplier: float
+    minimum_player_attack_share: float
+    share_reference_multiplier: float
+    minimum_player_attack_dps: float
+    attack_dps_reference_multiplier: float
+    single_player_suspected: bool = False
+
+
+@dataclass(frozen=True)
+class BasicAttackDistributionPolicy:
+    """同場多人與副本／職業單人普攻異常的版本化門檻。
+
+    玩家必須同時跨過「純一般普攻每擊中位數」、「普攻占個人總傷比例」與
+    「普攻 DPS」三道門檻；預設仍要求多名物理職業同時命中。只有已人工確認
+    分布落差的副本／職業可以明示單人即為疑似，避免因單一玩家死亡、低 GCD
+    覆蓋率或少數暴擊誤判。
     """
 
     enabled: bool = False
@@ -92,6 +128,11 @@ class BasicAttackDistributionPolicy:
     reference_attack_share: float = 0.0861
     job_hit_references: dict[str, float] = field(default_factory=dict)
     job_share_references: dict[str, float] = field(default_factory=dict)
+    encounter_reference_versions: dict[str, str] = field(default_factory=dict)
+    encounter_ability_ids: dict[str, tuple[int, ...]] = field(default_factory=dict)
+    encounter_job_rules: dict[str, dict[str, EncounterJobBasicAttackRule]] = field(
+        default_factory=dict
+    )
     minimum_attack_event_count: int = 60
     minimum_pure_normal_count: int = 30
     minimum_player_hit_median: float = 10_000.0
@@ -156,20 +197,153 @@ class BasicAttackDistributionPolicy:
                 if share is not None and 0 < share <= 1:
                     job_share_references[job] = share
 
+        reference_hit_median = positive_number("reference_hit_median", 4_805.7)
+        reference_attack_share = ratio("reference_attack_share", 0.0861)
+        minimum_player_hit_median = positive_number("minimum_player_hit_median", 10_000)
+        hit_reference_multiplier = positive_number("hit_reference_multiplier", 2.0)
+        minimum_player_attack_share = ratio("minimum_player_attack_share", 0.15)
+        share_reference_multiplier = positive_number("share_reference_multiplier", 1.5)
+        minimum_attack_event_count = positive_int("minimum_attack_event_count", 60)
+        minimum_pure_normal_count = positive_int("minimum_pure_normal_count", 30)
+
+        normalized_encounter_keys = frozenset(
+            str(value) for value in encounter_keys if isinstance(value, str) and value
+        )
+        encounter_reference_versions: dict[str, str] = {}
+        encounter_ability_ids: dict[str, tuple[int, ...]] = {}
+        encounter_job_rules: dict[str, dict[str, EncounterJobBasicAttackRule]] = {}
+        raw_encounter_rules = raw.get("encounter_job_rules")
+        if isinstance(raw_encounter_rules, dict):
+            for encounter_key, raw_encounter_rule in raw_encounter_rules.items():
+                context = f"basic_attack_distribution.encounter_job_rules.{encounter_key}"
+                if (
+                    not isinstance(encounter_key, str)
+                    or encounter_key not in normalized_encounter_keys
+                ):
+                    raise RuntimeError(f"{context} 必須先列入 encounter_keys。")
+                if not isinstance(raw_encounter_rule, dict):
+                    raise RuntimeError(f"{context} 必須是物件。")
+                reference_version = raw_encounter_rule.get("reference_version")
+                if not isinstance(reference_version, str) or not reference_version:
+                    raise RuntimeError(f"{context}.reference_version 必須是非空字串。")
+                raw_ability_ids = raw_encounter_rule.get("ability_ids", [7])
+                if not isinstance(raw_ability_ids, list) or not raw_ability_ids:
+                    raise RuntimeError(f"{context}.ability_ids 必須是非空陣列。")
+                ability_ids = tuple(
+                    dict.fromkeys(
+                        ability_id
+                        for raw_ability_id in raw_ability_ids
+                        if (ability_id := to_int(raw_ability_id)) in {7, 8}
+                    )
+                )
+                if len(ability_ids) != len(raw_ability_ids):
+                    raise RuntimeError(f"{context}.ability_ids 目前只支援 7 與 8，且不得重複。")
+                raw_jobs = raw_encounter_rule.get("jobs")
+                if not isinstance(raw_jobs, dict) or not raw_jobs:
+                    raise RuntimeError(f"{context}.jobs 必須是非空物件。")
+
+                normalized_jobs: dict[str, EncounterJobBasicAttackRule] = {}
+                for job, raw_job_rule in raw_jobs.items():
+                    job_context = f"{context}.jobs.{job}"
+                    if job not in SUPPORTED_AUTO_ATTACK_JOBS or not isinstance(
+                        raw_job_rule,
+                        dict,
+                    ):
+                        raise RuntimeError(f"{job_context} 必須是有效戰鬥職業設定。")
+
+                    def job_positive_number(name: str, default: float) -> float:
+                        value = to_number(raw_job_rule.get(name))
+                        normalized = default if value is None else value
+                        if normalized <= 0:
+                            raise RuntimeError(f"{job_context}.{name} 必須大於 0。")
+                        return normalized
+
+                    def job_ratio(name: str, default: float) -> float:
+                        value = job_positive_number(name, default)
+                        if value > 1:
+                            raise RuntimeError(f"{job_context}.{name} 必須介於 0 與 1。")
+                        return value
+
+                    def job_positive_int(name: str, default: int) -> int:
+                        value = to_int(raw_job_rule.get(name))
+                        normalized = default if value is None else value
+                        if normalized <= 0:
+                            raise RuntimeError(f"{job_context}.{name} 必須是正整數。")
+                        return normalized
+
+                    single_player_suspected = raw_job_rule.get("single_player_suspected", False)
+                    if not isinstance(single_player_suspected, bool):
+                        raise RuntimeError(
+                            f"{job_context}.single_player_suspected 必須是布林值。"
+                        )
+                    reference_job_hit = job_positive_number(
+                        "hit_median",
+                        job_hit_references.get(job, reference_hit_median),
+                    )
+                    reference_job_share = job_ratio(
+                        "attack_share",
+                        job_share_references.get(job, reference_attack_share),
+                    )
+                    reference_job_attack_dps = job_positive_number("attack_dps", 0)
+                    normalized_jobs[job] = EncounterJobBasicAttackRule(
+                        reference_hit_median=reference_job_hit,
+                        reference_attack_share=reference_job_share,
+                        reference_attack_dps=reference_job_attack_dps,
+                        minimum_attack_event_count=job_positive_int(
+                            "minimum_attack_event_count",
+                            minimum_attack_event_count,
+                        ),
+                        minimum_pure_normal_count=job_positive_int(
+                            "minimum_pure_normal_count",
+                            minimum_pure_normal_count,
+                        ),
+                        minimum_player_hit_median=job_positive_number(
+                            "minimum_player_hit_median",
+                            reference_job_hit,
+                        ),
+                        hit_reference_multiplier=job_positive_number(
+                            "hit_reference_multiplier",
+                            hit_reference_multiplier,
+                        ),
+                        minimum_player_attack_share=job_ratio(
+                            "minimum_player_attack_share",
+                            reference_job_share,
+                        ),
+                        share_reference_multiplier=job_positive_number(
+                            "share_reference_multiplier",
+                            share_reference_multiplier,
+                        ),
+                        minimum_player_attack_dps=job_positive_number(
+                            "minimum_player_attack_dps",
+                            reference_job_attack_dps,
+                        ),
+                        attack_dps_reference_multiplier=job_positive_number(
+                            "attack_dps_reference_multiplier",
+                            1.5,
+                        ),
+                        single_player_suspected=single_player_suspected,
+                    )
+                encounter_reference_versions[encounter_key] = reference_version
+                encounter_ability_ids[encounter_key] = ability_ids
+                encounter_job_rules[encounter_key] = normalized_jobs
+
         return cls(
             enabled=True,
-            encounter_keys=frozenset(str(value) for value in encounter_keys if isinstance(value, str) and value),
+            encounter_keys=normalized_encounter_keys,
             reference_version=str(raw.get("reference_version") or ""),
-            reference_hit_median=positive_number("reference_hit_median", 4_805.7),
-            reference_attack_share=ratio("reference_attack_share", 0.0861),
+            reference_hit_median=reference_hit_median,
+            reference_attack_share=reference_attack_share,
             job_hit_references=job_hit_references,
             job_share_references=job_share_references,
-            minimum_attack_event_count=positive_int("minimum_attack_event_count", 60),
-            minimum_pure_normal_count=positive_int("minimum_pure_normal_count", 30),
-            minimum_player_hit_median=positive_number("minimum_player_hit_median", 10_000),
-            hit_reference_multiplier=positive_number("hit_reference_multiplier", 2.0),
-            minimum_player_attack_share=ratio("minimum_player_attack_share", 0.15),
-            share_reference_multiplier=positive_number("share_reference_multiplier", 1.5),
+            encounter_reference_versions=encounter_reference_versions,
+            encounter_ability_ids=encounter_ability_ids,
+            encounter_job_rules=encounter_job_rules,
+            minimum_attack_event_count=minimum_attack_event_count,
+            minimum_pure_normal_count=minimum_pure_normal_count,
+            minimum_player_hit_median=minimum_player_hit_median,
+            hit_reference_multiplier=hit_reference_multiplier,
+            minimum_player_attack_share=minimum_player_attack_share,
+            share_reference_multiplier=share_reference_multiplier,
             suspected_minimum_eligible_players=positive_int("suspected_minimum_eligible_players", 3),
             suspected_minimum_flagged_players=positive_int("suspected_minimum_flagged_players", 3),
             suspected_minimum_flagged_ratio=ratio("suspected_minimum_flagged_ratio", 0.60),
@@ -198,12 +372,51 @@ class BasicAttackDistributionPolicy:
             and fight.get("standard_composition") is not False
         )
 
-    def screen(self, measurement: dict[str, Any]) -> BasicAttackDistributionScreen:
+    def reference_version_for(self, encounter_key: str) -> str:
+        """回傳副本專用證據版本；未特化的副本沿用全域多人規則版本。"""
+
+        return self.encounter_reference_versions.get(encounter_key, self.reference_version)
+
+    def ability_ids_for(self, encounter_key: str) -> tuple[int, ...]:
+        """回傳該副本要查的普通攻擊技能；舊多人規則只使用 ability 7。"""
+
+        return self.encounter_ability_ids.get(encounter_key, (7,))
+
+    def measurement_has_required_ability_ids(
+        self,
+        encounter_key: str,
+        measurement: Any,
+    ) -> bool:
+        """確認快取涵蓋新版規則所需技能，避免用舊 ability 7 摘要誤判遠程職業。"""
+
+        if not isinstance(measurement, dict):
+            return False
+        raw_ability_ids = measurement.get("ability_ids")
+        if raw_ability_ids is None:
+            # v12 以前的摘要沒有保存技能清單，當時查詢固定為 ability 7。
+            measured_ability_ids = {7}
+        elif isinstance(raw_ability_ids, list):
+            measured_ability_ids = {
+                ability_id
+                for raw_ability_id in raw_ability_ids
+                if (ability_id := to_int(raw_ability_id)) is not None
+            }
+        else:
+            return False
+        return set(self.ability_ids_for(encounter_key)).issubset(measured_ability_ids)
+
+    def screen(
+        self,
+        measurement: dict[str, Any],
+        *,
+        encounter_key: str = "",
+    ) -> BasicAttackDistributionScreen:
         raw_players = measurement.get("players") if isinstance(measurement, dict) else None
         players = raw_players if isinstance(raw_players, list) else []
         eligible: list[dict[str, Any]] = []
         flagged: list[dict[str, Any]] = []
         supporting_nonphysical: list[dict[str, Any]] = []
+        encounter_job_rules = self.encounter_job_rules.get(encounter_key, {})
 
         for raw_player in players:
             if not isinstance(raw_player, dict):
@@ -213,36 +426,88 @@ class BasicAttackDistributionPolicy:
             pure_count = to_int(raw_player.get("pure_normal_count")) or 0
             hit_median = to_number(raw_player.get("pure_normal_median"))
             attack_share = to_number(raw_player.get("attack_share"))
+            attack_dps = to_number(raw_player.get("attack_dps"))
             if hit_median is None or attack_share is None:
                 continue
 
-            if job not in PHYSICAL_AUTO_ATTACK_JOBS:
+            encounter_job_rule = encounter_job_rules.get(job)
+            if job not in PHYSICAL_AUTO_ATTACK_JOBS and encounter_job_rule is None:
                 if (
                     pure_count >= self.support_minimum_pure_normal_count
                     and hit_median >= self.support_minimum_hit_median
                 ):
                     supporting_nonphysical.append(raw_player)
                 continue
+            if encounter_job_rule is not None and attack_dps is None:
+                continue
             if (
-                attack_count < self.minimum_attack_event_count
-                or pure_count < self.minimum_pure_normal_count
+                attack_count
+                < (
+                    encounter_job_rule.minimum_attack_event_count
+                    if encounter_job_rule is not None
+                    else self.minimum_attack_event_count
+                )
+                or pure_count
+                < (
+                    encounter_job_rule.minimum_pure_normal_count
+                    if encounter_job_rule is not None
+                    else self.minimum_pure_normal_count
+                )
             ):
                 continue
 
             eligible.append(raw_player)
-            hit_reference = self.job_hit_references.get(job, self.reference_hit_median)
-            share_reference = self.job_share_references.get(job, self.reference_attack_share)
+            hit_reference = (
+                encounter_job_rule.reference_hit_median
+                if encounter_job_rule is not None
+                else self.job_hit_references.get(job, self.reference_hit_median)
+            )
+            share_reference = (
+                encounter_job_rule.reference_attack_share
+                if encounter_job_rule is not None
+                else self.job_share_references.get(job, self.reference_attack_share)
+            )
             hit_threshold = max(
-                self.minimum_player_hit_median,
-                hit_reference * self.hit_reference_multiplier,
+                encounter_job_rule.minimum_player_hit_median
+                if encounter_job_rule is not None
+                else self.minimum_player_hit_median,
+                hit_reference
+                * (
+                    encounter_job_rule.hit_reference_multiplier
+                    if encounter_job_rule is not None
+                    else self.hit_reference_multiplier
+                ),
             )
             share_threshold = max(
-                self.minimum_player_attack_share,
-                share_reference * self.share_reference_multiplier,
+                encounter_job_rule.minimum_player_attack_share
+                if encounter_job_rule is not None
+                else self.minimum_player_attack_share,
+                share_reference
+                * (
+                    encounter_job_rule.share_reference_multiplier
+                    if encounter_job_rule is not None
+                    else self.share_reference_multiplier
+                ),
             )
-            if hit_median < hit_threshold or attack_share < share_threshold:
+            attack_dps_threshold = (
+                max(
+                    encounter_job_rule.minimum_player_attack_dps,
+                    encounter_job_rule.reference_attack_dps
+                    * encounter_job_rule.attack_dps_reference_multiplier,
+                )
+                if encounter_job_rule is not None
+                else None
+            )
+            if (
+                hit_median < hit_threshold
+                or attack_share < share_threshold
+                or (
+                    attack_dps_threshold is not None
+                    and (attack_dps is None or attack_dps < attack_dps_threshold)
+                )
+            ):
                 continue
-            flagged.append({
+            flagged_player = {
                 "source_id": to_int(raw_player.get("source_id")),
                 "job": job,
                 "attack_event_count": attack_count,
@@ -251,7 +516,23 @@ class BasicAttackDistributionPolicy:
                 "attack_share": round(attack_share, 6),
                 "hit_reference_ratio": round(hit_median / hit_reference, 6),
                 "share_reference_ratio": round(attack_share / share_reference, 6),
-            })
+                "hit_threshold": round(hit_threshold, 3),
+                "share_threshold": round(share_threshold, 6),
+                "single_player_suspected": bool(
+                    encounter_job_rule is not None
+                    and encounter_job_rule.single_player_suspected
+                ),
+            }
+            if encounter_job_rule is not None and attack_dps is not None:
+                flagged_player.update({
+                    "attack_dps": round(attack_dps, 3),
+                    "attack_dps_reference_ratio": round(
+                        attack_dps / encounter_job_rule.reference_attack_dps,
+                        6,
+                    ),
+                    "attack_dps_threshold": round(attack_dps_threshold or 0, 3),
+                })
+            flagged.append(flagged_player)
 
         eligible_count = len(eligible)
         flagged_count = len(flagged)
@@ -276,8 +557,12 @@ class BasicAttackDistributionPolicy:
             and group_attack_share is not None
             and group_attack_share >= self.excluded_minimum_group_attack_share
         )
+        individually_flagged = [
+            player for player in flagged if player.get("single_player_suspected") is True
+        ]
         suspected = (
-            (
+            bool(individually_flagged)
+            or (
                 eligible_count >= self.suspected_minimum_eligible_players
                 and flagged_count >= self.suspected_minimum_flagged_players
                 and flagged_ratio >= self.suspected_minimum_flagged_ratio
@@ -287,6 +572,9 @@ class BasicAttackDistributionPolicy:
         if excluded:
             status = "excluded"
             reason = "team_basic_attack_damage_distribution_abnormal"
+        elif individually_flagged:
+            status = "suspected"
+            reason = "encounter_job_basic_attack_metrics_abnormal"
         elif suspected:
             status = "suspected"
             reason = "multiple_players_basic_attack_metrics_abnormal"
@@ -298,12 +586,15 @@ class BasicAttackDistributionPolicy:
             reason = None
 
         metrics: dict[str, Any] = {
-            "reference_version": self.reference_version,
+            "reference_version": self.reference_version_for(encounter_key),
+            "encounter_key": encounter_key or None,
+            "ability_ids": list(self.ability_ids_for(encounter_key)),
             "actual_event_count": to_int(measurement.get("actual_event_count")) or 0,
             "mapped_event_count": to_int(measurement.get("mapped_event_count")) or 0,
             "eligible_player_count": eligible_count,
             "flagged_player_count": flagged_count,
             "flagged_player_ratio": round(flagged_ratio, 6),
+            "individually_flagged_player_count": len(individually_flagged),
             "supporting_nonphysical_count": len(supporting_nonphysical),
             "minimum_player_hit_median": self.minimum_player_hit_median,
             "minimum_player_attack_share": self.minimum_player_attack_share,
@@ -320,13 +611,30 @@ class BasicAttackDistributionPolicy:
 def summarize_basic_attack_events(
     events: list[Any],
     players: list[Any],
+    *,
+    ability_ids: tuple[int, ...] = (7,),
+    damage_time_ms: float | None = None,
 ) -> dict[str, Any]:
-    """把 ability 7 raw events 壓成可重判的最小玩家彙總。
+    """把指定普通攻擊技能的 raw events 壓成可重判的最小玩家彙總。
 
     FFLogs 同一個命中通常同時回傳 ``calculateddamage`` 與 ``damage``；只能採後者，
     否則命中數與普攻總傷會重複兩次。純一般普攻另排除暴擊與直擊，再除以 FFLogs
-    ``multiplier``，避免團輔、目標減傷或易傷直接污染每擊基準。
+    ``multiplier``，避免團輔、目標減傷或易傷直接污染每擊基準。幻朱雀同時查
+    ability 7（Attack）與 ability 8（弓／槍的 Shot）；摘要保存技能清單，讓舊快取
+    不會在規則擴充後被誤用。
     """
+
+    normalized_ability_ids = tuple(
+        dict.fromkeys(
+            ability_id
+            for raw_ability_id in ability_ids
+            if (ability_id := to_int(raw_ability_id)) is not None
+        )
+    )
+    if len(normalized_ability_ids) != len(ability_ids) or not normalized_ability_ids:
+        raise ValueError("ability_ids 必須是非空且不重複的有效技能 ID 清單。")
+    allowed_ability_ids = set(normalized_ability_ids)
+    normalized_damage_time_ms = to_number(damage_time_ms)
 
     player_by_source: dict[int, dict[str, Any]] = {}
     for raw_player in players:
@@ -343,7 +651,7 @@ def summarize_basic_attack_events(
         if not isinstance(raw_event, dict) or raw_event.get("type") != "damage":
             continue
         ability_id = to_int(raw_event.get("abilityGameID"))
-        if ability_id is not None and ability_id != 7:
+        if ability_id is not None and ability_id not in allowed_ability_ids:
             continue
         source_id = to_int(raw_event.get("sourceID"))
         amount = to_number(raw_event.get("amount"))
@@ -354,6 +662,7 @@ def summarize_basic_attack_events(
             raw_event.get("packetID"),
             source_id,
             raw_event.get("targetID"),
+            ability_id,
             amount,
             raw_event.get("hitType"),
             bool(raw_event.get("directHit")),
@@ -382,7 +691,7 @@ def summarize_basic_attack_events(
                 continue
             multiplier = to_number(event.get("multiplier")) or 1.0
             pure_normal.append(amount / multiplier)
-        summaries.append({
+        player_summary = {
             "source_id": source_id,
             "job": str(player.get("job") or ""),
             "attack_event_count": len(source_events),
@@ -390,9 +699,16 @@ def summarize_basic_attack_events(
             "pure_normal_median": round(median(pure_normal), 3) if pure_normal else None,
             "attack_damage": round(attack_damage, 3),
             "attack_share": round(attack_damage / total_damage, 6),
-        })
+        }
+        if normalized_damage_time_ms is not None and normalized_damage_time_ms > 0:
+            player_summary["attack_dps"] = round(
+                attack_damage * 1000 / normalized_damage_time_ms,
+                3,
+            )
+        summaries.append(player_summary)
 
     return {
+        "ability_ids": list(normalized_ability_ids),
         "actual_event_count": actual_event_count,
         "mapped_event_count": mapped_event_count,
         "players": summaries,

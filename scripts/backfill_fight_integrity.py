@@ -232,22 +232,38 @@ def candidate_needs_check(candidate: Candidate, config: IntegrityConfig) -> bool
             metrics.get("target_damage_profile") if isinstance(metrics, dict) else None
         )
         if (
-            integrity.to_int((result or {}).get("calculation_version"))
-            != integrity.CALCULATION_VERSION
-            or not isinstance(target_metrics, dict)
+            not isinstance(target_metrics, dict)
             or target_metrics.get("profile_version") != target_profile.version
         ):
-            # v11 的逐目標證據只適用設定了固定 profile 的副本。這個明示分支讓
-            # M5S～M8S 的 v10 正常與異常結果全部重判，同時讓其他 v8～v10 已驗證
-            # 結果維持公開，不會因全域版號升級整批下架。
+            # 逐目標證據只適用設定了固定 profile 的副本。依 profile version 而非
+            # 全域 calculation version 挑選，避免其他子規則升版時重查整批零式。
             return True
-    if (
-        config.basic_attack_distribution.applies(candidate.encounter_key, candidate.fight)
-        and integrity.to_int((result or {}).get("calculation_version"))
-        != integrity.CALCULATION_VERSION
-    ):
-        # 事件分布只適用 M5S～M8S；逐目標 profile 未啟用時仍以此分支補齊新版證據。
-        return True
+    if config.basic_attack_distribution.applies(candidate.encounter_key, candidate.fight):
+        metrics = result.get("metrics") if isinstance(result, dict) else None
+        basic_metrics = (
+            metrics.get("basic_attack_distribution") if isinstance(metrics, dict) else None
+        )
+        expected_reference_version = (
+            config.basic_attack_distribution.reference_version_for(candidate.encounter_key)
+        )
+        expected_ability_ids = (
+            list(config.basic_attack_distribution.ability_ids_for(candidate.encounter_key))
+            if candidate.encounter_key
+            in config.basic_attack_distribution.encounter_ability_ids
+            else None
+        )
+        if (
+            not isinstance(basic_metrics, dict)
+            or basic_metrics.get("reference_version") != expected_reference_version
+            or (
+                expected_ability_ids is not None
+                and basic_metrics.get("ability_ids") != expected_ability_ids
+            )
+        ):
+            # 幻朱雀等副本專用職業基準可獨立升版；reference version 與技能清單
+            # 都吻合才算完成，避免舊 ability 7-only 結果漏查 Shot。沒有明示技能
+            # 清單的 M5S～M8S 仍沿用既有相容性，不會因 v13 整批重查。
+            return True
     if integrity.is_legacy_public_compatible_result(result):
         return False
     return integrity.needs_check(candidate.fight) or needs_known_capacity_recheck(candidate, config)
@@ -566,11 +582,19 @@ def evaluate_candidate(
     basic_api_queried = False
 
     if config.basic_attack_distribution.applies(candidate.encounter_key, candidate.fight):
+        basic_ability_ids = config.basic_attack_distribution.ability_ids_for(
+            candidate.encounter_key
+        )
         basic_measurement = None if refresh_cache else measurement_cache.get_basic_attack(
             candidate.report_code,
             candidate.report,
             candidate.fight,
         )
+        if not config.basic_attack_distribution.measurement_has_required_ability_ids(
+            candidate.encounter_key,
+            basic_measurement,
+        ):
+            basic_measurement = None
         basic_cache_hit = basic_measurement is not None
         if basic_measurement is None:
             if offline_only:
@@ -594,6 +618,7 @@ def evaluate_candidate(
                 auth_pool,
                 candidate.report_code,
                 candidate.fight,
+                ability_ids=basic_ability_ids,
             )
             basic_api_queried = True
             basic_measurement = integrity.summarize_basic_attack_events(
@@ -601,6 +626,10 @@ def evaluate_candidate(
                 candidate.fight.get("players")
                 if isinstance(candidate.fight.get("players"), list)
                 else [],
+                ability_ids=basic_ability_ids,
+                damage_time_ms=integrity.to_number(
+                    candidate.fight.get("damage_time_ms")
+                ),
             )
             measurement_cache.put_basic_attack(
                 candidate.report_code,
@@ -609,7 +638,10 @@ def evaluate_candidate(
                 measurement=basic_measurement,
                 cached_at_iso=checked_at_iso,
             )
-        basic_attack_screen = config.basic_attack_distribution.screen(basic_measurement)
+        basic_attack_screen = config.basic_attack_distribution.screen(
+            basic_measurement,
+            encounter_key=candidate.encounter_key,
+        )
         if basic_attack_screen.is_abnormal and not requires_target_details:
             return integrity.make_basic_attack_distribution_result(
                 checked_at_iso=checked_at_iso,

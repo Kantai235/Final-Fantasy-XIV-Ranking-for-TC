@@ -571,7 +571,71 @@ class FightIntegrityBackfillCacheTest(unittest.TestCase):
             "status": "valid",
             "hidden_from_public": False,
             "metrics": {
+                "basic_attack_distribution": {
+                    "reference_version": "fixture-suzaku-paladin",
+                },
+            },
+        }
+        self.assertTrue(backfill.candidate_needs_check(self.candidate, self.config))
+
+        self.candidate.fight["data_integrity"] = {
+            "calculation_version": integrity.CALCULATION_VERSION,
+            "status": "valid",
+            "hidden_from_public": False,
+            "metrics": {
                 "target_damage_profile": {"profile_version": "fixture-v1"},
+            },
+        }
+        self.assertFalse(backfill.candidate_needs_check(self.candidate, self.config))
+
+    def test_suzaku_valid_result_rechecks_only_until_job_reference_matches(self) -> None:
+        self.candidate.encounter_key = "unreal_suzaku"
+        self.candidate.fight.update({
+            "kill": True,
+            "has_echo": False,
+            "size": 8,
+            "standard_composition": True,
+            "data_integrity": {
+                "calculation_version": 10,
+                "status": "valid",
+                "hidden_from_public": False,
+            },
+        })
+        self.config.basic_attack_distribution = (
+            integrity.BasicAttackDistributionPolicy.from_mapping({
+                "enabled": True,
+                "reference_version": "fixture-team",
+                "encounter_keys": ["unreal_suzaku"],
+                "encounter_job_rules": {
+                    "unreal_suzaku": {
+                        "reference_version": "fixture-suzaku-paladin",
+                        "ability_ids": [7, 8],
+                        "jobs": {
+                            "Paladin": {
+                                "hit_median": 2_400,
+                                "attack_share": 0.09,
+                                "attack_dps": 1_000,
+                                "minimum_player_hit_median": 4_800,
+                                "minimum_player_attack_share": 0.13,
+                                "single_player_suspected": True,
+                            }
+                        },
+                    }
+                },
+            })
+        )
+
+        self.assertTrue(backfill.candidate_needs_check(self.candidate, self.config))
+
+        self.candidate.fight["data_integrity"] = {
+            "calculation_version": integrity.CALCULATION_VERSION,
+            "status": "valid",
+            "hidden_from_public": False,
+            "metrics": {
+                "basic_attack_distribution": {
+                    "reference_version": "fixture-suzaku-paladin",
+                    "ability_ids": [7, 8],
+                },
             },
         }
         self.assertFalse(backfill.candidate_needs_check(self.candidate, self.config))
@@ -730,6 +794,102 @@ class FightIntegrityBackfillCacheTest(unittest.TestCase):
         self.assertTrue(second_cache_hit)
         self.assertFalse(second_api_queried)
         self.assertEqual(query_basic.call_count, 1)
+        query_target.assert_not_called()
+
+    def test_suzaku_single_paladin_anomaly_skips_enemy_hp_query(self) -> None:
+        self.candidate.encounter_key = "unreal_suzaku"
+        self.candidate.fight.update({
+            "kill": True,
+            "has_echo": False,
+            "size": 8,
+            "standard_composition": True,
+            "players": [
+                {"fflogs_id": 1, "job": "Paladin", "total_damage": 8_976_645},
+                {"fflogs_id": 2, "job": "Warrior", "total_damage": 7_000_000},
+                {"fflogs_id": 3, "job": "Dragoon", "total_damage": 10_000_000},
+            ],
+        })
+        self.config.basic_attack_distribution = (
+            integrity.BasicAttackDistributionPolicy.from_mapping({
+                "enabled": True,
+                "reference_version": "fixture-team",
+                "encounter_keys": ["unreal_suzaku"],
+                "encounter_job_rules": {
+                    "unreal_suzaku": {
+                        "reference_version": "fixture-suzaku-paladin",
+                        "jobs": {
+                            "Paladin": {
+                                "hit_median": 2_400,
+                                "attack_share": 0.09,
+                                "attack_dps": 1_000,
+                                "minimum_player_hit_median": 4_800,
+                                "minimum_player_attack_share": 0.13,
+                                "single_player_suspected": True,
+                            }
+                        },
+                    }
+                },
+            })
+        )
+        measurement = {
+            "actual_event_count": 700,
+            "mapped_event_count": 700,
+            "players": [
+                {
+                    "source_id": 1,
+                    "job": "Paladin",
+                    "attack_event_count": 255,
+                    "pure_normal_count": 203,
+                    "pure_normal_median": 5_152,
+                    "attack_damage": 1_277_907,
+                    "attack_share": 0.142359,
+                    "attack_dps": 1_900,
+                },
+                {
+                    "source_id": 2,
+                    "job": "Warrior",
+                    "attack_event_count": 180,
+                    "pure_normal_count": 80,
+                    "pure_normal_median": 4_300,
+                    "attack_damage": 700_000,
+                    "attack_share": 0.10,
+                },
+                {
+                    "source_id": 3,
+                    "job": "Dragoon",
+                    "attack_event_count": 180,
+                    "pure_normal_count": 80,
+                    "pure_normal_median": 3_200,
+                    "attack_damage": 800_000,
+                    "attack_share": 0.08,
+                },
+            ],
+        }
+
+        with (
+            patch.object(backfill, "query_basic_attack_events", return_value=[{"type": "damage"}]),
+            patch.object(
+                backfill.integrity,
+                "summarize_basic_attack_events",
+                return_value=measurement,
+            ),
+            patch.object(backfill, "query_target_damage") as query_target,
+        ):
+            result, cache_hit, api_queried = backfill.evaluate_candidate(
+                None,
+                None,
+                self.candidate,
+                self.config,
+                "2026-08-09T00:00:00Z",
+                self.cache,
+                refresh_cache=False,
+            )
+
+        self.assertEqual(result["status"], "suspected")
+        self.assertTrue(result["hidden_from_public"])
+        self.assertIn("encounter_job_basic_attack_metrics_abnormal", result["reasons"])
+        self.assertFalse(cache_hit)
+        self.assertTrue(api_queried)
         query_target.assert_not_called()
 
 

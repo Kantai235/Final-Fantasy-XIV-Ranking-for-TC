@@ -4387,8 +4387,10 @@ def 查詢戰鬥完整性普攻事件(
     認證池: FFLogs認證池,
     報告代碼: str,
     戰鬥: dict[str, Any],
+    *,
+    ability_ids: tuple[int, ...] = (7,),
 ) -> list[dict[str, Any]]:
-    """完整分頁讀取 ability 7，呼叫端只保存玩家層彙總而不落地 raw events。"""
+    """逐技能完整分頁讀取普攻，呼叫端只保存玩家層彙總而不落地 raw events。"""
 
     戰鬥_id = integrity.to_int(戰鬥.get("fight_id"))
     開始時間 = integrity.to_number(戰鬥.get("start_time"))
@@ -4396,45 +4398,65 @@ def 查詢戰鬥完整性普攻事件(
     if 戰鬥_id is None or 開始時間 is None or 結束時間 is None or 結束時間 <= 開始時間:
         raise RuntimeError("普攻分布查詢缺少完整 fight ID 或相對時間範圍")
 
-    事件列表: list[dict[str, Any]] = []
-    游標 = 開始時間
-    for _ in range(100):
-        payload = 執行_graphql(
-            session,
-            認證池,
-            戰鬥完整性普攻事件查詢,
-            {
-                "code": 報告代碼,
-                "fightID": 戰鬥_id,
-                "startTime": 游標,
-                "endTime": 結束時間,
-            },
+    normalized_ability_ids = tuple(
+        dict.fromkeys(
+            ability_id
+            for raw_ability_id in ability_ids
+            if (ability_id := integrity.to_int(raw_ability_id)) in {7, 8}
         )
-        報告 = (payload.get("reportData") or {}).get("report")
-        if not isinstance(報告, dict) or not 報告:
-            # reportData.report=null 通常表示報告已刪除、轉為 Private 或目前憑證無權
-            # 讀取；FFLogs 不一定會在這種情況附帶 GraphQL errors。將它提升成既有的
-            # 存取錯誤類型，讓回補工具能在來源 report 節點留下 hidden 追溯標記，
-            # 而不是只把單一 fight 留在不可驗證狀態後繼續公開。
-            raise FFLogs報告存取錯誤([
-                {
-                    "message": f"FFLogs 無法讀取 report {報告代碼} 的普攻事件",
-                    "path": ["reportData", "report"],
-                }
-            ])
-        事件區塊 = 報告.get("basicAttacks")
-        本頁事件 = 事件區塊.get("data") if isinstance(事件區塊, dict) else None
-        if not isinstance(本頁事件, list):
-            raise RuntimeError("FFLogs 普攻事件回應缺少 data 陣列")
-        事件列表.extend(事件 for 事件 in 本頁事件 if isinstance(事件, dict))
+    )
+    if len(normalized_ability_ids) != len(ability_ids) or not normalized_ability_ids:
+        raise ValueError("普攻分布查詢的 ability_ids 只支援不重複的 7 與 8")
 
-        下一頁 = integrity.to_number(事件區塊.get("nextPageTimestamp"))
-        if 下一頁 is None or 下一頁 >= 結束時間:
-            return 事件列表
-        if 下一頁 <= 游標:
-            raise RuntimeError("FFLogs 普攻事件分頁游標沒有前進")
-        游標 = 下一頁
-    raise RuntimeError("FFLogs 普攻事件分頁超過 100 頁安全上限")
+    事件列表: list[dict[str, Any]] = []
+    for ability_id in normalized_ability_ids:
+        游標 = 開始時間
+        for _ in range(100):
+            payload = 執行_graphql(
+                session,
+                認證池,
+                戰鬥完整性普攻事件查詢,
+                {
+                    "code": 報告代碼,
+                    "fightID": 戰鬥_id,
+                    "startTime": 游標,
+                    "endTime": 結束時間,
+                    "abilityID": ability_id,
+                },
+            )
+            報告 = (payload.get("reportData") or {}).get("report")
+            if not isinstance(報告, dict) or not 報告:
+                # reportData.report=null 通常表示報告已刪除、轉為 Private 或目前憑證無權
+                # 讀取；FFLogs 不一定會在這種情況附帶 GraphQL errors。將它提升成既有的
+                # 存取錯誤類型，讓回補工具能在來源 report 節點留下 hidden 追溯標記，
+                # 而不是只把單一 fight 留在不可驗證狀態後繼續公開。
+                raise FFLogs報告存取錯誤([
+                    {
+                        "message": f"FFLogs 無法讀取 report {報告代碼} 的普攻事件",
+                        "path": ["reportData", "report"],
+                    }
+                ])
+            事件區塊 = 報告.get("basicAttacks")
+            本頁事件 = 事件區塊.get("data") if isinstance(事件區塊, dict) else None
+            if not isinstance(本頁事件, list):
+                raise RuntimeError("FFLogs 普攻事件回應缺少 data 陣列")
+            for 原始事件 in 本頁事件:
+                if not isinstance(原始事件, dict):
+                    continue
+                事件 = dict(原始事件)
+                if integrity.to_int(事件.get("abilityGameID")) is None:
+                    事件["abilityGameID"] = ability_id
+                事件列表.append(事件)
+
+            下一頁 = integrity.to_number(事件區塊.get("nextPageTimestamp"))
+            if 下一頁 is None or 下一頁 >= 結束時間:
+                break
+            if 下一頁 <= 游標:
+                raise RuntimeError("FFLogs 普攻事件分頁游標沒有前進")
+            游標 = 下一頁
+        else:
+            raise RuntimeError("FFLogs 普攻事件分頁超過 100 頁安全上限")
+    return 事件列表
 
 
 def 檢核戰鬥完整性(
@@ -4471,12 +4493,26 @@ def 檢核戰鬥完整性(
                 reason="missing_basic_attack_query_context",
                 attack_marker=攻擊異常標記,
             )
+        普攻技能_ids = 設定.basic_attack_distribution.ability_ids_for(副本鍵值)
         普攻彙總 = 測量快取.get_basic_attack(報告代碼, 報告脈絡, 戰鬥)
+        if not 設定.basic_attack_distribution.measurement_has_required_ability_ids(
+            副本鍵值,
+            普攻彙總,
+        ):
+            普攻彙總 = None
         if 普攻彙總 is None:
-            普攻事件 = 查詢戰鬥完整性普攻事件(session, 認證池, 報告代碼, 戰鬥)
+            普攻事件 = 查詢戰鬥完整性普攻事件(
+                session,
+                認證池,
+                報告代碼,
+                戰鬥,
+                ability_ids=普攻技能_ids,
+            )
             普攻彙總 = integrity.summarize_basic_attack_events(
                 普攻事件,
                 戰鬥.get("players") if isinstance(戰鬥.get("players"), list) else [],
+                ability_ids=普攻技能_ids,
+                damage_time_ms=integrity.to_number(戰鬥.get("damage_time_ms")),
             )
             測量快取.put_basic_attack(
                 報告代碼,
@@ -4485,11 +4521,14 @@ def 檢核戰鬥完整性(
                 measurement=普攻彙總,
                 cached_at_iso=檢核時間,
             )
-        普攻分布結果 = 設定.basic_attack_distribution.screen(普攻彙總)
+        普攻分布結果 = 設定.basic_attack_distribution.screen(
+            普攻彙總,
+            encounter_key=副本鍵值,
+        )
         if 普攻分布結果.is_abnormal and not 需要逐目標明細:
-            # 同場多人同時跨過每擊傷害與占比門檻時，事件證據已足以隱藏，不再為
-            # 沒有固定目標 profile 的副本追加生命池 request。M5S～M8S 仍需完成
-            # 逐目標量測，讓本輪所有通關都能以 v11 留下完整證據。
+            # 同場多人規則或已人工驗證的單一職業同時跨過三道門檻時，事件證據已
+            # 足以隱藏，不再為沒有固定目標 profile 的副本追加生命池 request。
+            # M5S～M8S 仍需完成逐目標量測，讓所有通關以 v11 留下完整證據。
             return integrity.make_basic_attack_distribution_result(
                 checked_at_iso=檢核時間,
                 screen=普攻分布結果,

@@ -152,6 +152,7 @@ class FightIntegrityMeasurementCacheTest(unittest.TestCase):
             self.report,
             self.fight,
             measurement={
+                "ability_ids": [7, 8],
                 "actual_event_count": 180,
                 "mapped_event_count": 180,
                 "players": [
@@ -163,6 +164,7 @@ class FightIntegrityMeasurementCacheTest(unittest.TestCase):
                         "pure_normal_median": 19_842,
                         "attack_damage": 4_574_613,
                         "attack_share": 0.1757,
+                        "attack_dps": 6_535.161,
                     },
                     {
                         "source_id": 11,
@@ -183,7 +185,9 @@ class FightIntegrityMeasurementCacheTest(unittest.TestCase):
         self.assertIsNotNone(reloaded.get("ABC123", self.report, self.fight))
         basic = reloaded.get_basic_attack("ABC123", self.report, self.fight)
         self.assertIsNotNone(basic)
+        self.assertEqual(basic["ability_ids"], [7, 8])
         self.assertEqual(basic["players"][0]["pure_normal_median"], 19_842)
+        self.assertEqual(basic["players"][0]["attack_dps"], 6_535.161)
         self.assertEqual(basic["players"][1]["attack_damage"], 0)
         self.assertEqual(basic["players"][1]["attack_share"], 0)
         content = self.cache_path.read_text(encoding="utf-8")

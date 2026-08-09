@@ -325,14 +325,16 @@ query FightIntegrityTargets(
 
 
 # M5S～M8S 的異常變體不一定會讓敵方承傷／生命池超過既有門檻，也不一定帶有
-# exploitDetails Attack 標記。因此只針對設定中的現行零式查詢 ability 7；呼叫端會
-# 完整分頁後立刻壓成玩家層命中數、中位數與占比，不會保存這段 raw events。
+# exploitDetails Attack 標記。因此只針對設定中的副本逐一查詢指定 ability；ability 7
+# 是多數職業的 Attack，ability 8 則涵蓋吟遊詩人／機工士的 Shot。呼叫端會完整
+# 分頁後立刻壓成玩家層命中數、中位數、占比與每秒傷害，不會保存這段 raw events。
 戰鬥完整性普攻事件查詢 = """
 query FightIntegrityBasicAttackEvents(
   $code: String!
   $fightID: Int!
   $startTime: Float!
   $endTime: Float!
+  $abilityID: Float!
 ) {
   reportData {
     report(code: $code) {
@@ -341,7 +343,7 @@ query FightIntegrityBasicAttackEvents(
         fightIDs: [$fightID]
         startTime: $startTime
         endTime: $endTime
-        abilityID: 7
+        abilityID: $abilityID
         hostilityType: Friendlies
         limit: 10000
         translate: true

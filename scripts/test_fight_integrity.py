@@ -17,6 +17,48 @@ class FightIntegrityTest(unittest.TestCase):
             "reference_attack_share": 0.0861,
         })
 
+    def make_suzaku_basic_attack_policy(self) -> integrity.BasicAttackDistributionPolicy:
+        return integrity.BasicAttackDistributionPolicy.from_mapping({
+            "enabled": True,
+            "reference_version": "fixture-team",
+            "encounter_keys": ["savage_m6s", "unreal_suzaku"],
+            "reference_hit_median": 4_805.7,
+            "reference_attack_share": 0.0861,
+            "encounter_job_rules": {
+                "unreal_suzaku": {
+                    "reference_version": "fixture-suzaku-all-jobs",
+                    "ability_ids": [7, 8],
+                    "jobs": {
+                        "Paladin": {
+                            "hit_median": 2_400,
+                            "attack_share": 0.09,
+                            "attack_dps": 1_000,
+                            "minimum_player_hit_median": 4_800,
+                            "minimum_player_attack_share": 0.13,
+                            "single_player_suspected": True,
+                        },
+                        "RedMage": {
+                            "hit_median": 1,
+                            "attack_share": 0.00001,
+                            "attack_dps": 0.2,
+                            "minimum_attack_event_count": 3,
+                            "minimum_pure_normal_count": 3,
+                            "minimum_player_hit_median": 1_000,
+                            "minimum_player_attack_share": 0.02,
+                            "minimum_player_attack_dps": 100,
+                            "single_player_suspected": True,
+                        },
+                        "Dancer": {
+                            "hit_median": 4_000,
+                            "attack_share": 0.10,
+                            "attack_dps": 1_400,
+                            "single_player_suspected": True,
+                        }
+                    },
+                }
+            },
+        })
+
     @staticmethod
     def basic_attack_player(
         source_id: int,
@@ -26,6 +68,7 @@ class FightIntegrityTest(unittest.TestCase):
         *,
         attack_count: int = 180,
         pure_count: int = 80,
+        attack_dps: float = 1_200,
     ) -> dict[str, object]:
         return {
             "source_id": source_id,
@@ -35,6 +78,7 @@ class FightIntegrityTest(unittest.TestCase):
             "pure_normal_median": hit_median,
             "attack_damage": 4_000_000,
             "attack_share": attack_share,
+            "attack_dps": attack_dps,
         }
 
     def test_basic_attack_summary_uses_only_actual_non_crit_non_direct_hits(self) -> None:
@@ -87,8 +131,13 @@ class FightIntegrityTest(unittest.TestCase):
             },
         ]
 
-        measurement = integrity.summarize_basic_attack_events(events, players)
+        measurement = integrity.summarize_basic_attack_events(
+            events,
+            players,
+            damage_time_ms=500,
+        )
 
+        self.assertEqual(measurement["ability_ids"], [7])
         self.assertEqual(measurement["actual_event_count"], 3)
         self.assertEqual(measurement["mapped_event_count"], 3)
         player = measurement["players"][0]
@@ -97,6 +146,59 @@ class FightIntegrityTest(unittest.TestCase):
         self.assertEqual(player["pure_normal_median"], 100)
         self.assertEqual(player["attack_damage"], 750)
         self.assertEqual(player["attack_share"], 0.75)
+        self.assertEqual(player["attack_dps"], 1_500)
+
+    def test_basic_attack_summary_includes_requested_shot_ability(self) -> None:
+        players = [{"fflogs_id": 10, "job": "Bard", "total_damage": 1_000}]
+        events = [
+            {
+                "timestamp": 1,
+                "type": "damage",
+                "sourceID": 10,
+                "targetID": 20,
+                "abilityGameID": 8,
+                "hitType": 1,
+                "amount": 200,
+            }
+        ]
+
+        measurement = integrity.summarize_basic_attack_events(
+            events,
+            players,
+            ability_ids=(7, 8),
+            damage_time_ms=1_000,
+        )
+
+        self.assertEqual(measurement["ability_ids"], [7, 8])
+        self.assertEqual(measurement["players"][0]["attack_damage"], 200)
+        self.assertEqual(measurement["players"][0]["attack_dps"], 200)
+
+    def test_suzaku_rejects_legacy_ability_seven_only_measurement(self) -> None:
+        policy = self.make_suzaku_basic_attack_policy()
+
+        self.assertFalse(
+            policy.measurement_has_required_ability_ids(
+                "unreal_suzaku",
+                {"actual_event_count": 1, "mapped_event_count": 1, "players": []},
+            )
+        )
+        self.assertTrue(
+            policy.measurement_has_required_ability_ids(
+                "unreal_suzaku",
+                {
+                    "ability_ids": [7, 8],
+                    "actual_event_count": 1,
+                    "mapped_event_count": 1,
+                    "players": [],
+                },
+            )
+        )
+        self.assertTrue(
+            policy.measurement_has_required_ability_ids(
+                "savage_m6s",
+                {"actual_event_count": 1, "mapped_event_count": 1, "players": []},
+            )
+        )
 
     def test_basic_attack_normal_team_is_valid(self) -> None:
         policy = self.make_basic_attack_policy()
@@ -176,6 +278,168 @@ class FightIntegrityTest(unittest.TestCase):
         screen = policy.screen(measurement)
 
         self.assertEqual(screen.status, "valid")
+        self.assertEqual(screen.metrics["flagged_player_count"], 0)
+
+    def test_suzaku_single_paladin_double_threshold_anomaly_is_suspected(self) -> None:
+        """幻朱雀騎士的低幅單人變體不能再被全隊 72m 固定範圍掩蓋。"""
+
+        policy = self.make_suzaku_basic_attack_policy()
+        measurement = {
+            "actual_event_count": 900,
+            "mapped_event_count": 900,
+            "players": [
+                self.basic_attack_player(
+                    1,
+                    "Paladin",
+                    5_152,
+                    0.142359,
+                    attack_dps=1_900,
+                ),
+                self.basic_attack_player(2, "Warrior", 4_300, 0.10),
+                self.basic_attack_player(3, "Dragoon", 3_200, 0.08),
+            ],
+        }
+
+        screen = policy.screen(measurement, encounter_key="unreal_suzaku")
+
+        self.assertEqual(screen.status, "suspected")
+        self.assertEqual(screen.reason, "encounter_job_basic_attack_metrics_abnormal")
+        self.assertEqual(screen.metrics["reference_version"], "fixture-suzaku-all-jobs")
+        self.assertEqual(screen.metrics["individually_flagged_player_count"], 1)
+        flagged = screen.metrics["flagged_players"][0]
+        self.assertEqual(flagged["job"], "Paladin")
+        self.assertEqual(flagged["hit_threshold"], 4_800)
+        self.assertAlmostEqual(flagged["share_threshold"], 0.135)
+        self.assertEqual(flagged["attack_dps_threshold"], 1_500)
+
+    def test_suzaku_single_paladin_requires_all_three_thresholds_together(self) -> None:
+        policy = self.make_suzaku_basic_attack_policy()
+        for hit_median, attack_share, attack_dps in (
+            (2_419, 0.142, 1_900),
+            (5_152, 0.12, 1_900),
+            (5_152, 0.142, 1_200),
+        ):
+            with self.subTest(
+                hit_median=hit_median,
+                attack_share=attack_share,
+                attack_dps=attack_dps,
+            ):
+                measurement = {
+                    "actual_event_count": 700,
+                    "mapped_event_count": 700,
+                    "players": [
+                        self.basic_attack_player(
+                            1,
+                            "Paladin",
+                            hit_median,
+                            attack_share,
+                            attack_dps=attack_dps,
+                        ),
+                        self.basic_attack_player(2, "Warrior", 4_300, 0.10),
+                        self.basic_attack_player(3, "Dragoon", 3_200, 0.08),
+                    ],
+                }
+
+                screen = policy.screen(measurement, encounter_key="unreal_suzaku")
+
+                self.assertEqual(screen.status, "valid")
+                self.assertEqual(screen.metrics["individually_flagged_player_count"], 0)
+
+    def test_suzaku_single_red_mage_cross_job_anomaly_is_suspected(self) -> None:
+        """法系 ability 7 從 1 點跳到數千點時，不能再被物理職業白名單略過。"""
+
+        policy = self.make_suzaku_basic_attack_policy()
+        measurement = {
+            "ability_ids": [7, 8],
+            "actual_event_count": 300,
+            "mapped_event_count": 300,
+            "players": [
+                self.basic_attack_player(
+                    1,
+                    "RedMage",
+                    3_550,
+                    0.039307,
+                    attack_count=119,
+                    pure_count=70,
+                    attack_dps=618,
+                ),
+                self.basic_attack_player(2, "Warrior", 4_300, 0.10),
+            ],
+        }
+
+        screen = policy.screen(measurement, encounter_key="unreal_suzaku")
+
+        self.assertEqual(screen.status, "suspected")
+        self.assertEqual(screen.metrics["flagged_players"][0]["job"], "RedMage")
+
+    def test_suzaku_normal_red_mage_attack_packet_is_valid(self) -> None:
+        policy = self.make_suzaku_basic_attack_policy()
+        measurement = {
+            "ability_ids": [7, 8],
+            "actual_event_count": 120,
+            "mapped_event_count": 120,
+            "players": [
+                self.basic_attack_player(
+                    1,
+                    "RedMage",
+                    1,
+                    0.000011,
+                    attack_count=113,
+                    pure_count=80,
+                    attack_dps=0.18,
+                ),
+                self.basic_attack_player(2, "Warrior", 4_300, 0.10),
+                self.basic_attack_player(3, "Dragoon", 3_200, 0.08),
+            ],
+        }
+
+        screen = policy.screen(measurement, encounter_key="unreal_suzaku")
+
+        self.assertEqual(screen.status, "valid")
+        self.assertEqual(screen.metrics["flagged_player_count"], 0)
+
+    def test_suzaku_high_dancer_hit_without_dps_multiplier_is_valid(self) -> None:
+        """正常近戰普攻高傷仍須跨過 DPS 倍率，避免把職業差異當成異常。"""
+
+        policy = self.make_suzaku_basic_attack_policy()
+        measurement = {
+            "ability_ids": [7, 8],
+            "actual_event_count": 600,
+            "mapped_event_count": 600,
+            "players": [
+                self.basic_attack_player(
+                    1,
+                    "Dancer",
+                    7_391,
+                    0.15146,
+                    attack_dps=1_849,
+                ),
+                self.basic_attack_player(2, "Warrior", 4_300, 0.10),
+                self.basic_attack_player(3, "Dragoon", 3_200, 0.08),
+            ],
+        }
+
+        screen = policy.screen(measurement, encounter_key="unreal_suzaku")
+
+        self.assertEqual(screen.status, "valid")
+        self.assertEqual(screen.metrics["flagged_player_count"], 0)
+
+    def test_suzaku_paladin_rule_does_not_change_m6s_team_thresholds(self) -> None:
+        policy = self.make_suzaku_basic_attack_policy()
+        measurement = {
+            "actual_event_count": 700,
+            "mapped_event_count": 700,
+            "players": [
+                self.basic_attack_player(1, "Paladin", 5_152, 0.142359),
+                self.basic_attack_player(2, "Warrior", 5_000, 0.09),
+                self.basic_attack_player(3, "Dragoon", 5_000, 0.09),
+            ],
+        }
+
+        screen = policy.screen(measurement, encounter_key="savage_m6s")
+
+        self.assertEqual(screen.status, "valid")
+        self.assertEqual(screen.metrics["reference_version"], "fixture-team")
         self.assertEqual(screen.metrics["flagged_player_count"], 0)
 
     def test_basic_attack_screen_never_downgrades_existing_excluded_result(self) -> None:

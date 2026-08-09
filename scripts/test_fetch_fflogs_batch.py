@@ -2359,6 +2359,48 @@ class FetchFFLogsBatchTest(unittest.TestCase):
         self.assertEqual(execute_graphql.call_count, 2)
         self.assertEqual(execute_graphql.call_args_list[0].args[3]["startTime"], 10)
         self.assertEqual(execute_graphql.call_args_list[1].args[3]["startTime"], 500)
+        self.assertEqual(execute_graphql.call_args_list[0].args[3]["abilityID"], 7)
+
+    def test_basic_attack_integrity_query_reads_attack_and_shot_abilities(self) -> None:
+        pages = [
+            {
+                "reportData": {
+                    "report": {
+                        "basicAttacks": {
+                            "data": [{"timestamp": 100, "type": "damage"}],
+                            "nextPageTimestamp": None,
+                        }
+                    }
+                }
+            },
+            {
+                "reportData": {
+                    "report": {
+                        "basicAttacks": {
+                            "data": [{"timestamp": 200, "type": "damage"}],
+                            "nextPageTimestamp": None,
+                        }
+                    }
+                }
+            },
+        ]
+        with patch.object(fflogs, "執行_graphql", side_effect=pages) as execute_graphql:
+            events = fflogs.查詢戰鬥完整性普攻事件(
+                object(),
+                object(),
+                "ATTACK-AND-SHOT",
+                {"fight_id": 2, "start_time": 10, "end_time": 1_000},
+                ability_ids=(7, 8),
+            )
+
+        self.assertEqual(
+            [event["abilityGameID"] for event in events],
+            [7, 8],
+        )
+        self.assertEqual(
+            [call.args[3]["abilityID"] for call in execute_graphql.call_args_list],
+            [7, 8],
+        )
 
     def test_new_fight_integrity_historical_normal_screen_skips_hp_query(self) -> None:
         """舊副本完整隊伍落在歷史高端內時，必須不讀取 FFLogs 生命池。"""
