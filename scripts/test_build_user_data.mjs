@@ -632,7 +632,7 @@ async function assertFixtureOutput(tempRoot, expectedGlobalStatsText, expectedSe
   assert(usersIndex.generated_at_iso === "2026-01-02T03:04:05.000Z", "使用者索引應使用 ranking 更新時間作為 generated_at_iso。");
   assert(globalStats.generated_at_iso === "2026-01-02T03:04:05.000Z", "全服統計應使用 ranking 更新時間作為 generated_at_iso。");
   assert(usersIndex.total_users === 7, "fixture 應產生五位有公開成績的使用者與兩位空白入口。");
-  assert(usersIndex.achievements?.length === 12, "使用者索引應輸出十二項成就手冊統計。");
+  assert(usersIndex.achievements?.length === 14, "使用者索引應輸出十四項成就手冊統計。");
   const recentAchievement = usersIndex.achievements.find((achievement) => achievement.id === "recently-active");
   const highActivityAchievement = usersIndex.achievements.find((achievement) => achievement.id === "high-activity");
   assert(recentAchievement?.holder_count > 0, "fixture 的最近公開紀錄應取得近期活躍成就。");
