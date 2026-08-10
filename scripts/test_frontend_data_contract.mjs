@@ -142,8 +142,8 @@ function validatePercentileDisplayFormatting() {
 }
 
 function validateRankingDefaults() {
-  assert(預設副本鍵值 === "savage_m5s", "排行榜目前必須預設顯示零式 M5S／熱舞綠光。");
-  assert(預設隊伍榜副本鍵值 === "savage_m5s", "隊伍榜目前必須預設顯示零式 M5S／熱舞綠光。");
+  assert(預設副本鍵值 === "savage_m6s", "排行榜目前必須預設顯示零式 M6S／糖彩狂潮。");
+  assert(預設隊伍榜副本鍵值 === "savage_m6s", "隊伍榜目前必須預設顯示零式 M6S／糖彩狂潮。");
 }
 
 function validateUserProfilePercentileSorting() {
