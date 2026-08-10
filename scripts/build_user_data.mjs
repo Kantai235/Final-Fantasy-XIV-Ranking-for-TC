@@ -367,12 +367,12 @@ function isHiddenEntry(entry) {
 }
 
 const fightIntegrityCutoffMs = Date.parse("2026-07-28T18:00:00+08:00");
-// 必須與 scripts/fight_integrity.py 同步。v11 只強制 M5S～M8S 補齊逐目標 profile；
-// 其他副本已確認正常的 v8～v10 fight 繼續公開，避免全域版號升級時把個人成績、
+// 必須與 scripts/fight_integrity.py 同步。v13 只強制幻朱雀補齊全職業 ability 7／8
+// 普攻證據；其他副本已確認正常的 v8～v12 fight 繼續公開，避免全域版號升級時把個人成績、
 // 隊伍榜與統計整批撤下。副本專用重驗候選由 Python 資料管線負責，建置層只消費
 // 已寫入來源分片的最終狀態，不能自行推測哪些舊版 fight 需要重判。
-const currentFightIntegrityCalculationVersion = 11;
-const legacyPublicCompatibleFightIntegrityVersions = new Set([8, 9, 10]);
+const currentFightIntegrityCalculationVersion = 13;
+const legacyPublicCompatibleFightIntegrityVersions = new Set([8, 9, 10, 11, 12]);
 const publicFightIntegrityStatuses = new Set(["valid", "not_applicable"]);
 const confirmedFightIntegrityAnomalyStatuses = new Set(["excluded", "suspected"]);
 

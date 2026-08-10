@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const buildScriptPath = path.join(repoRoot, "scripts", "build_user_data.mjs");
+const fightIntegrityScriptPath = path.join(repoRoot, "scripts", "fight_integrity.py");
 
 function assert(condition, message) {
   if (!condition) {
@@ -20,6 +21,48 @@ async function writeJson(filePath, data) {
 
 async function readJson(filePath) {
   return JSON.parse(await readFile(filePath, "utf8"));
+}
+
+async function assertFightIntegrityVersionContract() {
+  // 戰鬥完整性判定由 Python 寫入、Node.js 消費；兩邊版號若不同步，valid fight 會只出現在
+  // 排行榜，卻被個人成績、隊伍榜與統計誤當成未知版本排除。直接比對兩個執行入口的常數，
+  // 讓下一次規則升版時必須在同一筆變更中更新資料建置層，而不是等部署後才由玩家回報。
+  const [pythonSource, nodeSource] = await Promise.all([
+    readFile(fightIntegrityScriptPath, "utf8"),
+    readFile(buildScriptPath, "utf8"),
+  ]);
+  const pythonCurrentMatch = pythonSource.match(/^CALCULATION_VERSION\s*=\s*(\d+)/m);
+  const pythonLegacyMatch = pythonSource.match(
+    /^LEGACY_PUBLIC_COMPATIBLE_VERSIONS\s*=\s*frozenset\(\{([^}]*)\}\)/m,
+  );
+  const nodeCurrentMatch = nodeSource.match(
+    /^const currentFightIntegrityCalculationVersion\s*=\s*(\d+);/m,
+  );
+  const nodeLegacyMatch = nodeSource.match(
+    /^const legacyPublicCompatibleFightIntegrityVersions\s*=\s*new Set\(\[([^\]]*)\]\);/m,
+  );
+
+  assert(pythonCurrentMatch && pythonLegacyMatch, "無法解析 Python 戰鬥完整性版本契約。");
+  assert(nodeCurrentMatch && nodeLegacyMatch, "無法解析 Node.js 戰鬥完整性版本契約。");
+
+  const parseVersionList = (rawVersions) => rawVersions
+    .split(",")
+    .map((value) => Number(value.trim()))
+    .filter(Number.isFinite)
+    .sort((left, right) => left - right);
+  const pythonCurrentVersion = Number(pythonCurrentMatch[1]);
+  const nodeCurrentVersion = Number(nodeCurrentMatch[1]);
+  const pythonLegacyVersions = parseVersionList(pythonLegacyMatch[1]);
+  const nodeLegacyVersions = parseVersionList(nodeLegacyMatch[1]);
+
+  assert(
+    nodeCurrentVersion === pythonCurrentVersion,
+    `Node.js 現行完整性版號 v${nodeCurrentVersion} 未與 Python v${pythonCurrentVersion} 同步。`,
+  );
+  assert(
+    JSON.stringify(nodeLegacyVersions) === JSON.stringify(pythonLegacyVersions),
+    `Node.js 舊版相容清單 ${JSON.stringify(nodeLegacyVersions)} 未與 Python ${JSON.stringify(pythonLegacyVersions)} 同步。`,
+  );
 }
 
 function runBuild(tempRoot) {
@@ -607,6 +650,78 @@ async function createFixture(tempRoot) {
         },
       ],
     },
+    INTEGRITY_V12_VALID: {
+      report_code: "INTEGRITY_V12_VALID",
+      title: "Fixture v12 compatible integrity result",
+      url: "https://www.fflogs.com/reports/INTEGRITY_V12_VALID",
+      report_start_time_iso: "2026-07-29T09:50:00.000Z",
+      fights: [
+        {
+          fight_id: 16,
+          fight_hash: "integrity-v12-valid-fixture-fight",
+          clear_time_ms: 500000,
+          clear_time_seconds: 500,
+          damage_time_ms: 450000,
+          damage_time_seconds: 450,
+          recorded_at: 1785319200000,
+          recorded_at_iso: "2026-07-29T10:00:00.000Z",
+          data_integrity: {
+            calculation_version: 12,
+            status: "valid",
+            hidden_from_public: false,
+          },
+          players: [
+            {
+              name: "測試角色",
+              server: "鳳凰",
+              job: "Paladin",
+              dps: 77,
+              rdps: 77,
+              adps: 77,
+              total_damage: 34650,
+              active_time_ms: 430000,
+              active_percent: 95.56,
+            },
+          ],
+        },
+      ],
+    },
+    INTEGRITY_V13_VALID: {
+      report_code: "INTEGRITY_V13_VALID",
+      title: "Fixture v13 current integrity result",
+      url: "https://www.fflogs.com/reports/INTEGRITY_V13_VALID",
+      report_start_time_iso: "2026-07-29T10:50:00.000Z",
+      fights: [
+        {
+          fight_id: 17,
+          fight_hash: "integrity-v13-valid-fixture-fight",
+          clear_time_ms: 500000,
+          clear_time_seconds: 500,
+          damage_time_ms: 450000,
+          damage_time_seconds: 450,
+          recorded_at: 1785322800000,
+          recorded_at_iso: "2026-07-29T11:00:00.000Z",
+          data_integrity: {
+            calculation_version: 13,
+            status: "valid",
+            hidden_from_public: false,
+          },
+          players: [
+            {
+              name: "測試角色",
+              server: "鳳凰",
+              job: "Paladin",
+              dps: 76,
+              rdps: 76,
+              adps: 76,
+              total_damage: 34200,
+              active_time_ms: 430000,
+              active_percent: 95.56,
+            },
+          ],
+        },
+      ],
+    },
   });
 }
 
@@ -643,7 +758,7 @@ async function assertFixtureOutput(tempRoot, expectedGlobalStatsText, expectedSe
   );
   assert(highActivityAchievement?.holder_count === 0, "fixture 沒有玩家達到一百筆公開成績，不可取得高活躍成就。");
   assert(globalStats.total_character_count === 5, `全服角色數應把同名跨服角色視為不同玩家，實際 ${globalStats.total_character_count}。`);
-  assert(globalStats.total_entry_count === 9, "全服 entry 數應包含六筆既有成績與 v8／v10／v11 正常成績。");
+  assert(globalStats.total_entry_count === 11, "全服 entry 數應包含六筆既有成績與 v8／v10～v13 正常成績。");
   const hiddenUser = usersIndex.users.find((user) => user.character_name === "隱藏角色");
   assert(hiddenUser, "預設使用者索引應保留空白成績單入口。");
   assert(hiddenUser.servers.includes("鳳凰"), "空白入口應保留伺服器，讓同名角色查詢仍可辨識。");
@@ -652,7 +767,7 @@ async function assertFixtureOutput(tempRoot, expectedGlobalStatsText, expectedSe
   assert(allUsersIndex.total_users === 7, "完整鏡像應保留所有公開索引角色。");
   assert(allUsersIndex.achievements?.length === usersIndex.achievements.length, "Hidden delta 索引也必須輸出完整成就手冊目錄。");
   assert(allGlobalStats.total_character_count === 6, "完整全服統計應納入所有 fixture 角色。");
-  assert(allGlobalStats.total_entry_count === 10, "完整全服統計應納入所有 fixture 成績。");
+  assert(allGlobalStats.total_entry_count === 12, "完整全服統計應納入所有 fixture 成績。");
   const allHiddenUser = allUsersIndex.users.find((user) => user.character_name === "隱藏角色");
   assert(allHiddenUser, "完整鏡像使用者索引應包含對應角色。");
   assert(Array.isArray(globalStats.job_profiles) && globalStats.job_profiles.length === 4, "全服統計應產生職業專頁資料。");
@@ -725,7 +840,7 @@ async function assertFixtureOutput(tempRoot, expectedGlobalStatsText, expectedSe
   assert(mainUser, "使用者索引應包含測試角色。");
   const mainUserData = await readJson(path.join(tempRoot, "public", mainUser.file_path));
   assert(mainUserData.summary.best_rdps === 250, "測試角色最佳 rDPS 應正確彙整。");
-  assert(mainUserData.summary.public_entry_count === 5, "重複 report 應合併，且 v8／v10／v11 已驗證正常的戰鬥應維持公開。");
+  assert(mainUserData.summary.public_entry_count === 7, "重複 report 應合併，且 v8／v10～v13 已驗證正常的戰鬥應維持公開。");
   assert(
     mainUserData.encounters[0]?.public_entries?.some((entry) => entry.report_code === "INTEGRITY_V8_VALID"),
     "個人成績單必須保留 v8 已驗證正常的戰鬥。",
@@ -736,7 +851,15 @@ async function assertFixtureOutput(tempRoot, expectedGlobalStatsText, expectedSe
   );
   assert(
     mainUserData.encounters[0]?.public_entries?.some((entry) => entry.report_code === "INTEGRITY_V11_VALID"),
-    "個人成績單必須保留 v11 現行規則已驗證正常的戰鬥。",
+    "個人成績單必須保留 v11 已驗證正常的戰鬥。",
+  );
+  assert(
+    mainUserData.encounters[0]?.public_entries?.some((entry) => entry.report_code === "INTEGRITY_V12_VALID"),
+    "個人成績單必須保留 v12 已驗證正常的戰鬥。",
+  );
+  assert(
+    mainUserData.encounters[0]?.public_entries?.some((entry) => entry.report_code === "INTEGRITY_V13_VALID"),
+    "個人成績單必須保留 v13 現行規則已驗證正常的戰鬥。",
   );
   assert(mainUserData.summary.profile_job === "Paladin", "個人成績單代表職業應優先採用同職排名最高的職業。");
   assert(mainUserData.summary.profile_job_rank === 1, "個人成績單代表職業應保留最高職業 Rank。");
@@ -784,6 +907,7 @@ async function assertFixtureOutput(tempRoot, expectedGlobalStatsText, expectedSe
 }
 
 async function main() {
+  await assertFightIntegrityVersionContract();
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), "ffxiv-tc-build-user-data-"));
   try {
     await createFixture(tempRoot);
