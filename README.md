@@ -97,7 +97,7 @@ README 只保留入口與最小操作脈絡，完整說明請依主題閱讀：
 
 本專案最重要的邊界是「抓取、建置、呈現」三層分離：
 
-1. `scripts/fetch_fflogs.py` 是 Data Fetching Layer。它是唯一可直接呼叫 FFLogs GraphQL API 的入口，負責 OAuth、限流、重試、繁中服玩家初篩、report 狀態判定，以及 `data/rankings/` 與 `data/state.json` 的可追溯寫入；GraphQL 查詢字串集中在 `scripts/fflogs_pipeline/graphql_queries.py`，避免掃描策略與查詢文本互相纏在同一個巨型檔。7/28 後新收錄的 fight 會在 `fetch_fflogs.py` 建立排行來源前即時完成普攻資料完整性檢核；既有副本先以切點前的全隊角色傷害 P99 本地預篩，只有超出高端、Attack 標記或新副本才讀取敵方生命池。`scripts/backfill_fight_integrity.py` 則只負責既有歷史資料的分批回補。兩者共用不進 Git 的最小測量快取，只在 fight 層寫入 `data_integrity` 標記，不會刪除原始 report。
+1. `scripts/fetch_fflogs.py` 是 Data Fetching Layer。它是唯一可直接呼叫 FFLogs GraphQL API 的入口，負責 OAuth、限流、重試、繁中服玩家初篩、report 狀態判定，以及 `data/rankings/` 與 `data/state.json` 的可追溯寫入；GraphQL 查詢字串集中在 `scripts/fflogs_pipeline/graphql_queries.py`，避免掃描策略與查詢文本互相纏在同一個巨型檔。新收錄 fight 會保存補師 Healing table 摘要，以及坦克承傷、實際護盾吸收與有效減傷時窗摘要；DamageTaken／Buffs／Debuffs raw events 完整分頁後立即丟棄，不會寫入 Git。7/28 後新收錄的 fight 也會在 `fetch_fflogs.py` 建立排行來源前即時完成普攻資料完整性檢核；既有副本先以切點前的全隊角色傷害 P99 本地預篩，只有超出高端、Attack 標記或新副本才讀取敵方生命池。`scripts/backfill_fight_integrity.py` 則只負責既有歷史資料的分批回補。兩者共用不進 Git 的最小測量快取，只在 fight 層寫入 `data_integrity` 標記，不會刪除原始 report。
 2. `scripts/build_user_data.mjs` 是 Data Building Layer。它讀取排行榜來源資料，產生個人成績單、個人成績報告細節、全服統計、近期動態、隊伍榜與伺服器對比等 `public/data/` 靜態 JSON；`build:user-data` 也會接續產生排行榜薄索引、Logs 狀態索引與公開更新狀態。正式部署時，個別玩家成績單 JSON 會先同步到專用 users repo，再從主站 Pages artifact 移除；高頻共用的 `data/users/index.json` 會保留在主站 `/data/`，讓 Cloudflare/GitHub Pages 快取承接玩家搜尋索引請求。
 3. `src/` 是 UI Presentation Layer。Vue 只讀取靜態 JSON 進行呈現、篩選與狀態管理：主站共用資料與個人成績單索引來自 Pages artifact 的 `/data/`，個別玩家成績單資料來自專用 users repo，不能直接呼叫 FFLogs API；`src/composables/rankingApp/` 承接排行榜預設值、注入 context 與排行列正規化，`src/styles/app.css` 則只作為樣式拆檔入口。
 

@@ -15,7 +15,7 @@ from typing import Any, Callable, Iterable
 import requests
 from dotenv import load_dotenv
 
-from fflogs_pipeline import state_store
+from fflogs_pipeline import state_store, support_metrics
 from fflogs_pipeline.graphql_queries import (
     深層過濾查詢,
     報告狀態查詢,
@@ -26,6 +26,8 @@ from fflogs_pipeline.graphql_queries import (
     淺層掃描查詢,
     戰鬥完整性普攻事件查詢,
     戰鬥完整性目標傷害查詢,
+    戰鬥支援事件查詢,
+    建立戰鬥支援事件分頁查詢,
     玩家成績查詢,
     玩家成績全部查詢,
 )
@@ -2324,7 +2326,7 @@ def 查詢玩家成績(
     return {
         "player_details": 報告.get("playerDetails"),
         "damage_done": 報告.get("damageDone"),
-        "rankings": 報告.get("rankings"),
+        "healing": 報告.get("healing"),
     }
 
 
@@ -2333,9 +2335,9 @@ def 建立玩家成績批次查詢(
     戰鬥時間範圍索引: dict[int, dict[str, int | float]] | None = None,
     套用通關篩選: bool = True,
 ) -> str:
-    # playerDetails 與 damageDone 必須維持「單一 fight」語意，否則多場通關會被 FFLogs 聚合成同一張表，
-    # rDPS/aDPS 分母、停手時間與玩家列表都會失去逐場可追溯性。這裡用 GraphQL alias 把多個單 fight
-    # 查詢包進同一個 HTTP request，降低 workflow 遇到多場戰鬥 report 時的 API request 數量。
+    # playerDetails、damageDone 與 Healing 必須維持「單一 fight」語意，否則多場通關會被 FFLogs
+    # 聚合成同一張表，rDPS/aDPS/HPS 分母、停手時間與玩家列表都會失去逐場可追溯性。這裡用
+    # GraphQL alias 把多個單 fight 查詢包進同一個 HTTP request，降低多場戰鬥 report 的 request 數量。
     欄位片段: list[str] = []
     通關篩選列 = "        killType: Kills,\n" if 套用通關篩選 else ""
     for 索引, 戰鬥_id in enumerate(戰鬥_id清單):
@@ -2371,12 +2373,16 @@ def 建立玩家成績批次查詢(
         viewBy: Source,
         translate: true
       )
-      rankings_{索引}: rankings(
+      healing_{索引}: table(
+        dataType: Healing,
         fightIDs: [{戰鬥_id}],
+{時間範圍參數}
         encounterID: $encounterID,
         difficulty: $difficulty,
-        playerMetric: dps,
-        timeframe: Historical
+{通關篩選列.rstrip()}
+        hostilityType: Friendlies,
+        viewBy: Source,
+        translate: true
       )
 """
         )
@@ -2419,7 +2425,7 @@ def 查詢多場玩家成績(
             批次成績索引[戰鬥_id] = {
                 "player_details": 報告.get(f"playerDetails_{索引}"),
                 "damage_done": 報告.get(f"damageDone_{索引}"),
-                "rankings": 報告.get(f"rankings_{索引}"),
+                "healing": 報告.get(f"healing_{索引}"),
             }
         return 批次成績索引
 
@@ -2458,6 +2464,126 @@ def 查詢多場玩家成績(
         成績索引.update(安全查詢批次(批次戰鬥_id清單))
 
     return 成績索引
+
+
+支援事件GraphQL欄位 = {
+    "damage_taken": "damageTaken",
+    "friendly_buffs": "friendlyBuffs",
+    "enemy_debuffs": "enemyDebuffs",
+}
+
+
+def 查詢戰鬥支援事件(
+    session: requests.Session,
+    認證池: FFLogs認證池,
+    報告代碼: str,
+    戰鬥: dict[str, Any],
+    *,
+    每頁上限: int = 10_000,
+) -> dict[str, list[dict[str, Any]]]:
+    """完整分頁取得坦克承傷與減傷狀態，呼叫端只保存衍生摘要。
+
+    首頁把 DamageTaken／友方 Buffs／敵方 Debuffs 合成一個 request；各欄位的
+    ``nextPageTimestamp`` 不一定相同，因此後續頁必須分開查。若 FFLogs 因回應大小拒絕
+    合併查詢，會改成三個獨立分頁查詢，不能把第一頁誤當成完整事件集合。
+    """
+
+    戰鬥_id = 轉_int_or_none(戰鬥.get("id") if 戰鬥.get("id") is not None else 戰鬥.get("fight_id"))
+    開始時間 = 轉_float(戰鬥.get("startTime") if 戰鬥.get("startTime") is not None else 戰鬥.get("start_time"))
+    結束時間 = 轉_float(戰鬥.get("endTime") if 戰鬥.get("endTime") is not None else 戰鬥.get("end_time"))
+    if 戰鬥_id is None or 開始時間 is None or 結束時間 is None or 結束時間 <= 開始時間:
+        raise RuntimeError("支援統計查詢缺少完整 fight ID 或相對時間範圍。")
+    if 每頁上限 <= 0 or 每頁上限 > 10_000:
+        raise ValueError("FFLogs 支援事件每頁上限必須介於 1 到 10000。")
+
+    def 取得報告(payload: dict[str, Any]) -> dict[str, Any]:
+        報告 = (payload.get("reportData") or {}).get("report")
+        if not isinstance(報告, dict) or not 報告:
+            raise FFLogs報告存取錯誤([
+                {
+                    "message": f"FFLogs 無法讀取 report {報告代碼} 的支援事件",
+                    "path": ["reportData", "report"],
+                }
+            ])
+        return 報告
+
+    def 解析事件頁(事件區塊: Any, 資料類型: str) -> tuple[list[dict[str, Any]], float | None]:
+        if not isinstance(事件區塊, dict):
+            raise RuntimeError(f"FFLogs {資料類型} 支援事件回應缺少事件區塊。")
+        原始事件 = 事件區塊.get("data")
+        if not isinstance(原始事件, list):
+            raise RuntimeError(f"FFLogs {資料類型} 支援事件回應缺少 data 陣列。")
+        return [事件 for 事件 in 原始事件 if isinstance(事件, dict)], 轉_float(事件區塊.get("nextPageTimestamp"))
+
+    def 查詢單一類型(
+        資料類型: str,
+        *,
+        已有事件: list[dict[str, Any]] | None = None,
+        下一頁: float | None = None,
+    ) -> list[dict[str, Any]]:
+        事件列表 = list(已有事件 or [])
+        游標 = 開始時間 if 下一頁 is None and 已有事件 is None else 下一頁
+        if 游標 is None:
+            return 事件列表
+
+        for _ in range(100):
+            if 游標 >= 結束時間:
+                break
+            payload = 執行_graphql(
+                session,
+                認證池,
+                建立戰鬥支援事件分頁查詢(資料類型),
+                {
+                    "code": 報告代碼,
+                    "fightIDs": [戰鬥_id],
+                    "startTime": 游標,
+                    "endTime": 結束時間,
+                    "limit": 每頁上限,
+                },
+            )
+            本頁事件, 新游標 = 解析事件頁(取得報告(payload).get("events"), 資料類型)
+            事件列表.extend(本頁事件)
+            if 新游標 is None or 新游標 >= 結束時間:
+                break
+            if 新游標 <= 游標:
+                raise RuntimeError(f"FFLogs {資料類型} 支援事件分頁游標沒有前進。")
+            游標 = 新游標
+        else:
+            raise RuntimeError(f"FFLogs {資料類型} 支援事件分頁超過 100 頁安全上限。")
+
+        事件列表.sort(
+            key=lambda 事件: (
+                轉_float(事件.get("timestamp")) or 0,
+                轉_int_or_none(事件.get("packetID")) or 0,
+                str(事件.get("type") or ""),
+            )
+        )
+        return 事件列表
+
+    基本變數 = {
+        "code": 報告代碼,
+        "fightIDs": [戰鬥_id],
+        "startTime": 開始時間,
+        "endTime": 結束時間,
+        "limit": 每頁上限,
+    }
+    try:
+        首頁payload = 執行_graphql(session, 認證池, 戰鬥支援事件查詢, 基本變數)
+    except FFLogs報告存取錯誤:
+        raise
+    except FFLogsGraphQL錯誤 as 錯誤:
+        print(
+            f"{報告代碼} fight={戰鬥_id} 支援事件合併查詢失敗，改用單類型分頁：{錯誤}",
+            file=sys.stderr,
+        )
+        return {資料類型: 查詢單一類型(資料類型) for 資料類型 in 支援事件GraphQL欄位}
+
+    首頁報告 = 取得報告(首頁payload)
+    結果: dict[str, list[dict[str, Any]]] = {}
+    for 資料類型, GraphQL欄位 in 支援事件GraphQL欄位.items():
+        首頁事件, 下一頁 = 解析事件頁(首頁報告.get(GraphQL欄位), 資料類型)
+        結果[資料類型] = 查詢單一類型(資料類型, 已有事件=首頁事件, 下一頁=下一頁)
+    return 結果
 
 
 def 遞迴尋找字典(內容: Any) -> list[dict[str, Any]]:
@@ -3401,6 +3527,27 @@ def 合併GCD覆蓋率衍生欄位(目標: dict[str, Any], 來源: dict[str, Any
     return 已更新
 
 
+def 合併坦補支援統計衍生欄位(目標: dict[str, Any], 來源: dict[str, Any]) -> bool:
+    """同場多份上傳去重時，保留存在且計算版本較新的坦補摘要。"""
+
+    已更新 = False
+    for 欄位 in ("healing_stats", "tank_stats"):
+        來源摘要 = 來源.get(欄位)
+        if not isinstance(來源摘要, dict):
+            continue
+        目標摘要 = 目標.get(欄位)
+        來源版本 = 轉_int_or_none(來源摘要.get("calculation_version")) or 0
+        目標版本 = (
+            轉_int_or_none(目標摘要.get("calculation_version")) or 0
+            if isinstance(目標摘要, dict)
+            else -1
+        )
+        if not isinstance(目標摘要, dict) or 來源版本 > 目標版本:
+            目標[欄位] = 來源摘要
+            已更新 = True
+    return 已更新
+
+
 def 玩家GCD合併鍵值(戰鬥: dict[str, Any], 玩家: dict[str, Any]) -> tuple[str, str, str] | None:
     fight_id = 戰鬥.get("fight_id")
     if fight_id is None:
@@ -3639,6 +3786,7 @@ def 登記排行榜條目(
         # 同一場戰鬥可能被多位隊員上傳成多份 report。代表成績若剛好來自尚未回補 GCD 的
         # 上傳來源，仍應從其他同分同場 variant 保留已補算的 GCD，避免前端顯示因去重順序而漂移。
         合併GCD覆蓋率衍生欄位(既有成績, 標準成績)
+        合併坦補支援統計衍生欄位(既有成績, 標準成績)
         標準成績 = 既有成績
     else:
         精確成績索引[精確成績鍵值] = 標準成績
@@ -4046,6 +4194,12 @@ def 建立排行榜條目(
                     成績["gcd_coverage"] = 玩家.get("gcd_coverage")
                 if "gcd_coverage_status" in 玩家:
                     成績["gcd_coverage_status"] = 玩家.get("gcd_coverage_status")
+                # 支援統計目前只保存在來源 ranking_entries，讓後續 Node.js 建置層可做補師搭檔
+                # 與坦克排行聚合；尚未完成呈現契約前，不加入 public ranking allowlist。
+                if isinstance(玩家.get("healing_stats"), dict):
+                    成績["healing_stats"] = 玩家.get("healing_stats")
+                if isinstance(玩家.get("tank_stats"), dict):
+                    成績["tank_stats"] = 玩家.get("tank_stats")
                 登記排行榜條目(成績, 精確成績索引)
 
     for 成績 in 精確成績索引.values():
@@ -4806,7 +4960,7 @@ def 建立報告成績(
 
         原始成績 = 玩家成績索引.get(
             戰鬥_id,
-            {"player_details": None, "damage_done": None, "rankings": None},
+            {"player_details": None, "damage_done": None, "healing": None},
         )
         傷害時間資訊 = 計算傷害時間資訊(原始成績, 戰鬥時間毫秒)
         傷害計算時間毫秒 = 轉_float(傷害時間資訊.get("damage_time_ms")) or 戰鬥時間毫秒
@@ -4814,6 +4968,20 @@ def 建立報告成績(
         玩家列表 = 從原始成績整理玩家_dps(原始成績, 傷害計算時間毫秒)
         if 傷害表格疑似未完整匯出(戰鬥時間毫秒, 傷害時間資訊, 玩家列表):
             raise 建立尚未完整匯出錯誤(報告代碼, 報告, 戰鬥)
+
+        # Healing table 已和玩家傷害一起批次取得；只有場上存在坦克時才需要額外讀三種事件。
+        # 事件只在記憶體中用來判斷承傷與有效減傷時窗，絕不寫入 report 分片。
+        支援事件: dict[str, list[dict[str, Any]]] = {}
+        if any(玩家.get("job") in support_metrics.坦克職業 for 玩家 in 玩家列表):
+            支援事件 = 查詢戰鬥支援事件(session, 認證池, 報告代碼, 戰鬥)
+        戰鬥結束相對時間 = 轉_float(戰鬥.get("endTime"))
+        支援統計摘要 = support_metrics.套用支援統計(
+            玩家列表,
+            原始成績.get("healing"),
+            支援事件,
+            預設戰鬥時間毫秒=戰鬥時間毫秒,
+            戰鬥結束時間=戰鬥結束相對時間 or 0.0,
+        )
 
         整理後戰鬥 = {
             "fight_id": 戰鬥_id,
@@ -4855,6 +5023,8 @@ def 建立報告成績(
             "damage_done_summary": 建立傷害表格摘要(原始成績),
             "players": 玩家列表,
         }
+        if 支援統計摘要 is not None:
+            整理後戰鬥["support_metrics_summary"] = 支援統計摘要
         if 完整性檢核設定 is not None and 完整性測量快取 is not None:
             完整性結果 = 檢核戰鬥完整性(
                 session,

@@ -48,7 +48,7 @@ def 建立測試原始成績(總傷害: int) -> dict[str, Any]:
                 ],
             }
         },
-        "rankings": {"data": []},
+        "healing": {"data": {"combatTime": 10000, "entries": []}},
     }
 
 
@@ -1196,15 +1196,17 @@ class FetchFFLogsBatchTest(unittest.TestCase):
             self.assertIn("fightIDs: [11]", 查詢)
             self.assertIn("fightIDs: [22]", 查詢)
             self.assertIn("killType: Kills", 查詢)
+            self.assertIn("dataType: Healing", 查詢)
+            self.assertNotIn("rankings_0: rankings", 查詢)
             return {
                 "reportData": {
                     "report": {
                         "playerDetails_0": {"fight": 11},
                         "damageDone_0": {"fight": 11},
-                        "rankings_0": {"fight": 11},
+                        "healing_0": {"fight": 11},
                         "playerDetails_1": {"fight": 22},
                         "damageDone_1": {"fight": 22},
-                        "rankings_1": {"fight": 22},
+                        "healing_1": {"fight": 22},
                     }
                 }
             }
@@ -1216,6 +1218,7 @@ class FetchFFLogsBatchTest(unittest.TestCase):
         self.assertEqual(呼叫紀錄[0][1], {"code": "abc123", "encounterID": 93, "difficulty": 101})
         self.assertEqual(結果[11]["player_details"], {"fight": 11})
         self.assertEqual(結果[22]["damage_done"], {"fight": 22})
+        self.assertEqual(結果[11]["healing"], {"fight": 11})
 
     def test_ucob_batch_player_stats_omits_native_kill_filter(self) -> None:
         副本設定 = {"encounter_id": 1073, "difficulty": 100}
@@ -1233,7 +1236,7 @@ class FetchFFLogsBatchTest(unittest.TestCase):
                     "report": {
                         "playerDetails_0": {"fight": 42},
                         "damageDone_0": {"fight": 42},
-                        "rankings_0": {"fight": 42},
+                        "healing_0": {"fight": 42},
                     }
                 }
             }
@@ -1263,7 +1266,7 @@ class FetchFFLogsBatchTest(unittest.TestCase):
                     "report": {
                         "playerDetails_0": {"fight": 31},
                         "damageDone_0": {"fight": 31},
-                        "rankings_0": {"fight": 31},
+                        "healing_0": {"fight": 31},
                     }
                 }
             }
@@ -1305,7 +1308,7 @@ class FetchFFLogsBatchTest(unittest.TestCase):
                     "report": {
                         "playerDetails_0": {"fight": 戰鬥_id},
                         "damageDone_0": {"fight": 戰鬥_id},
-                        "rankings_0": {"fight": 戰鬥_id},
+                        "healing_0": {"fight": 戰鬥_id},
                     }
                 }
             }
@@ -1314,7 +1317,7 @@ class FetchFFLogsBatchTest(unittest.TestCase):
             結果 = fflogs.查詢多場玩家成績(None, None, 副本設定, "abc123", [11, 22])
 
         self.assertEqual(呼叫戰鬥_id, [[11, 22], [11], [22]])
-        self.assertEqual(結果[11]["rankings"], {"fight": 11})
+        self.assertEqual(結果[11]["healing"], {"fight": 11})
         self.assertEqual(結果[22]["player_details"], {"fight": 22})
 
     def test_report_score_uses_one_stats_batch_for_multiple_fights(self) -> None:

@@ -109,6 +109,19 @@ npm run fetch:honey-fans
 
 歷史補查會從副本的 `history_scan_start_date`、`scan_start_date` 或 `initial_scan_start_date` 開始，依 `data/state.json` 內各副本的 `history_scan_cursor_at` 往後輪巡。一般副本只會把尚未在 state 或排行榜中的 report 選入候選，適合抓回當時未公開、後來改成公開，或 FFLogs 延後完成匯出的更舊 logs。候選先受整輪 `FFLOGS_HISTORY_MAX_DEEP_REPORTS_PER_RUN` 限制，再受 `FFLOGS_HISTORY_MAX_DEEP_REPORTS_PER_GROUP_PER_RUN` 的 zone/difficulty 分組限制，避免舊絕本同區大量候選讓其它副本長時間沒有深查預算。絕本額外支援通關規則重判：當程式內的 `clear_rule_revision` 更新時，近期、延遲與歷史來源只要看到本次規則版本明確影響的既有絕本 report，都要讓該副本穿透 checked_reports 已處理快取重新深查；目前受影響的是 UCoB。已確認沒有繁中服玩家的 report 不會因通關規則版本重刷，因為通關判斷不會改變 `masterData` 的玩家伺服器。重判完成後會在 `checked_reports` / `processed_reports` 記錄版本，避免同一份 report 每輪都被重刷。若深查上限使本輪候選出現 deferred，`fetch_fflogs.py` 會把 `history_scan_cursor_at` 停在最後一筆已選候選 report 的 `startTime`；若該副本本輪未分到深查額度，游標會停回本輪時間窗起點，避免尚未處理的 report 被推到下一輪全區間輪巡後才重試。
 
+## 治療與坦克支援統計
+
+新 report 的逐場玩家批次查詢會同時取得 `playerDetails`、Damage Done 與 Healing table；過去未參與解析的 FFLogs `rankings` 欄位已移除，避免為新增治療資料額外浪費同一筆查詢成本。Healing table 的來源列會整理為：
+
+- 補師 `hps`、`pure_healing`、`protection`、`overheal`、`overheal_percent`。
+- 坦克 `self_healing`、`personal_protection`、`team_protection`；若 FFLogs target 列缺少 ID，只有同場名稱唯一時才允許名稱 fallback，否則以 `target_breakdown_complete=false` 與 `null` 明確標示不能可靠拆分。
+
+場上有坦克時，資料管線另查同場 DamageTaken、友方 Buffs 與敵方 Debuffs events。首頁優先用 GraphQL aliases 合併成一個 request；三個欄位各自依 `nextPageTimestamp` 完整續頁，合併查詢被 FFLogs 拒絕時再退回單類型分頁。DamageTaken 只計 `type=damage`，因為同一次命中也會有 `calculateddamage`。事件只在記憶體交給 `scripts/fflogs_pipeline/support_metrics.py`，完成摘要後丟棄。
+
+減傷覆蓋規則只維護坦克玩家技能的 Status ID 與作用範圍，不含任何副本機制 ID，因此同一套計算可套用所有副本。個人／指定目標／團隊 Buff 以實際 targetID 建立時窗；Reprisal 類敵方 Debuff 則要求傷害來源是被套用的敵人。單次 activation 至少有一筆 `amount`、`absorbed` 或 `unmitigatedAmount` 大於 0 的傷害落在時窗內，才列為有效。重疊減傷的傷害覆蓋量取事件聯集，不能解讀為單招實際減免量。
+
+現階段只完成來源資料蒐集，不調整 Vue 或公開排行榜 JSON。同場另一補的 rDPS／治療摘要已同時存在相同 fight 的兩名玩家列中；未來呈現時必須由 `build_user_data.mjs` 關聯，不得在 Python 或 Vue 重做聚合。
+
 ## GCD 覆蓋率
 
 新 report 抓取時，workflow 會在每場 fight 的玩家成績整理完成後，查同一場 FFLogs `Casts` graph，並用 `scripts/gcd_coverage_core.py` 的本地 xivanalysis-like 演算法計算 GCD 覆蓋率。幻白虎 `unreal_byakko`、極永恆女王 `extreme_queen_eternal`、極瓦利加爾曼達 `extreme_valigarmanda`、極佐拉加 `extreme_zoraal_ja` 與 AAC 零式 `savage_m1s` 至 `savage_m4s` 會改查同場 FFLogs `All` raw events，因為 xivanalysis 的 Always Be Casting 需要玩家無法行動狀態、Boss/add targetability 或 raw packet 時序才能精準扣 downtime 與計算 GCD lock。

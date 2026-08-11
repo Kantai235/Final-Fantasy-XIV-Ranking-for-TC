@@ -30,7 +30,7 @@ query RecentReports($startTime: Float!, $endTime: Float!, $page: Int!, $limit: I
 # 查詢分成三階段是為了節省 API 配額：
 # 1. 淺層 reports 查詢只列出時間區間內的公開報告。
 # 2. masterData actors 先確認報告是否含繁中服玩家，避免對無關報告查完整戰鬥。
-# 3. 確認命中後才查 fight list 與 damage/playerDetails，整理可追溯的排行榜資料。
+# 3. 確認命中後才查 fight list、玩家傷害／治療與支援事件，整理可追溯的排行榜資料。
 深層過濾查詢 = """
 query ReportMasterData($code: String!) {
   reportData {
@@ -415,12 +415,15 @@ __KILL_TYPE_FILTER__
         viewBy: Source,
         translate: true
       )
-      rankings(
+      healing: table(
+        dataType: Healing,
         fightIDs: $fightIDs,
         encounterID: $encounterID,
         difficulty: $difficulty,
-        playerMetric: dps,
-        timeframe: Historical
+__KILL_TYPE_FILTER__
+        hostilityType: Friendlies,
+        viewBy: Source,
+        translate: true
       )
     }
   }
@@ -435,3 +438,92 @@ def 建立玩家成績查詢(套用通關篩選: bool = True) -> str:
 
 玩家成績查詢 = 建立玩家成績查詢()
 玩家成績全部查詢 = 建立玩家成績查詢(套用通關篩選=False)
+
+
+# 初次查詢把三種事件包成同一個 HTTP request；GraphQL 計費仍會依欄位計算，但可顯著降低
+# workflow request 次數。任一欄位超過 10,000 筆時，呼叫端再用下方單欄位查詢各自續頁。
+戰鬥支援事件查詢 = """
+query FightSupportEvents(
+  $code: String!,
+  $fightIDs: [Int],
+  $startTime: Float!,
+  $endTime: Float!,
+  $limit: Int!
+) {
+  reportData {
+    report(code: $code) {
+      damageTaken: events(
+        dataType: DamageTaken,
+        fightIDs: $fightIDs,
+        startTime: $startTime,
+        endTime: $endTime,
+        hostilityType: Friendlies,
+        limit: $limit
+      ) {
+        data
+        nextPageTimestamp
+      }
+      friendlyBuffs: events(
+        dataType: Buffs,
+        fightIDs: $fightIDs,
+        startTime: $startTime,
+        endTime: $endTime,
+        hostilityType: Friendlies,
+        limit: $limit
+      ) {
+        data
+        nextPageTimestamp
+      }
+      enemyDebuffs: events(
+        dataType: Debuffs,
+        fightIDs: $fightIDs,
+        startTime: $startTime,
+        endTime: $endTime,
+        hostilityType: Enemies,
+        limit: $limit
+      ) {
+        data
+        nextPageTimestamp
+      }
+    }
+  }
+}
+"""
+
+
+def 建立戰鬥支援事件分頁查詢(資料類型: str) -> str:
+    """建立經白名單限制的單一事件類型續頁查詢。"""
+
+    事件設定 = {
+        "damage_taken": ("DamageTaken", "Friendlies"),
+        "friendly_buffs": ("Buffs", "Friendlies"),
+        "enemy_debuffs": ("Debuffs", "Enemies"),
+    }
+    if 資料類型 not in 事件設定:
+        raise ValueError(f"不支援的戰鬥支援事件類型：{資料類型}")
+    data_type, hostility_type = 事件設定[資料類型]
+    return f"""
+query FightSupportEventPage(
+  $code: String!,
+  $fightIDs: [Int],
+  $startTime: Float!,
+  $endTime: Float!,
+  $limit: Int!
+) {{
+  reportData {{
+    report(code: $code) {{
+      events(
+        dataType: {data_type},
+        fightIDs: $fightIDs,
+        startTime: $startTime,
+        endTime: $endTime,
+        hostilityType: {hostility_type},
+        limit: $limit
+      ) {{
+        data
+        nextPageTimestamp
+      }}
+    }}
+  }}
+}}
+"""
