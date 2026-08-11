@@ -32,12 +32,14 @@ jobs:
           ref: ${{ github.ref_name }}
           # 資料 repo 的歷史 pack 已累積到數 GiB；workflow 只需要目前分支內容與後續資料提交，
           # 不需要完整 Git 歷史。使用淺層 partial clone 可避免 GitHub-hosted runner 在 checkout 階段耗盡磁碟。
-          fetch-depth: 1
+          # 自動化資料 commit 會以 amend 收斂為單一尾端快照；至少取得 parent commit，
+          # 避免 shallow HEAD 在 amend 時被 Git 當成 root 而意外切斷程式碼歷史。
+          fetch-depth: 2
           filter: blob:none
 
       - name: 同步最新分支狀態
         run: |
-          git fetch --depth=1 origin "${{ github.ref_name }}:refs/remotes/origin/${{ github.ref_name }}"
+          git fetch --depth=2 origin "${{ github.ref_name }}:refs/remotes/origin/${{ github.ref_name }}"
           git reset --hard "origin/${{ github.ref_name }}"
 
       - name: 記錄戰鬥完整性規則版本
@@ -378,43 +380,23 @@ jobs:
             echo "changed=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Commit 並 Push 排行榜資料
+      - name: 建立並 Push 自動化資料快照
         if: steps.data-changes.outputs.changed == 'true'
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           DATA_PATHS=(data public/data public/data/fun)
-          git add --all -- "${DATA_PATHS[@]}"
-          git commit \
-            -m "chore(data): 自動更新排行榜資料" \
-            -m "原因：GitHub Actions 定時同步 FFLogs 公開報告，讓靜態網站資料保持最新。" \
-            -m "主要變更：更新 data 與 public/data 內的排行榜、個人成績單、全服統計、Honey B. Lovely 粉絲榜或更新狀態產物。" \
-            -m "測試/驗證：本 workflow 已完成 fetch_fflogs.py、fetch:honey-fans、validate:data、npx vite build 與 postbuild。"
-          # rebase 前工作樹必須乾淨；若未來資料建置新增了已追蹤產物但忘記納入 DATA_PATHS，
-          # 這裡會列出漏掉的檔案，避免只看到 Git 的「cannot rebase: You have unstaged changes」。
-          if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
-            echo "::error::資料提交後仍有未提交的已追蹤檔案，請確認 DATA_PATHS 是否漏掉新的資料產物。"
-            git status --short --untracked-files=no
-            exit 1
-          fi
-          for attempt in 1 2 3; do
-            git fetch --depth=200 origin "${{ github.ref_name }}:refs/remotes/origin/${{ github.ref_name }}"
-            while IFS=' ' read -r file expected_revision; do
-              remote_revision="$(git rev-parse "origin/${{ github.ref_name }}:$file")"
-              if [ "$remote_revision" != "$expected_revision" ]; then
-                echo "::error::戰鬥完整性規則在本輪執行期間已更新；拒絕回寫過期完整性結果。"
-                exit 1
-              fi
-            done < "$RUNNER_TEMP/fight-integrity-rule-revisions.txt"
-            git rebase "origin/${{ github.ref_name }}"
-            if git push origin "HEAD:${{ github.ref_name }}"; then
-              exit 0
+          git fetch --depth=2 origin "${{ github.ref_name }}:refs/remotes/origin/${{ github.ref_name }}"
+          while IFS=' ' read -r file expected_revision; do
+            remote_revision="$(git rev-parse "origin/${{ github.ref_name }}:$file")"
+            if [ "$remote_revision" != "$expected_revision" ]; then
+              echo "::error::戰鬥完整性規則在本輪執行期間已更新；拒絕回寫過期完整性結果。"
+              exit 1
             fi
-            echo "Push was rejected, retrying after syncing remote branch..."
-            sleep $((attempt * 5))
-          done
-          echo "Unable to push ranking data after syncing remote branch."
-          exit 1
+          done < "$RUNNER_TEMP/fight-integrity-rule-revisions.txt"
+          # 每個人工程式碼 commit 後最多保留一筆資料快照。新排程會 amend 舊快照，
+          # 並用明確舊 SHA 的 force-with-lease 阻止競爭時覆寫新程式碼。
+          node scripts/commit_workflow_data_snapshot.mjs \
+            --branch "${{ github.ref_name }}" \
+            -- "${DATA_PATHS[@]}"
 
       - name: 更新 FFLogs 待收錄名單結果
         continue-on-error: true
@@ -437,32 +419,11 @@ jobs:
             --write-history data/pages_payload_history.jsonl \
             --history-limit "${PAGES_PAYLOAD_HISTORY_LIMIT:-200}"
 
-      - name: Commit 並 Push payload 稽核歷史
+      - name: 將 payload 稽核收斂進自動化資料快照
         run: |
-          if [ -z "$(git status --porcelain -- data/pages_payload_history.jsonl)" ]; then
-            echo "payload 稽核歷史沒有變更，略過提交。"
-            exit 0
-          fi
-
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/pages_payload_history.jsonl
-          git commit \
-            -m "chore(data): 更新 Pages payload 稽核歷史" \
-            -m "原因：GitHub Actions 在資料提交後、Pages artifact 上傳前記錄 payload 體積趨勢。" \
-            -m "主要變更：更新 data/pages_payload_history.jsonl，保存 Pages payload 檔案數、大小與趨勢紀錄。" \
-            -m "測試/驗證：本 workflow 已完成 npm run audit:pages-payload:strict。"
-          for attempt in 1 2 3; do
-            git fetch --depth=200 origin "${{ github.ref_name }}:refs/remotes/origin/${{ github.ref_name }}"
-            git rebase "origin/${{ github.ref_name }}"
-            if git push origin "HEAD:${{ github.ref_name }}"; then
-              exit 0
-            fi
-            echo "Push was rejected, retrying after syncing remote branch..."
-            sleep $((attempt * 5))
-          done
-          echo "Unable to push payload audit history after syncing remote branch."
-          exit 1
+          node scripts/commit_workflow_data_snapshot.mjs \
+            --branch "${{ github.ref_name }}" \
+            -- data/pages_payload_history.jsonl
 
       - name: 估算 Cloudflare 快取承載量
         run: npm run cloudflare:estimate | tee -a "$GITHUB_STEP_SUMMARY"

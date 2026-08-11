@@ -123,6 +123,7 @@ README 只保留入口與最小操作脈絡，完整說明請依主題閱讀：
 | `npm run audit:gcd:xivanalysis` | 以固定 seed 對零式、極、幻的每個副本各抽樣 10 場，若 10 場未涵蓋全職業會自動補抽缺漏職業所在戰鬥，並將本地 GCD 覆蓋率與 xivanalysis 畫面值比對；100 場外站頁面稽核使用 `--sample-size 100 --local-mode stored --tolerance 0`，必要時可搭配 `--workers`、`--exclude-report-codes` 與 `--apply-all-checked`。 |
 | `npm run test:data-conservation` | 檢查排行榜薄索引、細節檔、使用者檔與 hidden delta 的資料守恆。 |
 | `npm run test:sync-user-repo` | 以本機 bare repo 驗證 users 專用 repo 的空白初始化、單一快照更新、歷史收斂與無變更略過。 |
+| `npm run test:workflow-data-snapshot` | 以本機 bare repo 驗證主 repo 自動化資料快照的 amend、程式碼分界、淺層歷史與競爭保護。 |
 | `npm run audit:pages-payload` | 以 baseline 模式稽核 `dist/` 與 GitHub Pages payload 體積，只在超過硬上限時失敗，可用 `-- --write-history <path>` 記錄趨勢。 |
 | `npm run audit:pages-payload:strict` | 以與 GitHub Actions 相同的 strict 模式稽核 payload，任一項超過 target 就失敗；workflow 會寫入 `data/pages_payload_history.jsonl`。 |
 | `npm run audit:mixed-report-dispatch` | 統計 mixed report 分派版本在已知歷史 report 的覆蓋率與歷史補查游標進度；GitHub Actions 會輸出到 Step Summary。 |
@@ -162,5 +163,6 @@ README 只保留入口與最小操作脈絡，完整說明請依主題閱讀：
 - GitHub Actions 以 Node.js 24 執行前端與資料建置，官方 actions 也需使用支援 Node 24 的 major 版本；Pages 部署若遇到 `syncing_files` 後的暫時性失敗，workflow 會等待 60 秒後重試一次。
 - 正式 Pages artifact 只保留 `dist/data/users/index.json`，不保留個別玩家成績單 JSON、`dist/data/user-entry-details`、hidden 使用者差量 JSON、逐玩家靜態分享頁與 `dist/og/users` 玩家 OG 圖；前端仍由 `/user` route 與 users 專用 repo 讀取個別玩家成績單。這是為了讓高頻搜尋索引吃到主站 CDN 快取，同時避免 GitHub Pages 在 `syncing_files` 階段同步上萬個小檔時失敗。
 - users 專用 repo 只保存可由主 repo 重新建置的最新部署快照，不保存每輪 JSON 版本歷史。`scripts/sync_user_leaderboard_repo.mjs` 每次有內容變更時建立無 parent 的 root commit，再以 `force-with-lease` 確認遠端仍是本輪抓到的 SHA 後更新 `main`；既有累積式歷史即使資料未變也會收斂一次。若 GitHub 已回報 `Repository is above its size quota`，須先請 GitHub Support 協助解除配額鎖定並在快照 force push 後清除舊物件，或在確認資料可重建後重新建立同名空白 repo，再重跑 workflow；同步腳本支援空白 repo 初始化。
+- 主 repo 的自動化資料由 `scripts/commit_workflow_data_snapshot.mjs` 統一為 `chore(data): 更新自動化資料快照`。排行榜資料會先推送，確保後續 Pages payload 稽核失敗時仍保留 FFLogs 成果；稽核通過後再以明確舊 SHA 的 `force-with-lease` amend 同一筆快照。後續排程只改寫最新尾端快照；人工程式碼 commit 是新的安全分界，不會為了刪除更早資料 commit 而改寫程式碼 SHA。可以 `npm run test:workflow-data-snapshot` 在本機 bare repo 驗證快照收斂與競爭保護。
 - 若 GitHub Actions 與本機同時產生資料，先跑 `npm run sync:data -- --dry-run`；看到 `REMOVAL` 或 `CONFLICT` 時不可自動套用。
 - 文件、公告、文案或不影響資料產物的靜態設定變更，只需做相符的語法／格式檢查與 `git diff` 檢視；只有影響使用者資料、前端資料契約或資料建置輸出時，才執行對應的資料建置與驗證。

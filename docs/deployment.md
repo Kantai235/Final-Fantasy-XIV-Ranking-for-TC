@@ -50,10 +50,10 @@ npm run build
 15. 執行 `npx vite build` 與 `npm run postbuild`，完成 Vite 建置、route fallback、低基數 SEO/OG 靜態頁、OG PNG、`sitemap.xml`、`robots.txt` 與 `404.html`，並把建置秒數寫入後續 payload 稽核。正式 workflow 會用 `FFXIV_TC_BUILD_USER_SHARE_PAGES=false` 關閉逐玩家靜態分享頁與玩家 OG 圖，避免 Pages 同步上萬個小檔時在 `syncing_files` 階段失敗。
 16. 執行 `npm run prune:pages-user-data`，移除 `dist/data/users` 內除了 `index.json` 之外的個別玩家檔、`dist/data/user-entry-details`、`dist/data/all/users`、`dist/data/all/user-entry-details`，並在本機完整 build 或流程異動曾產生逐玩家靜態分享頁時，一併移除 `dist/user/{玩家}`、`dist/og/users` 與 sitemap 中的玩家細項 URL；前端正式讀取個人成績單時，索引走主站 `/data/users/index.json`，個別玩家主檔與報告細節走 users 專用 repo。
 17. 壓縮 `data/state.json`，並檢查 Git 單檔大小是否仍低於 100 MiB。
-18. 若 `data`、`public/data/*.json` 或 `public/data/fun/*.json` 有變更，先提交並推送更新，避免後續 artifact 體積超標時白白丟失本輪 FFLogs 抓取成果。
+18. 若 `data`、`public/data/*.json` 或 `public/data/fun/*.json` 有變更，先由 `scripts/commit_workflow_data_snapshot.mjs` 建立或 amend 帶 `Workflow-Data-Snapshot: v1` 標記的尾端滾動快照，再以明確舊 SHA 的 `force-with-lease` 推送，避免後續 artifact 體積超標時白白丟失本輪 FFLogs 抓取成果。
 19. 執行 `npm run complete:fflogs-refresh-queue`，依本輪重新產生並已提交的公開狀態索引、`data/rankings/*.json` 的 `source_reports` 與公開 report 分片，將 Google Sheet 待收錄名單標記為已收錄 `done`；若 state checkpoint 已確認無支援副本通關或無繁中服玩家，則改寫為對應終止狀態與原因。
 20. 執行 `npm run audit:pages-payload:strict -- --write-history data/pages_payload_history.jsonl`，讓 artifact 體積超過 target 時在上傳 Pages artifact 前失敗，並在 GitHub Step Summary 顯示本輪與上一筆歷史差異。
-21. 若 `data/pages_payload_history.jsonl` 有變更，另行提交並推送 payload 稽核歷史。
+21. 若 `data/pages_payload_history.jsonl` 有變更，amend 第 18 步的同一筆自動化資料快照再推送；不另外追加 payload commit。下一輪排程若 HEAD 仍是這筆受管理快照，會繼續 amend 取代它；如果 HEAD 已是人工程式碼 commit，則以該 SHA 為安全分界建立新快照。
 22. 執行 `npm run cloudflare:estimate` 與 `npm run cloudflare:purge -- --dry-run --summary`，在 Step Summary 顯示 HIT ratio 承載估算與 scoped purge 範圍。
 23. 上傳 `dist/` 並部署到 GitHub Pages；若 Pages 服務端在 `syncing_files` 階段回報暫時性失敗，workflow 會等待 60 秒後重試一次。
 24. 若有 Cloudflare purge token，部署成功後清除會變動的 CDN 快取。
