@@ -12,7 +12,9 @@ from typing import Any, Literal
 
 
 支援統計計算版本 = 1
-坦克減傷規則版本 = "ffxiv_7_2_2026_08_11_v1"
+坦克減傷規則版本 = "ffxiv_7_2_2026_08_11_v3"
+FFLOGS狀態ID偏移 = 1_000_000
+團隊減傷封包合併容許毫秒 = 2_000
 
 坦克職業 = {"Paladin", "Warrior", "DarkKnight", "Gunbreaker"}
 補師職業 = {"WhiteMage", "Scholar", "Astrologian", "Sage"}
@@ -91,6 +93,20 @@ def 轉數值(值: Any) -> float | None:
 def 轉整數(值: Any) -> int | None:
     數值 = 轉數值(值)
     return int(數值) if 數值 is not None else None
+
+
+def 正規化FFLogs狀態ID(值: Any) -> int | None:
+    """將 Buffs／Debuffs events 的 FFLogs namespace ID 還原為 Status.csv ID。
+
+    FFLogs events 實際回傳 ``1_000_000 + Status ID``（例如 Reprisal 是
+    ``1001193``），但規則表刻意保存可由 XIVAPI Status.csv 追溯的 ``1193``。
+    測試 fixture 與部分舊 payload 可能已是未加 namespace 的值，因此兩種格式都接受。
+    """
+
+    狀態id = 轉整數(值)
+    if 狀態id is not None and FFLOGS狀態ID偏移 <= 狀態id < FFLOGS狀態ID偏移 * 2:
+        return 狀態id - FFLOGS狀態ID偏移
+    return 狀態id
 
 
 def 整理總量(值: float) -> int | float:
@@ -318,7 +334,7 @@ def _建立狀態時窗(
     for 事件 in 排序事件:
         if 轉整數(事件.get("sourceID")) != 坦克id:
             continue
-        狀態id = 轉整數(事件.get("abilityGameID"))
+        狀態id = 正規化FFLogs狀態ID(事件.get("abilityGameID"))
         目標id = 轉整數(事件.get("targetID"))
         時間戳記 = 轉數值(事件.get("timestamp"))
         類型 = str(事件.get("type") or "").lower()
@@ -371,6 +387,51 @@ def _啟用分類(規則: 減傷規則, 坦克id: int, 時窗列表: list[dict[s
     return "personal" if all(時窗["target_id"] == 坦克id for 時窗 in 時窗列表) else "team"
 
 
+def _建立啟用時窗索引(
+    規則: 減傷規則,
+    時窗列表: list[dict[str, Any]],
+) -> dict[str, list[dict[str, Any]]]:
+    """把 FFLogs 的狀態時窗收斂成玩家實際按下技能的次數。
+
+    FFLogs 會把 Dark Missionary、Heart of Light 等團隊狀態拆成每名隊員各自的
+    apply/remove 封包，而且各 target 的 packetID 不相同；直接按 packetID 計數會把
+    一次施放誤算成至多八次。團隊減傷因此依「彼此重疊，或僅有短封包間隔」的時窗
+    合併。同一技能的正常冷卻遠長於兩秒，不會因此把兩次合法施放接在一起。
+
+    非團隊規則仍保留 FFLogs packetID，避免 Oblation 等可連續消耗充能的單體技能
+    因為狀態時窗重疊而被錯誤合併。
+    """
+
+    if 規則.audience != "team":
+        結果: dict[str, list[dict[str, Any]]] = {}
+        for 時窗 in 時窗列表:
+            結果.setdefault(str(時窗["activation_key"]), []).append(時窗)
+        return 結果
+
+    排序時窗 = sorted(
+        時窗列表,
+        key=lambda 時窗: (時窗["start"], 時窗["end"], 時窗["target_id"]),
+    )
+    合併群組: list[list[dict[str, Any]]] = []
+    群組結束時間: float | None = None
+    for 時窗 in 排序時窗:
+        if (
+            not 合併群組
+            or 群組結束時間 is None
+            or 時窗["start"] > 群組結束時間 + 團隊減傷封包合併容許毫秒
+        ):
+            合併群組.append([時窗])
+            群組結束時間 = 時窗["end"]
+            continue
+        合併群組[-1].append(時窗)
+        群組結束時間 = max(群組結束時間, 時窗["end"])
+
+    return {
+        f"window:{索引}:{round(群組[0]['start'])}": 群組
+        for 索引, 群組 in enumerate(合併群組)
+    }
+
+
 def _建立減傷覆蓋摘要(
     玩家: dict[str, Any],
     傷害事件: list[dict[str, Any]],
@@ -408,9 +469,7 @@ def _建立減傷覆蓋摘要(
         if not 時窗:
             continue
 
-        啟用時窗索引: dict[str, list[dict[str, Any]]] = {}
-        for 單一時窗 in 時窗:
-            啟用時窗索引.setdefault(str(單一時窗["activation_key"]), []).append(單一時窗)
+        啟用時窗索引 = _建立啟用時窗索引(規則, 時窗)
 
         有效啟用數 = 0
         技能涵蓋事件: set[int] = set()

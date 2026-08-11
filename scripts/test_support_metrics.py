@@ -152,7 +152,7 @@ class SupportMetricsTest(unittest.TestCase):
                     "type": "applybuff",
                     "sourceID": 1,
                     "targetID": 1,
-                    "abilityGameID": 1191,
+                    "abilityGameID": 1001191,
                     "packetID": 10,
                 },
                 {
@@ -160,7 +160,7 @@ class SupportMetricsTest(unittest.TestCase):
                     "type": "removebuff",
                     "sourceID": 1,
                     "targetID": 1,
-                    "abilityGameID": 1191,
+                    "abilityGameID": 1001191,
                     "packetID": 11,
                 },
                 # 這次 Rampart 沒有任何傷害落在時窗內，必須算成無效 activation。
@@ -187,7 +187,7 @@ class SupportMetricsTest(unittest.TestCase):
                     "type": "applydebuff",
                     "sourceID": 1,
                     "targetID": 99,
-                    "abilityGameID": 1193,
+                    "abilityGameID": 1001193,
                     "packetID": 20,
                 },
                 {
@@ -195,7 +195,7 @@ class SupportMetricsTest(unittest.TestCase):
                     "type": "removedebuff",
                     "sourceID": 1,
                     "targetID": 99,
-                    "abilityGameID": 1193,
+                    "abilityGameID": 1001193,
                     "packetID": 21,
                 },
             ],
@@ -268,6 +268,63 @@ class SupportMetricsTest(unittest.TestCase):
         self.assertIsNone(坦克摘要["self_healing"])
         self.assertIsNone(坦克摘要["personal_protection"])
         self.assertIsNone(坦克摘要["team_protection"])
+
+    def test_team_mitigation_packets_are_counted_as_one_activation(self) -> None:
+        玩家列表 = [
+            {"name": "測試暗騎", "server": "巴哈姆特", "job": "DarkKnight", "fflogs_id": 1},
+            {"name": "隊員一", "server": "巴哈姆特", "job": "WhiteMage", "fflogs_id": 2},
+            {"name": "隊員二", "server": "巴哈姆特", "job": "Scholar", "fflogs_id": 3},
+        ]
+        友方狀態 = []
+        for 索引, 目標id in enumerate((1, 2, 3)):
+            友方狀態.extend(
+                [
+                    {
+                        "timestamp": 100 + 索引 * 100,
+                        "type": "applybuff",
+                        "sourceID": 1,
+                        "targetID": 目標id,
+                        "abilityGameID": 1001894,
+                        "packetID": 100 + 索引,
+                    },
+                    {
+                        "timestamp": 5_000 + 索引 * 100,
+                        "type": "removebuff",
+                        "sourceID": 1,
+                        "targetID": 目標id,
+                        "abilityGameID": 1001894,
+                        "packetID": 200 + 索引,
+                    },
+                ]
+            )
+
+        support_metrics.套用支援統計(
+            玩家列表,
+            {"data": {"combatTime": 10_000, "entries": []}},
+            {
+                "damage_taken": [
+                    {
+                        "timestamp": 1_000,
+                        "type": "damage",
+                        "sourceID": 99,
+                        "targetID": 2,
+                        "amount": 100,
+                        "unmitigatedAmount": 110,
+                    }
+                ],
+                "friendly_buffs": 友方狀態,
+                "enemy_debuffs": [],
+            },
+            預設戰鬥時間毫秒=10_000,
+            戰鬥結束時間=10_000,
+        )
+
+        覆蓋 = 玩家列表[0]["tank_stats"]["mitigation_coverage"]
+        團隊技能 = next(技能 for 技能 in 覆蓋["skills"] if 技能["key"] == "dark_missionary")
+        self.assertEqual(覆蓋["total_activations"], 1)
+        self.assertEqual(覆蓋["effective_activations"], 1)
+        self.assertEqual(團隊技能["activation_count"], 1)
+        self.assertEqual(團隊技能["effective_activation_count"], 1)
 
     def test_missing_healing_table_fails_closed_for_support_roles(self) -> None:
         with self.assertRaisesRegex(RuntimeError, "Healing table"):

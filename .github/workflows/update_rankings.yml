@@ -190,6 +190,26 @@ jobs:
       #     FFLOGS_CLIENT_CREDENTIALS_JSON: ${{ secrets.FFLOGS_CLIENT_CREDENTIALS_JSON }}
       #   run: python scripts/backfill_missing_fflogs_data.py --limit 250
 
+      - name: 由 7.2 切點往舊回補坦補支援統計
+        env:
+          FFLOGS_CLIENT_ID: ${{ secrets.FFLOGS_CLIENT_ID }}
+          FFLOGS_CLIENT_SECRET: ${{ secrets.FFLOGS_CLIENT_SECRET }}
+          FFLOGS_CLIENT_IDS: ${{ secrets.FFLOGS_CLIENT_IDS }}
+          FFLOGS_CLIENT_SECRETS: ${{ secrets.FFLOGS_CLIENT_SECRETS }}
+          FFLOGS_CLIENT_CREDENTIALS_JSON: ${{ secrets.FFLOGS_CLIENT_CREDENTIALS_JSON }}
+          FFLOGS_SUPPORT_METRICS_BACKFILL_REPORT_LIMIT: ${{ vars.FFLOGS_SUPPORT_METRICS_BACKFILL_REPORT_LIMIT || '25' }}
+          FFLOGS_SUPPORT_METRICS_BACKFILL_CUTOFF_ISO: ${{ vars.FFLOGS_SUPPORT_METRICS_BACKFILL_CUTOFF_ISO || '2026-07-28T05:00:00Z' }}
+        run: |
+          SUPPORT_REPORT_LIMIT="${FFLOGS_SUPPORT_METRICS_BACKFILL_REPORT_LIMIT:-25}"
+          if [ "$SUPPORT_REPORT_LIMIT" = "0" ]; then
+            echo "FFLOGS_SUPPORT_METRICS_BACKFILL_REPORT_LIMIT=0，略過坦補支援統計歷史回補。"
+            exit 0
+          fi
+          python scripts/backfill_missing_fflogs_data.py \
+            --stateful-support-metrics-backfill \
+            --limit "$SUPPORT_REPORT_LIMIT" \
+            --checkpoint-every 10
+
       - name: 補齊近期 report 的 GCD 空洞
         env:
           FFLOGS_CLIENT_ID: ${{ secrets.FFLOGS_CLIENT_ID }}

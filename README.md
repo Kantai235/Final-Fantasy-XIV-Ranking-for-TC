@@ -106,6 +106,8 @@ README 只保留入口與最小操作脈絡，完整說明請依主題閱讀：
 | 指令 | 用途 |
 | --- | --- |
 | `npm run build:public-rankings` | 只重建公開排行榜與副本清單，不呼叫 FFLogs API。 |
+| `npm run backfill:support` | 由本機完整回補 2026-07-28 13:00 至執行開始時間缺少的補師治療與坦克承傷／防護／有效減傷摘要；可安全重跑並分批寫入。 |
+| `npm run backfill:support:history` | 模擬 workflow 從 2026-07-28 13:00 往舊回補 25 份 report，游標保存於 `data/state.json`。 |
 | `npm run check:report-status -- <report code>` | 只查既有 report 目前是否仍可公開讀取；Private、刪除或無權限時將來源標記為 hidden，不推進掃描點。 |
 | `npm run backfill:fight-integrity` | 分批檢核台灣時間 2026-07-28 18:00 後的 fight：全隊敵方承傷／敵方最大生命池嚴格超過 1.15 倍時標記 `excluded`；介於 1.14 至 1.15 倍、或 FFLogs `Attack` 異常標記時標記 `suspected`。極澤蓮尼亞與幻朱雀分別要求完整隊伍角色傷害或 FFLogs Target Damage 落在 `92,086,132–92,086,332`、`71,280,000–72,720,000`；玩家合計高於上限可直接隱藏，低於下限時因可能漏掉 Limit Break，必須改查 Target Damage 後才能決定。絕伊甸、絕巴哈姆特與 M1／M3／M4 則採用只攔截超高傷害的硬上限。所有措施都只從公開衍生資料隱藏，原始 report/fight 保留。敵方承傷與生命池會保存於不進 Git 的最小快取，重跑時不會重複耗用 API；`--offline-only` 完全不會呼叫 FFLogs，無法離線確認者會保守隱藏。 |
 | `npm run fetch:honey-fans` | 抓取 Honey B. Lovely 粉絲榜趣味資料，會呼叫 FFLogs API。 |

@@ -118,9 +118,25 @@ npm run fetch:honey-fans
 
 場上有坦克時，資料管線另查同場 DamageTaken、友方 Buffs 與敵方 Debuffs events。首頁優先用 GraphQL aliases 合併成一個 request；三個欄位各自依 `nextPageTimestamp` 完整續頁，合併查詢被 FFLogs 拒絕時再退回單類型分頁。DamageTaken 只計 `type=damage`，因為同一次命中也會有 `calculateddamage`。事件只在記憶體交給 `scripts/fflogs_pipeline/support_metrics.py`，完成摘要後丟棄。
 
-減傷覆蓋規則只維護坦克玩家技能的 Status ID 與作用範圍，不含任何副本機制 ID，因此同一套計算可套用所有副本。個人／指定目標／團隊 Buff 以實際 targetID 建立時窗；Reprisal 類敵方 Debuff 則要求傷害來源是被套用的敵人。單次 activation 至少有一筆 `amount`、`absorbed` 或 `unmitigatedAmount` 大於 0 的傷害落在時窗內，才列為有效。重疊減傷的傷害覆蓋量取事件聯集，不能解讀為單招實際減免量。
+減傷覆蓋規則只維護坦克玩家技能的 Status ID 與作用範圍，不含任何副本機制 ID，因此同一套計算可套用所有副本。FFLogs Buffs／Debuffs events 會把 Status ID 放在 `1_000_000 + Status ID` namespace，解析時會先還原為可由 XIVAPI `Status.csv` 追溯的 ID。個人／指定目標／團隊 Buff 以實際 targetID 建立時窗；Reprisal 類敵方 Debuff 則要求傷害來源是被套用的敵人。FFLogs 會把團隊 Buff 拆成每名隊員各一組封包，因此彼此重疊或只有短封包間隔的團隊時窗會收斂為一次 activation；單體充能技能仍保留個別 packet，避免誤合併。單次 activation 至少有一筆 `amount`、`absorbed` 或 `unmitigatedAmount` 大於 0 的傷害落在時窗內，才列為有效。重疊減傷的傷害覆蓋量取事件聯集，不能解讀為單招實際減免量。
 
 現階段只完成來源資料蒐集，不調整 Vue 或公開排行榜 JSON。同場另一補的 rDPS／治療摘要已同時存在相同 fight 的兩名玩家列中；未來呈現時必須由 `build_user_data.mjs` 關聯，不得在 Python 或 Vue 重做聚合。
+
+歷史資料使用兩條互不干擾的回補路徑：
+
+```bash
+# 本機：完整處理繁中服 7.2 開放後至本次執行開始時間的所有既有 report。
+npm run backfill:support -- --dry-run
+npm run backfill:support
+
+# 人工模擬 workflow：從 7.2 切點往更舊資料推進 25 份 report。
+npm run backfill:support:history -- --dry-run
+npm run backfill:support:history
+```
+
+`backfill:support` 固定以 `2026-07-28T05:00:00Z`（台灣時間 2026-07-28 13:00）為起點、以程式啟動時間為終點，依最舊 report 優先處理並每 25 份寫回一次；中斷後重跑只會選取仍缺少目前 `calculation_version` 或減傷規則版本的 fight。compact 後不再保存 `matched_players`，回補器會由既有 `fight.players` 重建繁中服伺服器摘要，避免每份 report 多打一個 masterData request；若舊來源連玩家列都不完整，才退回正式深層查詢。
+
+正式 workflow 的 `--stateful-support-metrics-backfill` 使用 `data/state.json.support_metrics_report_backfill` 保存固定切點、`cursor_sort_time`／`cursor_report_code`、失敗重試清單、支援統計版本與減傷規則版本。每輪預設處理 25 份切點以前的 report 並由新往舊推進；`FFLOGS_SUPPORT_METRICS_BACKFILL_REPORT_LIMIT=0` 可暫停，`FFLOGS_SUPPORT_METRICS_BACKFILL_CUTOFF_ISO` 可明確覆寫切點。計算或規則版本提升時會保留固定切點、清除舊 cursor，從 7.2 切點重新檢查。這個 state 不會改動一般增量／延遲／歷史 report 掃描游標。
 
 ## GCD 覆蓋率
 
