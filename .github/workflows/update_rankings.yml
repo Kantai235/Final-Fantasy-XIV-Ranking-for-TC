@@ -267,7 +267,9 @@ jobs:
       - name: 驗證公開資料契約
         run: npm run validate:data
 
-      - name: 同步個人成績單資料到專用 repo
+      # users repo 只承載可重建的部署快照；同步腳本以單一 root commit 搭配
+      # force-with-lease 更新，避免每 30 分鐘累積整批 JSON 的 Git 歷史。
+      - name: 同步個人成績單資料到專用 repo（單一快照）
         env:
           GIT_PAT: ${{ secrets.GIT_PAT }}
         run: node scripts/sync_user_leaderboard_repo.mjs

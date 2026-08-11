@@ -14,6 +14,7 @@ const 工作根目錄 = path.resolve(
     path.join(process.env.RUNNER_TEMP || os.tmpdir(), "Final-Fantasy-XIV-Ranking-for-TC-Users"),
 );
 const Git輸出緩衝上限 = 128 * 1024 * 1024;
+const GitHubRepo容量鎖定訊息 = /repository is above its size quota/i;
 const 需替換的資料路徑 = [
   "data/users",
   "data/user-entry-details",
@@ -91,24 +92,6 @@ function 執行Git(參數, 選項 = {}) {
   return 執行指令("git", 參數, { ...選項, cwd: 選項.cwd || 工作根目錄 });
 }
 
-function 檢查Git是否有差異(參數) {
-  const 結果 = childProcess.spawnSync("git", 參數, {
-    cwd: 工作根目錄,
-    encoding: "utf8",
-    maxBuffer: Git輸出緩衝上限,
-  });
-  if (結果.error) {
-    throw 結果.error;
-  }
-  if (結果.status === 0) {
-    return false;
-  }
-  if (結果.status === 1) {
-    return true;
-  }
-  throw new Error(`git ${參數.join(" ")} 執行失敗，exit code ${結果.status}\n${隱藏敏感內容(結果.stderr || 結果.stdout || "")}`);
-}
-
 function 讀取Json(filePath, fallback = null) {
   try {
     return JSON.parse(fs.readFileSync(filePath, "utf8"));
@@ -131,6 +114,16 @@ function 讀取上一版Manifest() {
   } catch {
     return null;
   }
+}
+
+function 提交含有父節點(commitSha) {
+  if (!commitSha) {
+    return false;
+  }
+
+  // shallow fetch 會把 FETCH_HEAD 標成邊界，但 commit object 本身仍保留 parent 欄位。
+  // 因此不必下載 users repo 的龐大歷史，也能判斷遠端是否仍是舊的累積式提交。
+  return /^parent\s+[0-9a-f]{40}$/m.test(執行Git(["cat-file", "-p", commitSha]));
 }
 
 function 雜湊檔案(filePath) {
@@ -306,14 +299,85 @@ function 初始化Repo() {
   執行Git(["config", "core.autocrlf", "false"]);
   執行Git(["config", "user.name", "github-actions[bot]"]);
   執行Git(["config", "user.email", "41898282+github-actions[bot]@users.noreply.github.com"]);
-  執行Git(["fetch", "--depth=1", "--filter=blob:none", "origin", 目標分支]);
-  const head = 執行Git(["rev-parse", "FETCH_HEAD"]).trim();
-  執行Git(["update-ref", `refs/heads/${目標分支}`, head]);
+
+  const fetch = childProcess.spawnSync(
+    "git",
+    ["fetch", "--depth=1", "--filter=blob:none", "origin", 目標分支],
+    {
+      cwd: 工作根目錄,
+      encoding: "utf8",
+      maxBuffer: Git輸出緩衝上限,
+    },
+  );
+  if (fetch.error) {
+    throw fetch.error;
+  }
+
+  if (fetch.status === 0) {
+    const head = 執行Git(["rev-parse", "FETCH_HEAD"]).trim();
+    執行Git(["update-ref", `refs/heads/${目標分支}`, head]);
+    執行Git(["symbolic-ref", "HEAD", `refs/heads/${目標分支}`]);
+    執行Git(["read-tree", "HEAD"]);
+    return {
+      remoteHead: head,
+      needsHistoryCompaction: 提交含有父節點(head),
+    };
+  }
+
+  const fetchError = 隱藏敏感內容(fetch.stderr || fetch.stdout || "");
+  if (!/couldn(?:'|’)t find remote ref|remote branch .* not found/i.test(fetchError)) {
+    throw new Error(`git fetch origin ${目標分支} 執行失敗，exit code ${fetch.status}\n${fetchError}`);
+  }
+
+  // 允許專用 users repo 在清除超額歷史後，以同一支腳本從空白儲存庫重新建立。
+  // 這裡只建立空 index；來源資料仍需通過前面的必要資料夾檢查才會寫入。
   執行Git(["symbolic-ref", "HEAD", `refs/heads/${目標分支}`]);
-  執行Git(["read-tree", "HEAD"]);
+  執行Git(["read-tree", "--empty"]);
+  return {
+    remoteHead: null,
+    needsHistoryCompaction: false,
+  };
 }
 
-function 建立Commit() {
+function 同步資料Tree有差異(remoteHead, stagedTree) {
+  if (!remoteHead) {
+    return true;
+  }
+
+  // partial clone 沒有舊 JSON blob。git diff 即使搭配 --quiet，仍可能為 rename／內容判斷
+  // 觸發 promisor remote 的 lazy fetch，把 users repo 的龐大舊資料重新下載到 runner。
+  // 四個同步目標都是完整替換的目錄，因此只需比較 root tree 指向的子 tree object ID；
+  // tree ID 已涵蓋目錄內所有檔名、mode 與 blob ID，不需要讀取任何 blob 內容。
+  const oldTrees = 執行Git(["ls-tree", remoteHead, "--", ...需替換的資料路徑]).trim();
+  const newTrees = 執行Git(["ls-tree", stagedTree, "--", ...需替換的資料路徑]).trim();
+  return oldTrees !== newTrees;
+}
+
+function 建立單一快照Commit(remoteHead, tree) {
+  const message = [
+    "chore(data): 同步個人成績單資料到專用資料庫",
+    "",
+    "將最新生成的使用者排行榜資料同步到外部 users repo，主站僅保留公開資料。",
+    "",
+    "資料同步來源：public/data/users、public/data/user-entry-details、public/data/all/users、public/data/all/user-entry-details。",
+    "",
+    "此 repo 僅保存可重新建置的最新快照；root commit 不串接上一版，避免高頻生成 JSON 的歷史持續占用 Git 儲存空間。",
+    "",
+  ].join("\n");
+  const commit = 執行Git(["commit-tree", tree, "-F", "-"], { input: message }).trim();
+  const ref = `refs/heads/${目標分支}`;
+
+  // remoteHead 同時是本機初始化時的分支值；把它當成舊值可避免建置期間
+  // 本機 ref 被意外移動。遠端的併發保護則由 push 的 force-with-lease 負責。
+  if (remoteHead) {
+    執行Git(["update-ref", ref, commit, remoteHead]);
+  } else {
+    執行Git(["update-ref", ref, commit]);
+  }
+  return commit;
+}
+
+function 建立Commit({ remoteHead, needsHistoryCompaction }) {
   const previousManifest = 讀取上一版Manifest();
   const { manifest, hasContentChange } = 建立Manifest(previousManifest);
   const files = 建立同步檔案清單();
@@ -323,36 +387,19 @@ function 建立Commit() {
   寫入外部檔案到Index(files);
   執行Git(["add", "data/sync-manifest.json"]);
 
-  const dataChanged = 檢查Git是否有差異(["diff", "--cached", "--quiet", "HEAD", "--", ...需替換的資料路徑]);
-  const repoChanged = 檢查Git是否有差異([
-    "diff",
-    "--cached",
-    "--quiet",
-    "HEAD",
-    "--",
-    ...需替換的資料路徑,
-    "data/sync-manifest.json",
-  ]);
+  const stagedTree = 執行Git(["write-tree"]).trim();
+  const dataChanged = 同步資料Tree有差異(remoteHead, stagedTree);
 
-  if (!repoChanged) {
-    console.log("沒有需要同步的個人成績單資料變更。");
-    return false;
-  }
-
-  if (!hasContentChange && !dataChanged) {
+  if (!hasContentChange && !dataChanged && !needsHistoryCompaction) {
     console.log("只有個人成績單同步 metadata 變更，略過 commit 以避免產生雜訊紀錄。");
     return false;
   }
 
-  執行Git([
-    "commit",
-    "-m",
-    "chore(data): 同步個人成績單資料到專用資料庫",
-    "-m",
-    "將最新生成的使用者排行榜資料同步到外部 users Repo，主站僅保留公開資料。",
-    "-m",
-    "資料同步來源：public/data/users、public/data/user-entry-details、public/data/all/users、public/data/all/user-entry-details。",
-  ]);
+  if (needsHistoryCompaction && !hasContentChange && !dataChanged) {
+    console.log("個人成績單內容未變，但遠端仍有累積式 Git 歷史；本輪會收斂為單一快照提交。");
+  }
+
+  建立單一快照Commit(remoteHead, stagedTree);
   return true;
 }
 
@@ -366,8 +413,8 @@ async function main() {
   確認必要資料存在();
 
   for (let attempt = 1; attempt <= 3; attempt += 1) {
-    初始化Repo();
-    const hasCommit = 建立Commit();
+    const remoteState = 初始化Repo();
+    const hasCommit = 建立Commit(remoteState);
     if (!hasCommit) {
       return;
     }
@@ -377,7 +424,15 @@ async function main() {
       return;
     }
 
-    const push = childProcess.spawnSync("git", ["push", "origin", `HEAD:${目標分支}`], {
+    const pushArgs = ["push", "origin"];
+    if (remoteState.remoteHead) {
+      // users repo 是可重建的部署快照，不是歷史資料來源。force-with-lease 只允許在
+      // 遠端仍等於本輪 fetch 到的 SHA 時改寫，避免重疊 workflow 互相覆蓋新結果。
+      pushArgs.push(`--force-with-lease=refs/heads/${目標分支}:${remoteState.remoteHead}`);
+    }
+    pushArgs.push(`HEAD:${目標分支}`);
+
+    const push = childProcess.spawnSync("git", pushArgs, {
       cwd: 工作根目錄,
       encoding: "utf8",
       maxBuffer: Git輸出緩衝上限,
@@ -388,7 +443,18 @@ async function main() {
     }
 
     console.warn(`第 ${attempt} 次推送個人成績單資料失敗：`);
-    console.warn(隱藏敏感內容(push.stderr || push.stdout || ""));
+    const pushError = 隱藏敏感內容(push.stderr || push.stdout || "");
+    console.warn(pushError);
+    if (GitHubRepo容量鎖定訊息.test(pushError)) {
+      throw new Error(
+        [
+          "GitHub 已因 users repo 超過容量配額而鎖定 push；重試不會自行解除鎖定。",
+          "同步腳本已把待推內容改為單一快照 root commit。請先請 GitHub Support 協助解除配額鎖定，",
+          "並在快照 force push 後清除舊歷史物件；",
+          "或在確認專用 repo 只含可重建衍生資料後，重新建立同名空白 repo，再重新執行 workflow。",
+        ].join(""),
+      );
+    }
     if (attempt < 3) {
       await 等待(attempt * 5000);
     }

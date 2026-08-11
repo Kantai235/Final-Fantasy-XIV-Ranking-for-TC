@@ -139,6 +139,8 @@
 28. `.github/workflows/update_rankings.yml` 與 `.github/workflows/emergency_deploy.yml` checkout 時只抓目前分支的淺層 partial clone，後續同步與 push retry 也只 fetch 有限深度。資料 repo 的完整歷史 pack 已累積到數 GiB；正式 workflow 不需要完整歷史，若改回 `fetch-depth: 0`，GitHub-hosted runner 可能在 checkout 階段耗盡磁碟。
 29. `.github/workflows/update_rankings.yml` 與 `.github/workflows/emergency_deploy.yml` 固定使用 Node.js 24，並採用支援 Node 24 runtime 的官方 actions major 版本。GitHub Pages 部署若在 `syncing_files` 階段遇到暫時性失敗，workflow 會等待 60 秒後以同一個 Pages artifact 重試一次；只有部署成功後才會執行 Cloudflare purge。
 
+30. `Final-Fantasy-XIV-Ranking-for-TC-Users` 專用 repo 只承載可由主 repo 重建的最新部署快照，不是排行榜歷史權威來源。`scripts/sync_user_leaderboard_repo.mjs` 有內容變更時必須建立無 parent 的 root commit，並以 `force-with-lease` 確認遠端仍是本輪抓到的 SHA 後更新分支；遠端仍有累積式 parent 歷史時，即使內容未變也要收斂一次。這項歷史改寫不得影響主 repo 的 `data/state.json`、`data/rankings/` 或 report 分片。腳本也必須支援容量清理後的空白 repo 初始化；若 GitHub 已用 `Repository is above its size quota` 鎖定所有 push，只能先請 GitHub Support 協助解除鎖定並在快照 force push 後清除舊物件，或由管理者確認資料可重建後重新建立同名空白 repo，再重跑 workflow。
+
 ### F. 版本切點與過版紀錄
 1. `config/encounters.json` 的 `version_cutoff` 用來描述副本版本有效期限；`極 佐拉加` 與 `極 豔翼蛇鳥` 的過版切點是台灣時間 2026-04-21 18:00（`2026-04-21T10:00:00.000Z`），輕量級零式 M1S～M4S、`極 永恆女王` 與 `滅 黑暗之雲` 的過版切點是台灣時間 2026-07-28 13:00（`2026-07-28T05:00:00.000Z`）。
 2. `scripts/fetch_fflogs.py --rebuild-public` 會依 `start_time` 標記公開排行榜條目的 `is_obsolete_record`、`version_status` 與 `version_cutoff_iso`。排行榜可依使用者偏好用 `game_version` 做繁中服版本累積篩選，或只用既有過版標記做時效篩選；無論哪種模式都不得再輸出重複的 `version_ranking_entries.all|valid|obsolete`。
