@@ -468,7 +468,10 @@ function countProtectedAdditions(relPath, base, side) {
   }
   let count = 0;
   if (isCheckedReportsShardPath(relPath)) {
-    return [...keySet(side)].filter((key) => !keySet(base).has(key)).length;
+    // checked_reports 分片可能累積數十萬筆 report。基準 Set 必須只建立一次；
+    // 若在 filter 回呼內重建，會讓單純的新增計數退化成平方級運算，造成同步預檢長時間無進度。
+    const baseKeys = keySet(base);
+    return [...keySet(side)].filter((key) => !baseKeys.has(key)).length;
   }
   if (relPath === "data/state.json") {
     for (const [encounterKey, encounter] of Object.entries(side.encounters || {})) {
@@ -1049,7 +1052,26 @@ function formatJson(relPath, value) {
 async function writeJsonFile(relPath, value) {
   const fullPath = path.join(rootDir, relPath);
   await mkdir(path.dirname(fullPath), { recursive: true });
-  await writeFile(fullPath, formatJson(relPath, value), "utf8");
+  const content = formatJson(relPath, value);
+  const transientWindowsErrorCodes = new Set(["UNKNOWN", "EBUSY", "EPERM", "EACCES"]);
+  const maxAttempts = process.platform === "win32" ? 5 : 1;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      await writeFile(fullPath, content, "utf8");
+      return;
+    } catch (error) {
+      const canRetry = transientWindowsErrorCodes.has(error?.code) && attempt < maxAttempts;
+      if (!canRetry) {
+        throw error;
+      }
+      // Windows Defender、搜尋索引或 Git 可能在大型 JSON 切換版本時短暫持有檔案；
+      // 有上限的遞增等待可處理瞬間鎖定，同時避免真正的權限問題被無限隱藏。
+      const delayMs = attempt * 250;
+      console.warn(`寫入 ${relPath} 時發生 ${error.code}；${delayMs} 毫秒後重試（${attempt}/${maxAttempts}）。`);
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
 }
 
 function assertNoIssues(issues) {
