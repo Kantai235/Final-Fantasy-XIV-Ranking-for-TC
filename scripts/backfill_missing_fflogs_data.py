@@ -155,6 +155,22 @@ def parse_iso_timestamp(value: str) -> float:
 def support_metrics_are_current(fight: dict[str, Any]) -> bool:
     """確認 fight 與其中坦補玩家皆已使用目前的支援統計／減傷規則版本。"""
 
+    players = fight.get("players")
+    if not isinstance(players, list):
+        return False
+
+    # 排行榜來源只保存本站關心的繁中服玩家；如果該 report 的繁中服參與者全是輸出職業，
+    # 套用支援統計() 會刻意回傳 None，因為沒有任何坦補資料需要落地。這種 fight 已完成
+    # 支援統計判斷，不能因缺少 support_metrics_summary 而永久進入每輪回補候選。
+    support_players = [
+        player
+        for player in players
+        if isinstance(player, dict)
+        and player.get("job") in support_metrics.補師職業 | support_metrics.坦克職業
+    ]
+    if not support_players:
+        return True
+
     summary = fight.get("support_metrics_summary")
     if not isinstance(summary, dict):
         return False
@@ -163,13 +179,7 @@ def support_metrics_are_current(fight: dict[str, Any]) -> bool:
     if summary.get("mitigation_rules_version") != support_metrics.坦克減傷規則版本:
         return False
 
-    players = fight.get("players")
-    if not isinstance(players, list):
-        return False
-
-    for player in players:
-        if not isinstance(player, dict):
-            continue
+    for player in support_players:
         job = player.get("job")
         if job in support_metrics.補師職業:
             healing_stats = player.get("healing_stats")

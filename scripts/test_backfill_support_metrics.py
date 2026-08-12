@@ -52,6 +52,25 @@ class SupportMetricsBackfillTests(unittest.TestCase):
         fight["players"][0].pop("healing_stats")
         self.assertFalse(backfill.support_metrics_are_current(fight))
 
+    def test_dps_only_tc_players_do_not_require_empty_support_summary(self) -> None:
+        fight = {
+            "fight_id": 1,
+            "start_time": 1_000,
+            "players": [
+                {
+                    "name": "輸出玩家",
+                    "server": "巴哈姆特",
+                    "job": "Viper",
+                    "fflogs_id": 1,
+                }
+            ],
+        }
+
+        self.assertTrue(backfill.support_metrics_are_current(fight))
+
+    def test_missing_players_are_not_treated_as_dps_only_fight(self) -> None:
+        self.assertFalse(backfill.support_metrics_are_current({"fight_id": 1}))
+
     def test_support_backfill_window_accepts_report_relative_start_time(self) -> None:
         cutoff = backfill.parse_iso_timestamp("2026-07-28T05:00:00Z")
         report = {"report_start_time": cutoff, "fights": []}
