@@ -86,7 +86,6 @@ FFLogs執行設定預設值: dict[str, Any] = {
     "existing_report_status_check_limit": 0,
     "fetch_gcd_coverage_enabled": False,
     "fetch_gcd_coverage_max_fights_per_run": 0,
-    "report_status_cache_limit": 50000,
     "request_timeout": 30,
     "request_connect_timeout": None,
     "request_read_timeout": None,
@@ -477,7 +476,6 @@ def 正規化報告地區範圍(值: Any) -> str:
 既有報告狀態巡檢上限 = max(0, 整數設定("existing_report_status_check_limit"))
 即時GCD覆蓋率已啟用 = 布林設定("fetch_gcd_coverage_enabled")
 即時GCD覆蓋率戰鬥上限 = max(0, 整數設定("fetch_gcd_coverage_max_fights_per_run"))
-報告檢查快取上限 = max(0, 整數設定("report_status_cache_limit"))
 請求逾時秒數 = max(1.0, 浮點設定("request_timeout"))
 請求連線逾時秒數 = max(1.0, 可選浮點設定("request_connect_timeout", min(10.0, 請求逾時秒數)))
 請求讀取逾時秒數 = max(1.0, 可選浮點設定("request_read_timeout", 請求逾時秒數))
@@ -5422,22 +5420,6 @@ def 讀取已處理報告代碼(
     return 已處理
 
 
-def 清理報告檢查快取(副本狀態: dict[str, Any]) -> None:
-    if 報告檢查快取上限 <= 0:
-        return
-
-    已檢查報告 = 副本狀態.get("checked_reports")
-    if not isinstance(已檢查報告, dict) or len(已檢查報告) <= 報告檢查快取上限:
-        return
-
-    排序後項目 = sorted(
-        已檢查報告.items(),
-        key=lambda 項目: (項目[1] or {}).get("processed_at", 0) if isinstance(項目[1], dict) else 0,
-        reverse=True,
-    )
-    副本狀態["checked_reports"] = dict(排序後項目[:報告檢查快取上限])
-
-
 def 套用延遲掃描執行狀態(
     狀態: dict[str, Any],
     副本設定: dict[str, Any],
@@ -5555,7 +5537,9 @@ def 更新狀態(
     完整成功: bool = True,
 ) -> None:
     # processed_reports 是單輪 checkpoint，成功跑完整輪後會清空，避免永久膨脹。
-    # checked_reports 才是跨輪的略過/已檢查快取；清理時只裁切最舊快取，不會刪 data/rankings 的歷史報告。
+    # checked_reports 是跨輪的 append-only 略過／已檢查快取，必須完整保留。
+    # 這些 checkpoint 已拆成每個副本的緊湊分片，檔案體積由 compact_state.py
+    # 與 GitHub 100 MiB 檢查管理；不能再以筆數上限滑動淘汰舊 report code。
     # 當 FFLogs 暫時性 5xx/逾時只影響部分副本時，只推進已完成副本的掃描點；
     # 失敗副本保留原掃描點與 active_scan，避免下次排程漏掃該時間窗。
     狀態 = dict(原始狀態)
@@ -5575,7 +5559,6 @@ def 更新狀態(
         副本狀態["last_scanned_at"] = 新時間戳記
         副本狀態["last_scanned_at_iso"] = 毫秒轉_iso(新時間戳記)
         副本狀態["processed_reports"] = {}
-        清理報告檢查快取(副本狀態)
         副本狀態.pop("active_scan", None)
         副本狀態索引[副本["key"]] = 副本狀態
     狀態["encounters"] = 副本狀態索引

@@ -50,7 +50,7 @@
 - `rate_limit_requests`、`rate_limit_window_seconds`、`rate_limit_padding_seconds` 與 `rate_limited_cooldown_seconds` 控制 FFLogs API 限流、多憑證輪替與 429 後冷卻。
 - `ranking_flush_reports` 控制有效 report 累積幾份後批次寫入排行榜；`state_checkpoint_flush_reports` 控制略過/待重試 checkpoint 與深層掃描 `active_scan.current_report_*` 累積幾筆後批次寫入 `data/state.json`，目前預設 `2000`。首輪全地區回補大量無關 report 時，後者可避免每份 report 都重寫大型 state 檔；人工中斷後則可從最近已落地且已確認安全的 report 切點接續。深層掃描會先整段快轉已處理前綴，避免大量已知 report 逐筆輸出或觸發進度寫入。
 - `shallow_scan_cache_enabled` 控制淺層 reports 查詢快取。保留開啟可避免同一輪近期、延遲與歷史補查重複查相同時間窗；若需要診斷 FFLogs 查詢結果，可用環境變數暫時關閉。
-- `report_status_cache_limit` 控制 `data/state.json` 內每個副本保留多少筆 `checked_reports` 狀態快取，避免 state 無限制膨脹；它不會刪除 `data/rankings/` 的歷史 report。`data/state.json` 會以緊湊 JSON 寫入；report checkpoint 只需要保留 `processed_at` 毫秒時間，`processed_at_iso` 可由壓縮工具移除後按需重建，避免重複時間字串把 Git blob 撐過 100 MiB。
+- `checked_reports` 是 append-only 的跨輪略過依據，不設筆數上限，也不得滑動淘汰舊 report code。各副本快取以 `data/state/checked_reports/{encounter key}.json` 緊湊分片保存；`processed_at_iso` 可由 `processed_at` 毫秒時間重建，正式 workflow 再由 `compact_state.py` 確認每個分片低於 GitHub 100 MiB 限制。
 - `json_write_retries` 與 `json_write_retry_seconds` 控制 JSON 寫入遇到本機檔案鎖定時的重試策略；`ranking_flush_reports` 控制抓取流程累積幾份有效 report 後先批次落地，降低長時間掃描中斷時的資料遺失風險。
 - `player_stats_batch_size` 控制同一份 report、同一副本內一次 GraphQL request 會合併查詢幾場通關戰鬥的 playerDetails / damageDone；每場 fight 仍用獨立 alias 查詢，避免多場戰鬥的輸出數值被 FFLogs 聚合。
 - `excluded_report_codes` 是站務判定排除的 report code 清單。這些 report 會從近期、延遲、歷史、手動補抓、公開排行榜重建與既有 report 狀態巡檢排除，避免疑似灌水或其他不應採計的成績被排程重新寫回。

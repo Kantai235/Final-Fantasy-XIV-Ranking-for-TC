@@ -1,7 +1,8 @@
 import { existsSync } from "node:fs";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { writeFileWithRetry } from "./write_file_with_retry.mjs";
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const sourceStatusPath = path.join(rootDir, "data", "update_status.json");
@@ -64,5 +65,5 @@ const publicStatus = {
 };
 
 await mkdir(path.dirname(publicStatusPath), { recursive: true });
-await writeFile(publicStatusPath, `${JSON.stringify(publicStatus, null, 2)}\n`, "utf8");
+await writeFileWithRetry(publicStatusPath, `${JSON.stringify(publicStatus, null, 2)}\n`, "utf8");
 console.log(`已產生公開更新狀態：${path.relative(rootDir, publicStatusPath)}`);

@@ -1,7 +1,8 @@
 import { existsSync } from "node:fs";
-import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { writeFileWithRetry } from "./write_file_with_retry.mjs";
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const publicDataDir = path.join(rootDir, "public", "data");
@@ -52,7 +53,7 @@ async function readJson(filePath, fallback = null) {
 async function writeJson(filePath, data) {
   assertInside(publicDataDir, filePath);
   await mkdir(path.dirname(filePath), { recursive: true });
-  await writeFile(filePath, `${JSON.stringify(data)}\n`, "utf8");
+  await writeFileWithRetry(filePath, `${JSON.stringify(data)}\n`, "utf8");
 }
 
 function normalizeGameVersions(config) {

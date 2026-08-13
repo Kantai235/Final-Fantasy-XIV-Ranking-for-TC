@@ -10,6 +10,7 @@ import { fileURLToPath } from "node:url";
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const maxBuffer = 1024 * 1024 * 512;
 const missing = Symbol("missing");
+const rankingReportShardTargetBytes = 45 * 1024 * 1024;
 
 class ToolError extends Error {
   constructor(message, details = []) {
@@ -29,6 +30,11 @@ Options:
   --no-rebuild       Do not rebuild public/data after merging source data.
   --allow-dirty-other
                      Ignore dirty non-data files unless upstream also touches them.
+  --accept-protected-removals <count>
+                     Continue only when a manual audit found exactly this many protected removals.
+                     The merged output still restores the append-only union; conflicts remain blocked.
+  --repair-merge-ref <ref>
+                     Rebuild source data from an existing two-parent merge after improving merge rules.
   --dry-run          Check what would be merged without changing files.
   --help             Show this help.
 `);
@@ -40,6 +46,8 @@ function parseArgs(argv) {
     fetch: true,
     rebuild: true,
     allowDirtyOther: false,
+    acceptedProtectedRemovals: null,
+    repairMergeRef: null,
     remoteRef: null,
   };
 
@@ -53,6 +61,20 @@ function parseArgs(argv) {
       options.rebuild = false;
     } else if (arg === "--allow-dirty-other") {
       options.allowDirtyOther = true;
+    } else if (arg === "--accept-protected-removals") {
+      const rawCount = argv[index + 1];
+      index += 1;
+      const count = Number(rawCount);
+      if (!Number.isSafeInteger(count) || count <= 0) {
+        throw new ToolError("--accept-protected-removals needs a positive integer from the completed dry-run audit.");
+      }
+      options.acceptedProtectedRemovals = count;
+    } else if (arg === "--repair-merge-ref") {
+      options.repairMergeRef = argv[index + 1];
+      index += 1;
+      if (!options.repairMergeRef) {
+        throw new ToolError("--repair-merge-ref needs a merge commit ref.");
+      }
     } else if (arg === "--remote-ref" || arg === "-r") {
       options.remoteRef = argv[index + 1];
       index += 1;
@@ -79,6 +101,21 @@ function isCheckedReportsShardPath(filePath) {
   return normalized.startsWith("data/state/checked_reports/") && normalized.endsWith(".json");
 }
 
+function isRankingReportShardPath(filePath) {
+  const normalized = normalizePath(filePath);
+  return /^data\/rankings\/[^/]+\.reports\/[^/]+\.json$/.test(normalized);
+}
+
+function rankingKeyFromPath(filePath) {
+  const normalized = normalizePath(filePath);
+  const mainMatch = normalized.match(/^data\/rankings\/([^/]+)\.json$/);
+  if (mainMatch) {
+    return mainMatch[1];
+  }
+  const shardMatch = normalized.match(/^data\/rankings\/([^/]+)\.reports\/[^/]+\.json$/);
+  return shardMatch?.[1] || null;
+}
+
 function usesShardedCheckedReports(state) {
   return state?.checked_reports_storage?.format === "encounter_shards_v1";
 }
@@ -100,15 +137,22 @@ function isGeneratedDataPath(filePath) {
   // 衍生資料可由來源資料重建；合併衝突時通常採用上游或重建結果，而不是手工拼接。
   const normalized = normalizePath(filePath);
   return (
-    normalized === "public/data/encounters.json" ||
-    normalized === "public/data/global_stats.json" ||
-    (normalized.startsWith("public/data/rankings/") && normalized.endsWith(".json")) ||
-    (normalized.startsWith("public/data/users/") && normalized.endsWith(".json"))
+    normalized.startsWith("public/data/") &&
+    (normalized.endsWith(".json") || normalized.endsWith(".jsonl"))
+  );
+}
+
+function isLatestSnapshotDataPath(filePath) {
+  const normalized = normalizePath(filePath);
+  return (
+    normalized === "data/fun/honey_b_fans.json" ||
+    normalized === "data/pages_payload_history.jsonl" ||
+    normalized === "data/update_status.json"
   );
 }
 
 function isManagedPath(filePath) {
-  return isSourceDataPath(filePath) || isGeneratedDataPath(filePath);
+  return isSourceDataPath(filePath) || isLatestSnapshotDataPath(filePath) || isGeneratedDataPath(filePath);
 }
 
 function run(command, args, options = {}) {
@@ -263,6 +307,146 @@ function readIndexJson(stage, relPath) {
     return missing;
   }
   return JSON.parse(result.stdout);
+}
+
+function readIndexText(stage, relPath) {
+  const result = git(["show", `:${stage}:${relPath}`], { allowFailure: true });
+  return result.status === 0 ? result.stdout : missing;
+}
+
+function readGitRankingGroup(ref, rankingKey) {
+  const mainPath = `data/rankings/${rankingKey}.json`;
+  const main = readGitJson(ref, mainPath);
+  if (main === missing) {
+    return { value: missing, paths: new Set() };
+  }
+
+  const reports = { ...asObject(main.reports) };
+  const paths = new Set([mainPath]);
+  for (const shardPath of Array.isArray(main.report_shards) ? main.report_shards : []) {
+    if (typeof shardPath !== "string" || !isRankingReportShardPath(shardPath)) {
+      throw new ToolError(`Invalid ranking report shard path in ${ref}:${mainPath}.`, [String(shardPath)]);
+    }
+    paths.add(shardPath);
+    const shard = readGitJson(ref, shardPath);
+    if (shard === missing || !isPlainObject(shard)) {
+      throw new ToolError(`Ranking report shard is missing or invalid in ${ref}.`, [shardPath]);
+    }
+    for (const [reportCode, report] of Object.entries(shard)) {
+      if (reportCode in reports && !sameJson(reports[reportCode], report)) {
+        throw new ToolError(`Ranking report code appears with conflicting payloads in ${ref}.`, [
+          `${rankingKey}:${reportCode}`,
+        ]);
+      }
+      reports[reportCode] = report;
+    }
+  }
+
+  const value = cloneJson(main);
+  delete value.report_shards;
+  value.reports = reports;
+  return { value, paths };
+}
+
+async function readWorkingRankingGroup(rankingKey) {
+  const mainPath = `data/rankings/${rankingKey}.json`;
+  const main = await readWorkingJson(mainPath);
+  if (main === missing) {
+    return { value: missing, paths: new Set() };
+  }
+  const reports = { ...asObject(main.reports) };
+  const paths = new Set([mainPath]);
+  for (const shardPath of Array.isArray(main.report_shards) ? main.report_shards : []) {
+    if (typeof shardPath !== "string" || !isRankingReportShardPath(shardPath)) {
+      throw new ToolError(`Invalid working ranking report shard path in ${mainPath}.`, [String(shardPath)]);
+    }
+    paths.add(shardPath);
+    const shard = await readWorkingJson(shardPath);
+    if (shard === missing || !isPlainObject(shard)) {
+      throw new ToolError("Working ranking report shard is missing or invalid.", [shardPath]);
+    }
+    for (const [reportCode, report] of Object.entries(shard)) {
+      if (reportCode in reports && !sameJson(reports[reportCode], report)) {
+        throw new ToolError("Working ranking report code appears with conflicting payloads.", [
+          `${rankingKey}:${reportCode}`,
+        ]);
+      }
+      reports[reportCode] = report;
+    }
+  }
+  const value = cloneJson(main);
+  delete value.report_shards;
+  value.reports = reports;
+  return { value, paths };
+}
+
+function readPlannedRankingGroup(mergedByPath, rankingKey) {
+  const mainPath = `data/rankings/${rankingKey}.json`;
+  const main = mergedByPath.get(mainPath);
+  if (!main) {
+    return null;
+  }
+  const reports = { ...asObject(main.reports) };
+  const paths = new Set([mainPath]);
+  for (const shardPath of Array.isArray(main.report_shards) ? main.report_shards : []) {
+    const shard = mergedByPath.get(shardPath);
+    if (!isPlainObject(shard)) {
+      throw new ToolError("Committed merge plan is missing a ranking report shard.", [shardPath]);
+    }
+    paths.add(shardPath);
+    Object.assign(reports, shard);
+  }
+  const value = cloneJson(main);
+  delete value.report_shards;
+  value.reports = reports;
+  return { value, paths };
+}
+
+function buildRankingGroupFiles(rankingKey, ranking) {
+  const mainPath = `data/rankings/${rankingKey}.json`;
+  const main = cloneJson(ranking);
+  const reports = asObject(main.reports);
+  delete main.reports;
+  delete main.report_shards;
+
+  const files = new Map();
+  const shardPaths = [];
+  let currentShard = {};
+  let currentSize = 2;
+
+  const flushShard = () => {
+    if (!Object.keys(currentShard).length) {
+      return;
+    }
+    const shardPath = `data/rankings/${rankingKey}.reports/${String(shardPaths.length).padStart(3, "0")}.json`;
+    shardPaths.push(shardPath);
+    files.set(shardPath, currentShard);
+    currentShard = {};
+    currentSize = 2;
+  };
+
+  for (const reportCode of Object.keys(reports).sort()) {
+    const report = reports[reportCode];
+    if (!isPlainObject(report)) {
+      continue;
+    }
+    const reportText = JSON.stringify(report);
+    const itemSize = Buffer.byteLength(JSON.stringify(reportCode), "utf8") + 1 + Buffer.byteLength(reportText, "utf8") + 1;
+    if (Object.keys(currentShard).length && currentSize + itemSize > rankingReportShardTargetBytes) {
+      flushShard();
+    }
+    currentShard[reportCode] = report;
+    currentSize += itemSize;
+  }
+  flushShard();
+
+  if (shardPaths.length) {
+    main.report_shards = shardPaths;
+  } else {
+    main.reports = {};
+  }
+  files.set(mainPath, main);
+  return files;
 }
 
 function cloneJson(value) {
@@ -421,6 +605,23 @@ function checkProtectedRemovals(relPath, base, side, sideName, issues) {
     return;
   }
 
+  if (isRankingReportShardPath(relPath)) {
+    checkRemovedKeys(issues, `${relPath}:reports`, base, side, sideName);
+    for (const reportCode of Object.keys(asObject(base))) {
+      const baseReport = base?.[reportCode];
+      const sideReport = side?.[reportCode];
+      checkRemovedArrayItems(
+        issues,
+        `${relPath}:reports.${reportCode}.fights`,
+        baseReport?.fights,
+        sideReport?.fights,
+        sideName,
+        (fight) => fight?.fight_hash || (fight?.fight_id == null ? null : String(fight.fight_id)),
+      );
+    }
+    return;
+  }
+
   if (relPath === "data/state.json") {
     checkRemovedKeys(issues, `${relPath}:encounters`, base.encounters, side.encounters, sideName);
     if (usesShardedCheckedReports(side)) {
@@ -470,6 +671,10 @@ function countProtectedAdditions(relPath, base, side) {
   if (isCheckedReportsShardPath(relPath)) {
     // checked_reports 分片可能累積數十萬筆 report。基準 Set 必須只建立一次；
     // 若在 filter 回呼內重建，會讓單純的新增計數退化成平方級運算，造成同步預檢長時間無進度。
+    const baseKeys = keySet(base);
+    return [...keySet(side)].filter((key) => !baseKeys.has(key)).length;
+  }
+  if (isRankingReportShardPath(relPath)) {
     const baseKeys = keySet(base);
     return [...keySet(side)].filter((key) => !baseKeys.has(key)).length;
   }
@@ -550,6 +755,11 @@ function isCounterKey(key) {
 function resolveScalar(base, local, remote, pathParts, issues) {
   const key = pathParts.at(-1) || "";
   if (typeof local === "number" && typeof remote === "number") {
+    if (key === "calculation_version" && pathParts.includes("data_integrity")) {
+      // 同一場戰鬥可能被本機與 workflow 以不同版本的完整性規則重算；版本號較大者
+      // 代表較新的站務判定，必須與下方 ruleset 一起採新版本，不能視為任意數值衝突。
+      return Math.max(local, remote);
+    }
     if (isTimestampKey(pathParts) || isCounterKey(key)) {
       return Math.max(local, remote);
     }
@@ -560,6 +770,13 @@ function resolveScalar(base, local, remote, pathParts, issues) {
     }
     if (key === "status") {
       return statusScore(remote) > statusScore(local) ? remote : local;
+    }
+    if (key === "ruleset" && pathParts.includes("data_integrity")) {
+      const localVersion = Number(local.match(/(?:^|_)v(\d+)(?:_|$)/)?.[1]);
+      const remoteVersion = Number(remote.match(/(?:^|_)v(\d+)(?:_|$)/)?.[1]);
+      if (Number.isSafeInteger(localVersion) && Number.isSafeInteger(remoteVersion) && localVersion !== remoteVersion) {
+        return remoteVersion > localVersion ? remote : local;
+      }
     }
   }
   reportIssue(
@@ -776,6 +993,12 @@ function mergeAppendOnlyMap(base, local, remote, pathParts, issues, valueMerger 
     const remoteValue = key in remoteMap ? remoteMap[key] : missing;
 
     if (localValue === missing && remoteValue === missing) {
+      // append-only map 的共同基準可能被兩個分支各自的舊版裁切邏輯移除。預檢仍會
+      // 回報 REMOVAL 並要求人工稽核，但實際合併結果永遠保留基準值，避免使用者
+      // 接受已稽核的移除數量後反而真的刪掉歷史 checkpoint 或 report。
+      if (baseValue !== missing) {
+        output[key] = cloneJson(baseValue);
+      }
       continue;
     }
     if (localValue === missing) {
@@ -793,16 +1016,102 @@ function mergeAppendOnlyMap(base, local, remote, pathParts, issues, valueMerger 
 }
 
 function mergeReportRecord(base, local, remote, pathParts, issues) {
-  if (sameJson(local, remote)) {
-    return cloneJson(local);
+  const normalizedLocal = cloneJson(local);
+  const normalizedRemote = cloneJson(remote);
+  if (isPlainObject(normalizedLocal) && isPlainObject(normalizedRemote)) {
+    // FFLogs report 可在上傳後繼續增加 segment；revision、report_end_time 與
+    // segment 數只會單調增加。本機歷史回補與 workflow 若在不同時點
+    // 重抓同一 report，應保留較完整的後續版本，不能把這些視為
+    // 任意數值衝突。fight 與 player 內容仍由下方的結構化聯集合併。
+    for (const key of ["revision", "report_end_time", "segments", "exported_segments"]) {
+      if (typeof normalizedLocal[key] === "number" && typeof normalizedRemote[key] === "number") {
+        const latestValue = Math.max(normalizedLocal[key], normalizedRemote[key]);
+        normalizedLocal[key] = latestValue;
+        normalizedRemote[key] = latestValue;
+      }
+    }
+
+    const localFetchedAt =
+      (toNumber(normalizedLocal.fetched_at) ?? Date.parse(normalizedLocal.fetched_at_iso || 0)) || 0;
+    const remoteFetchedAt =
+      (toNumber(normalizedRemote.fetched_at) ?? Date.parse(normalizedRemote.fetched_at_iso || 0)) || 0;
+    if (
+      normalizedLocal.visibility !== normalizedRemote.visibility &&
+      normalizedLocal.visibility != null &&
+      normalizedRemote.visibility != null &&
+      localFetchedAt !== remoteFetchedAt
+    ) {
+      // visibility 可由 public 改為 unlisted，不能以字串優先序猜測。
+      // 只採實際重抓 report 時間較新的快照；同時間仍保留為衝突。
+      const visibility = remoteFetchedAt > localFetchedAt ? normalizedRemote.visibility : normalizedLocal.visibility;
+      normalizedLocal.visibility = visibility;
+      normalizedRemote.visibility = visibility;
+    }
+
+    const localHiddenAt =
+      (toNumber(normalizedLocal.hidden_detected_at) ??
+        Date.parse(normalizedLocal.hidden_detected_at_iso || 0)) ||
+      0;
+    const remoteHiddenAt =
+      (toNumber(normalizedRemote.hidden_detected_at) ??
+        Date.parse(normalizedRemote.hidden_detected_at_iso || 0)) ||
+      0;
+    if (
+      normalizedLocal.hidden_source !== normalizedRemote.hidden_source &&
+      normalizedLocal.hidden_source != null &&
+      normalizedRemote.hidden_source != null &&
+      localHiddenAt !== remoteHiddenAt
+    ) {
+      // hidden_source 是偵測來源的診斷欄位；與較新 hidden_detected_at 同步，
+      // 避免合併出來源與偵測時間互相矛盾的虛構記錄。
+      const hiddenSource = remoteHiddenAt > localHiddenAt ? normalizedRemote.hidden_source : normalizedLocal.hidden_source;
+      normalizedLocal.hidden_source = hiddenSource;
+      normalizedRemote.hidden_source = hiddenSource;
+    }
   }
-  if (sameJson(base, local)) {
-    return cloneJson(remote);
+  return mergeRecordObject(base, normalizedLocal, normalizedRemote, pathParts, issues, {
+    fights: mergeFightRecord,
+  });
+}
+
+function mergeFightRecord(base, local, remote, pathParts, issues) {
+  return mergeRecordObject(base, local, remote, pathParts, issues, {
+    players: mergePlayerRecord,
+  });
+}
+
+function mergePlayerRecord(base, local, remote, pathParts, issues) {
+  return mergeRecordObject(base, local, remote, pathParts, issues);
+}
+
+function mergeRecordObject(base, local, remote, pathParts, issues, identifiedArrayMergers = {}) {
+  if (!isPlainObject(local) || !isPlainObject(remote)) {
+    return mergeJsonValue(base, local, remote, pathParts, issues);
   }
-  if (sameJson(base, remote)) {
-    return cloneJson(local);
+  const baseObject = asObject(base);
+  const output = {};
+  for (const key of orderedUnion(Object.keys(baseObject), Object.keys(local), Object.keys(remote))) {
+    const baseValue = key in baseObject ? baseObject[key] : missing;
+    const localValue = key in local ? local[key] : missing;
+    const remoteValue = key in remote ? remote[key] : missing;
+    let merged;
+    if (key in identifiedArrayMergers) {
+      merged = mergeIdentifiedArray(
+        Array.isArray(baseValue) ? baseValue : [],
+        Array.isArray(localValue) ? localValue : [],
+        Array.isArray(remoteValue) ? remoteValue : [],
+        [...pathParts, key],
+        issues,
+        identifiedArrayMergers[key],
+      );
+    } else {
+      merged = mergeJsonValue(baseValue, localValue, remoteValue, [...pathParts, key], issues);
+    }
+    if (merged !== missing) {
+      output[key] = merged;
+    }
   }
-  return mergeJsonValue(base, local, remote, pathParts, issues);
+  return output;
 }
 
 function mergeStateEncounter(base, local, remote, pathParts, issues) {
@@ -851,6 +1160,20 @@ function mergeStateFile(base, local, remote, pathParts, issues) {
       );
       continue;
     }
+    if (key === "last_run_stats") {
+      // last_run_stats 是單次 workflow 的診斷快照，不是可逐欄累加的 checkpoint。
+      // 混合兩輪摘要會產生不存在的執行狀態，因此整份採 scan_end_at 較新的版本。
+      output[key] = chooseSnapshotByTime(baseValue, localValue, remoteValue, (value) =>
+        (toNumber(value?.scan_end_at) ?? Date.parse(value?.scan_end_at_iso || 0)) || 0,
+      );
+      continue;
+    }
+    if (key === "support_metrics_report_backfill") {
+      // 坦補 workflow 由新往舊移動 cursor；同一版本中較小的 cursor_sort_time 代表
+      // 已掃得更早。completed 優先，其次才比較 cursor，避免較晚提交的舊進度倒退游標。
+      output[key] = chooseSupportBackfillSnapshot(baseValue, localValue, remoteValue);
+      continue;
+    }
     const merged = mergeJsonValue(baseValue, localValue, remoteValue, [...pathParts, key], issues);
     if (merged !== missing) {
       output[key] = merged;
@@ -894,7 +1217,7 @@ function mergeRankingFile(base, local, remote, pathParts, issues) {
   return output;
 }
 
-function mergeIdentifiedArray(base, local, remote, pathParts, issues) {
+function mergeIdentifiedArray(base, local, remote, pathParts, issues, valueMerger = mergeJsonValue) {
   const keyFor = (item) => itemKeyForArray(pathParts, item);
   const baseMap = new Map((Array.isArray(base) ? base : []).map((item) => [keyFor(item), item]).filter(([key]) => key));
   const localMap = new Map((Array.isArray(local) ? local : []).map((item) => [keyFor(item), item]).filter(([key]) => key));
@@ -902,10 +1225,25 @@ function mergeIdentifiedArray(base, local, remote, pathParts, issues) {
   const output = [];
 
   for (const key of orderedUnion([...baseMap.keys()], [...localMap.keys()], [...remoteMap.keys()])) {
-    const merged = mergeJsonValue(
-      baseMap.get(key) ?? missing,
-      localMap.get(key) ?? missing,
-      remoteMap.get(key) ?? missing,
+    const baseItem = baseMap.get(key) ?? missing;
+    const localItem = localMap.get(key) ?? missing;
+    const remoteItem = remoteMap.get(key) ?? missing;
+    if (
+      (pathParts.at(-1) === "fights" || pathParts.at(-1) === "players") &&
+      baseItem !== missing &&
+      localItem === missing &&
+      remoteItem === missing
+    ) {
+      // FFLogs report 持續上傳後可能在新 revision 不再回傳舊 fight；站內已收錄
+      // fight 仍是 append-only 追溯資產。即使兩個分支都漏掉它，也要從
+      // 共同基準復原，不可因 report revision 刷新而刪除。
+      output.push(cloneJson(baseItem));
+      continue;
+    }
+    const merged = valueMerger(
+      baseItem,
+      localItem,
+      remoteItem,
       [...pathParts, String(key)],
       issues,
     );
@@ -1019,6 +1357,12 @@ function mergeDataPath(relPath, base, local, remote, issues) {
   if (isCheckedReportsShardPath(relPath)) {
     return mergeAppendOnlyMap(base, local, remote, [relPath], issues);
   }
+  if (isRankingReportShardPath(relPath)) {
+    // report 分片的根層本身就是 report_code -> report 的 append-only map，
+    // 不是含 reports 欄位的排行榜主檔。分開辨識才能同時保護
+    // report code，並讓同一 report 的 fight/player 結構化合併規則生效。
+    return mergeAppendOnlyMap(base, local, remote, [relPath], issues, mergeReportRecord);
+  }
   if (relPath.startsWith("data/rankings/")) {
     return mergeRankingFile(base, local, remote, [relPath], issues);
   }
@@ -1074,13 +1418,66 @@ async function writeJsonFile(relPath, value) {
   }
 }
 
-function assertNoIssues(issues) {
-  if (issues.removals.length || issues.conflicts.length) {
+function chooseSnapshotByTime(base, local, remote, timeGetter) {
+  if (local === missing) {
+    return cloneJson(remote);
+  }
+  if (remote === missing) {
+    return cloneJson(local);
+  }
+  if (sameJson(local, remote)) {
+    return cloneJson(local);
+  }
+  if (sameJson(base, local)) {
+    return cloneJson(remote);
+  }
+  if (sameJson(base, remote)) {
+    return cloneJson(local);
+  }
+  return cloneJson(timeGetter(remote) >= timeGetter(local) ? remote : local);
+}
+
+function chooseSupportBackfillSnapshot(base, local, remote) {
+  if (local === missing || remote === missing || sameJson(local, remote) || sameJson(base, local) || sameJson(base, remote)) {
+    return chooseSnapshotByTime(base, local, remote, (value) => Date.parse(value?.last_run_at_iso || 0) || 0);
+  }
+
+  const versionKey = (value) => `${value?.calculation_version ?? ""}|${value?.mitigation_rules_version ?? ""}`;
+  if (versionKey(local) !== versionKey(remote)) {
+    return chooseSnapshotByTime(base, local, remote, (value) => Date.parse(value?.initialized_at_iso || value?.last_run_at_iso || 0) || 0);
+  }
+  if (Boolean(local?.completed) !== Boolean(remote?.completed)) {
+    return cloneJson(remote?.completed ? remote : local);
+  }
+  if (local?.mode === "new_to_old_report_backfill" && remote?.mode === "new_to_old_report_backfill") {
+    const localCursor = toNumber(local?.cursor_sort_time);
+    const remoteCursor = toNumber(remote?.cursor_sort_time);
+    if (localCursor !== null && remoteCursor !== null && localCursor !== remoteCursor) {
+      return cloneJson(remoteCursor < localCursor ? remote : local);
+    }
+  }
+  return chooseSnapshotByTime(base, local, remote, (value) => Date.parse(value?.last_run_at_iso || 0) || 0);
+}
+
+function assertNoIssues(issues, acceptedProtectedRemovals = null) {
+  const removalsAccepted =
+    acceptedProtectedRemovals !== null && issues.removals.length === acceptedProtectedRemovals;
+  if ((!removalsAccepted && issues.removals.length) || issues.conflicts.length) {
     const details = [
       ...issues.removals.map((issue) => `REMOVAL ${issue.path}: ${issue.message}`),
       ...issues.conflicts.map((issue) => `CONFLICT ${issue.path}: ${issue.message}`),
     ];
+    if (acceptedProtectedRemovals !== null && issues.removals.length !== acceptedProtectedRemovals) {
+      details.unshift(
+        `Audited removal count mismatch: expected ${acceptedProtectedRemovals}, found ${issues.removals.length}.`,
+      );
+    }
     throw new ToolError("Automatic data merge stopped because protected data was removed or a real conflict was found.", details);
+  }
+  if (removalsAccepted) {
+    console.warn(
+      `Continuing after manual audit accepted exactly ${acceptedProtectedRemovals} protected removals; append-only maps will restore their union.`,
+    );
   }
 }
 
@@ -1089,15 +1486,17 @@ function summarizeIssues(label, issues) {
 }
 
 async function buildCommittedMergePlan(mergeBase, localHead, upstreamRef, upstreamHead) {
-  const sourcePaths = orderedUnion(
+  const changedSourcePaths = orderedUnion(
     getChangedFiles(mergeBase, localHead).filter(isSourceDataPath),
     getChangedFiles(mergeBase, upstreamRef).filter(isSourceDataPath),
   );
-  console.log(`Preflighting committed source files (${sourcePaths.length})...`);
+  console.log(`Preflighting committed source files (${changedSourcePaths.length})...`);
   const mergedByPath = new Map();
+  const removedPaths = new Set();
   const issues = createIssues();
+  const rankingKeys = new Set(changedSourcePaths.map(rankingKeyFromPath).filter(Boolean));
 
-  for (const relPath of sourcePaths) {
+  for (const relPath of changedSourcePaths.filter((candidate) => !rankingKeyFromPath(candidate))) {
     console.log(`  committed: ${relPath}`);
     const base = readGitJson(mergeBase, relPath);
     let merged;
@@ -1119,15 +1518,41 @@ async function buildCommittedMergePlan(mergeBase, localHead, upstreamRef, upstre
     }
   }
 
-  return { sourcePaths, mergedByPath, issues };
+  for (const rankingKey of [...rankingKeys].sort()) {
+    console.log(`  committed ranking group: ${rankingKey}`);
+    const baseGroup = readGitRankingGroup(mergeBase, rankingKey);
+    const localGroup = readGitRankingGroup(localHead, rankingKey);
+    const remoteGroup = readGitRankingGroup(upstreamRef, rankingKey);
+    const mainPath = `data/rankings/${rankingKey}.json`;
+    const merged = mergeDataPath(mainPath, baseGroup.value, localGroup.value, remoteGroup.value, issues);
+    if (merged === missing) {
+      continue;
+    }
+
+    const groupFiles = buildRankingGroupFiles(rankingKey, merged);
+    for (const [relPath, value] of groupFiles) {
+      mergedByPath.set(relPath, value);
+    }
+    const existingPaths = new Set([...baseGroup.paths, ...localGroup.paths, ...remoteGroup.paths]);
+    for (const relPath of existingPaths) {
+      if (!groupFiles.has(relPath)) {
+        removedPaths.add(relPath);
+      }
+    }
+  }
+
+  const sourcePaths = orderedUnion(changedSourcePaths, [...mergedByPath.keys()], [...removedPaths]);
+  return { sourcePaths, mergedByPath, removedPaths, issues };
 }
 
 async function buildDirtyReapplyPlan(dirtySourcePaths, localHead, committedMergedByPath) {
   console.log(`Preflighting dirty source files (${dirtySourcePaths.length})...`);
   const mergedByPath = new Map();
+  const removedPaths = new Set();
   const issues = createIssues();
+  const rankingKeys = new Set(dirtySourcePaths.map(rankingKeyFromPath).filter(Boolean));
 
-  for (const relPath of dirtySourcePaths) {
+  for (const relPath of dirtySourcePaths.filter((candidate) => !rankingKeyFromPath(candidate))) {
     console.log(`  dirty: ${relPath}`);
     const local = await readWorkingJson(relPath);
     const base = readGitJson(localHead, relPath);
@@ -1145,7 +1570,28 @@ async function buildDirtyReapplyPlan(dirtySourcePaths, localHead, committedMerge
     }
   }
 
-  return { mergedByPath, issues };
+  for (const rankingKey of [...rankingKeys].sort()) {
+    console.log(`  dirty ranking group: ${rankingKey}`);
+    const baseGroup = readGitRankingGroup(localHead, rankingKey);
+    const localGroup = await readWorkingRankingGroup(rankingKey);
+    const plannedGroup = readPlannedRankingGroup(committedMergedByPath, rankingKey) || baseGroup;
+    const mainPath = `data/rankings/${rankingKey}.json`;
+    const merged = mergeDataPath(mainPath, baseGroup.value, localGroup.value, plannedGroup.value, issues);
+    if (merged === missing) {
+      continue;
+    }
+    const groupFiles = buildRankingGroupFiles(rankingKey, merged);
+    for (const [relPath, value] of groupFiles) {
+      mergedByPath.set(relPath, value);
+    }
+    for (const relPath of new Set([...localGroup.paths, ...plannedGroup.paths])) {
+      if (!groupFiles.has(relPath)) {
+        removedPaths.add(relPath);
+      }
+    }
+  }
+
+  return { mergedByPath, removedPaths, issues };
 }
 
 function writePathspecFile(paths) {
@@ -1196,22 +1642,75 @@ function dropStash(stashRef) {
   console.log(`Dropped temporary ${stashRef}.`);
 }
 
-async function resolveMergeConflicts(options) {
+async function applyCommittedSourcePlan(committedPlan) {
+  for (const relPath of committedPlan.removedPaths) {
+    git(["rm", "--ignore-unmatch", "--", relPath], { allowFailure: true });
+  }
+  for (const [relPath, merged] of committedPlan.mergedByPath) {
+    await writeJsonFile(relPath, merged);
+    git(["add", "--", relPath]);
+  }
+}
+
+async function resolveLatestSnapshotConflict(relPath) {
+  if (relPath === "data/pages_payload_history.jsonl") {
+    const local = readIndexText(2, relPath);
+    const remote = readIndexText(3, relPath);
+    if (local === missing || remote === missing) {
+      throw new ToolError("Payload history snapshot is missing from one side of the merge.", [relPath]);
+    }
+    const latestTime = (textValue) => {
+      const lines = textValue.split(/\r?\n/).filter(Boolean);
+      if (!lines.length) {
+        return 0;
+      }
+      try {
+        return Date.parse(JSON.parse(lines.at(-1)).recorded_at_iso || 0) || 0;
+      } catch {
+        throw new ToolError("Payload history contains an invalid JSONL record.", [relPath]);
+      }
+    };
+    const chosen = latestTime(remote) >= latestTime(local) ? remote : local;
+    await writeFile(path.join(rootDir, relPath), chosen.endsWith("\n") ? chosen : `${chosen}\n`, "utf8");
+    git(["add", "--", relPath]);
+    return;
+  }
+
+  const local = readIndexJson(2, relPath);
+  const remote = readIndexJson(3, relPath);
+  if (local === missing || remote === missing) {
+    throw new ToolError("Latest snapshot data is missing from one side of the merge.", [relPath]);
+  }
+
+  if (relPath === "data/fun/honey_b_fans.json") {
+    const immutablePayload = (value) => {
+      const copy = cloneJson(value);
+      delete copy.state;
+      delete copy.updated_at_iso;
+      return copy;
+    };
+    if (!sameJson(immutablePayload(local), immutablePayload(remote))) {
+      throw new ToolError("Honey B. source records differ between branches; refusing to choose a snapshot.", [relPath]);
+    }
+  }
+
+  const localTime = Date.parse(local?.updated_at_iso || 0) || 0;
+  const remoteTime = Date.parse(remote?.updated_at_iso || 0) || 0;
+  await writeJsonFile(relPath, remoteTime >= localTime ? remote : local);
+  git(["add", "--", relPath]);
+}
+
+async function resolveMergeConflicts(committedPlan) {
   const unmerged = getDirtyEntries().filter((entry) => hasUnmergedStatus(entry.xy));
   const unmanaged = unmerged.filter((entry) => !isManagedPath(entry.path));
   if (unmanaged.length) {
     throw new ToolError("Git merge produced conflicts outside managed data files.", unmanaged.map((entry) => `${entry.xy} ${entry.path}`));
   }
 
-  const issues = createIssues();
   for (const entry of unmerged) {
     const relPath = entry.path;
-    if (isSourceDataPath(relPath)) {
-      const merged = mergeDataPath(relPath, readIndexJson(1, relPath), readIndexJson(2, relPath), readIndexJson(3, relPath), issues);
-      if (merged !== missing) {
-        await writeJsonFile(relPath, merged);
-        git(["add", "--", relPath]);
-      }
+    if (isLatestSnapshotDataPath(relPath)) {
+      await resolveLatestSnapshotConflict(relPath);
     } else if (isGeneratedDataPath(relPath)) {
       const upstream = readIndexJson(3, relPath);
       if (upstream !== missing) {
@@ -1222,18 +1721,53 @@ async function resolveMergeConflicts(options) {
       }
     }
   }
-  assertNoIssues(issues);
-  summarizeIssues("Merge conflict resolution", issues);
+  // 不以 Git 的單檔衝突片段合併 ranking report 分片。預檢已經以
+  // 副本為單位載入全部分片並驗證三方聯集；這裡直接套用同一份
+  // plan，確保預覽與實際寫入完全一致，也不會把跨分片搬移當成刪除。
+  await applyCommittedSourcePlan(committedPlan);
 
-  if (existsSync(path.join(rootDir, gitText(["rev-parse", "--git-dir"]).trim(), "MERGE_HEAD"))) {
-    git(["commit", "--no-edit"]);
+  const remaining = getDirtyEntries().filter((entry) => hasUnmergedStatus(entry.xy));
+  if (remaining.length) {
+    throw new ToolError("Structured data plan did not resolve every Git conflict.", remaining.map((entry) => `${entry.xy} ${entry.path}`));
   }
 }
 
 async function reapplyDirtySourceChanges(dirtyPlan) {
+  for (const relPath of dirtyPlan.removedPaths) {
+    rmSync(path.join(rootDir, relPath), { force: true });
+  }
   for (const [relPath, merged] of dirtyPlan.mergedByPath.entries()) {
     await writeJsonFile(relPath, merged);
   }
+}
+
+async function repairExistingMerge(options) {
+  const mergeRef = options.repairMergeRef;
+  const parents = gitText(["rev-list", "--parents", "-n", "1", mergeRef]).trim().split(/\s+/).slice(1);
+  if (parents.length !== 2) {
+    throw new ToolError("--repair-merge-ref must reference a two-parent merge commit.", [mergeRef]);
+  }
+  const [localParent, remoteParent] = parents;
+  const mergeBase = gitText(["merge-base", localParent, remoteParent]).trim();
+  console.log(`Repair merge: ${mergeRef}`);
+  console.log(`Local parent: ${localParent.slice(0, 12)}`);
+  console.log(`Remote parent: ${remoteParent.slice(0, 12)}`);
+  console.log(`Merge base: ${mergeBase.slice(0, 12)}`);
+
+  const plan = await buildCommittedMergePlan(mergeBase, localParent, remoteParent, remoteParent);
+  summarizeIssues("Existing merge repair preflight", plan.issues);
+  assertNoIssues(plan.issues, options.acceptedProtectedRemovals);
+  if (options.dryRun) {
+    console.log("Repair dry run complete. No files were changed.");
+    return;
+  }
+
+  await applyCommittedSourcePlan(plan);
+  if (options.rebuild) {
+    runNpmScript("build:public-rankings");
+    runNpmScript("build:user-data");
+  }
+  printStatusSummary();
 }
 
 function runNpmScript(scriptName) {
@@ -1258,6 +1792,11 @@ async function main() {
   const unmergedEntries = dirtyEntries.filter((entry) => hasUnmergedStatus(entry.xy));
   if (unmergedEntries.length) {
     throw new ToolError("The working tree already has unmerged files.", unmergedEntries.map((entry) => `${entry.xy} ${entry.path}`));
+  }
+
+  if (options.repairMergeRef) {
+    await repairExistingMerge(options);
+    return;
   }
 
   const upstreamRef = resolveUpstreamRef(options.remoteRef);
@@ -1298,8 +1837,12 @@ async function main() {
   const dirtyPlan = await buildDirtyReapplyPlan(dirtySourcePaths, localHead, committedPlan.mergedByPath);
   summarizeIssues("Committed upstream merge preflight", committedPlan.issues);
   summarizeIssues("Local dirty data preflight", dirtyPlan.issues);
-  assertNoIssues(committedPlan.issues);
-  assertNoIssues(dirtyPlan.issues);
+  const combinedIssues = {
+    additions: committedPlan.issues.additions + dirtyPlan.issues.additions,
+    removals: [...committedPlan.issues.removals, ...dirtyPlan.issues.removals],
+    conflicts: [...committedPlan.issues.conflicts, ...dirtyPlan.issues.conflicts],
+  };
+  assertNoIssues(combinedIssues, options.acceptedProtectedRemovals);
 
   console.log(`Source files touched by upstream/local commits: ${committedPlan.sourcePaths.length || 0}`);
   console.log(`Dirty source files to reapply: ${dirtySourcePaths.length || 0}`);
@@ -1314,10 +1857,33 @@ async function main() {
   const stashRef = stashDirtyPaths(dirtyManagedPaths);
   let completed = false;
   try {
-    const merge = git(["merge", "--no-edit", upstreamRef], { allowFailure: true });
+    const mergeMessage = [
+      "chore(data): 合併遠端自動化資料",
+      "",
+      "Why:",
+      "- 本機 FFLogs 回補與 GitHub Actions 同時產生 append-only 資料，需要保留三方完整聯集。",
+      "",
+      "主要變更：",
+      "- 以副本為單位合併排行榜 report 分片，保留 report、fight 與 player 追溯資料。",
+      "- 合併本機歷史坦補支援統計與遠端最新掃描結果。",
+      "",
+      "測試與驗證：",
+      `- npm run sync:data -- --dry-run（${combinedIssues.additions.toLocaleString("en-US")} 筆受保護新增、${options.acceptedProtectedRemovals ?? 0} 筆已稽核分支移除、0 衝突）`,
+    ].join("\n");
+    const merge = git(["merge", "--no-commit", "--no-ff", "-m", mergeMessage, upstreamRef], {
+      allowFailure: true,
+    });
     if (merge.status !== 0) {
       console.log("Git merge needs structured data conflict resolution.");
-      await resolveMergeConflicts(options);
+      await resolveMergeConflicts(committedPlan);
+    } else {
+      // 即使 Git 對某些單行 JSON 巧合自動合併，仍要套用已通過預檢的
+      // 結構化 plan，避免預覽與實際結果因 Git 文字策略而分歧。
+      await applyCommittedSourcePlan(committedPlan);
+    }
+
+    if (existsSync(path.join(rootDir, gitText(["rev-parse", "--git-dir"]).trim(), "MERGE_HEAD"))) {
+      git(["commit", "--no-edit"]);
     }
 
     await reapplyDirtySourceChanges(dirtyPlan);

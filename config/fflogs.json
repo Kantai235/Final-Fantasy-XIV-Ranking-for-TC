@@ -242,7 +242,6 @@
       "ultimate_bahamut"
     ]
   },
-  "report_status_cache_limit": 50000,
   "request_timeout": 30,
   "request_connect_timeout": null,
   "request_read_timeout": null,
