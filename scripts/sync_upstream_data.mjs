@@ -544,7 +544,11 @@ function itemKeyForArray(pathParts, item) {
     return rankingEntryKey(item);
   }
   if (name === "fights") {
-    return item.fight_hash || (item.fight_id == null ? null : String(item.fight_id));
+    // 同一份 report 內的 fight_id 才是 FFLogs 的穩定主鍵。fight_hash 會把玩家
+    // 組成納入指紋，當角色資訊被 FFLogs 修正或資料管線重新正規化時可能改變；
+    // 若優先使用 hash，兩個分支的同一場 fight 就會被誤判成兩場並重複寫入。
+    // 只有舊資料缺少 fight_id 時，才以 fight_hash 作為相容性保底。
+    return item.fight_id == null ? item.fight_hash || null : String(item.fight_id);
   }
   if (name === "players" || name === "matched_players") {
     return playerKey(item);
@@ -616,7 +620,7 @@ function checkProtectedRemovals(relPath, base, side, sideName, issues) {
         baseReport?.fights,
         sideReport?.fights,
         sideName,
-        (fight) => fight?.fight_hash || (fight?.fight_id == null ? null : String(fight.fight_id)),
+        (fight) => (fight?.fight_id == null ? fight?.fight_hash || null : String(fight.fight_id)),
       );
     }
     return;
@@ -657,7 +661,7 @@ function checkProtectedRemovals(relPath, base, side, sideName, issues) {
         baseReport?.fights,
         sideReport?.fights,
         sideName,
-        (fight) => fight?.fight_hash || (fight?.fight_id == null ? null : String(fight.fight_id)),
+        (fight) => (fight?.fight_id == null ? fight?.fight_hash || null : String(fight.fight_id)),
       );
     }
   }
@@ -1075,7 +1079,34 @@ function mergeReportRecord(base, local, remote, pathParts, issues) {
 }
 
 function mergeFightRecord(base, local, remote, pathParts, issues) {
-  return mergeRecordObject(base, local, remote, pathParts, issues, {
+  let normalizedLocal = local;
+  let normalizedRemote = remote;
+  if (isPlainObject(local) && isPlainObject(remote) && local.fight_hash !== remote.fight_hash) {
+    normalizedLocal = cloneJson(local);
+    normalizedRemote = cloneJson(remote);
+    const baseHash = isPlainObject(base) ? base.fight_hash : undefined;
+    let selectedHash;
+    if (baseHash === local.fight_hash) {
+      selectedHash = remote.fight_hash;
+    } else if (baseHash === remote.fight_hash) {
+      selectedHash = local.fight_hash;
+    } else {
+      // 新 report 可能由本機與 workflow 各自查到；即使 fight_id 相同，FFLogs
+      // 後續修正 damage table 仍可能讓跨 report 指紋不同。共同基準不存在或兩側
+      // 都重算時，以這次同步的遠端 workflow 指紋為準，讓同一批最新 report 使用
+      // 同一代 fight_hash；坦補欄位仍由下面的逐欄三方合併完整保留。
+      selectedHash = remote.fight_hash;
+    }
+    if (selectedHash === undefined) {
+      delete normalizedLocal.fight_hash;
+      delete normalizedRemote.fight_hash;
+    } else {
+      normalizedLocal.fight_hash = selectedHash;
+      normalizedRemote.fight_hash = selectedHash;
+    }
+  }
+
+  return mergeRecordObject(base, normalizedLocal, normalizedRemote, pathParts, issues, {
     players: mergePlayerRecord,
   });
 }
