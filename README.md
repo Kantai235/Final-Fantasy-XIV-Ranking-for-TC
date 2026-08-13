@@ -91,7 +91,7 @@ README 只保留入口與最小操作脈絡，完整說明請依主題閱讀：
 | [docs/cloudflare-github-pages.md](docs/cloudflare-github-pages.md) | Cloudflare CDN、Cache Rules、Rate Limiting 與 purge 細節。 |
 | [apps-script/fflogs-report-status/README.md](apps-script/fflogs-report-status/README.md) | FFLogs report 即時可讀狀態查詢用 Apps Script Web App 範本。 |
 | [config/README.md](config/README.md) | `config/` 設定檔欄位判讀。 |
-| [data/rankings/README.md](data/rankings/README.md) | 排行榜完整資料格式與分片說明。 |
+| [Data repo 的 data/rankings/README.md](https://github.com/Kantai235/Final-Fantasy-XIV-Ranking-for-TC-Data/blob/main/data/rankings/README.md) | 排行榜完整資料格式與分片說明。 |
 
 ## 核心架構
 
@@ -100,6 +100,8 @@ README 只保留入口與最小操作脈絡，完整說明請依主題閱讀：
 1. `scripts/fetch_fflogs.py` 是 Data Fetching Layer。它是唯一可直接呼叫 FFLogs GraphQL API 的入口，負責 OAuth、限流、重試、繁中服玩家初篩、report 狀態判定，以及 `data/rankings/` 與 `data/state.json` 的可追溯寫入；GraphQL 查詢字串集中在 `scripts/fflogs_pipeline/graphql_queries.py`，避免掃描策略與查詢文本互相纏在同一個巨型檔。新收錄 fight 會保存補師 Healing table 摘要，以及坦克承傷、實際護盾吸收與有效減傷時窗摘要；DamageTaken／Buffs／Debuffs raw events 完整分頁後立即丟棄，不會寫入 Git。7/28 後新收錄的 fight 也會在 `fetch_fflogs.py` 建立排行來源前即時完成普攻資料完整性檢核；既有副本先以切點前的全隊角色傷害 P99 本地預篩，只有超出高端、Attack 標記或新副本才讀取敵方生命池。`scripts/backfill_fight_integrity.py` 則只負責既有歷史資料的分批回補。兩者共用不進 Git 的最小測量快取，只在 fight 層寫入 `data_integrity` 標記，不會刪除原始 report。
 2. `scripts/build_user_data.mjs` 是 Data Building Layer。它讀取排行榜來源資料，產生個人成績單、個人成績報告細節、全服統計、近期動態、隊伍榜與伺服器對比等 `public/data/` 靜態 JSON；`build:user-data` 也會接續產生排行榜薄索引、Logs 狀態索引與公開更新狀態。正式部署時，個別玩家成績單 JSON 會先同步到專用 users repo，再從主站 Pages artifact 移除；高頻共用的 `data/users/index.json` 會保留在主站 `/data/`，讓 Cloudflare/GitHub Pages 快取承接玩家搜尋索引請求。
 3. `src/` 是 UI Presentation Layer。Vue 只讀取靜態 JSON 進行呈現、篩選與狀態管理：主站共用資料與個人成績單索引來自 Pages artifact 的 `/data/`，個別玩家成績單資料來自專用 users repo，不能直接呼叫 FFLogs API；`src/composables/rankingApp/` 承接排行榜預設值、注入 context 與排行列正規化，`src/styles/app.css` 則只作為樣式拆檔入口。
+
+權威來源資料存放於 `Final-Fantasy-XIV-Ranking-for-TC-Data`。主 repo 只追蹤程式碼與設定；本機或 workflow 必須先執行 `npm run data:hydrate` 還原經 manifest 驗證的最新資料，再進行抓取、建置或部署。Data repo 每次更新都以沒有 parent 的 root commit 取代 `main`，避免高頻 JSON 版本持續累積歷史容量；append-only report、fight、player 與 checkpoint 則由發布工具逐輪守恆檢查。
 
 ## 常用指令
 
@@ -123,7 +125,10 @@ README 只保留入口與最小操作脈絡，完整說明請依主題閱讀：
 | `npm run audit:gcd:xivanalysis` | 以固定 seed 對零式、極、幻的每個副本各抽樣 10 場，若 10 場未涵蓋全職業會自動補抽缺漏職業所在戰鬥，並將本地 GCD 覆蓋率與 xivanalysis 畫面值比對；100 場外站頁面稽核使用 `--sample-size 100 --local-mode stored --tolerance 0`，必要時可搭配 `--workers`、`--exclude-report-codes` 與 `--apply-all-checked`。 |
 | `npm run test:data-conservation` | 檢查排行榜薄索引、細節檔、使用者檔與 hidden delta 的資料守恆。 |
 | `npm run test:sync-user-repo` | 以本機 bare repo 驗證 users 專用 repo 的空白初始化、單一快照更新、歷史收斂與無變更略過。 |
-| `npm run test:workflow-data-snapshot` | 以本機 bare repo 驗證主 repo 自動化資料快照的 amend、程式碼分界、淺層歷史與競爭保護。 |
+| `npm run data:hydrate` | 從 Data repo 驗證並還原權威 `data/` 與主站共用 `public/data/` 快照。 |
+| `npm run data:publish` | 驗證 append-only 歷史、建立單一 root snapshot，並以 `force-with-lease` 發布到 Data repo。 |
+| `npm run data:verify` | 驗證 Data repo 的單一 root commit、manifest、檔案大小與 SHA-256。 |
+| `npm run test:data-repository` | 以本機 bare repo 驗證 Data repo 空白初始化、單一快照、排除規則、hydrate 與守恆阻擋。 |
 | `npm run audit:pages-payload` | 以 baseline 模式稽核 `dist/` 與 GitHub Pages payload 體積，只在超過硬上限時失敗，可用 `-- --write-history <path>` 記錄趨勢。 |
 | `npm run audit:pages-payload:strict` | 以與 GitHub Actions 相同的 strict 模式稽核 payload，任一項超過 target 就失敗；workflow 會寫入 `data/pages_payload_history.jsonl`。 |
 | `npm run audit:mixed-report-dispatch` | 統計 mixed report 分派版本在已知歷史 report 的覆蓋率與歷史補查游標進度；GitHub Actions 會輸出到 Step Summary。 |
@@ -131,7 +136,7 @@ README 只保留入口與最小操作脈絡，完整說明請依主題閱讀：
 | `npm run check` | 執行 Python 與 Node.js 語法檢查。 |
 | `npm test` | 執行資料管線、GCD、資料建置與前端資料契約測試。 |
 | `npm run build` | 完整建置靜態網站到 `dist/`。 |
-| `npm run sync:data -- --dry-run` | 同步 GitHub Actions 與本機資料前的安全預覽。 |
+| `npm run sync:data -- --dry-run` | 比對本機受管理資料與 Data repo 快照，不寫入檔案；本機有未發布差異時會停止。 |
 | `npm run python -- --version` | 顯示 npm scripts 解析到的 Python 直譯器版本。 |
 | `npm run python:venv` | 使用可用的 Python 3.11+ 建立 `.venv`。 |
 | `npm run python:install` | 用專案 Python 直譯器安裝 `requirements.txt`。 |
@@ -145,7 +150,7 @@ README 只保留入口與最小操作脈絡，完整說明請依主題閱讀：
 - 若新增前端畫面需要新的統計欄位，請先擴充資料建置層，再讓 Vue 讀取新的靜態 JSON。
 - 成就規則與固定 ID 集中於 `src/utils/userProfileBadges.js`；`scripts/build_user_data.mjs` 依完整角色成績與建置中的完整同場玩家集合聚合獲得人數，將成就目錄及 `holder_count`／`holder_percentage` 寫入 `public/data/users/index.json`。占比分母固定使用同一索引的 `total_users`，前端不得重新掃描所有玩家檔案計算。
 - Honey B. Lovely 粉絲榜來源在 `data/fun/honey_b_fans.json`，公開輸出在 `public/data/fun/honey_b_fans.json`；它是獨立趣味資料，不屬於正式 `data/rankings/` schema。公開榜單、粉絲報告與本期 `records` 只計近 7 天，歷史紀錄仍留在來源檔並輸出 `historical_*`、連續入榜週數與自台灣時間 2026-05-30 00:00:00 起算的活動 `team_rankings`；正式 workflow 會執行 `npm run fetch:honey-fans` 抓新資料，再用 `npm run build:honey-fans` 整理公開 JSON。
-- `data/state.json` 保存掃描游標與執行狀態；跨輪 `checked_reports` 依副本緊湊保存於 `data/state/checked_reports/{encounter key}.json`。讀取資料管線時會自動還原既有 state 結構，避免為了通過 GitHub 100 MiB 單檔限制而刪除略過依據；正式 workflow 會在資料 commit 前執行 `npm run compact:state -- --max-bytes 104857600`，確認主檔與每個分片都符合限制。`processed_at_iso` 不再作為 report checkpoint 必要欄位，因為它可由 `processed_at` 毫秒時間重建。
+- `data/state.json` 保存掃描游標與執行狀態；跨輪 `checked_reports` 依副本緊湊保存於 `data/state/checked_reports/{encounter key}.json`。讀取資料管線時會自動還原既有 state 結構，避免為了通過 GitHub 100 MiB 單檔限制而刪除略過依據；正式 workflow 會在 Data snapshot 發布前執行 `npm run compact:state -- --max-bytes 104857600`，確認主檔與每個分片都符合限制。`processed_at_iso` 不再作為 report checkpoint 必要欄位，因為它可由 `processed_at` 毫秒時間重建。
 - 既有 report 的公開狀態巡檢以 report code 為單位：尚未巡檢時優先選較新的 report，之後依來源分片保存的 `report_status_checked_at` 輪替。FFLogs 回傳 `visibility=Private`、report 不存在或封存不可讀時，來源 report 會標記 hidden，正常公開產物不再列出該紀錄；完整追溯則保留於 hidden delta。
 - GitHub Actions 的 FFLogs 排行榜抓取步驟預設設定 `FFLOGS_MAX_RUNTIME_SECONDS=6000` 與 `FFLOGS_RUNTIME_GRACE_SECONDS=900`，可由 repo variables 覆寫。這讓 FFLogs 憑證全數進入長冷卻時，`fetch_fflogs.py` 能先保留 `active_scan` 續跑位置並正常進入後續資料建置與 commit，避免 GitHub-hosted runner 直接取消整個 job。
 - GitHub Actions 會先用 `FFLOGS_RECENT_GCD_BACKFILL_REPORT_LIMIT` 控制的非 stateful GCD 補洞追最新候選，再用 `FFLOGS_GCD_BACKFILL_REPORT_LIMIT` 控制的 stateful 回補從固定 cutoff 往舊追；前者處理 cutoff 後空洞，後者處理歷史追平。
@@ -159,11 +164,11 @@ README 只保留入口與最小操作脈絡，完整說明請依主題閱讀：
 - 截至 2026-08-06，20 個副本自 `2026-07-28T18:00:00+08:00` 起的 11,142 場既有 fight 已全數完成 v10 重驗。v11 只強制 M5S～M8S 缺少逐目標 profile 的場次補查；v13 則依幻朱雀的跨職業 reference version 與 ability 7／8 清單，挑出缺少現行證據的場次。其他副本已公開的 v8～v12 `valid`／`not_applicable` 結果維持相容，不會因全域版號升級整批下架。後續若同步進缺少對應子規則證據的舊場次，仍會逐批補查。舊版失敗結果、缺少結果、早於 v8 或未知版本仍採 fail-closed。現行版本若因執行期例外寫成 `integrity_measurement_failed`，後續批次會自動重試；可重現的缺少生命池或 NPC GUID 則不會每輪重查。人工使用 `--force` 時仍可全量稽核，`--report-code` 可重複指定報告進行定向複查；`--encounter-key` 與 `--recorded-at-or-after` 可將範圍限定為指定副本與含時區的 fight 紀錄時間。FFLogs 若回傳空的 report 節點會視為來源已無法讀取並標記 hidden，但暫時性 HTTP／連線錯誤不會誤判為永久隱藏。workflow 推送前也會比對起始規則指紋，若執行期間規則已更新就拒絕將舊 runner 的結果回寫。
 - 極澤蓮尼亞與幻朱雀除了完整繁中隊伍的角色傷害固定範圍外，若玩家來源列不完整或玩家合計低於下限，會分別改以已保存或查得的 FFLogs 敵方承傷檢查 `92,086,132–92,086,332` 與 `71,280,000–72,720,000`；前者避免 93.63m 或 80.96m 類資料因缺少一名玩家列而略過規則，後者避免 Limit Break 未歸屬玩家列時誤殺正常通關。
 - 絕伊甸的 `151,500,000` 單向上限同時檢查完整隊伍角色傷害與已量測的 FFLogs 敵方承傷。後者補足 Limit Break 等未歸屬玩家列來源，能隱藏「角色合計未超標、但實際敵方承傷超標」的 rDPS 異常戰鬥；未超過上限不能據此視為正常。
-- GitHub Actions checkout 只抓目前分支的淺層 partial clone；這個資料 repo 的完整歷史 pack 已非常大，正式更新與緊急部署都不應改回 `fetch-depth: 0`，避免 runner 在 checkout 階段耗盡磁碟。
+- GitHub Actions checkout 只抓主 repo 目前程式碼 commit，再由 Data repo 單一快照還原權威資料；正式更新與緊急部署都不應改回 `fetch-depth: 0`，避免重新下載遷移前的巨型資料歷史。
 - GitHub Actions 以 Node.js 24 執行前端與資料建置，官方 actions 也需使用支援 Node 24 的 major 版本；Pages 部署若遇到 `syncing_files` 後的暫時性失敗，workflow 會等待 60 秒後重試一次。
 - 正式 Pages artifact 只保留 `dist/data/users/index.json`，不保留個別玩家成績單 JSON、`dist/data/user-entry-details`、hidden 使用者差量 JSON、逐玩家靜態分享頁與 `dist/og/users` 玩家 OG 圖；前端仍由 `/user` route 與 users 專用 repo 讀取個別玩家成績單。這是為了讓高頻搜尋索引吃到主站 CDN 快取，同時避免 GitHub Pages 在 `syncing_files` 階段同步上萬個小檔時失敗。
 - users 專用 repo 只保存可由主 repo 重新建置的最新部署快照，不保存每輪 JSON 版本歷史。`scripts/sync_user_leaderboard_repo.mjs` 每次有內容變更時建立無 parent 的 root commit，再以 `force-with-lease` 確認遠端仍是本輪抓到的 SHA 後更新 `main`；既有累積式歷史即使資料未變也會收斂一次。若 GitHub 已回報 `Repository is above its size quota`，須先請 GitHub Support 協助解除配額鎖定並在快照 force push 後清除舊物件，或在確認資料可重建後重新建立同名空白 repo，再重跑 workflow；同步腳本支援空白 repo 初始化。
-- 主 repo 的自動化資料由 `scripts/commit_workflow_data_snapshot.mjs` 統一為 `chore(data): 更新自動化資料快照`。排行榜資料會先推送，確保後續 Pages payload 稽核失敗時仍保留 FFLogs 成果；稽核通過後再以明確舊 SHA 的 `force-with-lease` amend 同一筆快照。後續排程只改寫最新尾端快照；人工程式碼 commit 是新的安全分界，不會為了刪除更早資料 commit 而改寫程式碼 SHA。可以 `npm run test:workflow-data-snapshot` 在本機 bare repo 驗證快照收斂與競爭保護。
-- 若 GitHub Actions 與本機同時產生資料，先跑 `npm run sync:data -- --dry-run`；看到 `REMOVAL` 或 `CONFLICT` 時不可自動套用。只有在人工逐類稽核後，確認移除全部來自已修正的舊版 checkpoint 裁切邏輯，才可以 `--accept-protected-removals <dry-run 確切筆數>` 重跑。筆數必須完全相符，合併結果仍會復原 append-only 聯集，任何 `CONFLICT` 也仍會中止；不得猜測或寬鬆填寫筆數。
-- 同步同一份 report 的 `fights` 時，以 report 內穩定的 `fight_id` 辨識同一場戰鬥，只有舊資料缺值時才退回 `fight_hash`；`fight_hash` 仍專門用於跨 report 辨識同一場物理戰鬥。若改善合併規則後需要修復尚未推送的雙 parent 合併，可先用 `npm run sync:data -- --repair-merge-ref <merge SHA> --dry-run --accept-protected-removals <確切筆數>` 重做預檢，再移除 `--dry-run` 套用；修復後必須確認每份 report 沒有重複 `fight_id`，並重新執行資料守恆驗證。
+- Data repo 只保存 `data/`、`public/data/` 根層共用 JSON 與 `public/data/fun/`；可重建的排行榜薄索引、hidden delta、個別玩家檔與報告明細不重複保存。每次發布先驗證舊快照 manifest，再確認既有 report、`fight_id`、玩家身分與 checked-report checkpoint 沒有遺失，最後以明確舊 SHA 的 `force-with-lease` 更新單一 root commit。
+- workflow 在抓取前必須先 `data:hydrate`，完成資料建置與 state 壓縮後先 `data:publish` 保存 FFLogs 成果；Pages payload 稽核寫入趨勢後再發布一次同一類快照。主 repo 在該輪出現新 commit 時，舊 runner 必須停止，不得發布用舊程式碼產生的資料。
+- 本機工作開始前先跑 `npm run sync:data -- --dry-run`。若本機已有不同資料，hydrate 會停止而不覆寫；請先暫停 workflow、備份或發布本機成果，再從最新 Data snapshot 開始下一輪，不能用 `--force` 掩蓋未知差異。
 - 文件、公告、文案或不影響資料產物的靜態設定變更，只需做相符的語法／格式檢查與 `git diff` 檢視；只有影響使用者資料、前端資料契約或資料建置輸出時，才執行對應的資料建置與驗證。

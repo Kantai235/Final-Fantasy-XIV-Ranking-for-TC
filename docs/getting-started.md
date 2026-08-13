@@ -159,18 +159,20 @@ npm run audit:pages-payload
 
 正式部署會先把 `public/data/users` 與 `public/data/user-entry-details` 同步到 users 專用 repo，再清掉 `dist/` 內除了 `data/users/index.json` 之外的大型個別玩家成績單 JSON、逐玩家靜態分享頁與玩家 OG 圖；本機一般驗證仍保留 `public/data/users`，供資料契約、搜尋索引與必要時產生玩家分享頁使用。
 
-## 同步本機與 GitHub Actions 資料
+## 從 Data repo 載入權威資料
 
-如果 GitHub Actions 和本機爬蟲同時產生新資料，先用 dry-run 檢查：
+主 repo 不再保存 `data/`。開始本機爬蟲、回補、資料建置或完整網站建置前，先用 dry-run 檢查本機與 Data repo：
 
 ```bash
 npm run sync:data -- --dry-run
 ```
 
-確認沒有 `REMOVAL` 或 `CONFLICT` 後，再同步遠端並自動合併來源資料：
+本機沒有未發布差異後，再還原最新版權威快照：
 
 ```bash
 npm run sync:data
 ```
 
-這個工具會保護 append-only 資料：`data/state.json` 的 report 狀態、`data/rankings/*.json` 的 reports，以及 `config/encounters.json` 的 encounter key。合併成功後會重建 `public/data` 產物；若只想合併來源資料，可以加上 `--no-rebuild`。
+若本機已有不同的受管理資料，hydrate 會停止而不覆寫。請先暫停 workflow、備份或發布本機成果，再從最新 snapshot 開始下一輪；只有已確認可捨棄本機資料時才能人工使用 `npm run data:hydrate -- --force`。
+
+完成抓取、建置、`npm run validate:data` 與 `npm run compact:state -- --max-bytes 104857600` 後，可用 `npm run data:publish` 更新 Data repo。發布工具會驗證 manifest，確認既有 report、fight、player 與 checkpoint 未遺失，再以沒有 parent 的 root commit 和 `force-with-lease` 更新 `main`。

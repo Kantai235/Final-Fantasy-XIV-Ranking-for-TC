@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
   pages: write
   id-token: write
 
@@ -30,22 +30,20 @@ jobs:
         uses: actions/checkout@v7
         with:
           ref: ${{ github.ref_name }}
-          # 資料 repo 的歷史 pack 已累積到數 GiB；workflow 只需要目前分支內容與後續資料提交，
-          # 不需要完整 Git 歷史。使用淺層 partial clone 可避免 GitHub-hosted runner 在 checkout 階段耗盡磁碟。
-          # 自動化資料 commit 會以 amend 收斂為單一尾端快照；至少取得 parent commit，
-          # 避免 shallow HEAD 在 amend 時被 Git 當成 root 而意外切斷程式碼歷史。
-          fetch-depth: 2
+          # 主 repo 只保存程式碼；權威資料會由 Data repo 的單一快照還原。
+          # 只抓目前程式碼 commit，避免再下載遷移前的巨型資料歷史。
+          fetch-depth: 1
           filter: blob:none
 
       - name: 同步最新分支狀態
         run: |
-          git fetch --depth=2 origin "${{ github.ref_name }}:refs/remotes/origin/${{ github.ref_name }}"
+          git fetch --depth=1 origin "${{ github.ref_name }}:refs/remotes/origin/${{ github.ref_name }}"
           git reset --hard "origin/${{ github.ref_name }}"
 
       - name: 記錄戰鬥完整性規則版本
         run: |
           # 排程工作可能在規則更新前啟動、卻在更新後才準備推送資料。記住起始
-          # revision，提交前再和遠端比對，避免這類舊 runner 把過期 valid 結論回寫。
+          # revision，發布 Data snapshot 前再和遠端比對，避免舊 runner 把過期 valid 結論回寫。
           RULE_FILES=(
             scripts/fight_integrity.py
             scripts/fight_integrity_known_capacity.py
@@ -87,6 +85,12 @@ jobs:
 
       - name: 安裝 Node.js 依賴套件
         run: npm ci
+
+      - name: 從 Data repo 還原最新權威資料
+        env:
+          GIT_PAT: ${{ secrets.GIT_PAT }}
+          DATA_REPO: Kantai235/Final-Fantasy-XIV-Ranking-for-TC-Data
+        run: npm run data:hydrate
 
       - name: 同步 Cloudflare CDN 規則
         env:
@@ -289,13 +293,6 @@ jobs:
       - name: 驗證公開資料契約
         run: npm run validate:data
 
-      # users repo 只承載可重建的部署快照；同步腳本以單一 root commit 搭配
-      # force-with-lease 更新，避免每 30 分鐘累積整批 JSON 的 Git 歷史。
-      - name: 同步個人成績單資料到專用 repo（單一快照）
-        env:
-          GIT_PAT: ${{ secrets.GIT_PAT }}
-        run: node scripts/sync_user_leaderboard_repo.mjs
-
       - name: 寫入更新執行戳記
         run: |
           node <<'NODE'
@@ -328,6 +325,43 @@ jobs:
           fs.writeFileSync("data/update_status.json", `${JSON.stringify(status, null, 2)}\n`, "utf8");
           NODE
           npm run build:public-status
+
+      - name: 壓縮 state 並檢查 Git 單檔大小
+        run: |
+          # Data repo 仍受 GitHub 100 MiB 單檔限制；只壓縮可安全重建的 checkpoint
+          # 與 JSON 空白，不可刪除 checked_reports 或 report 歷史。
+          npm run compact:state -- --max-bytes 104857600
+
+      - name: 確認主專案未在本輪更新
+        run: |
+          git fetch --depth=1 origin "${{ github.ref_name }}:refs/remotes/origin/${{ github.ref_name }}"
+          if [ "$(git rev-parse HEAD)" != "$(git rev-parse "origin/${{ github.ref_name }}")" ]; then
+            echo "::error::主專案在本輪執行期間已有新 commit；拒絕讓舊 runner 發布資料。"
+            exit 1
+          fi
+          while IFS=' ' read -r file expected_revision; do
+            remote_revision="$(git rev-parse "origin/${{ github.ref_name }}:$file")"
+            if [ "$remote_revision" != "$expected_revision" ]; then
+              echo "::error::戰鬥完整性規則在本輪執行期間已更新；拒絕回寫過期完整性結果。"
+              exit 1
+            fi
+          done < "$RUNNER_TEMP/fight-integrity-rule-revisions.txt"
+
+      # 權威資料先發布，讓後續 Users 或 Pages 建置暫時失敗時仍不會遺失本輪 FFLogs 成果。
+      # Data repo 工具會驗證 manifest、append-only report/fight/player/checkpoint，並以
+      # 無 parent 的 root commit 搭配 force-with-lease 更新 main。
+      - name: 發布排行榜資料到 Data repo（單一快照）
+        env:
+          GIT_PAT: ${{ secrets.GIT_PAT }}
+          DATA_REPO: Kantai235/Final-Fantasy-XIV-Ranking-for-TC-Data
+        run: npm run data:publish
+
+      # users repo 只承載可重建的部署快照；同步腳本以單一 root commit 搭配
+      # force-with-lease 更新，避免每 30 分鐘累積整批 JSON 的 Git 歷史。
+      - name: 同步個人成績單資料到專用 repo（單一快照）
+        env:
+          GIT_PAT: ${{ secrets.GIT_PAT }}
+        run: node scripts/sync_user_leaderboard_repo.mjs
 
       - name: 設定 GitHub Pages
         uses: actions/configure-pages@v6
@@ -362,42 +396,6 @@ jobs:
           # 建置完成後刪 dist/data 的大型使用者 JSON；前端實際由專用 users repo 載入個人成績單。
           npm run prune:pages-user-data
 
-      - name: 壓縮 state 並檢查 Git 單檔大小
-        run: |
-          # data/state.json 會保留大量 checked_reports 快取，不能為了縮小檔案任意刪除。
-          # 提交前先移除可安全重建的 checkpoint 與 JSON 空白，避免 push 時才被 GitHub 單檔 100 MiB 限制擋下。
-          npm run compact:state -- --max-bytes 104857600
-
-      - name: 檢查排行榜資料是否有變動
-        id: data-changes
-        run: |
-          # build:user-data 與 build:honey-fans 會產生多個公開資料 JSON。這裡與下方 git add 必須使用同一批路徑，
-          # 否則 commit 後仍可能留下未暫存變更，導致後續 rebase 被 Git 拒絕。
-          DATA_PATHS=(data public/data public/data/fun)
-          if [ -n "$(git status --porcelain -- "${DATA_PATHS[@]}")" ]; then
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: 建立並 Push 自動化資料快照
-        if: steps.data-changes.outputs.changed == 'true'
-        run: |
-          DATA_PATHS=(data public/data public/data/fun)
-          git fetch --depth=2 origin "${{ github.ref_name }}:refs/remotes/origin/${{ github.ref_name }}"
-          while IFS=' ' read -r file expected_revision; do
-            remote_revision="$(git rev-parse "origin/${{ github.ref_name }}:$file")"
-            if [ "$remote_revision" != "$expected_revision" ]; then
-              echo "::error::戰鬥完整性規則在本輪執行期間已更新；拒絕回寫過期完整性結果。"
-              exit 1
-            fi
-          done < "$RUNNER_TEMP/fight-integrity-rule-revisions.txt"
-          # 每個人工程式碼 commit 後最多保留一筆資料快照。新排程會 amend 舊快照，
-          # 並用明確舊 SHA 的 force-with-lease 阻止競爭時覆寫新程式碼。
-          node scripts/commit_workflow_data_snapshot.mjs \
-            --branch "${{ github.ref_name }}" \
-            -- "${DATA_PATHS[@]}"
-
       - name: 更新 FFLogs 待收錄名單結果
         continue-on-error: true
         env:
@@ -419,11 +417,11 @@ jobs:
             --write-history data/pages_payload_history.jsonl \
             --history-limit "${PAGES_PAYLOAD_HISTORY_LIMIT:-200}"
 
-      - name: 將 payload 稽核收斂進自動化資料快照
-        run: |
-          node scripts/commit_workflow_data_snapshot.mjs \
-            --branch "${{ github.ref_name }}" \
-            -- data/pages_payload_history.jsonl
+      - name: 將 payload 稽核結果更新到 Data repo 快照
+        env:
+          GIT_PAT: ${{ secrets.GIT_PAT }}
+          DATA_REPO: Kantai235/Final-Fantasy-XIV-Ranking-for-TC-Data
+        run: npm run data:publish
 
       - name: 估算 Cloudflare 快取承載量
         run: npm run cloudflare:estimate | tee -a "$GITHUB_STEP_SUMMARY"

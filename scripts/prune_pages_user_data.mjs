@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -62,22 +62,23 @@ const userDataPaths = [
 let removedCount = 0;
 const usersDir = path.join(distDir, "data", "users");
 if (existsSync(usersDir)) {
-  let removedUserFileCount = 0;
-  for (const entry of readdirSync(usersDir, { withFileTypes: true })) {
-    if (entry.name === "index.json") {
-      continue;
-    }
-
-    const targetPath = path.join(usersDir, entry.name);
-    if (!isInsidePath(usersDir, targetPath)) {
-      throw new Error(`拒絕清理 users 目錄外的路徑：${targetPath}`);
-    }
-
-    rmSync(targetPath, { recursive: true, force: true });
-    removedUserFileCount += 1;
-  }
+  const entries = readdirSync(usersDir, { withFileTypes: true });
+  const removedUserFileCount = entries.filter((entry) => entry.name !== "index.json").length;
 
   if (removedUserFileCount > 0) {
+    // 逐檔 rmSync 在 Windows 本機完整 build 的上萬個玩家檔上極慢，且曾觸發 Node/libuv
+    // 非正常結束。先把唯一要保留的共用索引讀入記憶體，再以單一受限目錄操作重建，
+    // Linux workflow 與本機維護都可維持相同的 artifact 契約。
+    const indexPath = path.join(usersDir, "index.json");
+    const indexPayload = existsSync(indexPath) ? readFileSync(indexPath) : null;
+    if (!isInsidePath(distDir, usersDir)) {
+      throw new Error(`拒絕清理 artifact 目錄外的路徑：${usersDir}`);
+    }
+    rmSync(usersDir, { recursive: true, force: true });
+    if (indexPayload) {
+      mkdirSync(usersDir, { recursive: true });
+      writeFileSync(indexPath, indexPayload);
+    }
     removedCount += removedUserFileCount;
     console.log(`已從 Pages artifact 移除 ${removedUserFileCount} 個個別玩家成績單檔，保留 data/users/index.json。`);
   }

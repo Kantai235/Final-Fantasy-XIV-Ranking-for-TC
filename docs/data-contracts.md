@@ -1,6 +1,6 @@
 # 資料契約與歷史資料保護
 
-本文件記錄資料檔的判讀方式與不可破壞的歷史契約。更細的排行榜分片格式請看 [../data/rankings/README.md](../data/rankings/README.md)。
+本文件記錄資料檔的判讀方式與不可破壞的歷史契約。更細的排行榜分片格式請看 [Data repo 的 data/rankings/README.md](https://github.com/Kantai235/Final-Fantasy-XIV-Ranking-for-TC-Data/blob/main/data/rankings/README.md)。
 
 ## Append-Only 保護原則
 
@@ -10,13 +10,13 @@
 - `data/state.json` 的 report 狀態與掃描游標。
 - `data/rankings/*.json` 與 `data/rankings/*.reports/*.json` 的 report/fight/player 來源脈絡。
 
-禁止用硬刪、覆寫或改名的方式整理這些資料。若需要同步本機與 GitHub Actions 產物，先執行：
+權威來源位於 `Final-Fantasy-XIV-Ranking-for-TC-Data`，主 repo 不再追蹤這些高頻資料。禁止用硬刪、覆寫或改名的方式整理；開始本機工作前先執行：
 
 ```bash
 npm run sync:data -- --dry-run
 ```
 
-看到 `REMOVAL` 或 `CONFLICT` 時不可自動套用。
+若本機已有不同資料，dry-run 會停止且不寫入。必須先暫停 workflow、保存本機成果，才能以最新 Data snapshot 開始下一輪；不得用 `--force` 掩蓋未知差異。`npm run data:publish` 會逐一確認既有 report、`fight_id`、玩家身分與 checked-report checkpoint 未遺失，再建立沒有 parent 的 root commit，並以 `force-with-lease` 阻止競爭覆寫。
 
 `data/state.json.support_metrics_report_backfill` 是坦補支援統計由新往舊回補的獨立 checkpoint。`cutoff_sort_time` 固定為繁中服 7.2 開放時間，`cursor_sort_time`／`cursor_report_code` 表示已選批次中最舊的 report，`retry_report_codes` 保留暫時失敗項目；`calculation_version` 或 `mitigation_rules_version` 改變時，游標會安全回到固定切點。這些欄位不得用一般掃描 state 覆蓋或在尚未完成時刪除。
 
@@ -101,7 +101,7 @@ Honey B. Lovely 粉絲榜來源在 `data/fun/honey_b_fans.json`，公開檔在 `
 - `duplicate_count > 1` 的個人成績是否仍保留 `report_variants` / `source_reports`，或能透過 `report_detail_path` / `report_detail_id` 在個人成績報告細節檔找回來源。
 - `public/data/all` 的 hidden delta 是否能與一般公開資料合併，避免額外檢視流程缺漏公開資料或 hidden 來源。
 
-`scripts/audit_pages_payload.mjs` 則量測 `dist/`、`dist/data/`、`dist/data/all/`、`dist/data/users/`、`dist/user/` 與 `dist/og/`。正式 GitHub Actions 會先用 `npm run prune:pages-user-data` 清掉 `dist/data/users` 內除了 `index.json` 之外的大型使用者 JSON、逐玩家靜態分享頁與 `dist/og/users`，再執行 `npm run audit:pages-payload:strict -- --write-history data/pages_payload_history.jsonl`；若本機完整 build 或緊急流程未清掉 users 資料，`dist/data/users/` 與 `dist/user/` 預算仍會提供體積警訊。任一項超過 target 會在上傳 Pages artifact 前失敗；正式 workflow 會先提交並推送本輪 `data` / `public/data` 更新，再執行 payload 稽核，避免體積超標時丟失 FFLogs 抓取成果。這筆資料推送是帶版本標記的尾端滾動快照；稽核通過後若歷史 JSONL 有變更，會以 `force-with-lease` amend 同一快照，不再追加第二筆 commit。本機若只想做 baseline 觀察，可手動執行 `npm run audit:pages-payload`；需要比較趨勢時再加 `-- --write-history /tmp/pages_payload_history.jsonl`。
+`scripts/audit_pages_payload.mjs` 則量測 `dist/`、`dist/data/`、`dist/data/all/`、`dist/data/users/`、`dist/user/` 與 `dist/og/`。正式 GitHub Actions 會先用 `npm run prune:pages-user-data` 清掉 `dist/data/users` 內除了 `index.json` 之外的大型使用者 JSON、逐玩家靜態分享頁與 `dist/og/users`，再執行 `npm run audit:pages-payload:strict -- --write-history data/pages_payload_history.jsonl`；若本機完整 build 或緊急流程未清掉 users 資料，`dist/data/users/` 與 `dist/user/` 預算仍會提供體積警訊。任一項超過 target 會在上傳 Pages artifact 前失敗；正式 workflow 會先發布本輪 Data root snapshot，避免體積超標時丟失 FFLogs 抓取成果。稽核通過且歷史 JSONL 有變更後，workflow 會再次以 `force-with-lease` 發布新的單一 root snapshot。本機若只想做 baseline 觀察，可手動執行 `npm run audit:pages-payload`；需要比較趨勢時再加 `-- --write-history /tmp/pages_payload_history.jsonl`。
 
 目前 strict target 將 hidden delta 從 120 MiB 收斂為 90 MiB；`dist/data/users` target 保留為 530 MiB，主要用來保護本機完整 build、緊急排查或未來流程異動時的體積上限。正式主站 artifact 的這一列通常只應剩下 `data/users/index.json`，因為個別玩家成績單 JSON 已移到 users 專用 repo；逐玩家靜態分享頁與玩家 OG 圖也不應保留在正式 artifact，避免 GitHub Pages 同步大量小檔失敗。
 

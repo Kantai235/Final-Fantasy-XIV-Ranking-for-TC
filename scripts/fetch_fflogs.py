@@ -532,7 +532,7 @@ def 檢查執行時間預算(動作: str, *, 額外需要秒數: float = 0.0) ->
         return
 
     # GitHub-hosted runner 會在 6 小時硬上限直接取消整個 job；若 Python 還在 FFLogs
-    # 限流冷卻或深層 report 處理中，後續 build/user-data 與資料 commit 都會被跳過。
+    # 限流冷卻或深層 report 處理中，後續 build/user-data 與 Data snapshot 發布都會被跳過。
     # 因此 workflow 會給 fetch_fflogs.py 一個較短的時間預算；時間不足時主動停在可續跑
     # 的 active_scan checkpoint，保留已落地的 report 與排行榜批次，讓下一輪接著補。
     需要保留秒數 = 執行收尾保留秒數 + max(0.0, 額外需要秒數)

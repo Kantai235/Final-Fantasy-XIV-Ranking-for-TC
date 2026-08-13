@@ -34,7 +34,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           ref: ${{ github.ref_name }}
-          # 緊急部署也只需要目前分支的靜態產物；避免完整歷史 checkout 在大型資料 repo 上耗盡 runner 磁碟。
+          # 緊急部署只需要目前程式碼；權威資料會另由 Data repo 快照載入。
           fetch-depth: 1
           filter: blob:none
 
@@ -63,6 +63,11 @@ jobs:
       - name: 安裝 Node.js 依賴套件
         run: npm ci
 
+      - name: 從 Data repo 還原最新權威資料
+        env:
+          DATA_REPO: Kantai235/Final-Fantasy-XIV-Ranking-for-TC-Data
+        run: npm run data:hydrate
+
       - name: 設定 GitHub Pages
         uses: actions/configure-pages@v6
 
@@ -79,7 +84,7 @@ jobs:
           # 緊急部署同樣避免把上萬個逐玩家分享頁與玩家 OG PNG 放進 Pages artifact。
           FFXIV_TC_BUILD_USER_SHARE_PAGES: ${{ vars.FFXIV_TC_BUILD_USER_SHARE_PAGES || 'false' }}
         run: |
-          # 緊急部署只使用 repo 內已提交的 data/ 與 public/data/ 產物。
+          # 緊急部署只使用剛由 Data repo 驗證並還原的 data/ 與 public/data/ 快照。
           # npm run build 會執行 --rebuild-public、build:user-data 與 validate:data，
           # 但不會呼叫 FFLogs API、推進 state 掃描點或提交任何資料更新。
           npm run build

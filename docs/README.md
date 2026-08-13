@@ -7,7 +7,7 @@
 - 要處理分享連結、OG 或部署：讀 [routing-and-seo.md](routing-and-seo.md)、[deployment.md](deployment.md) 與 [cloudflare-github-pages.md](cloudflare-github-pages.md)。
 - 要設定 FFLogs report 即時可讀狀態查詢：讀 [../apps-script/fflogs-report-status/README.md](../apps-script/fflogs-report-status/README.md)。
 - 要改設定檔：搭配 [../config/README.md](../config/README.md)。
-- 要追查排行榜來源資料：搭配 [../data/rankings/README.md](../data/rankings/README.md)。
+- 要追查排行榜來源資料：搭配 [Data repo 的 data/rankings/README.md](https://github.com/Kantai235/Final-Fantasy-XIV-Ranking-for-TC-Data/blob/main/data/rankings/README.md)。
 
 ## 文件分類
 

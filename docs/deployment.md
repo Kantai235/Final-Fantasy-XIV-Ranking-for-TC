@@ -33,36 +33,31 @@ npm run build
 
 工作流程摘要：
 
-1. 以淺層 partial clone checkout 並同步最新分支狀態；workflow 不抓完整 Git 歷史，避免大型資料 repo 的歷史 pack 耗盡 GitHub-hosted runner 磁碟。
-2. 設定 Python 3.11 與 Node.js 24。
-3. 安裝 Python 與 Node.js 依賴。
-4. 若有 Cloudflare secrets，先同步 Cloudflare Cache Rules、Facebook 分享爬蟲例外與 Rate Limiting Rules。
-5. 先執行 `npm run read:fflogs-refresh-queue` 讀取 Google Sheet 待收錄名單，將 `queued/pending/retry` 的 report code 合併到 `FFLOGS_RETRY_REPORT_CODES`，再使用 GitHub Secrets 中的 FFLogs 憑證執行 `python scripts/fetch_fflogs.py`，掃描全部地區候選 report，近期 24 小時完整重查、24-72 小時只選未知 report，並以每輪 1 個 168 小時視窗、最多 600 份深層候選且同一 zone/difficulty 群組最多 150 份的歷史補查檢查更舊時間窗是否有新的公開 logs 可抓取，同時對新落地 fight 即時計算 GCD 覆蓋率。正式排程設定可續跑的抓取時間預算，避免 FFLogs 憑證長冷卻時整個 job 被 runner 取消。
-6. 執行 `npm run fetch:honey-fans`，以同一組 FFLogs 憑證抓取 Honey B. Lovely 粉絲榜趣味資料；workflow 預設掃近 3 天，並從歷史游標最多檢查 200 場未記錄戰鬥。
-7. 執行 `python scripts/backfill_gcd_coverage.py --report-limit 25`，不套用 stateful cutoff，先補最新候選中缺漏或需要新版重算的 GCD，避免 cutoff 之後的既有 report 長期留空。
-8. 執行 `python scripts/backfill_gcd_coverage.py --stateful-report-backfill --report-limit 50`，從固定切點往更舊 report 逐輪追平既有 GCD。
-9. 執行 `python scripts/fetch_fflogs.py --split-rankings`，將完整排行榜資料拆分成適合 Git 追蹤的檔案。
-10. 執行 `npm run build:user-data`，產生個人成績單、個人成績報告細節、全服統計、近期動態、隊伍榜、伺服器對比、排行榜薄索引、Logs 狀態索引與公開更新狀態。
-11. 執行 `npm run build:honey-fans`，由 `data/fun/honey_b_fans.json` 重建 `public/data/fun/honey_b_fans.json`。
-12. 執行 `npm run validate:data`，在個人成績單還保留於 `public/data/` 時驗證公開資料契約、來源分片、使用者索引、報告細節、隊伍榜、伺服器對比與 Honey B. Lovely 粉絲榜。
-13. 執行 `node scripts/sync_user_leaderboard_repo.mjs`，把 `public/data/users`、`public/data/user-entry-details` 與 hidden delta 的個人成績單同步到 `Final-Fantasy-XIV-Ranking-for-TC-Users`。這一步只抓專用 users repo 的最新 commit/tree 與上一版 `data/sync-manifest.json`，再用 Git index 直接重建下一個 commit，避免完整 clone 舊資料歷史造成 GitHub runner 磁碟不足。
-14. 由 workflow 寫入 `data/update_status.json`，記錄本輪 GitHub Actions run、資料更新時間與總量摘要，並執行 `npm run build:public-status` 同步刷新 `public/data/update_status.json`。
-15. 執行 `npx vite build` 與 `npm run postbuild`，完成 Vite 建置、route fallback、低基數 SEO/OG 靜態頁、OG PNG、`sitemap.xml`、`robots.txt` 與 `404.html`，並把建置秒數寫入後續 payload 稽核。正式 workflow 會用 `FFXIV_TC_BUILD_USER_SHARE_PAGES=false` 關閉逐玩家靜態分享頁與玩家 OG 圖，避免 Pages 同步上萬個小檔時在 `syncing_files` 階段失敗。
-16. 執行 `npm run prune:pages-user-data`，移除 `dist/data/users` 內除了 `index.json` 之外的個別玩家檔、`dist/data/user-entry-details`、`dist/data/all/users`、`dist/data/all/user-entry-details`，並在本機完整 build 或流程異動曾產生逐玩家靜態分享頁時，一併移除 `dist/user/{玩家}`、`dist/og/users` 與 sitemap 中的玩家細項 URL；前端正式讀取個人成績單時，索引走主站 `/data/users/index.json`，個別玩家主檔與報告細節走 users 專用 repo。
-17. 壓縮 `data/state.json`，並檢查 Git 單檔大小是否仍低於 100 MiB。
-18. 若 `data`、`public/data/*.json` 或 `public/data/fun/*.json` 有變更，先由 `scripts/commit_workflow_data_snapshot.mjs` 建立或 amend 帶 `Workflow-Data-Snapshot: v1` 標記的尾端滾動快照，再以明確舊 SHA 的 `force-with-lease` 推送，避免後續 artifact 體積超標時白白丟失本輪 FFLogs 抓取成果。
-19. 執行 `npm run complete:fflogs-refresh-queue`，依本輪重新產生並已提交的公開狀態索引、`data/rankings/*.json` 的 `source_reports` 與公開 report 分片，將 Google Sheet 待收錄名單標記為已收錄 `done`；若 state checkpoint 已確認無支援副本通關或無繁中服玩家，則改寫為對應終止狀態與原因。
-20. 執行 `npm run audit:pages-payload:strict -- --write-history data/pages_payload_history.jsonl`，讓 artifact 體積超過 target 時在上傳 Pages artifact 前失敗，並在 GitHub Step Summary 顯示本輪與上一筆歷史差異。
-21. 若 `data/pages_payload_history.jsonl` 有變更，amend 第 18 步的同一筆自動化資料快照再推送；不另外追加 payload commit。下一輪排程若 HEAD 仍是這筆受管理快照，會繼續 amend 取代它；如果 HEAD 已是人工程式碼 commit，則以該 SHA 為安全分界建立新快照。
-22. 執行 `npm run cloudflare:estimate` 與 `npm run cloudflare:purge -- --dry-run --summary`，在 Step Summary 顯示 HIT ratio 承載估算與 scoped purge 範圍。
-23. 上傳 `dist/` 並部署到 GitHub Pages；若 Pages 服務端在 `syncing_files` 階段回報暫時性失敗，workflow 會等待 60 秒後重試一次。
-24. 若有 Cloudflare purge token，部署成功後清除會變動的 CDN 快取。
+1. 以 `fetch-depth: 1` 的 partial clone checkout 主 repo 目前程式碼；不下載遷移前的資料歷史。
+2. 設定 Python 3.11、Node.js 24 並安裝依賴。
+3. 執行 `npm run data:hydrate`，從 `Final-Fantasy-XIV-Ranking-for-TC-Data` 驗證 manifest 與檔案 SHA-256 後，還原 `data/` 及主站共用 `public/data/`。
+4. 若有 Cloudflare secrets，先同步 Cache Rules、Facebook 分享爬蟲例外與 Rate Limiting Rules。
+5. 讀取 Google Sheet 待收錄名單，再用 FFLogs 憑證執行近期、延遲與歷史掃描；新落地 fight 同時計算 GCD，並小批量回補坦補支援統計、既有 GCD 與戰鬥完整性。
+6. 抓取 Honey B. Lovely 趣味榜資料，並執行 `python scripts/fetch_fflogs.py --split-rankings` 整理排行榜來源分片。
+7. 執行 `npm run build:user-data`、`npm run build:honey-fans` 與 `npm run validate:data`，產生並驗證個人成績、全服統計、排行榜薄索引、Logs 狀態索引及公開資料。
+8. 寫入 `data/update_status.json` 並重建 `public/data/update_status.json`。
+9. 執行 `npm run compact:state -- --max-bytes 104857600`，只壓縮可重建欄位與 JSON 空白，保留完整 checkpoint。
+10. 重新讀取主 repo 遠端 HEAD；若本輪期間已有新程式碼 commit，立即停止，避免舊 runner 發布資料。
+11. 執行 `npm run data:publish`。工具先驗證上一版 Data snapshot，再確認 report、`fight_id`、玩家與 checkpoint 沒有遺失，最後建立沒有 parent 的 root commit，並以 `force-with-lease` 更新 Data repo `main`。這一步在 Pages 建置前完成，後續失敗也不會遺失 FFLogs 成果。
+12. 執行 `scripts/sync_user_leaderboard_repo.mjs`，將個別玩家成績、報告明細與 hidden 使用者差量以單一 root snapshot 更新到 Users repo。
+13. 執行 Vite/postbuild，產生主站、route fallback、低基數 SEO/OG 頁、`sitemap.xml`、`robots.txt` 與 `404.html`；正式流程不產生逐玩家分享頁與玩家 OG 圖。
+14. 執行 `npm run prune:pages-user-data`，讓 Pages artifact 只保留 `data/users/index.json`，個別玩家 JSON 仍由 Users repo 提供。
+15. 更新 Google Sheet 待收錄名單結果。
+16. 執行 Pages payload strict 稽核並寫入 `data/pages_payload_history.jsonl`，再執行第二次 `data:publish`，把趨勢納入新的 Data root snapshot。
+17. 執行 Cloudflare 容量估算與 purge dry-run 摘要。
+18. 上傳 `dist/` 並部署到 GitHub Pages；`syncing_files` 暫時失敗時等待 60 秒後重試一次。
+19. Pages 部署成功後清除會變動的 Cloudflare CDN 快取。
 
 ## 緊急部署
 
-`.github/workflows/emergency_deploy.yml` 是手動觸發的緊急部署通道，用於前端 hotfix、空白頁修復、SEO/OG 產物修正或 Cloudflare 快取異常。這條流程只使用目前分支已提交的 `data/` 與 `public/data/`，執行 `npm run build` 後上傳 `dist/` 並部署 GitHub Pages；它不會執行 `python scripts/fetch_fflogs.py` 的正式抓取流程、不會呼叫 FFLogs API、不會推進 `data/state.json` 掃描點，也不會 commit 新資料。
+`.github/workflows/emergency_deploy.yml` 是手動觸發的緊急部署通道，用於前端 hotfix、空白頁修復、SEO/OG 產物修正或 Cloudflare 快取異常。這條流程 checkout 主 repo 後先由 Data repo hydrate 最新權威快照，再執行 `npm run build`、上傳 `dist/` 並部署 GitHub Pages；它不會執行正式 FFLogs 抓取、不會推進掃描點，也不會發布新資料。
 
-緊急部署同樣只做淺層 partial clone，因為它只需要目前分支的靜態產物，不需要完整 Git 歷史。
+緊急部署同樣只做淺層 partial clone，因為主 repo 只需要目前程式碼，資料則來自 Data repo 的單一 root snapshot。
 
 手動執行方式：
 
@@ -73,7 +68,7 @@ npm run build
    - `scoped`：只清除本專案既有 prefix 與核心檔案，適合一般靜態頁或資料路徑更新。
 4. 執行後確認 workflow 的 `記錄 GitHub Pages 部署網址` 與 `清除 Cloudflare CDN 快取` 步驟完成。
 
-緊急部署仍會跑 `npm run build`，因此會重建公開排行榜、個人成績單、排行榜薄索引、Logs 狀態索引、Honey B. Lovely 粉絲榜公開 JSON、低基數 SEO/OG 靜態頁、`sitemap.xml`、`robots.txt` 與 `404.html`，並執行 `validate:data`。建置完成後同樣會執行 `npm run prune:pages-user-data`，讓主站 artifact 只保留 `data/users/index.json`，不重新帶回大型個別玩家成績單 JSON、逐玩家靜態分享頁或玩家 OG 圖。這是為了確保部署出去的靜態產物與 repo 內資料契約一致；差別在於它只重建已提交資料，不向 FFLogs 取得新資料，也不會同步 users 專用 repo。
+緊急部署仍會跑 `npm run build`，因此會從 Data snapshot 重建公開排行榜、個人成績單、排行榜薄索引、Logs 狀態索引、Honey B. Lovely 粉絲榜公開 JSON、低基數 SEO/OG 靜態頁、`sitemap.xml`、`robots.txt` 與 `404.html`，並執行 `validate:data`。建置完成後同樣會執行 `npm run prune:pages-user-data`，讓主站 artifact 只保留 `data/users/index.json`，不重新帶回大型個別玩家成績單 JSON、逐玩家靜態分享頁或玩家 OG 圖。它不向 FFLogs 取得新資料，也不會同步 Users 或發布 Data repo。
 
 ## GitHub Secrets 與 Variables
 
@@ -81,7 +76,7 @@ npm run build
 
 - `FFLOGS_CLIENT_ID`
 - `FFLOGS_CLIENT_SECRET`
-- `GIT_PAT`，需可推送 `Kantai235/Final-Fantasy-XIV-Ranking-for-TC-Users`，用來同步個人成績單專用 users repo。
+- `GIT_PAT`，需可推送 `Kantai235/Final-Fantasy-XIV-Ranking-for-TC-Data` 與 `Kantai235/Final-Fantasy-XIV-Ranking-for-TC-Users`，用來發布權威資料快照及同步個人成績單快照。
 
 可選 Secrets：
 
@@ -134,9 +129,9 @@ npm run build
 - `VITE_USER_DATA_BASE_URL`
 - `VITE_USER_INDEX_BASE_URL`
 
-workflow 預設掃全部地區候選 report，近期 24 小時完整重查，24-72 小時一般只選未知 report；UCoB 通關規則重判是例外，尚未寫入目前 `clear_rule_revision` 的既有 report 仍會重新深查。歷史補查則以每輪 1 個 168 小時視窗、最多 600 份深層候選且同一 zone/difficulty 群組最多 150 份的設定檢查更舊時間窗是否有新的公開 logs 可抓取，同時對新落地 fight 即時計算 GCD 覆蓋率。主排行榜更新的時間目標是落在 GitHub-hosted runner 6 小時硬上限內；正式排程預設 `FFLOGS_MAX_RUNTIME_SECONDS=6000` 與 `FFLOGS_RUNTIME_GRACE_SECONDS=900`，遇到長冷卻時會保留 `active_scan` 續跑位置並把後續資料建置與 commit 留在同一輪完成。Honey B. Lovely 粉絲榜另以 `HONEY_FANS_*` variables 控制近期掃描天數、每輪歷史檢查上限與查詢切窗，預設為近 3 天、每輪 200 場、24 小時切窗。
+workflow 預設掃全部地區候選 report，近期 24 小時完整重查，24-72 小時一般只選未知 report；UCoB 通關規則重判是例外，尚未寫入目前 `clear_rule_revision` 的既有 report 仍會重新深查。歷史補查則以每輪 1 個 168 小時視窗、最多 600 份深層候選且同一 zone/difficulty 群組最多 150 份的設定檢查更舊時間窗是否有新的公開 logs 可抓取，同時對新落地 fight 即時計算 GCD 覆蓋率。主排行榜更新的時間目標是落在 GitHub-hosted runner 6 小時硬上限內；正式排程預設 `FFLOGS_MAX_RUNTIME_SECONDS=6000` 與 `FFLOGS_RUNTIME_GRACE_SECONDS=900`，遇到長冷卻時會保留 `active_scan` 續跑位置，讓後續資料建置與 Data snapshot 發布仍能在同一輪完成。Honey B. Lovely 粉絲榜另以 `HONEY_FANS_*` variables 控制近期掃描天數、每輪歷史檢查上限與查詢切窗，預設為近 3 天、每輪 200 場、24 小時切窗。
 
-FFLogs 待收錄名單需要額外設定 Google Sheet 與 service account。Apps Script 會寫入 `FFLOGS_REFRESH_QUEUE_SPREADSHEET_ID` 指定的 Sheet；workflow 會用 `GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON` secret，或 `GOOGLE_SHEETS_CLIENT_EMAIL` + `GOOGLE_SHEETS_PRIVATE_KEY` secrets，透過 Google Sheets API 讀取 `status=queued|pending|retry` 的 report code。資料 commit/push 成功後，workflow 會再依公開狀態索引、`data/rankings/*.json` 的 `source_reports` 與公開 report 分片，回寫 `done`、無通關或無繁中服玩家的終止狀態，因此 service account 必須被分享為該 Sheet 的編輯者；Apps Script 執行者帳號也需要可編輯該 Sheet。
+FFLogs 待收錄名單需要額外設定 Google Sheet 與 service account。Apps Script 會寫入 `FFLOGS_REFRESH_QUEUE_SPREADSHEET_ID` 指定的 Sheet；workflow 會用 `GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON` secret，或 `GOOGLE_SHEETS_CLIENT_EMAIL` + `GOOGLE_SHEETS_PRIVATE_KEY` secrets，透過 Google Sheets API 讀取 `status=queued|pending|retry` 的 report code。Data snapshot 發布成功後，workflow 會再依公開狀態索引、`data/rankings/*.json` 的 `source_reports` 與公開 report 分片，回寫 `done`、無通關或無繁中服玩家的終止狀態，因此 service account 必須被分享為該 Sheet 的編輯者；Apps Script 執行者帳號也需要可編輯該 Sheet。
 
 ## 暫停的維護步驟
 

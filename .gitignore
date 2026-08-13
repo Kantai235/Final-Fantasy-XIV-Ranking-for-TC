@@ -26,6 +26,7 @@ npm-debug.log*
 yarn-debug.log*
 pnpm-debug.log*
 .codex/
+.data-repo/
 
 # Environment variables and secrets
 .env
@@ -42,19 +43,8 @@ Desktop.ini
 *.swo
 
 # Generated data
-public/data/all/
-public/data/ranking-details/
-public/data/rankings/
-public/data/ranking-tables/
-public/data/user-entry-details/
-public/data/users/
-
-# Local crawler state variants
-data/state.local.json
-data/state.*.local.json
-data/shallow_scan_cache/
-# 可由 GitHub Actions cache 復用的 FFLogs 最小測量資料；不屬於版本化排行榜。
-data/local-cache/
+/data/
+/public/data/
 
 # Atomic JSON write leftovers
 *.tmp

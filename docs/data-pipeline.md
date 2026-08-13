@@ -58,7 +58,7 @@
    ```
 
    `npm run build` 會先自動執行 `build:public-rankings`、`build:user-data`、`build:honey-fans` 與 `validate:data`，再由 Vite 建置靜態網站到 `dist/`。
-   GitHub Actions 會在 Vite 與 postbuild 完成後執行 `npm run prune:pages-user-data`，保留 `dist/data/users/index.json`，並移除 `dist/data/users` 內的個別玩家檔、`dist/data/user-entry-details`、hidden 使用者差量 JSON、逐玩家靜態分享頁與玩家 OG 圖。資料會先由 `scripts/commit_workflow_data_snapshot.mjs` 提交並推送尾端滾動快照；上傳 Pages artifact 前會再執行 `npm run audit:pages-payload:strict -- --write-history data/pages_payload_history.jsonl`，讓 `dist/`、`dist/data/`、`dist/data/all/`、必要時存在的 `dist/data/users/`、`dist/user/` 與 `dist/og/` 超過 target 時停止部署。稽核通過時會 amend 同一資料快照納入 payload 趨勢，不另外追加第二筆 commit。
+   GitHub Actions 會在 Vite 與 postbuild 完成後執行 `npm run prune:pages-user-data`，保留 `dist/data/users/index.json`，並移除 `dist/data/users` 內的個別玩家檔、`dist/data/user-entry-details`、hidden 使用者差量 JSON、逐玩家靜態分享頁與玩家 OG 圖。抓取前會由 `npm run data:hydrate` 載入 Data repo 權威快照；資料建置與 state 壓縮後先用 `npm run data:publish` 保存本輪 FFLogs 成果。上傳 Pages artifact 前會再執行 `npm run audit:pages-payload:strict -- --write-history data/pages_payload_history.jsonl`，讓 `dist/`、`dist/data/`、`dist/data/all/`、必要時存在的 `dist/data/users/`、`dist/user/` 與 `dist/og/` 超過 target 時停止部署；稽核通過後再發布一次 Data root snapshot 納入 payload 趨勢。
 
 ## Honey B. Lovely 粉絲榜
 
@@ -72,7 +72,7 @@ npm run fetch:honey-fans
 
 這個指令會呼叫 FFLogs API。若只要從既有來源檔重建公開 JSON，使用 `npm run build:honey-fans`，它不會推進正式排行榜掃描點，也不會改動 `data/rankings/` 或 `data/state.json`。
 
-正式 `.github/workflows/update_rankings.yml` 會在 `fetch_fflogs.py` 後執行 `npm run fetch:honey-fans`，預設參數為 `--recent-days 3 --history-limit 200 --recent-window-hours 24 --history-window-hours 24`；對應的 GitHub Variables 是 `HONEY_FANS_RECENT_DAYS`、`HONEY_FANS_HISTORY_LIMIT`、`HONEY_FANS_RECENT_WINDOW_HOURS` 與 `HONEY_FANS_HISTORY_WINDOW_HOURS`。資料建置階段會再執行 `npm run build:honey-fans`，並把 `data/fun/honey_b_fans.json` 與 `public/data/fun/honey_b_fans.json` 一起納入自動資料提交。
+正式 `.github/workflows/update_rankings.yml` 會在 `fetch_fflogs.py` 後執行 `npm run fetch:honey-fans`，預設參數為 `--recent-days 3 --history-limit 200 --recent-window-hours 24 --history-window-hours 24`；對應的 GitHub Variables 是 `HONEY_FANS_RECENT_DAYS`、`HONEY_FANS_HISTORY_LIMIT`、`HONEY_FANS_RECENT_WINDOW_HOURS` 與 `HONEY_FANS_HISTORY_WINDOW_HOURS`。資料建置階段會再執行 `npm run build:honey-fans`，並把 `data/fun/honey_b_fans.json` 與 `public/data/fun/honey_b_fans.json` 一起納入 Data repo snapshot。
 
 ## FFLogs 掃描策略
 
@@ -271,4 +271,4 @@ npm run compact:state -- --dry-run
 npm run compact:state
 ```
 
-這個指令只移除和 `checked_reports` 完全相同的 `processed_reports` 重複紀錄，以及可由 `processed_at` 毫秒時間重建的 checkpoint `processed_at_iso` 鏡像欄位，並把狀態檔改寫為無縮排 JSON；`checked_reports` 仍保留 report code、status 與排序時間，避免破壞掃描略過依據。GitHub Actions 會在資料 commit 前執行 `npm run compact:state -- --max-bytes 104857600`，若壓縮後仍超過 GitHub 100 MiB 單檔限制，就會在 commit/push 前提早失敗並提示需要調整 state 保留策略。
+這個指令只移除和 `checked_reports` 完全相同的 `processed_reports` 重複紀錄，以及可由 `processed_at` 毫秒時間重建的 checkpoint `processed_at_iso` 鏡像欄位，並把狀態檔改寫為無縮排 JSON；`checked_reports` 仍保留 report code、status 與排序時間，避免破壞掃描略過依據。GitHub Actions 會在 Data snapshot 發布前執行 `npm run compact:state -- --max-bytes 104857600`，若壓縮後仍超過 GitHub 100 MiB 單檔限制，就會在發布前提早失敗並提示需要調整 state 保留策略。
