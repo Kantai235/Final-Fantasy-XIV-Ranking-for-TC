@@ -9,6 +9,7 @@ const 預設Repo = "Kantai235/Final-Fantasy-XIV-Ranking-for-TC-Data";
 const 預設分支 = "main";
 const Manifest檔名 = "snapshot-manifest.json";
 const Repo說明檔名 = "README.md";
+const Git屬性檔名 = ".gitattributes";
 const Git緩衝上限 = 512 * 1024 * 1024;
 const GitHub單檔上限 = 100 * 1024 * 1024;
 
@@ -20,12 +21,13 @@ class DataRepoError extends Error {
 }
 
 function 顯示用法() {
-  console.log(`Usage: node scripts/data_repository.mjs <hydrate|publish|verify> [options]
+  console.log(`Usage: node scripts/data_repository.mjs <hydrate|publish|verify|repair-eol> [options]
 
 Commands:
   hydrate  從 Data repo 還原 data/ 與共用 public/data/ 到專案工作目錄。
   publish  將目前資料發布為 Data repo 的單一 root snapshot。
   verify   驗證 Data repo manifest、檔案雜湊與單一 root commit。
+  repair-eol  僅修復 manifest 可驗證的 LF 換行轉換損壞。
 
 Options:
   --repo-dir <path>     Data repo 本機工作目錄，預設為 .data-repo。
@@ -43,7 +45,7 @@ function 解析參數(argv) {
     顯示用法();
     process.exit(command ? 0 : 1);
   }
-  if (!new Set(["hydrate", "publish", "verify"]).has(command)) {
+  if (!new Set(["hydrate", "publish", "verify", "repair-eol"]).has(command)) {
     throw new DataRepoError(`未知指令：${command}`);
   }
 
@@ -370,7 +372,11 @@ function 寫入暫存文字(repoDir, name, content) {
 
 function 將檔案寫入Index(repoDir, files) {
   for (const file of files) {
-    const oid = Git輸出(repoDir, ["hash-object", "-w", file.absolutePath]);
+    // Manifest 的 SHA-256 是來源檔案原始位元組的摘要。Git 若依上層
+    // .gitattributes 將 CRLF 正規化為 LF，commit 就會與剛建立的 manifest 不同。
+    // 因此使用 --no-filters 明確以原始位元組寫入 blob，不將資料格式
+    // 偶然綁定在 runner 的作業系統與 Git 換行設定。
+    const oid = Git輸出(repoDir, ["hash-object", "-w", "--no-filters", "--", file.absolutePath]);
     Git(repoDir, ["update-index", "--add", "--cacheinfo", `100644,${oid},${file.path}`]);
   }
 }
@@ -381,14 +387,20 @@ function 建立RootCommit(repoDir, branch, files, manifest) {
 
   const tempPaths = [];
   try {
+    const attributes = 寫入暫存文字(
+      repoDir,
+      Git屬性檔名,
+      "# Manifest 以來源檔案的原始位元組計算 SHA-256；禁止 Git 轉換換行。\n* -text\n",
+    );
     const readme = 寫入暫存文字(repoDir, Repo說明檔名, Repo說明內容());
     const manifestFile = 寫入暫存文字(
       repoDir,
       Manifest檔名,
       `${JSON.stringify(manifest, null, 2)}\n`,
     );
-    tempPaths.push(readme.tempDir, manifestFile.tempDir);
+    tempPaths.push(attributes.tempDir, readme.tempDir, manifestFile.tempDir);
     將檔案寫入Index(repoDir, [
+      { absolutePath: attributes.filePath, path: Git屬性檔名 },
       { absolutePath: readme.filePath, path: Repo說明檔名 },
       { absolutePath: manifestFile.filePath, path: Manifest檔名 },
     ]);
@@ -445,6 +457,28 @@ function 驗證Manifest結構(manifest) {
   }
 }
 
+function 驗證快照追蹤路徑(repoDir, commit, manifest) {
+  const tracked = Git輸出(repoDir, ["ls-tree", "-r", "--name-only", commit])
+    .split(/\r?\n/u)
+    .filter(Boolean);
+  // .gitattributes 是 2026-08 後新快照用來鎖定原始位元組的保護檔。
+  // 舊快照尚未含有這個檔案，驗證時必須維持向後相容。
+  const requiredTracked = new Set([
+    Repo說明檔名,
+    Manifest檔名,
+    ...manifest.files.map((file) => file.path),
+  ]);
+  const allowedTracked = new Set([...requiredTracked, Git屬性檔名]);
+  const unexpected = tracked.filter((file) => !allowedTracked.has(file));
+  const missing = [...requiredTracked].filter((file) => !tracked.includes(file));
+  if (unexpected.length > 0 || missing.length > 0) {
+    throw new DataRepoError("Data repo 快照的追蹤檔案與 manifest 不一致。", [
+      ...unexpected.slice(0, 20).map((file) => `未列於 manifest：${file}`),
+      ...missing.slice(0, 20).map((file) => `缺少追蹤檔案：${file}`),
+    ]);
+  }
+}
+
 function 驗證Repo快照(repoDir, branch, commit) {
   const manifest = 從Commit讀取Json(repoDir, commit, Manifest檔名);
   驗證Manifest結構(manifest);
@@ -475,18 +509,7 @@ function 驗證Repo快照(repoDir, branch, commit) {
   if (signature !== manifest.content_signature) {
     throw new DataRepoError("Data repo manifest 的整體內容簽章不一致。");
   }
-  const tracked = Git輸出(repoDir, ["ls-tree", "-r", "--name-only", commit])
-    .split(/\r?\n/u)
-    .filter(Boolean);
-  const expectedTracked = new Set([
-    Repo說明檔名,
-    Manifest檔名,
-    ...manifest.files.map((file) => file.path),
-  ]);
-  const unexpected = tracked.filter((file) => !expectedTracked.has(file));
-  if (unexpected.length > 0 || tracked.length !== expectedTracked.size) {
-    throw new DataRepoError("Data repo 快照含有 manifest 以外的檔案。", unexpected.slice(0, 20));
-  }
+  驗證快照追蹤路徑(repoDir, commit, manifest);
 
   console.log(
     `Data repo 驗證通過：${branch}@${commit.slice(0, 12)}，${manifest.file_count.toLocaleString("en-US")} 個檔案，${(manifest.total_size_bytes / 1024 / 1024).toFixed(1)} MiB。`,
@@ -773,6 +796,110 @@ function 推送RootCommit(repoDir, branch, remoteHead, newCommit) {
   }
 }
 
+function 將Lf還原為CrLf(content) {
+  let bareLfCount = 0;
+  for (let index = 0; index < content.length; index += 1) {
+    if (content[index] === 0x0a && (index === 0 || content[index - 1] !== 0x0d)) {
+      bareLfCount += 1;
+    }
+  }
+  if (bareLfCount === 0) {
+    return null;
+  }
+
+  const restored = Buffer.allocUnsafe(content.length + bareLfCount);
+  let outputIndex = 0;
+  for (let index = 0; index < content.length; index += 1) {
+    if (content[index] === 0x0a && (index === 0 || content[index - 1] !== 0x0d)) {
+      restored[outputIndex++] = 0x0d;
+    }
+    restored[outputIndex++] = content[index];
+  }
+  return restored;
+}
+
+function 是否符合Manifest檔案(content, expected) {
+  return (
+    Buffer.isBuffer(content) &&
+    content.length === expected.size_bytes &&
+    crypto.createHash("sha256").update(content).digest("hex") === expected.sha256
+  );
+}
+
+function 執行RepairEol(options) {
+  初始化Repo(options.repoDir, options.branch);
+  const remoteHead = 取得遠端快照(options.repoDir, options.branch);
+  if (!remoteHead) {
+    throw new DataRepoError("Data repo 尚無可修復的 main snapshot。");
+  }
+
+  const manifest = 從Commit讀取Json(options.repoDir, remoteHead, Manifest檔名);
+  驗證Manifest結構(manifest);
+  const parents = Git輸出(options.repoDir, ["show", "-s", "--format=%P", remoteHead]);
+  if (parents) {
+    throw new DataRepoError("Data repo main 必須是沒有 parent 的單一 root snapshot。", [parents]);
+  }
+  驗證快照追蹤路徑(options.repoDir, remoteHead, manifest);
+  Git(options.repoDir, ["reset", "--hard", remoteHead]);
+
+  const files = [];
+  const repairedPaths = [];
+  for (const expected of manifest.files) {
+    const absolutePath = path.resolve(options.repoDir, expected.path);
+    if (!是否在目錄內(options.repoDir, absolutePath) || !fs.existsSync(absolutePath)) {
+      throw new DataRepoError(`Data repo 快照缺少檔案：${expected.path}`);
+    }
+
+    const content = fs.readFileSync(absolutePath);
+    if (!是否符合Manifest檔案(content, expected)) {
+      // 混合 LF / CRLF 的文字檔無法只從正規化後的 blob 推回哪些行原本帶 CR。
+      // 因此先嘗試專案工作目錄中的同路徑原始檔；它只有大小與 SHA-256
+      // 完全命中舊 manifest 時才可採用。若本機沒有原始檔，才嘗試單純
+      // LF -> CRLF 還原。兩者都無法驗證時立即停止，不把其他損壞誤當換行問題。
+      const sourceCandidatePath = path.resolve(options.sourceRoot, expected.path);
+      const sourceCandidate =
+        是否在目錄內(options.sourceRoot, sourceCandidatePath) &&
+        fs.existsSync(sourceCandidatePath)
+          ? fs.readFileSync(sourceCandidatePath)
+          : null;
+      const eolCandidate = 將Lf還原為CrLf(content);
+      const restored = 是否符合Manifest檔案(sourceCandidate, expected)
+        ? sourceCandidate
+        : eolCandidate;
+      if (!restored || !是否符合Manifest檔案(restored, expected)) {
+        throw new DataRepoError(
+          `Data repo 快照不是可安全修復的換行轉換：${expected.path}`,
+        );
+      }
+      fs.writeFileSync(absolutePath, restored);
+      repairedPaths.push(expected.path);
+    }
+
+    files.push({
+      path: expected.path,
+      absolutePath,
+      sizeBytes: expected.size_bytes,
+      sha256: expected.sha256,
+    });
+  }
+
+  if (repairedPaths.length === 0) {
+    驗證Repo快照(options.repoDir, options.branch, remoteHead);
+    console.log("Data repo 快照沒有需要修復的換行轉換。");
+    return;
+  }
+
+  確認必要來源(files);
+  const commit = 建立RootCommit(options.repoDir, options.branch, files, manifest);
+  驗證Repo快照(options.repoDir, options.branch, commit);
+  console.log(`Data repo 已安全還原 ${repairedPaths.length} 個檔案的 CRLF 原始位元組。`);
+  if (options.dryRun) {
+    console.log(`Data repo repair-eol dry run 已建立本機 root snapshot ${commit}，未推送。`);
+    return;
+  }
+  推送RootCommit(options.repoDir, options.branch, remoteHead, commit);
+}
+
 function 執行Publish(options) {
   const files = 收集受管理檔案(options.sourceRoot);
   確認必要來源(files);
@@ -780,7 +907,9 @@ function 執行Publish(options) {
 
   初始化Repo(options.repoDir, options.branch);
   const remoteHead = 取得遠端快照(options.repoDir, options.branch);
-  const previousManifest = 從Commit讀取Json(options.repoDir, remoteHead, Manifest檔名);
+  const previousManifest = remoteHead
+    ? 驗證Repo快照(options.repoDir, options.branch, remoteHead)
+    : null;
   const remoteParents = remoteHead
     ? Git輸出(options.repoDir, ["show", "-s", "--format=%P", remoteHead])
     : "";
@@ -794,7 +923,6 @@ function 執行Publish(options) {
   }
 
   if (remoteHead) {
-    驗證Repo快照(options.repoDir, options.branch, remoteHead);
     確認AppendOnly歷史(options.repoDir, options.sourceRoot);
   }
 
@@ -820,6 +948,8 @@ function main(options) {
     執行Hydrate(options);
   } else if (options.command === "publish") {
     執行Publish(options);
+  } else if (options.command === "repair-eol") {
+    執行RepairEol(options);
   } else {
     執行Verify(options);
   }

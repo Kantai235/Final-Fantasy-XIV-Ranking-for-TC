@@ -128,6 +128,7 @@ README 只保留入口與最小操作脈絡，完整說明請依主題閱讀：
 | `npm run data:hydrate` | 從 Data repo 驗證並還原權威 `data/` 與主站共用 `public/data/` 快照。 |
 | `npm run data:publish` | 驗證 append-only 歷史、建立單一 root snapshot，並以 `force-with-lease` 發布到 Data repo。 |
 | `npm run data:verify` | 驗證 Data repo 的單一 root commit、manifest、檔案大小與 SHA-256。 |
+| `npm run data:repair-eol` | 人工修復 Git 將 CRLF 錯誤正規化為 LF 造成的 Data snapshot；只有本機原始檔或換行還原結果的大小與 SHA-256 完全符合 manifest 才會推送。 |
 | `npm run test:data-repository` | 以本機 bare repo 驗證 Data repo 空白初始化、單一快照、排除規則、hydrate 與守恆阻擋。 |
 | `npm run audit:pages-payload` | 以 baseline 模式稽核 `dist/` 與 GitHub Pages payload 體積，只在超過硬上限時失敗，可用 `-- --write-history <path>` 記錄趨勢。 |
 | `npm run audit:pages-payload:strict` | 以與 GitHub Actions 相同的 strict 模式稽核 payload，任一項超過 target 就失敗；workflow 會寫入 `data/pages_payload_history.jsonl`。 |

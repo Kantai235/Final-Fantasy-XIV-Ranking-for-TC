@@ -66,6 +66,7 @@
     "data:hydrate": "node scripts/data_repository.mjs hydrate",
     "data:publish": "node scripts/data_repository.mjs publish",
     "data:verify": "node scripts/data_repository.mjs verify",
+    "data:repair-eol": "node scripts/data_repository.mjs repair-eol",
     "sync:data": "node scripts/data_repository.mjs hydrate",
     "prebuild": "npm run build:public-rankings && npm run build:user-data && npm run build:honey-fans && npm run validate:data",
     "build": "vite build",

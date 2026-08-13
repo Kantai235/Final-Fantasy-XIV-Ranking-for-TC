@@ -41,7 +41,13 @@ function 寫入(root, relativePath, content) {
 function 寫入必要Fixture(root, score = 100) {
   寫入(root, "data/state.json", JSON.stringify({ schema_version: 1, score }));
   寫入(root, "data/update_status.json", JSON.stringify({ schema_version: 1 }));
-  寫入(root, "data/pages_payload_history.jsonl", `${JSON.stringify({ bytes: score })}\n`);
+  // 實際 payload history 曾從 Windows 工作目錄以 CRLF 進入 Ubuntu workflow。
+  // fixture 固定保留 CRLF，避免測試只覆蓋單一作業系統的換行語意。
+  寫入(
+    root,
+    "data/pages_payload_history.jsonl",
+    `${JSON.stringify({ bytes: score, sample: 1 })}\r\n${JSON.stringify({ bytes: score, sample: 2 })}\r\n`,
+  );
   寫入(root, "data/rankings/test.json", JSON.stringify({ ranking_entries: [{ score }] }));
   寫入(
     root,
@@ -70,7 +76,9 @@ function 寫入必要Fixture(root, score = 100) {
       },
     }),
   );
-  寫入(root, "public/data/announcements.json", "[]");
+  // 混合換行無法只從被正規化的 LF blob 反推，修復時必須改用
+  // 大小與 SHA-256 同時命中 manifest 的原始來源檔。
+  寫入(root, "public/data/announcements.json", '[\r\n  {"id":"one"},\n  {"id":"two"}\r\n]\n');
   寫入(root, "public/data/encounters.json", "[]");
   寫入(root, "public/data/global_stats.json", JSON.stringify({ total_character_count: score }));
   寫入(root, "public/data/update_status.json", JSON.stringify({ schema_version: 1 }));
@@ -123,6 +131,8 @@ try {
   assert.equal(遠端Git(["rev-list", "--count", "main"]), "1", "Data repo 只能保留一筆可達提交");
   assert.equal(遠端Git(["show", "-s", "--format=%P", "main"]), "", "Data snapshot 不可有 parent");
   assert.equal(JSON.parse(遠端Git(["show", "main:data/state.json"])).score, 100);
+  assert.match(遠端Git(["show", "main:.gitattributes"]), /\* -text/u);
+  assert.match(遠端Git(["show", "main:data/pages_payload_history.jsonl"]), /\r\n/u);
   assert.equal(JSON.parse(遠端Git(["show", "main:public/data/global_stats.json"])).total_character_count, 100);
   assert.equal(
     執行("git", ["--git-dir", 遠端Repo, "cat-file", "-e", "main:data/local-cache/measurements.json"], {
@@ -150,6 +160,101 @@ try {
   assert.equal(遠端Git(["rev-list", "--count", "main"]), "1", "更新後仍只能有一筆可達提交");
   assert.equal(JSON.parse(遠端Git(["show", "main:data/state.json"])).score, 200);
 
+  // 模擬 Git clean filter 曾造成的快照：manifest 仍記錄 CRLF 原始位元組，
+  // commit blob 卻被正規化為 LF。repair-eol 只有在還原後大小與 SHA-256
+  // 完全命中 manifest 時才能重建 root snapshot。
+  const originalHistory = 遠端Git(["show", "main:data/pages_payload_history.jsonl"]);
+  const originalAnnouncements = 遠端Git(["show", "main:public/data/announcements.json"]);
+  const corruptHistoryPath = path.join(測試根目錄, "normalized-pages-payload-history.jsonl");
+  const corruptAnnouncementsPath = path.join(測試根目錄, "normalized-announcements.json");
+  fs.writeFileSync(corruptHistoryPath, `${originalHistory.replaceAll("\r\n", "\n")}\n`, "utf8");
+  fs.writeFileSync(corruptAnnouncementsPath, `${originalAnnouncements.replaceAll("\r\n", "\n")}\n`, "utf8");
+  const corruptIndexPath = path.join(測試根目錄, "corrupt-data-repo.index");
+  const corruptGitEnv = {
+    ...process.env,
+    GIT_INDEX_FILE: corruptIndexPath,
+    GIT_AUTHOR_NAME: "fixture",
+    GIT_AUTHOR_EMAIL: "fixture@example.invalid",
+    GIT_COMMITTER_NAME: "fixture",
+    GIT_COMMITTER_EMAIL: "fixture@example.invalid",
+  };
+  執行("git", ["--git-dir", 遠端Repo, "read-tree", "main"], { env: corruptGitEnv });
+  const corruptBlob = String(
+    執行(
+      "git",
+      [
+        "--git-dir",
+        遠端Repo,
+        "hash-object",
+        "-w",
+        "--no-filters",
+        "--",
+        corruptHistoryPath,
+      ],
+      { env: corruptGitEnv },
+    ).stdout || "",
+  ).trim();
+  const corruptAnnouncementsBlob = String(
+    執行(
+      "git",
+      [
+        "--git-dir",
+        遠端Repo,
+        "hash-object",
+        "-w",
+        "--no-filters",
+        "--",
+        corruptAnnouncementsPath,
+      ],
+      { env: corruptGitEnv },
+    ).stdout || "",
+  ).trim();
+  執行(
+    "git",
+    [
+      "--git-dir",
+      遠端Repo,
+      "update-index",
+      "--add",
+      "--cacheinfo",
+      `100644,${corruptBlob},data/pages_payload_history.jsonl`,
+    ],
+    { env: corruptGitEnv },
+  );
+  執行(
+    "git",
+    [
+      "--git-dir",
+      遠端Repo,
+      "update-index",
+      "--add",
+      "--cacheinfo",
+      `100644,${corruptAnnouncementsBlob},public/data/announcements.json`,
+    ],
+    { env: corruptGitEnv },
+  );
+  const corruptTree = String(
+    執行("git", ["--git-dir", 遠端Repo, "write-tree"], { env: corruptGitEnv }).stdout || "",
+  ).trim();
+  const corruptCommit = String(
+    執行(
+      "git",
+      ["--git-dir", 遠端Repo, "commit-tree", corruptTree, "-m", "fixture: normalize eol"],
+      { env: corruptGitEnv },
+    ).stdout || "",
+  ).trim();
+  執行("git", ["--git-dir", 遠端Repo, "update-ref", "refs/heads/main", corruptCommit, updatedHead]);
+  const invalidVerifyResult = 執行工具("verify", 來源目錄, Data工作目錄, [], true);
+  assert.notEqual(invalidVerifyResult.status, 0, "manifest 與 blob 換行不一致時必須拒絕驗證");
+  assert.match(invalidVerifyResult.stderr, /pages_payload_history\.jsonl/u);
+  執行工具("repair-eol");
+  const repairedHead = 遠端Git(["rev-parse", "main"]);
+  assert.notEqual(repairedHead, corruptCommit, "換行修復必須建立新的 root snapshot");
+  assert.equal(遠端Git(["rev-list", "--count", "main"]), "1", "修復後仍只保留單一 root commit");
+  assert.equal(遠端Git(["show", "main:data/pages_payload_history.jsonl"]), originalHistory);
+  assert.equal(遠端Git(["show", "main:public/data/announcements.json"]), originalAnnouncements);
+  執行工具("verify");
+
   寫入(
     來源目錄,
     "data/fun/honey_b_fans.json",
@@ -158,7 +263,7 @@ try {
   const honeyRemovalResult = 執行工具("publish", 來源目錄, Data工作目錄, [], true);
   assert.notEqual(honeyRemovalResult.status, 0, "遺失既有趣味榜歷史時必須拒絕發布");
   assert.match(honeyRemovalResult.stderr, /趣味榜|honey_b_fans/u);
-  assert.equal(遠端Git(["rev-parse", "main"]), updatedHead, "趣味榜守恆失敗不可更新遠端");
+  assert.equal(遠端Git(["rev-parse", "main"]), repairedHead, "趣味榜守恆失敗不可更新遠端");
   寫入必要Fixture(來源目錄, 200);
 
   寫入(
@@ -169,7 +274,7 @@ try {
   const removalResult = 執行工具("publish", 來源目錄, Data工作目錄, [], true);
   assert.notEqual(removalResult.status, 0, "遺失既有玩家時必須拒絕發布");
   assert.match(removalResult.stderr, /玩家.+已遺失/u);
-  assert.equal(遠端Git(["rev-parse", "main"]), updatedHead, "守恆失敗不可更新遠端");
+  assert.equal(遠端Git(["rev-parse", "main"]), repairedHead, "守恆失敗不可更新遠端");
   寫入必要Fixture(來源目錄, 200);
 
   寫入(還原目錄, "data/local-cache/keep.json", "保留快取");

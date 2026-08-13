@@ -176,3 +176,5 @@ npm run sync:data
 若本機已有不同的受管理資料，hydrate 會停止而不覆寫。請先暫停 workflow、備份或發布本機成果，再從最新 snapshot 開始下一輪；只有已確認可捨棄本機資料時才能人工使用 `npm run data:hydrate -- --force`。
 
 完成抓取、建置、`npm run validate:data` 與 `npm run compact:state -- --max-bytes 104857600` 後，可用 `npm run data:publish` 更新 Data repo。發布工具會驗證 manifest，確認既有 report、fight、player 與 checkpoint 未遺失，再以沒有 parent 的 root commit 和 `force-with-lease` 更新 `main`。
+
+若 `data:hydrate` 或 `data:verify` 明確回報快照檔案與 manifest 不一致，且經確認是 Git 將 CRLF 正規化為 LF 的問題，可在暫停 workflow 後人工執行 `npm run data:repair-eol`。這個指令不會放寬 manifest；它會優先採用本機同路徑且能完全命中 manifest 的原始檔，否則才嘗試還原被移除的 CR 位元組。每個檔案的大小與 SHA-256 都重新完全命中原 manifest 後，才以 `force-with-lease` 更新單一 root snapshot。其他任何損壞都會停止，不可用這個指令跳過資料守恆檢查。

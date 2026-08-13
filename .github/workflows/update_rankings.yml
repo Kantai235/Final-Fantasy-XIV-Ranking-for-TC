@@ -432,6 +432,7 @@ jobs:
         run: npm run cloudflare:purge -- --dry-run --summary
 
       - name: 上傳 GitHub Pages artifact
+        id: upload-pages-artifact
         uses: actions/upload-pages-artifact@v5
         with:
           path: dist
@@ -462,7 +463,9 @@ jobs:
 
       - name: 記錄 GitHub Pages 部署網址
         id: deployment
-        if: always()
+        # 只有 artifact 已成功上傳才匯總 Pages 重試結果。若 hydrate、Data publish
+        # 或建置先失敗，前面的原始錯誤已足夠說明根因，不可再被「Pages 重試失敗」掩蓋。
+        if: always() && steps.upload-pages-artifact.outcome == 'success'
         run: |
           if [ "${{ steps.deployment-attempt-1.outcome }}" = "success" ]; then
             echo "page_url=${{ steps.deployment-attempt-1.outputs.page_url }}" >> "$GITHUB_OUTPUT"

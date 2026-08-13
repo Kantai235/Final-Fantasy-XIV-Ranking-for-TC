@@ -43,14 +43,14 @@ npm run build
 8. 寫入 `data/update_status.json` 並重建 `public/data/update_status.json`。
 9. 執行 `npm run compact:state -- --max-bytes 104857600`，只壓縮可重建欄位與 JSON 空白，保留完整 checkpoint。
 10. 重新讀取主 repo 遠端 HEAD；若本輪期間已有新程式碼 commit，立即停止，避免舊 runner 發布資料。
-11. 執行 `npm run data:publish`。工具先驗證上一版 Data snapshot，再確認 report、`fight_id`、玩家與 checkpoint 沒有遺失，最後建立沒有 parent 的 root commit，並以 `force-with-lease` 更新 Data repo `main`。這一步在 Pages 建置前完成，後續失敗也不會遺失 FFLogs 成果。
+11. 執行 `npm run data:publish`。工具先驗證上一版 Data snapshot，再確認 report、`fight_id`、玩家與 checkpoint 沒有遺失，最後建立沒有 parent 的 root commit，並以 `force-with-lease` 更新 Data repo `main`。Git blob 以來源檔案的原始位元組寫入，且 snapshot 內的 `.gitattributes` 禁止換行轉換，確保 manifest 在 Windows 與 Linux runner 上有相同的大小與 SHA-256。這一步在 Pages 建置前完成，後續失敗也不會遺失 FFLogs 成果。
 12. 執行 `scripts/sync_user_leaderboard_repo.mjs`，將個別玩家成績、報告明細與 hidden 使用者差量以單一 root snapshot 更新到 Users repo。
 13. 執行 Vite/postbuild，產生主站、route fallback、低基數 SEO/OG 頁、`sitemap.xml`、`robots.txt` 與 `404.html`；正式流程不產生逐玩家分享頁與玩家 OG 圖。
 14. 執行 `npm run prune:pages-user-data`，讓 Pages artifact 只保留 `data/users/index.json`，個別玩家 JSON 仍由 Users repo 提供。
 15. 更新 Google Sheet 待收錄名單結果。
 16. 執行 Pages payload strict 稽核並寫入 `data/pages_payload_history.jsonl`，再執行第二次 `data:publish`，把趨勢納入新的 Data root snapshot。
 17. 執行 Cloudflare 容量估算與 purge dry-run 摘要。
-18. 上傳 `dist/` 並部署到 GitHub Pages；`syncing_files` 暫時失敗時等待 60 秒後重試一次。
+18. 上傳 `dist/` 並部署到 GitHub Pages；`syncing_files` 暫時失敗時等待 60 秒後重試一次。只有 Pages artifact 已成功上傳才匯總兩次部署結果；若 hydrate、Data publish 或建置先失敗，workflow 會保留原始錯誤，不會再以誤導的 Pages 失敗取代根因。
 19. Pages 部署成功後清除會變動的 Cloudflare CDN 快取。
 
 ## 緊急部署
