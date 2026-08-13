@@ -551,6 +551,11 @@ async function validateRankings(publicEncounters) {
     }
 
     const columns = Array.isArray(table?.table_columns) ? table.table_columns : [];
+    for (const supportColumn of ["healing_stats", "tank_stats", "co_healer", "co_tank"]) {
+      if (!columns.includes(supportColumn)) {
+        reportIssue(`${label} 的 table_columns 必須包含 ${supportColumn} 坦補呈現欄位。`);
+      }
+    }
     const gameVersionIndex = columns.indexOf("game_version");
     const recordedAtIndex = columns.indexOf("recorded_at_iso");
     if (gameVersionIndex < 0 || recordedAtIndex < 0) {

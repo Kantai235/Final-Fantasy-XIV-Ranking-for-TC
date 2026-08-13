@@ -22,6 +22,7 @@ import {
   取得PR色彩類別,
   格式化同職分位,
   格式化排名分位,
+  格式化縮寫總量,
   正規化分位顯示模式,
 } from "../src/utils/formatters.js";
 import {
@@ -144,6 +145,13 @@ function validatePercentileDisplayFormatting() {
 function validateRankingDefaults() {
   assert(預設副本鍵值 === "savage_m6s", "排行榜目前必須預設顯示零式 M6S／糖彩狂潮。");
   assert(預設隊伍榜副本鍵值 === "savage_m6s", "隊伍榜目前必須預設顯示零式 M6S／糖彩狂潮。");
+}
+
+function validateRankingCompactValueFormatting() {
+  assert(格式化縮寫總量(6_614_868) === "6.6M", "百萬級支援總量必須四捨五入為一位小數的 M 格式。");
+  assert(格式化縮寫總量(425_482) === "425.5K", "萬級以上支援總量必須四捨五入為一位小數的 K 格式。");
+  assert(格式化縮寫總量(9_999) === "9,999", "未滿一萬的支援總量應保留完整整數。");
+  assert(格式化縮寫總量(null) === "-", "缺少支援總量時不可誤顯示為 0。");
 }
 
 function validateUserProfilePercentileSorting() {
@@ -1665,6 +1673,9 @@ async function validatePublicDataForFrontend() {
     assert(!table?.version_table_rows, `${key} 排行榜薄索引不可再複製紀錄時效的 version_table_rows`);
     assert(table.table_columns.includes("has_report_detail"), `${key} 排行榜薄索引必須標記可按需載入報告細節`);
     assert(table.table_columns.includes("game_version"), `${key} 排行榜薄索引必須標記每筆繁中服遊戲版本`);
+    for (const supportColumn of ["healing_stats", "tank_stats", "co_healer", "co_tank"]) {
+      assert(table.table_columns.includes(supportColumn), `${key} 排行榜薄索引必須包含 ${supportColumn} 坦補呈現欄位`);
+    }
     assert(
       JSON.stringify(table?.game_versions || []) === JSON.stringify(gameVersions),
       `${key} 排行榜薄索引的 game_versions 必須完全對齊 config/game_versions.json`,
@@ -1778,13 +1789,108 @@ async function validateHiddenDeltaDataForFrontend() {
   const useRankingAppSource = await readText(path.join(srcDir, "composables", "useRankingApp.js"));
   const rankingDataSource = await readText(path.join(srcDir, "composables", "rankingApp", "useRankingData.js"));
   const rankingPageSource = await readText(path.join(srcDir, "pages", "RankingPage.vue"));
+  const rankingCompactValueSource = await readText(path.join(srcDir, "components", "RankingCompactValue.vue"));
+  const rankingTableStyles = await readText(path.join(srcDir, "styles", "tables-dialogs.css"));
+  const rankingResponsiveStyles = await readText(path.join(srcDir, "styles", "responsive.css"));
+  const 支援排行榜表格樣式 = rankingTableStyles.match(/\.排行榜表格\.支援排行表格\s*\{[^}]*\}/)?.[0] || "";
+  const 支援排行榜桌機字級樣式 = rankingTableStyles.match(/\.排行榜表格\.支援排行表格\s*\{[^}]*font-size:\s*1rem;[^}]*\}/)?.[0] || "";
+  const 支援排行榜玩家名稱樣式 = rankingTableStyles.match(/\.排行榜表格\.支援排行表格 \.排行榜玩家名稱\s*\{[^}]*\}/)?.[0] || "";
+  const 支援排行榜表頭說明樣式 = rankingTableStyles.match(/\.排行榜表格\.支援排行表格 th \.表頭說明標籤\s*\{[^}]*\}/)?.[0] || "";
+  const 支援排行榜表頭排序樣式 = rankingTableStyles.match(/\.排行榜表格\.支援排行表格 th \.表頭排序按鈕\s*\{[^}]*\}/)?.[0] || "";
+  const 支援排行榜作用中表頭排序樣式 = rankingTableStyles.match(/\.排行榜表格\.支援排行表格 th \.表頭排序按鈕\.作用中\s*\{[^}]*\}/)?.[0] || "";
+  const 支援排行榜排序箭頭樣式 = rankingTableStyles.match(/\.排行榜表格\.支援排行表格 th \.排序箭頭\s*\{[^}]*\}/)?.[0] || "";
   const userDataSource = await readText(path.join(srcDir, "utils", "userData.js"));
+  const 同場職能列起點 = rankingPageSource.indexOf('v-if="是否顯示同場職能玩家(列)"');
+  const 同場職能列終點 = rankingPageSource.indexOf("</tr>", 同場職能列起點);
+  const 同場職能列Source = rankingPageSource.slice(同場職能列起點, 同場職能列終點);
   assert(rankingDataSource.includes("ranking_table_hidden_delta_v1"), "前端排行榜讀取端必須支援 hidden delta 薄索引");
   assert(rankingDataSource.includes("ranking_detail_hidden_delta_v1"), "前端排行榜讀取端必須支援 hidden delta 報告細節");
   assert(rankingDataSource.includes("gameVersion: 條目.game_version"), "前端排行榜列必須保留薄索引的 game_version。");
   assert(
+    rankingDataSource.includes("healingStats: 建立治療統計(條目.healing_stats)")
+      && rankingDataSource.includes("tankStats: 建立坦克統計(條目.tank_stats)")
+      && rankingDataSource.includes("同場治療: 建立同場支援職業(條目.co_healer)")
+      && rankingDataSource.includes("同場坦克: 建立同場支援職業(條目.co_tank)"),
+    "前端排行榜列必須正規化坦克、治療與同場另一坦／補的薄索引資料。",
+  );
+  assert(
+    useRankingAppSource.includes('const 顯示坦克排行榜欄位 = computed(() => 目前排行榜支援職能.value === "tank")')
+      && useRankingAppSource.includes('const 顯示治療排行榜欄位 = computed(() => 目前排行榜支援職能.value === "healer")')
+      && rankingPageSource.includes('v-model="顯示同場坦克職業"')
+      && rankingPageSource.includes('v-model="顯示同場治療職業"')
+      && rankingPageSource.includes('v-if="是否顯示同場職能玩家(列)"')
+      && rankingPageSource.includes('v-for="欄位 in 排行榜數值欄位"'),
+    "排行榜必須依坦克／治療職能切換欄位，並由使用者決定是否展開唯一可辨識的同場另一坦／補。",
+  );
+  assert(
+    rankingPageSource.includes('<th class="排行榜玩家表頭" scope="col">玩家</th>')
+      && !rankingPageSource.includes('<th scope="col">玩家名稱</th>')
+      && !rankingPageSource.includes('<th scope="col">伺服器</th>')
+      && rankingPageSource.includes('<span class="排行榜玩家名稱">{{ 列.角色名稱 }}</span><span class="排行榜玩家伺服器">&nbsp;@&nbsp;{{ 列.伺服器 }}</span>')
+      && rankingPageSource.includes('<span class="排行榜玩家名稱">{{ 取得同場職能玩家(列).角色名稱 }}</span><span class="排行榜玩家伺服器">&nbsp;@&nbsp;{{ 取得同場職能玩家(列).伺服器 }}</span>'),
+    "排行榜的一般列與同場坦補列都必須以單一「玩家」欄顯示「玩家名稱 @ 伺服器」。",
+  );
+  assert(
+    rankingPageSource.includes("格式化縮寫總量")
+      && rankingPageSource.includes(":full-value=\"取得排行榜欄位完整值(欄位, 列)\"")
+      && rankingPageSource.includes(":full-value=\"取得排行榜欄位完整值(欄位, 取得同場職能玩家(列))\"")
+      && rankingCompactValueSource.includes('@click.stop="切換提示"')
+      && rankingCompactValueSource.includes('role="tooltip"'),
+    "排行榜坦補總量必須使用一位小數縮寫，並讓一般列與同場列都能以 hover／點擊查看完整值。",
+  );
+  assert(
+    同場職能列起點 >= 0
+      && 同場職能列終點 > 同場職能列起點
+      && !rankingPageSource.includes("同場職能手機標記")
+      && !rankingPageSource.includes('class="同場職能標記"')
+      && !同場職能列Source.includes("格式化通關時間")
+      && !同場職能列Source.includes("格式化紀錄時間")
+      && 同場職能列Source.includes('class="同場職能重複欄位" aria-hidden="true"'),
+    "同場坦補列不可顯示職能標記，也不可重複顯示相同 fight 的通關時間與紀錄時間。",
+  );
+  assert(
+    支援排行榜表格樣式.includes("min-width: 0;")
+      && rankingTableStyles.includes(".排行榜表格.坦克排行表格 .玩家欄")
+      && rankingTableStyles.includes(".排行榜表格.治療排行表格 .玩家欄")
+      && 支援排行榜桌機字級樣式.includes("font-size: 1rem;")
+      && 支援排行榜玩家名稱樣式.includes("text-overflow: clip;")
+      && 支援排行榜玩家名稱樣式.includes("overflow-wrap: anywhere;")
+      && rankingTableStyles.includes(".排行榜表格.支援排行表格 td.排名")
+      && rankingTableStyles.includes(".排行榜百分比小數")
+      && 支援排行榜表頭說明樣式.includes("width: max-content;")
+      && 支援排行榜表頭排序樣式.includes("width: max-content;")
+      && 支援排行榜表頭排序樣式.includes("margin-inline: auto;")
+      && 支援排行榜表頭排序樣式.includes("white-space: nowrap;")
+      && 支援排行榜作用中表頭排序樣式.includes("padding-inline-end: 11px;")
+      && 支援排行榜排序箭頭樣式.includes("position: absolute;")
+      && 支援排行榜排序箭頭樣式.includes("top: 50%;")
+      && 支援排行榜排序箭頭樣式.includes("inset-inline-end: 2px;")
+      && 支援排行榜排序箭頭樣式.includes("transform: translateY(-50%);")
+      && !rankingTableStyles.includes("min-width: 1270px")
+      && !rankingTableStyles.includes("min-width: 1450px"),
+    "坦克與治療排行榜必須以 16px 正文使用頁面內的彈性欄寬；排名徽章、玩家名稱與表頭排序按鈕不得互相擠壓，排序箭頭也不得占用文字欄寬。",
+  );
+  assert(
+    rankingPageSource.includes('percentage: true')
+      && rankingPageSource.includes(':percentage="欄位.percentage"')
+      && rankingCompactValueSource.includes("百分比片段")
+      && rankingCompactValueSource.includes('class="排行榜百分比小數"'),
+    "排行榜百分比數值必須獨立縮小小數位，且套用於桌機、手機與同場職能列。",
+  );
+  assert(
+    rankingPageSource.includes('class="手機排行資訊列 手機排行完整資訊列"')
+      && rankingPageSource.includes(':class="{ 顯示手機版本: 顯示版本紀錄 }"')
+      && rankingResponsiveStyles.includes(".排行榜表格.坦克排行表格 .手機排行傷害列")
+      && rankingResponsiveStyles.includes("grid-template-columns: repeat(6, minmax(0, 1fr));")
+      && rankingResponsiveStyles.includes(".排行榜表格.治療排行表格 .手機排行傷害列")
+      && rankingResponsiveStyles.includes("grid-template-columns: repeat(5, minmax(0, 1fr));")
+      && rankingResponsiveStyles.includes(".手機排行完整資訊列.顯示手機版本")
+      && !rankingResponsiveStyles.includes(".支援排行表格 .手機排行資訊列 {"),
+    "坦克與治療手機排行必須將主要統計濃縮成單列，並讓 Active、GCD、通關、版本、紀錄與報告沿用輸出職業的緊湊資訊列。",
+  );
+  assert(
     rankingPageSource.includes('<col v-show="顯示版本紀錄" class="版本欄" />')
-      && rankingPageSource.includes('<th v-show="顯示版本紀錄" scope="col">版本</th>')
+      && rankingPageSource.includes('v-show="顯示版本紀錄" class="排行榜版本表頭" scope="col">版本</th>')
       && rankingPageSource.includes('v-show="顯示版本紀錄" class="數字 排行榜版本欄">{{ 列.gameVersion || "—" }}</td>')
       && rankingPageSource.includes('<span v-show="顯示版本紀錄">\n                  <em>版本</em>'),
     "開啟版本紀錄時，排行榜桌面表格與手機排行卡都必須顯示每筆紀錄的遊戲版本。",
@@ -2641,6 +2747,7 @@ async function main() {
   await validateSiteFeatureFlags();
   validateRankingDefaults();
   validatePercentileDisplayFormatting();
+  validateRankingCompactValueFormatting();
   validateUserProfilePercentileSorting();
   validateUserProfileBadges();
   await validateUserProfileBadgeDataScope();

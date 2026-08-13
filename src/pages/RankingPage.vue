@@ -1,10 +1,12 @@
 <script>
-import { ref } from "vue";
+import { computed, ref } from "vue";
 import EncounterMenu from "../components/EncounterMenu.vue";
 import JobIcon from "../components/JobIcon.vue";
 import PlayerSearchHistoryPanel from "../components/PlayerSearchHistoryPanel.vue";
+import RankingCompactValue from "../components/RankingCompactValue.vue";
 import ReportDetailDialog from "../components/ReportDetailDialog.vue";
 import { injectRankingApp } from "../composables/useRankingApp";
+import { 格式化縮寫總量 } from "../utils/formatters";
 
 export default {
   name: "RankingPage",
@@ -12,6 +14,7 @@ export default {
     EncounterMenu,
     JobIcon,
     PlayerSearchHistoryPanel,
+    RankingCompactValue,
     ReportDetailDialog,
   },
   setup() {
@@ -21,6 +24,184 @@ export default {
 
     function 取值(可能Ref) {
       return 可能Ref && typeof 可能Ref === "object" && "value" in 可能Ref ? 可能Ref.value : 可能Ref;
+    }
+
+    function 格式化可選數值(格式化函式, 數值) {
+      return 數值 === null || 數值 === undefined || 數值 === "" ? "-" : 格式化函式(數值);
+    }
+
+    const 排行榜數值欄位 = computed(() => {
+      const 狀態欄位 = [
+        {
+          key: "active",
+          label: "Active",
+          tooltipKey: "Active",
+          columnClass: "active欄",
+          group: "status",
+          percentage: true,
+          format: (列) => app.格式化Active(列.active),
+        },
+        ...(取值(app.顯示Gcd覆蓋率)
+          ? [
+              {
+                key: "gcdCoverage",
+                label: "GCD",
+                tooltipKey: "GCD 覆蓋率",
+                columnClass: "gcd欄",
+                group: "status",
+                percentage: true,
+                format: (列) => app.格式化Gcd覆蓋率(列.gcd_coverage),
+              },
+            ]
+          : []),
+      ];
+      const rdps欄位 = {
+        key: "rdps",
+        label: "rDPS",
+        tooltipKey: "rDPS",
+        columnClass: "傷害欄",
+        group: "primary",
+        highlight: true,
+        format: (列) => app.格式化傷害數值(列.rdps),
+      };
+
+      if (取值(app.顯示坦克排行榜欄位)) {
+        return [
+          ...狀態欄位,
+          rdps欄位,
+          {
+            key: "damageTaken",
+            label: "承傷",
+            tooltipKey: "承傷",
+            columnClass: "支援總量欄",
+            group: "primary",
+            format: (列) => 格式化可選數值(格式化縮寫總量, 列.tankStats?.damageTaken),
+            fullFormat: (列) => 格式化可選數值(app.格式化整數, 列.tankStats?.damageTaken),
+          },
+          {
+            key: "selfHealing",
+            label: "自補",
+            tooltipKey: "自補",
+            columnClass: "支援總量欄",
+            group: "primary",
+            format: (列) => 格式化可選數值(格式化縮寫總量, 列.tankStats?.selfHealing),
+            fullFormat: (列) => 格式化可選數值(app.格式化整數, 列.tankStats?.selfHealing),
+          },
+          {
+            key: "personalProtection",
+            label: "個人防護",
+            tooltipKey: "個人防護",
+            columnClass: "支援總量欄",
+            group: "primary",
+            format: (列) => 格式化可選數值(格式化縮寫總量, 列.tankStats?.personalProtection),
+            fullFormat: (列) => 格式化可選數值(app.格式化整數, 列.tankStats?.personalProtection),
+          },
+          {
+            key: "teamProtection",
+            label: "團隊防護",
+            tooltipKey: "團隊防護",
+            columnClass: "支援總量欄",
+            group: "primary",
+            format: (列) => 格式化可選數值(格式化縮寫總量, 列.tankStats?.teamProtection),
+            fullFormat: (列) => 格式化可選數值(app.格式化整數, 列.tankStats?.teamProtection),
+          },
+          {
+            key: "mitigationCoverage",
+            label: "減傷覆蓋",
+            tooltipKey: "減傷覆蓋",
+            columnClass: "支援百分比欄",
+            group: "primary",
+            percentage: true,
+            format: (列) => 格式化可選數值(app.格式化百分比, 列.tankStats?.mitigationCoveragePercent),
+          },
+        ];
+      }
+
+      if (取值(app.顯示治療排行榜欄位)) {
+        return [
+          ...狀態欄位,
+          rdps欄位,
+          {
+            key: "healingHps",
+            label: "HPS",
+            tooltipKey: "HPS",
+            columnClass: "傷害欄",
+            group: "primary",
+            format: (列) => app.格式化傷害數值(列.healingStats?.hps),
+          },
+          {
+            key: "pureHealing",
+            label: "純治療",
+            tooltipKey: "純治療",
+            columnClass: "支援總量欄",
+            group: "primary",
+            format: (列) => 格式化可選數值(格式化縮寫總量, 列.healingStats?.pureHealing),
+            fullFormat: (列) => 格式化可選數值(app.格式化整數, 列.healingStats?.pureHealing),
+          },
+          {
+            key: "healingProtection",
+            label: "防護量",
+            tooltipKey: "防護量",
+            columnClass: "支援總量欄",
+            group: "primary",
+            format: (列) => 格式化可選數值(格式化縮寫總量, 列.healingStats?.protection),
+            fullFormat: (列) => 格式化可選數值(app.格式化整數, 列.healingStats?.protection),
+          },
+          {
+            key: "overhealPercent",
+            label: "OH%",
+            tooltipKey: "OH%",
+            columnClass: "支援百分比欄",
+            group: "primary",
+            percentage: true,
+            format: (列) => 格式化可選數值(app.格式化百分比, 列.healingStats?.overhealPercent),
+          },
+        ];
+      }
+
+      return [
+        ...狀態欄位,
+        {
+          key: "dps",
+          label: "DPS",
+          tooltipKey: "DPS",
+          columnClass: "傷害欄",
+          group: "primary",
+          format: (列) => app.格式化傷害數值(列.dps),
+        },
+        rdps欄位,
+        {
+          key: "adps",
+          label: "aDPS",
+          tooltipKey: "aDPS",
+          columnClass: "傷害欄",
+          group: "primary",
+          format: (列) => app.格式化傷害數值(列.adps),
+        },
+      ];
+    });
+
+    const 手機主要排行榜欄位 = computed(() => 排行榜數值欄位.value.filter((欄位) => 欄位.group === "primary"));
+    const 手機狀態排行榜欄位 = computed(() => 排行榜數值欄位.value.filter((欄位) => 欄位.group === "status"));
+
+    function 取得排行榜欄位完整值(欄位, 列) {
+      return typeof 欄位.fullFormat === "function" ? 欄位.fullFormat(列) : "";
+    }
+
+    function 是否顯示排行榜欄位完整值提示(欄位, 列) {
+      const 完整值 = 取得排行榜欄位完整值(欄位, 列);
+      return Boolean(完整值 && 完整值 !== "-" && 完整值 !== 欄位.format(列));
+    }
+
+    function 取得同場職能玩家(列) {
+      return 取值(app.顯示坦克排行榜欄位) ? 列.同場坦克 : 列.同場治療;
+    }
+
+    function 是否顯示同場職能玩家(列) {
+      if (取值(app.顯示坦克排行榜欄位)) {
+        return Boolean(取值(app.顯示同場坦克職業) && 列.同場坦克);
+      }
+      return Boolean(取值(app.顯示治療排行榜欄位) && 取值(app.顯示同場治療職業) && 列.同場治療);
     }
 
     function 建立排行報告詳細資料(列, 排名 = null) {
@@ -66,30 +247,16 @@ export default {
         identity: `${列.伺服器} · ${列.職業}`,
         record: 列,
         statusItems: 狀態項目,
-        damageItems: [
-          {
-            key: "dps",
-            label: "DPS",
-            value: app.格式化傷害數值(列.dps),
-            tooltip: app.統計說明文字("DPS"),
-            tooltipLabel: "DPS 說明",
-          },
-          {
-            key: "rdps",
-            label: "rDPS",
-            value: app.格式化傷害數值(列.rdps),
-            tooltip: app.統計說明文字("rDPS"),
-            tooltipLabel: "rDPS 說明",
-            className: "報告彈窗主要數值",
-          },
-          {
-            key: "adps",
-            label: "aDPS",
-            value: app.格式化傷害數值(列.adps),
-            tooltip: app.統計說明文字("aDPS"),
-            tooltipLabel: "aDPS 說明",
-          },
-        ],
+        damageItems: 排行榜數值欄位.value
+          .filter((欄位) => 欄位.group === "primary")
+          .map((欄位) => ({
+            key: 欄位.key,
+            label: 欄位.label,
+            value: typeof 欄位.fullFormat === "function" ? 欄位.fullFormat(列) : 欄位.format(列),
+            tooltip: app.統計說明文字(欄位.tooltipKey),
+            tooltipLabel: `${欄位.label} 說明`,
+            className: 欄位.highlight ? "報告彈窗主要數值" : "",
+          })),
         traceItems: [
           ...(取值(app.顯示版本紀錄) && 列.gameVersion
             ? [
@@ -129,6 +296,10 @@ export default {
         versionStatus: 列.versionStatus,
         versionCutoffIso: 列.versionCutoffIso,
         gameVersion: 列.gameVersion || 詳細列.gameVersion,
+        healingStats: 詳細列.healingStats || 列.healingStats,
+        tankStats: 詳細列.tankStats || 列.tankStats,
+        同場治療: 詳細列.同場治療 || 列.同場治療,
+        同場坦克: 詳細列.同場坦克 || 列.同場坦克,
         detailId: 列.detailId || 詳細列.detailId,
         hasReportDetail: 列.hasReportDetail || 詳細列.hasReportDetail,
       };
@@ -158,6 +329,13 @@ export default {
 
     return {
       ...app,
+      排行榜數值欄位,
+      手機主要排行榜欄位,
+      手機狀態排行榜欄位,
+      取得排行榜欄位完整值,
+      是否顯示排行榜欄位完整值提示,
+      取得同場職能玩家,
+      是否顯示同場職能玩家,
       報告彈窗資料,
       開啟排行報告彈窗,
       關閉排行報告彈窗,
@@ -289,6 +467,22 @@ export default {
     </div>
   </div>
 
+  <label v-if="顯示坦克排行榜欄位" class="欄位 同場職能切換欄位">
+    <span>同場坦克職業</span>
+    <span class="核取選項">
+      <input v-model="顯示同場坦克職業" type="checkbox" />
+      <span>顯示另一位坦克職業</span>
+    </span>
+  </label>
+
+  <label v-else-if="顯示治療排行榜欄位" class="欄位 同場職能切換欄位">
+    <span>同場治療職業</span>
+    <span class="核取選項">
+      <input v-model="顯示同場治療職業" type="checkbox" />
+      <span>顯示另一位治療職業</span>
+    </span>
+  </label>
+
   <div class="欄位 搜尋欄位" @focusout="處理玩家搜尋歷史失焦($event, 'ranking')">
     <label for="排行榜玩家搜尋">玩家名稱</label>
     <div class="玩家搜尋輸入組">
@@ -338,24 +532,26 @@ export default {
       </div>
     </div>
 
-    <table class="排行榜表格">
+    <table
+      class="排行榜表格"
+      :class="{
+        坦克排行表格: 顯示坦克排行榜欄位,
+        治療排行表格: 顯示治療排行榜欄位,
+        支援排行表格: 顯示支援排行榜欄位,
+      }"
+    >
       <colgroup>
         <col class="排名欄" />
-        <col class="角色欄" />
-        <col class="伺服器欄" />
+        <col class="玩家欄" />
         <col class="職業欄" />
-        <col class="active欄" />
-        <col v-show="顯示Gcd覆蓋率" class="gcd欄" />
-        <col class="傷害欄" />
-        <col class="傷害欄" />
-        <col class="傷害欄" />
+        <col v-for="欄位 in 排行榜數值欄位" :key="欄位.key" :class="欄位.columnClass" />
         <col class="通關時間欄" />
         <col v-show="顯示版本紀錄" class="版本欄" />
         <col class="紀錄時間欄" />
       </colgroup>
       <thead>
         <tr>
-          <th scope="col" :aria-sort="排序ARIA('rank')">
+          <th class="排行榜排名表頭" scope="col" :aria-sort="排序ARIA('rank')">
             <button
               class="表頭排序按鈕"
               type="button"
@@ -367,100 +563,33 @@ export default {
               <span v-if="是否目前排序('rank')" class="排序箭頭" aria-hidden="true">{{ 排序方向圖示("rank") }}</span>
             </button>
           </th>
-          <th scope="col">玩家名稱</th>
-          <th scope="col">伺服器</th>
-          <th scope="col">職業</th>
-          <th scope="col" class="數字" :aria-sort="排序ARIA('active')">
+          <th class="排行榜玩家表頭" scope="col">玩家</th>
+          <th class="排行榜職業表頭" scope="col">職業</th>
+          <th
+            v-for="欄位 in 排行榜數值欄位"
+            :key="欄位.key"
+            scope="col"
+            :class="['數字', 欄位.columnClass]"
+            :aria-sort="排序ARIA(欄位.key)"
+          >
             <span class="表頭說明標籤">
               <button
                 class="表頭排序按鈕"
                 type="button"
-                :class="{ 作用中: 是否目前排序('active') }"
-                :aria-label="排序按鈕標籤('active')"
-                @click="切換排序('active')"
+                :class="{ 作用中: 是否目前排序(欄位.key) }"
+                :aria-label="排序按鈕標籤(欄位.key)"
+                @click="切換排序(欄位.key)"
               >
-                <span>Active</span>
-                <span v-if="是否目前排序('active')" class="排序箭頭" aria-hidden="true">{{ 排序方向圖示("active") }}</span>
+                <span>{{ 欄位.label }}</span>
+                <span v-if="是否目前排序(欄位.key)" class="排序箭頭" aria-hidden="true">{{ 排序方向圖示(欄位.key) }}</span>
               </button>
               <span class="說明提示">
-                <button class="說明提示按鈕" type="button" aria-label="Active 說明">?</button>
-                <span class="說明提示內容" role="tooltip">{{ 統計說明文字("Active") }}</span>
+                <button class="說明提示按鈕" type="button" :aria-label="`${欄位.label} 說明`">?</button>
+                <span class="說明提示內容" role="tooltip">{{ 統計說明文字(欄位.tooltipKey) }}</span>
               </span>
             </span>
           </th>
-          <th v-show="顯示Gcd覆蓋率" scope="col" class="數字" :aria-sort="排序ARIA('gcdCoverage')">
-            <span class="表頭說明標籤">
-              <button
-                class="表頭排序按鈕"
-                type="button"
-                :class="{ 作用中: 是否目前排序('gcdCoverage') }"
-                :aria-label="排序按鈕標籤('gcdCoverage')"
-                @click="切換排序('gcdCoverage')"
-              >
-                <span>GCD</span>
-                <span v-if="是否目前排序('gcdCoverage')" class="排序箭頭" aria-hidden="true">{{ 排序方向圖示("gcdCoverage") }}</span>
-              </button>
-              <span class="說明提示">
-                <button class="說明提示按鈕" type="button" aria-label="GCD 覆蓋率說明">?</button>
-                <span class="說明提示內容" role="tooltip">{{ 統計說明文字("GCD 覆蓋率") }}</span>
-              </span>
-            </span>
-          </th>
-          <th scope="col" class="數字" :aria-sort="排序ARIA('dps')">
-            <span class="表頭說明標籤">
-              <button
-                class="表頭排序按鈕"
-                type="button"
-                :class="{ 作用中: 是否目前排序('dps') }"
-                :aria-label="排序按鈕標籤('dps')"
-                @click="切換排序('dps')"
-              >
-                <span>DPS</span>
-                <span v-if="是否目前排序('dps')" class="排序箭頭" aria-hidden="true">{{ 排序方向圖示("dps") }}</span>
-              </button>
-              <span class="說明提示">
-                <button class="說明提示按鈕" type="button" aria-label="DPS 說明">?</button>
-                <span class="說明提示內容" role="tooltip">{{ 統計說明文字("DPS") }}</span>
-              </span>
-            </span>
-          </th>
-          <th scope="col" class="數字" :aria-sort="排序ARIA('rdps')">
-            <span class="表頭說明標籤">
-              <button
-                class="表頭排序按鈕"
-                type="button"
-                :class="{ 作用中: 是否目前排序('rdps') }"
-                :aria-label="排序按鈕標籤('rdps')"
-                @click="切換排序('rdps')"
-              >
-                <span>rDPS</span>
-                <span v-if="是否目前排序('rdps')" class="排序箭頭" aria-hidden="true">{{ 排序方向圖示("rdps") }}</span>
-              </button>
-              <span class="說明提示">
-                <button class="說明提示按鈕" type="button" aria-label="rDPS 說明">?</button>
-                <span class="說明提示內容" role="tooltip">{{ 統計說明文字("rDPS") }}</span>
-              </span>
-            </span>
-          </th>
-          <th scope="col" class="數字" :aria-sort="排序ARIA('adps')">
-            <span class="表頭說明標籤">
-              <button
-                class="表頭排序按鈕"
-                type="button"
-                :class="{ 作用中: 是否目前排序('adps') }"
-                :aria-label="排序按鈕標籤('adps')"
-                @click="切換排序('adps')"
-              >
-                <span>aDPS</span>
-                <span v-if="是否目前排序('adps')" class="排序箭頭" aria-hidden="true">{{ 排序方向圖示("adps") }}</span>
-              </button>
-              <span class="說明提示">
-                <button class="說明提示按鈕" type="button" aria-label="aDPS 說明">?</button>
-                <span class="說明提示內容" role="tooltip">{{ 統計說明文字("aDPS") }}</span>
-              </span>
-            </span>
-          </th>
-          <th scope="col" class="數字" :aria-sort="排序ARIA('clearTime')">
+          <th class="數字 排行榜通關時間表頭" scope="col" :aria-sort="排序ARIA('clearTime')">
             <button
               class="表頭排序按鈕"
               type="button"
@@ -472,8 +601,8 @@ export default {
               <span v-if="是否目前排序('clearTime')" class="排序箭頭" aria-hidden="true">{{ 排序方向圖示("clearTime") }}</span>
             </button>
           </th>
-          <th v-show="顯示版本紀錄" scope="col">版本</th>
-          <th scope="col" :aria-sort="排序ARIA('recordedAt')">
+          <th v-show="顯示版本紀錄" class="排行榜版本表頭" scope="col">版本</th>
+          <th class="排行榜紀錄時間表頭" scope="col" :aria-sort="排序ARIA('recordedAt')">
             <button
               class="表頭排序按鈕"
               type="button"
@@ -488,7 +617,8 @@ export default {
         </tr>
       </thead>
       <tbody>
-        <tr v-for="(列, index) in 當頁排行列" :key="列.id" :class="{ 過版紀錄列: 列.過版紀錄 }">
+        <template v-for="(列, index) in 當頁排行列" :key="列.id">
+          <tr :class="{ 過版紀錄列: 列.過版紀錄 }">
           <td class="排名" :class="排名色彩類別(排行列顯示排名(index))">
             <span class="排名徽章" :aria-label="格式化排名(排行列顯示排名(index))">
               <span
@@ -502,8 +632,8 @@ export default {
             </span>
           </td>
           <td class="排行榜角色欄位">
-            <button class="文字連結" type="button" @click="開啟個人成績單(列)">
-              {{ 列.角色名稱 }}
+            <button class="文字連結 排行榜玩家連結" type="button" @click="開啟個人成績單(列)">
+              <span class="排行榜玩家名稱">{{ 列.角色名稱 }}</span><span class="排行榜玩家伺服器">&nbsp;@&nbsp;{{ 列.伺服器 }}</span>
             </button>
             <span v-if="列.過版紀錄" class="版本紀錄標籤">過版紀錄</span>
             <span v-if="顯示作者相關標示 && 是網站作者(列.角色名稱)" class="說明提示 作者提示">
@@ -528,8 +658,8 @@ export default {
                 </span>
                 <div class="手機排行身份列">
                   <span class="手機排行角色名稱列">
-                    <button class="文字連結 手機排行角色名稱" type="button" @click="開啟個人成績單(列)">
-                      {{ 列.角色名稱 }}
+                    <button class="文字連結 手機排行角色名稱 排行榜玩家連結" type="button" @click="開啟個人成績單(列)">
+                      <span class="排行榜玩家名稱">{{ 列.角色名稱 }}</span><span class="排行榜玩家伺服器 手機排行伺服器">&nbsp;@&nbsp;{{ 列.伺服器 }}</span>
                     </button>
                     <span v-if="列.過版紀錄" class="版本紀錄標籤">過版紀錄</span>
                     <span v-if="顯示作者相關標示 && 是網站作者(列.角色名稱)" class="說明提示 作者提示">
@@ -537,27 +667,40 @@ export default {
                       <span class="說明提示內容" role="tooltip">{{ 作者說明文字 }}</span>
                     </span>
                   </span>
-                  <span class="手機排行伺服器">@{{ 列.伺服器 }}</span>
                 </div>
               </div>
               <div class="手機排行傷害列">
-                <span>
-                  <em>DPS</em>
-                  <strong>{{ 格式化傷害數值(列.dps) }}</strong>
-                </span>
-                <span class="手機排行重點傷害">
-                  <em>rDPS</em>
-                  <strong>{{ 格式化傷害數值(列.rdps) }}</strong>
-                </span>
-                <span>
-                  <em>aDPS</em>
-                  <strong>{{ 格式化傷害數值(列.adps) }}</strong>
+                <span
+                  v-for="欄位 in 手機主要排行榜欄位"
+                  :key="欄位.key"
+                  :class="{
+                    手機排行重點傷害: 欄位.highlight,
+                    包含完整數值提示: 是否顯示排行榜欄位完整值提示(欄位, 列),
+                  }"
+                >
+                  <em>{{ 欄位.label }}</em>
+                  <strong>
+                    <RankingCompactValue
+                      :display-value="欄位.format(列)"
+                      :full-value="取得排行榜欄位完整值(欄位, 列)"
+                      :label="欄位.label"
+                      :percentage="欄位.percentage"
+                    />
+                  </strong>
                 </span>
               </div>
-              <div class="手機排行資訊列">
-                <span v-if="顯示Gcd覆蓋率">
-                  <em>GCD</em>
-                  <strong>{{ 格式化Gcd覆蓋率(列.gcd_coverage) }}</strong>
+              <div
+                class="手機排行資訊列 手機排行完整資訊列"
+                :class="{ 顯示手機版本: 顯示版本紀錄 }"
+              >
+                <span v-for="欄位 in 手機狀態排行榜欄位" :key="欄位.key">
+                  <em>{{ 欄位.label }}</em>
+                  <strong>
+                    <RankingCompactValue
+                      :display-value="欄位.format(列)"
+                      :percentage="欄位.percentage"
+                    />
+                  </strong>
                 </span>
                 <span>
                   <em>通關</em>
@@ -584,7 +727,6 @@ export default {
               </div>
             </div>
           </td>
-          <td>{{ 列.伺服器 }}</td>
           <td>
             <span class="職業標籤" :class="職業色彩類別(職業代碼色彩(列.職業代碼))">
               <JobIcon
@@ -594,11 +736,19 @@ export default {
               <span>{{ 列.職業 }}</span>
             </span>
           </td>
-          <td class="數字">{{ 格式化Active(列.active) }}</td>
-          <td v-show="顯示Gcd覆蓋率" class="數字">{{ 格式化Gcd覆蓋率(列.gcd_coverage) }}</td>
-          <td class="數字">{{ 格式化傷害數值(列.dps) }}</td>
-          <td class="數字">{{ 格式化傷害數值(列.rdps) }}</td>
-          <td class="數字">{{ 格式化傷害數值(列.adps) }}</td>
+          <td
+            v-for="欄位 in 排行榜數值欄位"
+            :key="欄位.key"
+            class="數字"
+            :class="{ 包含完整數值提示: 是否顯示排行榜欄位完整值提示(欄位, 列) }"
+          >
+            <RankingCompactValue
+              :display-value="欄位.format(列)"
+              :full-value="取得排行榜欄位完整值(欄位, 列)"
+              :label="欄位.label"
+              :percentage="欄位.percentage"
+            />
+          </td>
           <td class="數字">{{ 格式化通關時間(列.通關秒數) }}</td>
           <td v-show="顯示版本紀錄" class="數字 排行榜版本欄">{{ 列.gameVersion || "—" }}</td>
           <td>
@@ -613,6 +763,90 @@ export default {
             </time>
           </td>
         </tr>
+          <tr
+            v-if="是否顯示同場職能玩家(列)"
+            class="同場職能列"
+            :class="{ 過版紀錄列: 列.過版紀錄 }"
+          >
+          <td class="排名" aria-hidden="true"></td>
+          <td class="排行榜角色欄位">
+            <button class="文字連結 排行榜玩家連結" type="button" @click="開啟個人成績單(取得同場職能玩家(列))">
+              <span class="排行榜玩家名稱">{{ 取得同場職能玩家(列).角色名稱 }}</span><span class="排行榜玩家伺服器">&nbsp;@&nbsp;{{ 取得同場職能玩家(列).伺服器 }}</span>
+            </button>
+            <div class="手機排行卡 同場職能手機卡">
+              <div class="手機排行主列">
+                <span class="手機排行職業" :title="取得同場職能玩家(列).職業">
+                  <JobIcon class="職業圖示" :code="取得同場職能玩家(列).職業代碼" />
+                </span>
+                <div class="手機排行身份列">
+                  <button class="文字連結 手機排行角色名稱 排行榜玩家連結" type="button" @click="開啟個人成績單(取得同場職能玩家(列))">
+                    <span class="排行榜玩家名稱">{{ 取得同場職能玩家(列).角色名稱 }}</span><span class="排行榜玩家伺服器 手機排行伺服器">&nbsp;@&nbsp;{{ 取得同場職能玩家(列).伺服器 }}</span>
+                  </button>
+                </div>
+              </div>
+              <div class="手機排行傷害列">
+                <span
+                  v-for="欄位 in 手機主要排行榜欄位"
+                  :key="欄位.key"
+                  :class="{
+                    手機排行重點傷害: 欄位.highlight,
+                    包含完整數值提示: 是否顯示排行榜欄位完整值提示(欄位, 取得同場職能玩家(列)),
+                  }"
+                >
+                  <em>{{ 欄位.label }}</em>
+                  <strong>
+                    <RankingCompactValue
+                      :display-value="欄位.format(取得同場職能玩家(列))"
+                      :full-value="取得排行榜欄位完整值(欄位, 取得同場職能玩家(列))"
+                      :label="欄位.label"
+                      :percentage="欄位.percentage"
+                    />
+                  </strong>
+                </span>
+              </div>
+              <div class="手機排行資訊列">
+                <span v-for="欄位 in 手機狀態排行榜欄位" :key="欄位.key">
+                  <em>{{ 欄位.label }}</em>
+                  <strong>
+                    <RankingCompactValue
+                      :display-value="欄位.format(取得同場職能玩家(列))"
+                      :percentage="欄位.percentage"
+                    />
+                  </strong>
+                </span>
+                <span v-show="顯示版本紀錄">
+                  <em>版本</em>
+                  <strong>{{ 列.gameVersion || "—" }}</strong>
+                </span>
+              </div>
+            </div>
+          </td>
+          <td>
+            <span class="職業標籤" :class="職業色彩類別(職業代碼色彩(取得同場職能玩家(列).職業代碼))">
+              <JobIcon class="職業圖示 職業標籤圖示" :code="取得同場職能玩家(列).職業代碼" />
+              <span>{{ 取得同場職能玩家(列).職業 }}</span>
+            </span>
+          </td>
+          <td
+            v-for="欄位 in 排行榜數值欄位"
+            :key="欄位.key"
+            class="數字"
+            :class="{
+              包含完整數值提示: 是否顯示排行榜欄位完整值提示(欄位, 取得同場職能玩家(列)),
+            }"
+          >
+            <RankingCompactValue
+              :display-value="欄位.format(取得同場職能玩家(列))"
+              :full-value="取得排行榜欄位完整值(欄位, 取得同場職能玩家(列))"
+              :label="欄位.label"
+              :percentage="欄位.percentage"
+            />
+          </td>
+          <td class="同場職能重複欄位" aria-hidden="true"></td>
+          <td v-show="顯示版本紀錄" class="數字 排行榜版本欄">{{ 列.gameVersion || "—" }}</td>
+          <td class="同場職能重複欄位" aria-hidden="true"></td>
+          </tr>
+        </template>
       </tbody>
     </table>
 

@@ -63,6 +63,30 @@ export function 格式化整數(數值) {
   return 數字 === null ? "-" : 台灣整數格式.format(數字);
 }
 
+/**
+ * 排行榜的治療／坦克總量常達數萬至數百萬；表格若直接顯示完整整數，
+ * 會擠壓其它分析欄位。這裡只處理呈現文字，排序與資料契約仍保留原始數值。
+ * 一萬以上以 K、一百萬以上以 M 表示，固定保留一位小數；完整值由 UI 提示另行顯示。
+ */
+export function 格式化縮寫總量(數值) {
+  if (數值 === null || 數值 === undefined || 數值 === "") {
+    return "-";
+  }
+  const 數字 = 轉為數字(數值);
+  if (數字 === null) {
+    return "-";
+  }
+
+  const 絕對值 = Math.abs(數字);
+  if (絕對值 >= 1_000_000) {
+    return `${(數字 / 1_000_000).toFixed(1)}M`;
+  }
+  if (絕對值 >= 10_000) {
+    return `${(數字 / 1_000).toFixed(1)}K`;
+  }
+  return 台灣整數格式.format(數字);
+}
+
 export function 格式化帶號整數(數值) {
   const 數字 = 轉為數字(數值);
   if (數字 === null) {

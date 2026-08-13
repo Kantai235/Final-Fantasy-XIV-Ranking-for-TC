@@ -20,6 +20,33 @@
   flex: 2 1 210px;
 }
 
+.工具列 > .同場職能切換欄位 {
+  flex: 0 1 230px;
+}
+
+.核取選項 {
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  border: 1px solid var(--輸入邊框);
+  border-radius: 8px;
+  padding: 8px 12px;
+  color: var(--主要文字);
+  background: var(--輸入背景);
+  cursor: pointer;
+}
+
+.核取選項 input[type="checkbox"] {
+  width: 18px;
+  min-width: 18px;
+  height: 18px;
+  min-height: 18px;
+  margin: 0;
+  padding: 0;
+  accent-color: var(--重點色);
+}
+
 .欄位 {
   min-width: 0;
   display: grid;

@@ -42,20 +42,29 @@ table {
 }
 
 .排行榜表格 {
-  min-width: 1120px;
+  min-width: 1040px;
   table-layout: fixed;
+}
+
+.排行榜表格.支援排行表格 {
+  /*
+   * 坦克／治療欄位較多，但總量已使用 K／M 縮寫，不需要再用寬表格保留完整整數。
+   * 讓表格跟隨頁面寬度，以下職能專屬百分比的總和刻意保留少量彈性，供瀏覽器
+   * 分配四捨五入誤差與版本欄切換，避免 1120px 桌機版面產生水平捲軸。
+   */
+  min-width: 0;
 }
 
 .排行榜表格 .排名欄 {
   width: 5.5%;
 }
 
-.排行榜表格 .角色欄 {
-  width: 16%;
-}
-
-.排行榜表格 .伺服器欄 {
-  width: 8%;
+.排行榜表格 .玩家欄 {
+  /*
+   * 玩家名稱與伺服器合併後共用同一欄；保留略寬空間避免長角色名稱把
+   * 「@伺服器」完全擠掉，同時仍比原本兩欄合計寬度更精簡。
+   */
+  width: 21%;
 }
 
 .排行榜表格 .職業欄 {
@@ -79,6 +88,14 @@ table {
   width: 7.4%;
 }
 
+.排行榜表格 .支援總量欄 {
+  width: 104px;
+}
+
+.排行榜表格 .支援百分比欄 {
+  width: 94px;
+}
+
 .排行榜表格 .通關時間欄 {
   width: 8.5%;
 }
@@ -89,6 +106,55 @@ table {
 
 .排行榜表格 .紀錄時間欄 {
   width: 9.5%;
+}
+
+.排行榜表格.支援排行表格 .排名欄 {
+  width: 5.5%;
+}
+
+.排行榜表格.坦克排行表格 .玩家欄 {
+  width: 18%;
+}
+
+.排行榜表格.治療排行表格 .玩家欄 {
+  width: 20.5%;
+}
+
+.排行榜表格.支援排行表格 .職業欄 {
+  width: 10%;
+}
+
+.排行榜表格.支援排行表格 .active欄,
+.排行榜表格.支援排行表格 .gcd欄 {
+  width: 6%;
+}
+
+.排行榜表格.支援排行表格 .傷害欄 {
+  width: 6%;
+}
+
+.排行榜表格.坦克排行表格 .支援總量欄 {
+  width: 5.5%;
+}
+
+.排行榜表格.治療排行表格 .支援總量欄 {
+  width: 7%;
+}
+
+.排行榜表格.支援排行表格 .支援百分比欄 {
+  width: 7%;
+}
+
+.排行榜表格.支援排行表格 .通關時間欄 {
+  width: 6%;
+}
+
+.排行榜表格.支援排行表格 .版本欄 {
+  width: 4%;
+}
+
+.排行榜表格.支援排行表格 .紀錄時間欄 {
+  width: 9%;
 }
 
 th,
@@ -102,6 +168,65 @@ td {
 .排行榜表格 th,
 .排行榜表格 td {
   padding: 12px 8px;
+}
+
+.排行榜表格.支援排行表格 th,
+.排行榜表格.支援排行表格 td {
+  padding-inline: 4px;
+}
+
+.排行榜表格.支援排行表格 th .表頭說明標籤 {
+  position: relative;
+  width: max-content;
+  max-width: 100%;
+  margin-inline: auto;
+  gap: 0;
+}
+
+.排行榜表格.支援排行表格 th .表頭排序按鈕 {
+  position: relative;
+  width: max-content;
+  max-width: 100%;
+  min-width: 0;
+  display: flex;
+  margin-inline: auto;
+  padding-inline: 2px;
+  font-size: inherit;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+.排行榜表格.支援排行表格 th .表頭排序按鈕.作用中 {
+  /* 只在箭頭實際出現時保留右側空間，避免所有未排序表頭被無謂撐寬。 */
+  padding-inline-end: 11px;
+}
+
+.排行榜表格.支援排行表格 th .排序箭頭 {
+  /*
+   * 排序箭頭只表示目前排序狀態，不應參與「個人防護／通關時間」等四字表頭的排版寬度。
+   * 將它固定在作用中按鈕的右側預留區，維持慣用的「標題＋箭頭」閱讀方向，也避免文字換行。
+   */
+  position: absolute;
+  top: 50%;
+  bottom: auto;
+  left: auto;
+  inset-inline-end: 2px;
+  font-size: 0.58rem;
+  transform: translateY(-50%);
+}
+
+.排行榜表格.支援排行表格 th .說明提示 {
+  position: absolute;
+  top: -5px;
+  inset-inline-end: -5px;
+}
+
+.排行榜表格.支援排行表格 th .說明提示按鈕 {
+  width: 15px;
+  min-width: 15px;
+  height: 15px;
+  min-height: 15px;
+  font-size: 0.62rem;
 }
 
 .排行榜表格 td {
@@ -151,6 +276,165 @@ td {
   vertical-align: bottom;
 }
 
+.排行榜表格 td:nth-child(2) .排行榜玩家連結 {
+  min-width: 0;
+  display: inline-flex;
+  align-items: baseline;
+  white-space: nowrap;
+}
+
+.排行榜玩家名稱 {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.排行榜玩家伺服器 {
+  flex: 0 0 auto;
+  color: var(--靜音文字);
+  font-size: 0.82em;
+  font-weight: 680;
+}
+
+@media (min-width: 721px) {
+  .排行榜表格.支援排行表格 {
+    /*
+     * 坦補榜仍使用與一般榜一致的 16px 正文字級；較多統計欄改由專用欄寬、
+     * 緊湊留白與百分比小數縮排吸收，不再犧牲整體可讀性。
+     */
+    font-size: 1rem;
+  }
+
+  .排行榜表格.支援排行表格 th,
+  .排行榜表格.支援排行表格 td {
+    padding-inline: 3px;
+  }
+
+  .排行榜表格.支援排行表格 .排行榜角色欄位 {
+    white-space: normal;
+  }
+
+  .排行榜表格.支援排行表格 .排行榜角色欄位 > .排行榜玩家連結 {
+    max-width: 100%;
+    white-space: normal;
+  }
+
+  .排行榜表格.支援排行表格 .排行榜玩家名稱 {
+    flex: 1 1 auto;
+    overflow: visible;
+    text-overflow: clip;
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
+
+  .排行榜表格.支援排行表格 .排行榜玩家伺服器 {
+    font-size: 0.9em;
+  }
+
+  .排行榜表格.支援排行表格 .報告按鈕 {
+    font-size: 0.82rem;
+  }
+
+  .排行榜表格.支援排行表格 td.排名 {
+    overflow: hidden;
+  }
+
+  .排行榜表格.支援排行表格 .排名徽章 {
+    box-sizing: border-box;
+    max-width: 100%;
+  }
+}
+
+.排行榜表格 .同場職能列 .排行榜玩家連結 {
+  max-width: 100%;
+}
+
+.排行榜百分比小數 {
+  font-size: 0.84em;
+  line-height: 1;
+}
+
+.排行榜縮寫數值 {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  height: auto;
+  display: inline-flex;
+  align-items: baseline;
+  justify-content: center;
+  appearance: none;
+  border: 0;
+  border-bottom: 1px dotted color-mix(in srgb, currentColor 55%, transparent);
+  border-radius: 0;
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  line-height: inherit;
+  cursor: help;
+}
+
+.排行榜表格 .排行榜縮寫數值:hover:not(:disabled),
+.排行榜表格 .排行榜縮寫數值:focus,
+.排行榜表格 .排行榜縮寫數值:active,
+.排行榜表格 .排行榜縮寫數值.完整數值已展開 {
+  color: inherit;
+  background: transparent;
+  box-shadow: none;
+  transform: none;
+}
+
+.排行榜縮寫數值:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--重點色) 70%, transparent);
+  outline-offset: 3px;
+}
+
+.排行榜完整數值提示 {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 7px);
+  left: 50%;
+  width: max-content;
+  max-width: min(220px, calc(100vw - 32px));
+  visibility: hidden;
+  border: 1px solid color-mix(in srgb, var(--重點色) 35%, var(--邊框色));
+  border-radius: 6px;
+  padding: 5px 8px;
+  opacity: 0;
+  color: var(--主要文字);
+  background: var(--表面背景);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 28%);
+  font-size: 0.76rem;
+  font-weight: 760;
+  line-height: 1.2;
+  pointer-events: none;
+  transform: translate(-50%, -3px);
+  transition:
+    opacity 120ms ease,
+    transform 120ms ease,
+    visibility 120ms ease;
+  white-space: nowrap;
+}
+
+.排行榜縮寫數值:hover .排行榜完整數值提示,
+.排行榜縮寫數值:focus-visible .排行榜完整數值提示,
+.排行榜縮寫數值.完整數值已展開 .排行榜完整數值提示 {
+  visibility: visible;
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+.排行榜表格 .包含完整數值提示 {
+  position: relative;
+  overflow: visible;
+}
+
+.排行榜表格 .包含完整數值提示:hover,
+.排行榜表格 .包含完整數值提示:focus-within {
+  z-index: 30;
+}
+
 /* 手機版名稱按鈕仍需保留省略號；移除一般按鈕圓角，避免 overflow 裁到中文字形邊緣。 */
 .排行榜表格 td:nth-child(2) .手機排行角色名稱 {
   max-width: 100%;
@@ -198,6 +482,17 @@ th {
 
 tbody tr:hover {
   background: var(--列hover背景);
+}
+
+.排行榜表格 .同場職能列 {
+  background: color-mix(in srgb, var(--重點色) 5%, var(--表面背景));
+}
+
+.排行榜表格 .同場職能列 td {
+  border-bottom-color: color-mix(in srgb, var(--重點色) 22%, var(--邊框柔和色));
+  padding-top: 9px;
+  padding-bottom: 9px;
+  color: var(--次要文字);
 }
 
 tbody tr:last-child td {

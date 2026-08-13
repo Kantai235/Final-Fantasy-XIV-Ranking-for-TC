@@ -84,6 +84,33 @@ export function useRankingData({
     if (欄位 === "adps") {
       return 列.adps ?? null;
     }
+    if (欄位 === "healingHps") {
+      return 列.healingStats?.hps ?? null;
+    }
+    if (欄位 === "pureHealing") {
+      return 列.healingStats?.pureHealing ?? null;
+    }
+    if (欄位 === "healingProtection") {
+      return 列.healingStats?.protection ?? null;
+    }
+    if (欄位 === "overhealPercent") {
+      return 列.healingStats?.overhealPercent ?? null;
+    }
+    if (欄位 === "damageTaken") {
+      return 列.tankStats?.damageTaken ?? null;
+    }
+    if (欄位 === "selfHealing") {
+      return 列.tankStats?.selfHealing ?? null;
+    }
+    if (欄位 === "personalProtection") {
+      return 列.tankStats?.personalProtection ?? null;
+    }
+    if (欄位 === "teamProtection") {
+      return 列.tankStats?.teamProtection ?? null;
+    }
+    if (欄位 === "mitigationCoverage") {
+      return 列.tankStats?.mitigationCoveragePercent ?? null;
+    }
     if (欄位 === "clearTime") {
       return 列.通關秒數 ?? null;
     }
@@ -124,6 +151,56 @@ export function useRankingData({
   // 1. ranking_entries：Node 建置後供前端直接使用的扁平列。
   // 2. reports/fights/players：較舊或原始的 report 結構。
   // 這個正規化步驟讓 UI 後續只面對同一個欄位集合，避免每個頁面都理解資料來源差異。
+  function 轉為可選數字(值) {
+    if (值 === null || 值 === undefined || 值 === "") {
+      return null;
+    }
+    return 轉為數字(值);
+  }
+
+  function 建立治療統計(來源) {
+    if (!來源 || typeof 來源 !== "object") {
+      return null;
+    }
+    return {
+      hps: 轉為可選數字(來源.hps),
+      pureHealing: 轉為可選數字(來源.pure_healing),
+      protection: 轉為可選數字(來源.protection),
+      overhealPercent: 轉為可選數字(來源.overheal_percent),
+    };
+  }
+
+  function 建立坦克統計(來源) {
+    if (!來源 || typeof 來源 !== "object") {
+      return null;
+    }
+    return {
+      damageTaken: 轉為可選數字(來源.damage_taken),
+      selfHealing: 轉為可選數字(來源.self_healing),
+      personalProtection: 轉為可選數字(來源.personal_protection),
+      teamProtection: 轉為可選數字(來源.team_protection),
+      mitigationCoveragePercent: 轉為可選數字(來源.mitigation_coverage_percent),
+    };
+  }
+
+  function 建立同場支援職業(來源) {
+    if (!來源 || typeof 來源 !== "object") {
+      return null;
+    }
+    const 職業代碼 = 來源.job || "-";
+    return {
+      角色名稱: 來源.character_name || 來源.name || "未知玩家",
+      伺服器: 來源.server || "未知伺服器",
+      職業代碼,
+      職業: 顯示職業名稱(職業代碼),
+      rdps: 轉為可選數字(來源.rdps),
+      active: 轉為可選數字(來源.active_percent),
+      gcd_coverage: 來源.gcd_coverage ?? null,
+      healingStats: 建立治療統計(來源.healing_stats),
+      tankStats: 建立坦克統計(來源.tank_stats),
+    };
+  }
+
   function 建立排行列(條目, 副本 = 目前副本.value) {
     const 職業代碼 = 條目.job || "-";
     const 通關秒數 = 轉為數字(條目.clear_time_seconds);
@@ -148,6 +225,10 @@ export function useRankingData({
       active,
       gcd_coverage: 條目.gcd_coverage ?? null,
       gcd_coverage_status: 條目.gcd_coverage_status ?? null,
+      healingStats: 建立治療統計(條目.healing_stats),
+      tankStats: 建立坦克統計(條目.tank_stats),
+      同場治療: 建立同場支援職業(條目.co_healer),
+      同場坦克: 建立同場支援職業(條目.co_tank),
       activeTimeMs: 轉為數字(條目.active_time_ms),
       通關秒數,
       紀錄時間: 條目.recorded_at_iso || 條目.report_start_time_iso,
@@ -388,6 +469,11 @@ export function useRankingData({
             active: 計算Active百分比(玩家.active_time_ms, 通關秒數),
             gcd_coverage: 玩家.gcd_coverage ?? null,
             gcd_coverage_status: 玩家.gcd_coverage_status ?? null,
+            healingStats: 建立治療統計(玩家.healing_stats),
+            tankStats: 建立坦克統計(玩家.tank_stats),
+            // 舊格式 fallback 沒有建置層產生的唯一配對結果；Vue 不可掃描同場玩家猜測另一坦／補。
+            同場治療: null,
+            同場坦克: null,
             activeTimeMs: 轉為數字(玩家.active_time_ms),
             通關秒數,
             紀錄時間: 戰鬥.recorded_at_iso || 報告.report_start_time_iso,

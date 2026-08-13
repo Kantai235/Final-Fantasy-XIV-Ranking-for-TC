@@ -276,6 +276,8 @@ const 伺服器篩選 = ref("");
 const 職業類型篩選 = ref("");
 const 職業篩選 = ref("");
 const 職業選單開啟 = ref(false);
+const 顯示同場治療職業 = ref(false);
+const 顯示同場坦克職業 = ref(false);
 const 搜尋關鍵字 = ref("");
 const 玩家搜尋歷史 = ref([]);
 const 目前玩家搜尋歷史欄位 = ref("");
@@ -702,6 +704,73 @@ function 符合職業篩選(職業代碼) {
   }
 
   return !職業篩選.value || 職業代碼 === 職業篩選.value;
+}
+
+const 目前排行榜支援職能 = computed(() => {
+  const 職業代碼 = 職業篩選.value;
+  if (職業代碼 && 職業群組索引["role:tank"]?.has(職業代碼)) {
+    return "tank";
+  }
+  if (職業代碼 && 職業群組索引["role:healer"]?.has(職業代碼)) {
+    return "healer";
+  }
+  if (職業類型篩選.value === "role:tank") {
+    return "tank";
+  }
+  if (職業類型篩選.value === "role:healer") {
+    return "healer";
+  }
+  return "damage";
+});
+
+const 顯示坦克排行榜欄位 = computed(() => 目前排行榜支援職能.value === "tank");
+const 顯示治療排行榜欄位 = computed(() => 目前排行榜支援職能.value === "healer");
+const 顯示支援排行榜欄位 = computed(() => 目前排行榜支援職能.value !== "damage");
+
+const 坦克排行榜排序欄位 = new Set([
+  "rank",
+  "active",
+  "gcdCoverage",
+  "rdps",
+  "damageTaken",
+  "selfHealing",
+  "personalProtection",
+  "teamProtection",
+  "mitigationCoverage",
+  "clearTime",
+  "recordedAt",
+]);
+const 治療排行榜排序欄位 = new Set([
+  "rank",
+  "active",
+  "gcdCoverage",
+  "rdps",
+  "healingHps",
+  "pureHealing",
+  "healingProtection",
+  "overhealPercent",
+  "clearTime",
+  "recordedAt",
+]);
+const 傷害排行榜排序欄位 = new Set([
+  "rank",
+  "active",
+  "gcdCoverage",
+  "dps",
+  "rdps",
+  "adps",
+  "clearTime",
+  "recordedAt",
+]);
+
+function 排行榜排序欄位適用目前職能(欄位) {
+  if (顯示坦克排行榜欄位.value) {
+    return 坦克排行榜排序欄位.has(欄位);
+  }
+  if (顯示治療排行榜欄位.value) {
+    return 治療排行榜排序欄位.has(欄位);
+  }
+  return 傷害排行榜排序欄位.has(欄位);
 }
 
 function 清除職業篩選() {
@@ -1532,6 +1601,15 @@ const 統計詞彙說明 = {
   nDPS: "純淨 DPS。公式：DPS - 他人團輔，用來看移除外部增益後自己的輸出表現。",
   aDPS: "調整後 DPS。公式：DPS - 被選取的單體增益，會移除標舞、舞伴、占星卡與龍眼等單體填充傷害。",
   cDPS: "綜合 DPS。公式：DPS - 被選取的單體增益 + 自體團輔，用來同時觀察自身爆發與你提供給團隊的增益價值。",
+  HPS: "每秒治療與防護量，分母使用 FFLogs Healing table 的戰鬥時間；包含有效純治療與實際消耗的護盾量。",
+  純治療: "FFLogs Healing table 扣除防護量後的有效治療總量，不包含過量治療。",
+  防護量: "FFLogs Healing table 中實際被消耗的護盾量，不是施放時的名義盾值。",
+  "OH%": "過量治療 ÷（純治療 + 過量治療）。護盾不會產生 overheal，因此防護量不列入分母。",
+  承傷: "此坦克在該場戰鬥實際承受的傷害總量。",
+  自補: "此坦克對自己的有效純治療總量；若 FFLogs 缺少可唯一對應的目標明細則顯示 -。",
+  個人防護: "此坦克對自己產生且實際被消耗的護盾量。",
+  團隊防護: "此坦克對其他隊員產生且實際被消耗的護盾量。",
+  減傷覆蓋: "有效減傷啟用次數 ÷ 總啟用次數；只有狀態時窗內確實發生傷害才算有效，不代表單招實際減免量或整場時間覆蓋率。",
   "GCD 覆蓋率": "以 FFLogs Casts graph 與本地規則補算玩家在扣除停手視窗後，GCD 技能覆蓋有效輸出時間的比例。由於停手、轉場與部分職業技能判定仍可能與實際狀況有落差，精準度有限，請只作為參考；尚未補齊或 report 無法存取時會顯示 -。",
   "最佳 rDPS": "此玩家目前公開成績中最高的團隊貢獻 DPS。",
   "職業 Rank": "同副本、同職業的有效版本排行榜名次；會以角色、伺服器與職業去重保留最佳紀錄。下方前 N% / PR 由此名次與該職業通關數換算，母體不等同同職分位。",
@@ -5539,7 +5617,11 @@ function 套用排行榜網址狀態(網址狀態) {
   排行榜版本範圍.value = 正規化版本紀錄範圍(網址狀態.version);
   排行榜遊戲版本.value = 網址狀態.gameVersion || "";
 
-  if (排序欄位標籤[網址狀態.sort] && (顯示Gcd覆蓋率 || 網址狀態.sort !== "gcdCoverage")) {
+  if (
+    排序欄位標籤[網址狀態.sort]
+    && 排行榜排序欄位適用目前職能(網址狀態.sort)
+    && (顯示Gcd覆蓋率 || 網址狀態.sort !== "gcdCoverage")
+  ) {
     排序欄位.value = 網址狀態.sort;
     排序方向.value = ["asc", "desc"].includes(網址狀態.order) ? 網址狀態.order : 排序欄位預設方向(網址狀態.sort);
   } else {
@@ -5704,6 +5786,11 @@ watch(職業類型篩選, () => {
 });
 
 watch([伺服器篩選, 職業類型篩選, 職業篩選, 搜尋關鍵字, 排序欄位, 排序方向], () => {
+  if (!排行榜排序欄位適用目前職能(排序欄位.value)) {
+    排序欄位.value = 預設排序欄位;
+    排序方向.value = 預設排序方向;
+    return;
+  }
   if (!正在套用網址狀態) {
     目前頁碼.value = 1;
   }
@@ -5959,6 +6046,8 @@ onUnmounted(() => {
     職業類型篩選,
     職業篩選,
     職業選單開啟,
+    顯示同場治療職業,
+    顯示同場坦克職業,
     主色模式,
     搜尋關鍵字,
     玩家搜尋歷史,
@@ -6119,6 +6208,11 @@ onUnmounted(() => {
     職業所屬類型,
     取得比較職能,
     目前職業主色,
+    目前排行榜支援職能,
+    顯示坦克排行榜欄位,
+    顯示治療排行榜欄位,
+    顯示支援排行榜欄位,
+    排行榜排序欄位適用目前職能,
     排名色彩類別,
     符合職業篩選,
     清除職業篩選,

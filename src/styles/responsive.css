@@ -218,6 +218,12 @@
   }
 }
 
+@media (max-width: 720px) {
+  .排行榜表格 tbody .同場職能列 {
+    background: color-mix(in srgb, var(--重點色) 7%, var(--表面背景));
+  }
+}
+
 .手機排行卡 {
   display: none;
 }
@@ -1908,6 +1914,8 @@
   }
 
   .排行榜表格,
+  .排行榜表格.坦克排行表格,
+  .排行榜表格.治療排行表格,
   .統計表格,
   .比較表格,
   .近期動態表格,
@@ -2617,6 +2625,31 @@
     display: none !important;
   }
 
+  /*
+   * 手機卡片已在「玩家」儲存格內完整顯示職業與各項數值，表頭只保留排名與玩家，
+   * 避免桌面欄位數依輸出／坦克／治療模式改變時，舊的 nth-child 對到錯誤欄位。
+   */
+  .排行榜表格 thead tr {
+    grid-template-columns: 38px minmax(0, 1fr) !important;
+  }
+
+  .排行榜表格 thead th {
+    display: none !important;
+  }
+
+  .排行榜表格 thead .排行榜排名表頭,
+  .排行榜表格 thead .排行榜玩家表頭 {
+    display: flex !important;
+  }
+
+  .排行榜表格 thead .排行榜排名表頭 {
+    grid-column: 1 !important;
+  }
+
+  .排行榜表格 thead .排行榜玩家表頭 {
+    grid-column: 2 !important;
+  }
+
   .手機排行卡,
   .手機排行主列,
   .手機排行傷害列,
@@ -2686,6 +2719,44 @@
     line-height: 1.08;
   }
 
+  /*
+   * 坦克與治療的主要統計比輸出職業多，但手機版仍應維持單一重點列。
+   * 依職能使用固定欄數，配合較小間距與內距，避免拆成兩排後讓每一格都像主要傷害。
+   */
+  .排行榜表格.坦克排行表格 .手機排行傷害列 {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+
+  .排行榜表格.治療排行表格 .手機排行傷害列 {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  .排行榜表格.支援排行表格 .手機排行傷害列 {
+    gap: 2px;
+  }
+
+  .排行榜表格.支援排行表格 .手機排行傷害列 > span {
+    padding-inline: 2px;
+    text-align: center;
+  }
+
+  .排行榜表格.支援排行表格 .手機排行傷害列 em {
+    font-size: 0.56rem;
+    letter-spacing: -0.02em;
+  }
+
+  .排行榜表格.支援排行表格 .手機排行傷害列 strong {
+    font-size: 0.66rem;
+  }
+
+  .排行榜表格.支援排行表格 .手機排行傷害列 .手機排行重點傷害 strong {
+    font-size: 0.72rem;
+  }
+
+  .排行榜表格.支援排行表格 .手機排行傷害列 .排行榜百分比小數 {
+    font-size: 0.75em;
+  }
+
   .手機排行傷害列 em,
   .手機排行資訊列 em {
     overflow: hidden;
@@ -2710,6 +2781,25 @@
     white-space: nowrap;
   }
 
+  /*
+   * 坦補總量的完整數值提示會跨出單一三欄格；只放寬含提示的數值容器，
+   * 其餘一般欄位仍保留省略號，避免長數字重新撐寬手機排行榜。
+   */
+  .手機排行傷害列 .包含完整數值提示,
+  .手機排行傷害列 .包含完整數值提示 strong {
+    overflow: visible;
+  }
+
+  /* 上方的通用 span 卡片規則也會命中提示本身，這裡還原成單純浮動標籤。 */
+  .手機排行傷害列 .排行榜完整數值提示 {
+    display: block;
+    gap: 0;
+    border-radius: 6px;
+    padding: 5px 8px;
+    background: var(--表面背景);
+    line-height: 1.2;
+  }
+
   .手機排行傷害列 .手機排行重點傷害 strong {
     color: var(--主要文字);
     font-size: 0.78rem;
@@ -2725,6 +2815,11 @@
     font-size: 0.66rem;
     font-weight: 740;
     line-height: 1.1;
+  }
+
+  /* 版本開啟時多一格，仍讓 Active／GCD／通關／版本／紀錄／報告維持同一橫列。 */
+  .手機排行完整資訊列.顯示手機版本 {
+    grid-template-columns: auto auto auto auto minmax(0, 1fr) auto;
   }
 
   .手機排行資訊列 span {
