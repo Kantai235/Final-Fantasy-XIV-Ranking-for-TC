@@ -190,6 +190,27 @@ const performanceSchema = objectOf({
   gap_to_top10: optional(nullableNumberSchema),
 });
 
+const userHealingStatsSchema = objectOf({
+  hps: nullableNumberSchema,
+  pure_healing: nullableNumberSchema,
+  protection: nullableNumberSchema,
+  overheal_percent: nullableNumberSchema,
+});
+
+const userTankStatsSchema = objectOf({
+  damage_taken: nullableNumberSchema,
+  self_healing: nullableNumberSchema,
+  personal_protection: nullableNumberSchema,
+  team_protection: nullableNumberSchema,
+  mitigation_coverage_percent: nullableNumberSchema,
+});
+
+const coHealerSchema = objectOf({
+  character_name: stringSchema,
+  server: stringSchema,
+  job: stringSchema,
+});
+
 const reportVariantSchema = objectOf({
   key: stringSchema,
   report_code: nullableStringSchema,
@@ -205,6 +226,9 @@ const reportVariantSchema = objectOf({
   total_damage: nullableNumberSchema,
   active_time_ms: nullableNumberSchema,
   active_percent: nullableNumberSchema,
+  healing_stats: optional(userHealingStatsSchema),
+  tank_stats: optional(userTankStatsSchema),
+  co_healer: optional(coHealerSchema),
   clear_time_ms: nullableNumberSchema,
   clear_time_seconds: nullableNumberSchema,
   damage_downtime_ms: nullableNumberSchema,
@@ -233,6 +257,9 @@ const compactReportVariantSchema = objectOf({
   total_damage: optional(nullableNumberSchema),
   active_time_ms: optional(nullableNumberSchema),
   active_percent: optional(nullableNumberSchema),
+  healing_stats: optional(userHealingStatsSchema),
+  tank_stats: optional(userTankStatsSchema),
+  co_healer: optional(coHealerSchema),
   clear_time_ms: optional(nullableNumberSchema),
   clear_time_seconds: optional(nullableNumberSchema),
   damage_downtime_ms: optional(nullableNumberSchema),
@@ -295,6 +322,9 @@ const fullEntrySchema = objectOf({
   total_damage: optional(numberSchema),
   active_time_ms: numberSchema,
   active_percent: numberSchema,
+  healing_stats: optional(userHealingStatsSchema),
+  tank_stats: optional(userTankStatsSchema),
+  co_healer: optional(coHealerSchema),
   gcd_coverage: optional(gcdCoverageSchema),
   gcd_coverage_status: optional(gcdCoverageStatusSchema),
   clear_time_ms: numberSchema,

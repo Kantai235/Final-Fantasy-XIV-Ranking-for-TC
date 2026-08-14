@@ -120,7 +120,7 @@ npm run fetch:honey-fans
 
 減傷覆蓋規則只維護坦克玩家技能的 Status ID 與作用範圍，不含任何副本機制 ID，因此同一套計算可套用所有副本。FFLogs Buffs／Debuffs events 會把 Status ID 放在 `1_000_000 + Status ID` namespace，解析時會先還原為可由 XIVAPI `Status.csv` 追溯的 ID。個人／指定目標／團隊 Buff 以實際 targetID 建立時窗；Reprisal 類敵方 Debuff 則要求傷害來源是被套用的敵人。FFLogs 會把團隊 Buff 拆成每名隊員各一組封包，因此彼此重疊或只有短封包間隔的團隊時窗會收斂為一次 activation；單體充能技能仍保留個別 packet，避免誤合併。單次 activation 至少有一筆 `amount`、`absorbed` 或 `unmitigatedAmount` 大於 0 的傷害落在時窗內，才列為有效。重疊減傷的傷害覆蓋量取事件聯集，不能解讀為單招實際減免量。
 
-`scripts/build_ranking_table_data.mjs` 會把來源玩家列的 `healing_stats`／`tank_stats` 收斂為排行榜薄索引所需欄位；坦克與治療職業另由相同 fight 的玩家列建立 `co_tank`／`co_healer`，讓 Vue 只負責依使用者勾選狀態顯示。一般八人副本只有同場恰好兩名同職能玩家時才建立雙向搭檔；聯盟副本或其它同場超過兩名坦克／治療職業的資料缺少小隊分組依據，因此保守輸出 `null`，不得依列順序或職業名稱猜測配對。這項關聯只能在 Node.js 資料建置層完成，Python 不得寫入 UI 專用欄位，Vue 也不得掃描排行榜列重做 fight 聚合。
+`scripts/build_ranking_table_data.mjs` 會把來源玩家列的 `healing_stats`／`tank_stats` 收斂為排行榜薄索引所需欄位；坦克與治療職業另由相同 fight 的玩家列建立 `co_tank`／`co_healer`，讓 Vue 只負責依使用者勾選狀態顯示。`scripts/build_user_data.mjs` 也會把同一份支援統計收斂為個人成績與報告變體的選填摘要，並只為治療職業保留個人成績介面所需的 `co_healer`。一般八人副本只有同場恰好兩名同職能玩家時才建立雙向搭檔；聯盟副本或其它同場超過兩名坦克／治療職業的資料缺少小隊分組依據，因此保守輸出 `null`，不得依列順序或職業名稱猜測配對。這項關聯只能在 Node.js 資料建置層完成，Python 不得寫入 UI 專用欄位，Vue 也不得掃描排行榜列重做 fight 聚合。
 
 歷史資料使用兩條互不干擾的回補路徑：
 

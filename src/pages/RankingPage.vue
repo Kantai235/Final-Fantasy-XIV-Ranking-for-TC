@@ -542,7 +542,9 @@ export default {
     >
       <colgroup>
         <col class="排名欄" />
-        <col class="玩家欄" />
+        <col v-if="顯示支援排行榜欄位" class="玩家欄" />
+        <col v-if="!顯示支援排行榜欄位" class="玩家名稱欄" />
+        <col v-if="!顯示支援排行榜欄位" class="伺服器欄" />
         <col class="職業欄" />
         <col v-for="欄位 in 排行榜數值欄位" :key="欄位.key" :class="欄位.columnClass" />
         <col class="通關時間欄" />
@@ -563,7 +565,9 @@ export default {
               <span v-if="是否目前排序('rank')" class="排序箭頭" aria-hidden="true">{{ 排序方向圖示("rank") }}</span>
             </button>
           </th>
-          <th class="排行榜玩家表頭" scope="col">玩家</th>
+          <th v-if="顯示支援排行榜欄位" class="排行榜玩家表頭" scope="col">玩家</th>
+          <th v-if="!顯示支援排行榜欄位" class="排行榜玩家名稱表頭" scope="col">玩家名稱</th>
+          <th v-if="!顯示支援排行榜欄位" class="排行榜伺服器表頭" scope="col">伺服器</th>
           <th class="排行榜職業表頭" scope="col">職業</th>
           <th
             v-for="欄位 in 排行榜數值欄位"
@@ -633,7 +637,7 @@ export default {
           </td>
           <td class="排行榜角色欄位">
             <button class="文字連結 排行榜玩家連結" type="button" @click="開啟個人成績單(列)">
-              <span class="排行榜玩家名稱">{{ 列.角色名稱 }}</span><span class="排行榜玩家伺服器">&nbsp;@&nbsp;{{ 列.伺服器 }}</span>
+              <span class="排行榜玩家名稱">{{ 列.角色名稱 }}</span><span v-if="顯示支援排行榜欄位" class="排行榜玩家伺服器">&nbsp;@&nbsp;{{ 列.伺服器 }}</span>
             </button>
             <span v-if="列.過版紀錄" class="版本紀錄標籤">過版紀錄</span>
             <span v-if="顯示作者相關標示 && 是網站作者(列.角色名稱)" class="說明提示 作者提示">
@@ -727,6 +731,7 @@ export default {
               </div>
             </div>
           </td>
+          <td v-if="!顯示支援排行榜欄位" class="排行榜伺服器欄位">{{ 列.伺服器 }}</td>
           <td>
             <span class="職業標籤" :class="職業色彩類別(職業代碼色彩(列.職業代碼))">
               <JobIcon
@@ -749,7 +754,7 @@ export default {
               :percentage="欄位.percentage"
             />
           </td>
-          <td class="數字">{{ 格式化通關時間(列.通關秒數) }}</td>
+          <td class="數字 排行榜通關時間欄位">{{ 格式化通關時間(列.通關秒數) }}</td>
           <td v-show="顯示版本紀錄" class="數字 排行榜版本欄">{{ 列.gameVersion || "—" }}</td>
           <td>
             <time

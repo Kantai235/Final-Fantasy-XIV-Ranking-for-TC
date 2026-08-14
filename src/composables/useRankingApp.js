@@ -133,7 +133,7 @@ const 分位顯示模式選項 = [
   { value: 分位顯示模式前段, label: "前 N%" },
   { value: 分位顯示模式PR, label: "PR" },
 ];
-const 使用者歷史排序欄位 = Object.freeze([
+const 所有使用者歷史排序欄位 = Object.freeze([
   { value: "recordedAt", label: "紀錄時間" },
   { value: "performance", label: "同職分位" },
   { value: "active", label: "Active" },
@@ -141,10 +141,19 @@ const 使用者歷史排序欄位 = Object.freeze([
   { value: "dps", label: "DPS" },
   { value: "rdps", label: "rDPS" },
   { value: "adps", label: "aDPS" },
+  { value: "healingHps", label: "HPS" },
+  { value: "pureHealing", label: "純治療" },
+  { value: "healingProtection", label: "防護量" },
+  { value: "overhealPercent", label: "OH%" },
+  { value: "damageTaken", label: "承傷" },
+  { value: "selfHealing", label: "自補" },
+  { value: "personalProtection", label: "個人防護" },
+  { value: "teamProtection", label: "團隊防護" },
+  { value: "mitigationCoverage", label: "減傷覆蓋" },
   { value: "gameVersion", label: "版本" },
   { value: "clearTime", label: "通關時間" },
 ]);
-const 使用者歷史排序欄位集合 = new Set(使用者歷史排序欄位.map((欄位) => 欄位.value));
+const 使用者歷史排序欄位集合 = new Set(所有使用者歷史排序欄位.map((欄位) => 欄位.value));
 const 個人成績成就目錄 = Object.freeze(取得個人成績成就目錄());
 const 成就手冊目前時間戳記 = ref(Date.now());
 let 成就手冊時間計時器 = null;
@@ -156,6 +165,15 @@ const 使用者歷史排序預設方向 = Object.freeze({
   dps: "desc",
   rdps: "desc",
   adps: "desc",
+  healingHps: "desc",
+  pureHealing: "desc",
+  healingProtection: "desc",
+  overhealPercent: "desc",
+  damageTaken: "desc",
+  selfHealing: "desc",
+  personalProtection: "desc",
+  teamProtection: "desc",
+  mitigationCoverage: "desc",
   gameVersion: "desc",
   clearTime: "asc",
 });
@@ -3859,6 +3877,34 @@ const 使用者完整副本成績 = computed(() => {
   return 取得使用者副本成績(使用者資料.value, 使用者伺服器篩選.value, () => true, 使用者代表成績是否較佳);
 });
 
+const 目前使用者支援職能 = computed(() => {
+  const 職業代碼 = 使用者職業篩選.value;
+  if (職業代碼 && 職業群組索引["role:tank"]?.has(職業代碼)) {
+    return "tank";
+  }
+  if (職業代碼 && 職業群組索引["role:healer"]?.has(職業代碼)) {
+    return "healer";
+  }
+  if (使用者職業類型篩選.value === "role:tank") {
+    return "tank";
+  }
+  if (使用者職業類型篩選.value === "role:healer") {
+    return "healer";
+  }
+  return "damage";
+});
+
+const 使用者歷史排序欄位 = computed(() => {
+  const 共用欄位 = ["recordedAt", "performance", "active", "gcdCoverage"];
+  const 職能欄位 = 目前使用者支援職能.value === "healer"
+    ? ["rdps", "healingHps", "pureHealing", "healingProtection", "overhealPercent"]
+    : 目前使用者支援職能.value === "tank"
+      ? ["rdps", "damageTaken", "selfHealing", "personalProtection", "teamProtection", "mitigationCoverage"]
+      : ["dps", "rdps", "adps"];
+  const 允許欄位 = new Set([...共用欄位, ...職能欄位, "gameVersion", "clearTime"]);
+  return 所有使用者歷史排序欄位.filter((欄位) => 允許欄位.has(欄位.value));
+});
+
 function 比較個人成績版本(左側版本, 右側版本) {
   const 左側數值 = Number(左側版本);
   const 右側數值 = Number(右側版本);
@@ -3874,7 +3920,11 @@ function 比較個人成績版本(左側版本, 右側版本) {
 function 取得使用者歷史排序設定(副本鍵值) {
   const 鍵值 = String(副本鍵值 || "").trim();
   const 設定 = 鍵值 ? 使用者歷史排序設定.value[鍵值] : null;
-  if (!設定 || !使用者歷史排序欄位集合.has(設定.欄位)) {
+  if (
+    !設定
+    || !使用者歷史排序欄位集合.has(設定.欄位)
+    || !使用者歷史排序欄位.value.some((欄位) => 欄位.value === 設定.欄位)
+  ) {
     return null;
   }
 
@@ -3890,7 +3940,7 @@ function 取得使用者歷史排序欄位(副本鍵值) {
 
 function 取得使用者歷史排序欄位標籤(副本鍵值) {
   const 欄位 = 取得使用者歷史排序欄位(副本鍵值);
-  return 使用者歷史排序欄位.find((選項) => 選項.value === 欄位)?.label || "目前欄位";
+  return 所有使用者歷史排序欄位.find((選項) => 選項.value === 欄位)?.label || "目前欄位";
 }
 
 function 取得使用者歷史排序預設方向(欄位) {
@@ -3909,7 +3959,10 @@ function 設定使用者歷史排序欄位(副本鍵值, 欄位) {
     return;
   }
 
-  if (!使用者歷史排序欄位集合.has(目標欄位)) {
+  if (
+    !使用者歷史排序欄位集合.has(目標欄位)
+    || !使用者歷史排序欄位.value.some((選項) => 選項.value === 目標欄位)
+  ) {
     使用者歷史排序設定.value = Object.fromEntries(
       Object.entries(使用者歷史排序設定.value).filter(([目前鍵值]) => 目前鍵值 !== 鍵值),
     );
@@ -3974,7 +4027,7 @@ function 使用者歷史排序ARIA(副本鍵值, 欄位) {
 }
 
 function 使用者歷史排序按鈕標籤(副本鍵值, 欄位) {
-  const 標籤 = 使用者歷史排序欄位.find((選項) => 選項.value === 欄位)?.label || 欄位;
+  const 標籤 = 所有使用者歷史排序欄位.find((選項) => 選項.value === 欄位)?.label || 欄位;
   const 設定 = 取得使用者歷史排序設定(副本鍵值);
   if (設定?.欄位 !== 欄位) {
     return `依${標籤}排序`;
@@ -4007,6 +4060,24 @@ function 取得使用者歷史排序數值(成績, 欄位) {
       return 轉為數字(成績?.rdps);
     case "adps":
       return 轉為數字(成績?.adps);
+    case "healingHps":
+      return 轉為數字(成績?.healing_stats?.hps);
+    case "pureHealing":
+      return 轉為數字(成績?.healing_stats?.pure_healing);
+    case "healingProtection":
+      return 轉為數字(成績?.healing_stats?.protection);
+    case "overhealPercent":
+      return 轉為數字(成績?.healing_stats?.overheal_percent);
+    case "damageTaken":
+      return 轉為數字(成績?.tank_stats?.damage_taken);
+    case "selfHealing":
+      return 轉為數字(成績?.tank_stats?.self_healing);
+    case "personalProtection":
+      return 轉為數字(成績?.tank_stats?.personal_protection);
+    case "teamProtection":
+      return 轉為數字(成績?.tank_stats?.team_protection);
+    case "mitigationCoverage":
+      return 轉為數字(成績?.tank_stats?.mitigation_coverage_percent);
     case "gameVersion":
       return 轉為數字(取得個人成績紀錄版本(成績));
     case "clearTime":
@@ -6082,6 +6153,7 @@ onUnmounted(() => {
     使用者職業類型篩選,
     使用者職業篩選,
     使用者職業選單開啟,
+    目前使用者支援職能,
     使用者歷史排序欄位,
     使用者歷史排序設定,
     使用者趨勢職業選擇,

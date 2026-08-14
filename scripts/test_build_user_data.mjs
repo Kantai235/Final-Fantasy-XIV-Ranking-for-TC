@@ -163,6 +163,15 @@ async function createFixture(tempRoot) {
               fflogs_id: 101,
               active_time_ms: 500000,
               active_percent: 90.91,
+              tank_stats: {
+                damage_taken: 5619043,
+                self_healing: 1461615,
+                personal_protection: 425482,
+                team_protection: 733260,
+                mitigation_coverage: {
+                  effective_activation_percent: 96.15,
+                },
+              },
               gcd_coverage: {
                 percent: 94.43,
                 covered_time_ms: 519365,
@@ -187,8 +196,23 @@ async function createFixture(tempRoot) {
               rdps: 60,
               adps: 55,
               total_damage: 27500,
+              fflogs_id: 102,
               active_time_ms: 480000,
               active_percent: 87.27,
+              healing_stats: {
+                hps: 17731,
+                pure_healing: 7500000,
+                protection: 3300000,
+                overheal_percent: 46.14,
+              },
+            },
+            {
+              // 同角色的另一職業只用來建立雙補關聯；缺少 DPS 時不會成為額外公開成績，
+              // 也不會改變 fixture 原本的玩家數與隊友統計。
+              name: "測試角色",
+              server: "鳳凰",
+              job: "Scholar",
+              fflogs_id: 103,
             },
           ],
         },
@@ -221,6 +245,15 @@ async function createFixture(tempRoot) {
               fflogs_id: 303,
               active_time_ms: 500000,
               active_percent: 90.91,
+              tank_stats: {
+                damage_taken: 5619043,
+                self_healing: 1461615,
+                personal_protection: 425482,
+                team_protection: 733260,
+                mitigation_coverage: {
+                  effective_activation_percent: 96.15,
+                },
+              },
               gcd_coverage: {
                 percent: 94.43,
                 covered_time_ms: 519365,
@@ -245,8 +278,21 @@ async function createFixture(tempRoot) {
               rdps: 60,
               adps: 55,
               total_damage: 27500,
+              fflogs_id: 304,
               active_time_ms: 480000,
               active_percent: 87.27,
+              healing_stats: {
+                hps: 17731,
+                pure_healing: 7500000,
+                protection: 3300000,
+                overheal_percent: 46.14,
+              },
+            },
+            {
+              name: "測試角色",
+              server: "鳳凰",
+              job: "Scholar",
+              fflogs_id: 305,
             },
           ],
         },
@@ -865,6 +911,10 @@ async function assertFixtureOutput(tempRoot, expectedGlobalStatsText, expectedSe
   assert(mainUserData.summary.profile_job_rank === 1, "個人成績單代表職業應保留最高職業 Rank。");
   assert(mainUserData.encounters[0]?.best_entry?.job === "Paladin", "個人成績單副本代表列應優先顯示最高排名職業。");
   assert(mainUserData.encounters[0]?.best_entry?.fflogs_source_id === 101, "個人成績單代表列應保留 FFLogs sourceID。");
+  assert(
+    mainUserData.encounters[0]?.best_entry?.tank_stats?.mitigation_coverage_percent === 96.15,
+    "個人成績單副本代表列應保留坦克支援統計。",
+  );
   assert(mainUserData.encounters[0]?.best_entry?.duplicate_count === 2, "合併後的個人成績應保留來源 report 數。");
   assert(mainUserData.encounters[0]?.best_entry?.report_detail_path?.startsWith("data/user-entry-details/"), "合併後的個人成績應保留按需載入報告細節路徑。");
   assert(mainUserData.encounters[0]?.best_entry?.report_detail_id === mainUserData.encounters[0]?.best_entry?.id, "合併後的個人成績應保留報告細節 id。");
@@ -888,10 +938,41 @@ async function assertFixtureOutput(tempRoot, expectedGlobalStatsText, expectedSe
   const mainUserEntry = mainUserData.encounters[0]?.public_entries?.find((entry) => entry.report_code === "RPT1");
   assert(mainUserEntry?.game_version === "7.05", "版本切點當下的個人成績應歸入新版本。");
   assert(mainUserEntry?.gcd_coverage?.percent === 94.43, "個人成績單應保留 GCD 覆蓋率。");
+  assert(
+    mainUserEntry?.tank_stats?.damage_taken === 5619043
+      && mainUserEntry?.tank_stats?.self_healing === 1461615
+      && mainUserEntry?.tank_stats?.personal_protection === 425482
+      && mainUserEntry?.tank_stats?.team_protection === 733260
+      && mainUserEntry?.tank_stats?.mitigation_coverage_percent === 96.15,
+    "坦克個人成績應保留精簡後的承傷、自補、防護與有效減傷覆蓋率。",
+  );
   assert(!Object.hasOwn(mainUserEntry.gcd_coverage || {}, "raw_graph_downtime_percent"), "個人成績單不應輸出 GCD 內部診斷欄位。");
   assert(!Object.hasOwn(mainUserEntry, "gcd_coverage_status"), "個人成績單不應輸出 GCD 診斷狀態，避免首屏 payload 膨脹。");
   assert(mainUserData.frequent_teammates[0]?.character_name === "治療隊友", "測試角色應彙整同場隊友。");
   assert(mainUserData.frequent_teammates[0]?.co_clear_count === 1, "同一場戰鬥的重複 report 不應灌水常同場隊友次數。");
+
+  const healerUser = usersIndex.users.find((user) => user.character_name === "治療隊友");
+  assert(healerUser, "fixture 應產生治療隊友的個人成績單。");
+  const healerUserData = await readJson(path.join(tempRoot, "public", healerUser.file_path));
+  assert(
+    healerUserData.encounters[0]?.best_entry?.healing_stats?.pure_healing === 7500000
+      && healerUserData.encounters[0]?.best_entry?.co_healer?.job === "Scholar",
+    "治療個人成績副本代表列應保留支援統計與同場另一補。",
+  );
+  const healerEntry = healerUserData.encounters[0]?.public_entries?.find((entry) => entry.report_code === "RPT1");
+  assert(
+    healerEntry?.healing_stats?.hps === 17731
+      && healerEntry?.healing_stats?.pure_healing === 7500000
+      && healerEntry?.healing_stats?.protection === 3300000
+      && healerEntry?.healing_stats?.overheal_percent === 46.14,
+    "治療個人成績應保留 HPS、純治療、防護量與 OH%。",
+  );
+  assert(
+    healerEntry?.co_healer?.character_name === "測試角色"
+      && healerEntry?.co_healer?.server === "鳳凰"
+      && healerEntry?.co_healer?.job === "Scholar",
+    "標準雙補場次應在個人成績保存可唯一辨識的同場另一補。",
+  );
 
   if (expectedGlobalStatsText !== null) {
     assert(globalStatsText === expectedGlobalStatsText, "同一批 ranking 重建時 global_stats.json 應完全一致。");

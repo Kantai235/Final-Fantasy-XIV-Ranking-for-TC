@@ -320,6 +320,14 @@
 }
 
 @media (max-width: 720px) {
+  html,
+  body {
+    /* 作者面板的進出場位移刻意從畫面外開始；裁掉純動畫區域，避免它在手機上
+       被瀏覽器計入文件寬度並產生與內容無關的水平捲軸。 */
+    overflow-x: hidden;
+    overflow-x: clip;
+  }
+
   .頁面 {
     width: min(100% - 20px, 1120px);
     padding-top: 0;
@@ -1904,6 +1912,15 @@
     grid-column: 1 / -1;
   }
 
+  .成績列數值同場治療 {
+    grid-column: 1 / -1;
+  }
+
+  .成績列數值同場治療 .同場治療玩家 {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
   .趨勢圖 {
     height: 132px;
   }
@@ -2638,7 +2655,8 @@
   }
 
   .排行榜表格 thead .排行榜排名表頭,
-  .排行榜表格 thead .排行榜玩家表頭 {
+  .排行榜表格 thead .排行榜玩家表頭,
+  .排行榜表格 thead .排行榜玩家名稱表頭 {
     display: flex !important;
   }
 
@@ -2646,7 +2664,8 @@
     grid-column: 1 !important;
   }
 
-  .排行榜表格 thead .排行榜玩家表頭 {
+  .排行榜表格 thead .排行榜玩家表頭,
+  .排行榜表格 thead .排行榜玩家名稱表頭 {
     grid-column: 2 !important;
   }
 
@@ -3094,6 +3113,11 @@
     padding: 8px;
   }
 
+  .歷史表格.歷史表格顯示版本 tr,
+  .歷史表格.歷史表格支援職能 tr {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+
   .歷史表格 td {
     gap: 2px;
     line-height: 1.15;
@@ -3232,6 +3256,59 @@
   }
 
   .歷史表格 td:nth-child(10)::before {
+    content: "通關時間";
+  }
+
+  /* 坦克／治療歷史列的動態欄位數量不同，不能沿用輸出職業的 nth-child
+     位置判斷。語意類別與 data-label 讓手機卡片在開關 GCD／版本欄時仍保持正確。 */
+  .歷史表格.歷史表格支援職能 td.歷史數值欄位 {
+    min-height: 38px;
+    grid-column: span 2;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: baseline;
+    gap: 6px;
+    border: 1px solid var(--邊框柔和色);
+    border-radius: 6px;
+    padding: 5px 6px;
+    overflow: visible;
+    background: var(--表面背景柔和);
+    font-size: 0.78rem;
+    font-weight: 800;
+  }
+
+  .歷史表格.歷史表格支援職能 td.歷史數值欄位::before {
+    content: attr(data-label);
+    color: var(--靜音文字);
+    font-size: 0.62rem;
+    line-height: 1.1;
+  }
+
+  .歷史表格.歷史表格支援職能 td.歷史主要數值欄位 {
+    background: color-mix(in srgb, var(--重點色) 10%, var(--表面背景));
+  }
+
+  .歷史表格.歷史表格支援職能 td.歷史同場治療欄位,
+  .歷史表格.歷史表格支援職能 td.歷史版本欄位,
+  .歷史表格.歷史表格支援職能 td.歷史通關時間欄位 {
+    grid-column: 1 / -1;
+  }
+
+  .歷史表格.歷史表格支援職能 td.歷史同場治療欄位 .同場治療玩家 {
+    justify-self: end;
+  }
+
+  .歷史表格.歷史表格支援職能 td.歷史版本欄位,
+  .歷史表格.歷史表格支援職能 td.歷史通關時間欄位 {
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: baseline;
+    gap: 6px;
+  }
+
+  .歷史表格.歷史表格支援職能 td.歷史版本欄位::before {
+    content: "版本";
+  }
+
+  .歷史表格.歷史表格支援職能 td.歷史通關時間欄位::before {
     content: "通關時間";
   }
 

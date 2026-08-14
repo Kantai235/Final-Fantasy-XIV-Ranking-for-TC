@@ -739,7 +739,26 @@ async function validateUserProfileGameVersionFilter() {
       && profileStyles.includes(".趨勢點.選取中::after"),
     "趨勢預設只顯示最高／最低數值；懸停或點擊資料點時，必須改顯示選取紀錄並可回復預設標記。",
   );
-  const 歷史排序欄位 = ["recordedAt", "performance", "active", "gcdCoverage", "dps", "rdps", "adps", "gameVersion", "clearTime"];
+  const 歷史排序欄位 = [
+    "recordedAt",
+    "performance",
+    "active",
+    "gcdCoverage",
+    "dps",
+    "rdps",
+    "adps",
+    "healingHps",
+    "pureHealing",
+    "healingProtection",
+    "overhealPercent",
+    "damageTaken",
+    "selfHealing",
+    "personalProtection",
+    "teamProtection",
+    "mitigationCoverage",
+    "gameVersion",
+    "clearTime",
+  ];
   assert(
     source.includes("const 使用者歷史排序設定 = ref({});")
       && source.includes("function 排序使用者歷史成績(副本)")
@@ -748,11 +767,27 @@ async function validateUserProfileGameVersionFilter() {
     "個人成績歷史表格必須以各副本獨立的排序狀態處理，並在篩選結果更換時重設。",
   );
   assert(
-    歷史排序欄位.every((欄位) => profileSource.includes(`切換使用者歷史排序(副本.encounter_key, '${欄位}')`))
+    歷史排序欄位.every((欄位) => source.includes(`{ value: "${欄位}"`))
+      && ["dps", "rdps", "adps", "healingHps", "pureHealing", "healingProtection", "overhealPercent", "damageTaken", "selfHealing", "personalProtection", "teamProtection", "mitigationCoverage"]
+        .every((欄位) => source.includes(`case "${欄位}":`))
+      && profileSource.includes("切換使用者歷史排序(副本.encounter_key, 欄位.sortKey)")
       && profileSource.includes('v-for="成績 in 排序使用者歷史成績(副本)"')
       && profileSource.includes("使用者歷史排序ARIA")
       && profileSource.includes("使用者歷史排序方向圖示"),
-    "歷史表格必須讓紀錄時間、同職分位、Active、GCD、DPS、rDPS、aDPS、版本與通關時間欄位可點擊排序。",
+    "歷史表格必須依輸出／坦克／治療職能提供對應統計欄位排序，並保留共用的時間、分位與狀態排序。",
+  );
+  assert(
+    source.includes("const 目前使用者支援職能 = computed(() => {")
+      && source.includes('使用者職業類型篩選.value === "role:tank"')
+      && source.includes('使用者職業類型篩選.value === "role:healer"')
+      && profileSource.includes("const 個人成績數值欄位 = computed(() => {")
+      && profileSource.includes('label: "同場另一補"')
+      && profileSource.includes("成績?.healing_stats?.pure_healing")
+      && profileSource.includes("成績?.tank_stats?.mitigation_coverage_percent")
+      && profileSource.includes("<RankingCompactValue")
+      && profileSource.includes("歷史表格支援職能")
+      && responsiveStyles.includes(".歷史表格.歷史表格支援職能 td.歷史數值欄位"),
+    "個人成績單選定坦克／治療職能或職業後，摘要、歷史與手機卡片必須切換為對應支援統計並支援雙補關聯。",
   );
   assert(
     source.includes('欄位 === "performance" && 分位顯示模式.value !== 分位顯示模式PR')
@@ -1799,6 +1834,8 @@ async function validateHiddenDeltaDataForFrontend() {
   const 支援排行榜表頭排序樣式 = rankingTableStyles.match(/\.排行榜表格\.支援排行表格 th \.表頭排序按鈕\s*\{[^}]*\}/)?.[0] || "";
   const 支援排行榜作用中表頭排序樣式 = rankingTableStyles.match(/\.排行榜表格\.支援排行表格 th \.表頭排序按鈕\.作用中\s*\{[^}]*\}/)?.[0] || "";
   const 支援排行榜排序箭頭樣式 = rankingTableStyles.match(/\.排行榜表格\.支援排行表格 th \.排序箭頭\s*\{[^}]*\}/)?.[0] || "";
+  const 排行榜通關時間置中樣式 = rankingTableStyles.match(/\.排行榜表格 \.排行榜通關時間表頭,\s*\.排行榜表格 \.排行榜通關時間欄位\s*\{[^}]*\}/)?.[0] || "";
+  const 排行榜通關時間排序樣式 = rankingTableStyles.match(/\.排行榜表格 \.排行榜通關時間表頭 \.表頭排序按鈕\s*\{[^}]*\}/)?.[0] || "";
   const userDataSource = await readText(path.join(srcDir, "utils", "userData.js"));
   const 同場職能列起點 = rankingPageSource.indexOf('v-if="是否顯示同場職能玩家(列)"');
   const 同場職能列終點 = rankingPageSource.indexOf("</tr>", 同場職能列起點);
@@ -1823,12 +1860,16 @@ async function validateHiddenDeltaDataForFrontend() {
     "排行榜必須依坦克／治療職能切換欄位，並由使用者決定是否展開唯一可辨識的同場另一坦／補。",
   );
   assert(
-    rankingPageSource.includes('<th class="排行榜玩家表頭" scope="col">玩家</th>')
-      && !rankingPageSource.includes('<th scope="col">玩家名稱</th>')
-      && !rankingPageSource.includes('<th scope="col">伺服器</th>')
-      && rankingPageSource.includes('<span class="排行榜玩家名稱">{{ 列.角色名稱 }}</span><span class="排行榜玩家伺服器">&nbsp;@&nbsp;{{ 列.伺服器 }}</span>')
+    rankingPageSource.includes('<col v-if="顯示支援排行榜欄位" class="玩家欄" />')
+      && rankingPageSource.includes('<col v-if="!顯示支援排行榜欄位" class="玩家名稱欄" />')
+      && rankingPageSource.includes('<col v-if="!顯示支援排行榜欄位" class="伺服器欄" />')
+      && rankingPageSource.includes('<th v-if="顯示支援排行榜欄位" class="排行榜玩家表頭" scope="col">玩家</th>')
+      && rankingPageSource.includes('<th v-if="!顯示支援排行榜欄位" class="排行榜玩家名稱表頭" scope="col">玩家名稱</th>')
+      && rankingPageSource.includes('<th v-if="!顯示支援排行榜欄位" class="排行榜伺服器表頭" scope="col">伺服器</th>')
+      && rankingPageSource.includes('<span class="排行榜玩家名稱">{{ 列.角色名稱 }}</span><span v-if="顯示支援排行榜欄位" class="排行榜玩家伺服器">&nbsp;@&nbsp;{{ 列.伺服器 }}</span>')
+      && rankingPageSource.includes('<td v-if="!顯示支援排行榜欄位" class="排行榜伺服器欄位">{{ 列.伺服器 }}</td>')
       && rankingPageSource.includes('<span class="排行榜玩家名稱">{{ 取得同場職能玩家(列).角色名稱 }}</span><span class="排行榜玩家伺服器">&nbsp;@&nbsp;{{ 取得同場職能玩家(列).伺服器 }}</span>'),
-    "排行榜的一般列與同場坦補列都必須以單一「玩家」欄顯示「玩家名稱 @ 伺服器」。",
+    "一般排行榜必須分開顯示玩家名稱與伺服器；坦補榜與同場職能列則使用單一玩家欄顯示「玩家名稱 @ 伺服器」。",
   );
   assert(
     rankingPageSource.includes("格式化縮寫總量")
@@ -1837,6 +1878,12 @@ async function validateHiddenDeltaDataForFrontend() {
       && rankingCompactValueSource.includes('@click.stop="切換提示"')
       && rankingCompactValueSource.includes('role="tooltip"'),
     "排行榜坦補總量必須使用一位小數縮寫，並讓一般列與同場列都能以 hover／點擊查看完整值。",
+  );
+  assert(
+    rankingPageSource.includes('<td class="數字 排行榜通關時間欄位">{{ 格式化通關時間(列.通關秒數) }}</td>')
+      && 排行榜通關時間置中樣式.includes("text-align: center;")
+      && 排行榜通關時間排序樣式.includes("margin-inline: auto;"),
+    "排行榜通關時間表頭、排序按鈕與資料值必須置中對齊。",
   );
   assert(
     同場職能列起點 >= 0
@@ -1885,6 +1932,7 @@ async function validateHiddenDeltaDataForFrontend() {
       && rankingResponsiveStyles.includes(".排行榜表格.治療排行表格 .手機排行傷害列")
       && rankingResponsiveStyles.includes("grid-template-columns: repeat(5, minmax(0, 1fr));")
       && rankingResponsiveStyles.includes(".手機排行完整資訊列.顯示手機版本")
+      && rankingResponsiveStyles.includes(".排行榜表格 thead .排行榜玩家名稱表頭")
       && !rankingResponsiveStyles.includes(".支援排行表格 .手機排行資訊列 {"),
     "坦克與治療手機排行必須將主要統計濃縮成單列，並讓 Active、GCD、通關、版本、紀錄與報告沿用輸出職業的緊湊資訊列。",
   );

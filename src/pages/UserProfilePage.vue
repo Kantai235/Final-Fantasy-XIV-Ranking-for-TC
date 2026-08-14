@@ -1,10 +1,12 @@
 <script>
-import { onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import AchievementHandbook from "../components/AchievementHandbook.vue";
 import JobIcon from "../components/JobIcon.vue";
 import PlayerSearchHistoryPanel from "../components/PlayerSearchHistoryPanel.vue";
+import RankingCompactValue from "../components/RankingCompactValue.vue";
 import ReportDetailDialog from "../components/ReportDetailDialog.vue";
 import { injectRankingApp } from "../composables/useRankingApp";
+import { 格式化縮寫總量 } from "../utils/formatters";
 
 export default {
   name: "UserProfilePage",
@@ -12,6 +14,7 @@ export default {
     AchievementHandbook,
     JobIcon,
     PlayerSearchHistoryPanel,
+    RankingCompactValue,
     ReportDetailDialog,
   },
   setup() {
@@ -21,6 +24,140 @@ export default {
 
     function 取值(可能Ref) {
       return 可能Ref && typeof 可能Ref === "object" && "value" in 可能Ref ? 可能Ref.value : 可能Ref;
+    }
+
+    function 格式化可選數值(格式化函式, 數值) {
+      return 數值 === null || 數值 === undefined || 數值 === "" ? "-" : 格式化函式(數值);
+    }
+
+    function 格式化同場治療(成績) {
+      const 同場治療 = 成績?.co_healer;
+      if (!同場治療?.character_name || !同場治療?.server) {
+        return "-";
+      }
+      return `${app.顯示職業名稱(同場治療.job)} · ${同場治療.character_name} @ ${同場治療.server}`;
+    }
+
+    const 個人成績數值欄位 = computed(() => {
+      const rdps欄位 = {
+        key: "rdps",
+        sortKey: "rdps",
+        label: "rDPS",
+        tooltipKey: "rDPS",
+        highlight: true,
+        format: (成績) => app.格式化傷害數值(成績?.rdps),
+      };
+
+      if (取值(app.目前使用者支援職能) === "healer") {
+        return [
+          rdps欄位,
+          {
+            key: "healingHps",
+            sortKey: "healingHps",
+            label: "HPS",
+            tooltipKey: "HPS",
+            format: (成績) => app.格式化傷害數值(成績?.healing_stats?.hps),
+          },
+          {
+            key: "pureHealing",
+            sortKey: "pureHealing",
+            label: "純治療",
+            tooltipKey: "純治療",
+            format: (成績) => 格式化可選數值(格式化縮寫總量, 成績?.healing_stats?.pure_healing),
+            fullFormat: (成績) => 格式化可選數值(app.格式化整數, 成績?.healing_stats?.pure_healing),
+          },
+          {
+            key: "healingProtection",
+            sortKey: "healingProtection",
+            label: "防護量",
+            tooltipKey: "防護量",
+            format: (成績) => 格式化可選數值(格式化縮寫總量, 成績?.healing_stats?.protection),
+            fullFormat: (成績) => 格式化可選數值(app.格式化整數, 成績?.healing_stats?.protection),
+          },
+          {
+            key: "overhealPercent",
+            sortKey: "overhealPercent",
+            label: "OH%",
+            tooltipKey: "OH%",
+            percentage: true,
+            format: (成績) => 格式化可選數值(app.格式化百分比, 成績?.healing_stats?.overheal_percent),
+          },
+          {
+            key: "coHealer",
+            label: "同場另一補",
+            companion: true,
+            format: 格式化同場治療,
+          },
+        ];
+      }
+
+      if (取值(app.目前使用者支援職能) === "tank") {
+        return [
+          rdps欄位,
+          {
+            key: "damageTaken",
+            sortKey: "damageTaken",
+            label: "承傷",
+            tooltipKey: "承傷",
+            format: (成績) => 格式化可選數值(格式化縮寫總量, 成績?.tank_stats?.damage_taken),
+            fullFormat: (成績) => 格式化可選數值(app.格式化整數, 成績?.tank_stats?.damage_taken),
+          },
+          {
+            key: "selfHealing",
+            sortKey: "selfHealing",
+            label: "自補",
+            tooltipKey: "自補",
+            format: (成績) => 格式化可選數值(格式化縮寫總量, 成績?.tank_stats?.self_healing),
+            fullFormat: (成績) => 格式化可選數值(app.格式化整數, 成績?.tank_stats?.self_healing),
+          },
+          {
+            key: "personalProtection",
+            sortKey: "personalProtection",
+            label: "個人防護",
+            tooltipKey: "個人防護",
+            format: (成績) => 格式化可選數值(格式化縮寫總量, 成績?.tank_stats?.personal_protection),
+            fullFormat: (成績) => 格式化可選數值(app.格式化整數, 成績?.tank_stats?.personal_protection),
+          },
+          {
+            key: "teamProtection",
+            sortKey: "teamProtection",
+            label: "團隊防護",
+            tooltipKey: "團隊防護",
+            format: (成績) => 格式化可選數值(格式化縮寫總量, 成績?.tank_stats?.team_protection),
+            fullFormat: (成績) => 格式化可選數值(app.格式化整數, 成績?.tank_stats?.team_protection),
+          },
+          {
+            key: "mitigationCoverage",
+            sortKey: "mitigationCoverage",
+            label: "減傷覆蓋",
+            tooltipKey: "減傷覆蓋",
+            percentage: true,
+            format: (成績) => 格式化可選數值(app.格式化百分比, 成績?.tank_stats?.mitigation_coverage_percent),
+          },
+        ];
+      }
+
+      return [
+        {
+          key: "dps",
+          sortKey: "dps",
+          label: "DPS",
+          tooltipKey: "DPS",
+          format: (成績) => app.格式化傷害數值(成績?.dps),
+        },
+        rdps欄位,
+        {
+          key: "adps",
+          sortKey: "adps",
+          label: "aDPS",
+          tooltipKey: "aDPS",
+          format: (成績) => app.格式化傷害數值(成績?.adps),
+        },
+      ];
+    });
+
+    function 取得個人成績欄位完整值(欄位, 成績) {
+      return typeof 欄位.fullFormat === "function" ? 欄位.fullFormat(成績) : "";
     }
 
     function 建立個人成績報告分頁標籤(來源, index) {
@@ -84,30 +221,14 @@ export default {
             className: "報告彈窗時間項",
           },
         ],
-        damageItems: [
-          {
-            key: "dps",
-            label: "DPS",
-            value: app.格式化傷害數值(成績.dps),
-            tooltip: app.統計說明文字("DPS"),
-            tooltipLabel: "DPS 說明",
-          },
-          {
-            key: "rdps",
-            label: "rDPS",
-            value: app.格式化傷害數值(成績.rdps),
-            tooltip: app.統計說明文字("rDPS"),
-            tooltipLabel: "rDPS 說明",
-            className: "報告彈窗主要數值",
-          },
-          {
-            key: "adps",
-            label: "aDPS",
-            value: app.格式化傷害數值(成績.adps),
-            tooltip: app.統計說明文字("aDPS"),
-            tooltipLabel: "aDPS 說明",
-          },
-        ],
+        damageItems: 個人成績數值欄位.value.map((欄位) => ({
+          key: 欄位.key,
+          label: 欄位.label,
+          value: typeof 欄位.fullFormat === "function" ? 欄位.fullFormat(成績) : 欄位.format(成績),
+          tooltip: 欄位.tooltipKey ? app.統計說明文字(欄位.tooltipKey) : "",
+          tooltipLabel: 欄位.tooltipKey ? `${欄位.label} 說明` : "",
+          className: 欄位.highlight ? "報告彈窗主要數值" : "",
+        })),
         traceItems: [
           {
             key: "reportFight",
@@ -202,6 +323,8 @@ export default {
 
     return {
       ...app,
+      個人成績數值欄位,
+      取得個人成績欄位完整值,
       報告彈窗資料,
       開啟個人成績報告彈窗,
       關閉個人成績報告彈窗,
@@ -766,7 +889,12 @@ export default {
           v-for="副本 in 使用者副本成績"
           :key="副本.encounter_key"
           class="個人成績列"
-          :class="{ 個人成績列顯示版本: 顯示版本紀錄 }"
+          :class="{
+            個人成績列顯示版本: 顯示版本紀錄,
+            個人成績列支援職能: 目前使用者支援職能 !== 'damage',
+            個人成績列治療職能: 目前使用者支援職能 === 'healer',
+            個人成績列坦克職能: 目前使用者支援職能 === 'tank',
+          }"
         >
           <summary class="成績列摘要">
             <span class="成績列副本">
@@ -830,35 +958,40 @@ export default {
               </small>
               <strong>{{ 副本.best_entry ? 格式化Gcd覆蓋率(副本.best_entry.gcd_coverage) : "-" }}</strong>
             </span>
-            <span class="成績列數值 成績列數值輸出">
+            <span
+              v-for="欄位 in 個人成績數值欄位"
+              :key="欄位.key"
+              class="成績列數值 成績列數值輸出"
+              :class="{
+                成績列數值主要: 欄位.highlight,
+                成績列數值同場治療: 欄位.companion,
+              }"
+            >
               <small class="說明標籤">
-                <span>DPS</span>
-                <span class="說明提示">
-                  <button class="說明提示按鈕" type="button" aria-label="DPS 說明">?</button>
-                  <span class="說明提示內容" role="tooltip">{{ 統計說明文字("DPS") }}</span>
+                <span>{{ 欄位.label }}</span>
+                <span v-if="欄位.tooltipKey" class="說明提示">
+                  <button class="說明提示按鈕" type="button" :aria-label="`${欄位.label} 說明`">?</button>
+                  <span class="說明提示內容" role="tooltip">{{ 統計說明文字(欄位.tooltipKey) }}</span>
                 </span>
               </small>
-              <strong>{{ 副本.best_entry ? 格式化傷害數值(副本.best_entry.dps) : "-" }}</strong>
-            </span>
-            <span class="成績列數值 成績列數值輸出 成績列數值主要">
-              <small class="說明標籤">
-                <span>rDPS</span>
-                <span class="說明提示">
-                  <button class="說明提示按鈕" type="button" aria-label="rDPS 說明">?</button>
-                  <span class="說明提示內容" role="tooltip">{{ 統計說明文字("rDPS") }}</span>
-                </span>
-              </small>
-              <strong>{{ 副本.best_entry ? 格式化傷害數值(副本.best_entry.rdps) : "-" }}</strong>
-            </span>
-            <span class="成績列數值 成績列數值輸出">
-              <small class="說明標籤">
-                <span>aDPS</span>
-                <span class="說明提示">
-                  <button class="說明提示按鈕" type="button" aria-label="aDPS 說明">?</button>
-                  <span class="說明提示內容" role="tooltip">{{ 統計說明文字("aDPS") }}</span>
-                </span>
-              </small>
-              <strong>{{ 副本.best_entry ? 格式化傷害數值(副本.best_entry.adps) : "-" }}</strong>
+              <strong v-if="欄位.companion" class="同場治療玩家">
+                <template v-if="副本.best_entry?.co_healer">
+                  <JobIcon
+                    class="職業圖示 職業標籤圖示"
+                    :code="副本.best_entry.co_healer.job"
+                  />
+                  <span>{{ 副本.best_entry.co_healer.character_name }} <small>@ {{ 副本.best_entry.co_healer.server }}</small></span>
+                </template>
+                <template v-else>-</template>
+              </strong>
+              <strong v-else>
+                <RankingCompactValue
+                  :display-value="副本.best_entry ? 欄位.format(副本.best_entry) : '-'"
+                  :full-value="副本.best_entry ? 取得個人成績欄位完整值(欄位, 副本.best_entry) : ''"
+                  :label="欄位.label"
+                  :percentage="欄位.percentage"
+                />
+              </strong>
             </span>
             <span v-if="顯示版本紀錄" class="成績列數值 成績列數值版本">
               <small>版本</small>
@@ -892,10 +1025,18 @@ export default {
                 {{ 使用者歷史排序方向圖示(副本.encounter_key) }}
               </button>
             </div>
-            <table class="歷史表格" :class="{ 歷史表格顯示版本: 顯示版本紀錄 }">
+            <table
+              class="歷史表格"
+              :class="{
+                歷史表格顯示版本: 顯示版本紀錄,
+                歷史表格支援職能: 目前使用者支援職能 !== 'damage',
+                歷史表格治療職能: 目前使用者支援職能 === 'healer',
+                歷史表格坦克職能: 目前使用者支援職能 === 'tank',
+              }"
+            >
               <thead>
                 <tr>
-                  <th scope="col" :aria-sort="使用者歷史排序ARIA(副本.encounter_key, 'recordedAt')">
+                  <th class="歷史紀錄時間欄位" scope="col" :aria-sort="使用者歷史排序ARIA(副本.encounter_key, 'recordedAt')">
                     <button
                       class="表頭排序按鈕"
                       type="button"
@@ -909,7 +1050,7 @@ export default {
                       </span>
                     </button>
                   </th>
-                  <th scope="col">職業</th>
+                  <th class="歷史職業欄位" scope="col">職業</th>
                   <th scope="col" class="歷史報告欄位">報告</th>
                   <th scope="col" class="數字" :aria-sort="使用者歷史排序ARIA(副本.encounter_key, 'performance')">
                     <span class="表頭說明標籤">
@@ -971,70 +1112,42 @@ export default {
                       </span>
                     </span>
                   </th>
-                  <th scope="col" class="數字" :aria-sort="使用者歷史排序ARIA(副本.encounter_key, 'dps')">
+                  <th
+                    v-for="欄位 in 個人成績數值欄位"
+                    :key="欄位.key"
+                    scope="col"
+                    class="數字 歷史數值欄位"
+                    :class="{
+                      歷史主要數值欄位: 欄位.highlight,
+                      歷史同場治療欄位: 欄位.companion,
+                    }"
+                    :aria-sort="欄位.sortKey ? 使用者歷史排序ARIA(副本.encounter_key, 欄位.sortKey) : undefined"
+                  >
                     <span class="表頭說明標籤">
                       <button
+                        v-if="欄位.sortKey"
                         class="表頭排序按鈕"
                         type="button"
-                        :class="{ 作用中: 使用者歷史是否目前排序(副本.encounter_key, 'dps') }"
-                        :aria-label="使用者歷史排序按鈕標籤(副本.encounter_key, 'dps')"
-                        @click="切換使用者歷史排序(副本.encounter_key, 'dps')"
+                        :class="{ 作用中: 使用者歷史是否目前排序(副本.encounter_key, 欄位.sortKey) }"
+                        :aria-label="使用者歷史排序按鈕標籤(副本.encounter_key, 欄位.sortKey)"
+                        @click="切換使用者歷史排序(副本.encounter_key, 欄位.sortKey)"
                       >
-                        <span>DPS</span>
-                        <span v-if="使用者歷史是否目前排序(副本.encounter_key, 'dps')" class="排序箭頭" aria-hidden="true">
+                        <span>{{ 欄位.label }}</span>
+                        <span v-if="使用者歷史是否目前排序(副本.encounter_key, 欄位.sortKey)" class="排序箭頭" aria-hidden="true">
                           {{ 使用者歷史排序方向圖示(副本.encounter_key) }}
                         </span>
                       </button>
-                      <span class="說明提示">
-                        <button class="說明提示按鈕" type="button" aria-label="DPS 說明">?</button>
-                        <span class="說明提示內容" role="tooltip">{{ 統計說明文字("DPS") }}</span>
-                      </span>
-                    </span>
-                  </th>
-                  <th scope="col" class="數字" :aria-sort="使用者歷史排序ARIA(副本.encounter_key, 'rdps')">
-                    <span class="表頭說明標籤">
-                      <button
-                        class="表頭排序按鈕"
-                        type="button"
-                        :class="{ 作用中: 使用者歷史是否目前排序(副本.encounter_key, 'rdps') }"
-                        :aria-label="使用者歷史排序按鈕標籤(副本.encounter_key, 'rdps')"
-                        @click="切換使用者歷史排序(副本.encounter_key, 'rdps')"
-                      >
-                        <span>rDPS</span>
-                        <span v-if="使用者歷史是否目前排序(副本.encounter_key, 'rdps')" class="排序箭頭" aria-hidden="true">
-                          {{ 使用者歷史排序方向圖示(副本.encounter_key) }}
-                        </span>
-                      </button>
-                      <span class="說明提示">
-                        <button class="說明提示按鈕" type="button" aria-label="rDPS 說明">?</button>
-                        <span class="說明提示內容" role="tooltip">{{ 統計說明文字("rDPS") }}</span>
-                      </span>
-                    </span>
-                  </th>
-                  <th scope="col" class="數字" :aria-sort="使用者歷史排序ARIA(副本.encounter_key, 'adps')">
-                    <span class="表頭說明標籤">
-                      <button
-                        class="表頭排序按鈕"
-                        type="button"
-                        :class="{ 作用中: 使用者歷史是否目前排序(副本.encounter_key, 'adps') }"
-                        :aria-label="使用者歷史排序按鈕標籤(副本.encounter_key, 'adps')"
-                        @click="切換使用者歷史排序(副本.encounter_key, 'adps')"
-                      >
-                        <span>aDPS</span>
-                        <span v-if="使用者歷史是否目前排序(副本.encounter_key, 'adps')" class="排序箭頭" aria-hidden="true">
-                          {{ 使用者歷史排序方向圖示(副本.encounter_key) }}
-                        </span>
-                      </button>
-                      <span class="說明提示">
-                        <button class="說明提示按鈕" type="button" aria-label="aDPS 說明">?</button>
-                        <span class="說明提示內容" role="tooltip">{{ 統計說明文字("aDPS") }}</span>
+                      <span v-else>{{ 欄位.label }}</span>
+                      <span v-if="欄位.tooltipKey" class="說明提示">
+                        <button class="說明提示按鈕" type="button" :aria-label="`${欄位.label} 說明`">?</button>
+                        <span class="說明提示內容" role="tooltip">{{ 統計說明文字(欄位.tooltipKey) }}</span>
                       </span>
                     </span>
                   </th>
                   <th
                     v-if="顯示版本紀錄"
                     scope="col"
-                    class="數字"
+                    class="數字 歷史版本欄位"
                     :aria-sort="使用者歷史排序ARIA(副本.encounter_key, 'gameVersion')"
                   >
                     <button
@@ -1050,7 +1163,7 @@ export default {
                       </span>
                     </button>
                   </th>
-                  <th scope="col" class="數字" :aria-sort="使用者歷史排序ARIA(副本.encounter_key, 'clearTime')">
+                  <th scope="col" class="數字 歷史通關時間欄位" :aria-sort="使用者歷史排序ARIA(副本.encounter_key, 'clearTime')">
                     <button
                       class="表頭排序按鈕"
                       type="button"
@@ -1068,8 +1181,8 @@ export default {
               </thead>
               <tbody>
                 <tr v-for="成績 in 排序使用者歷史成績(副本)" :key="成績.id" :class="{ 過版紀錄列: 成績.is_obsolete_record }">
-                  <td>{{ 格式化紀錄時間(成績.recorded_at_iso) }}</td>
-                  <td>
+                  <td class="歷史紀錄時間欄位">{{ 格式化紀錄時間(成績.recorded_at_iso) }}</td>
+                  <td class="歷史職業欄位">
                     <span class="職業標籤" :class="職業色彩類別(職業代碼色彩(成績.job))">
                       <JobIcon
                         class="職業圖示 職業標籤圖示"
@@ -1094,11 +1207,36 @@ export default {
                   </td>
                   <td class="數字">{{ 格式化Active(成績.active_percent) }}</td>
                   <td v-show="顯示Gcd覆蓋率" class="數字">{{ 格式化Gcd覆蓋率(成績.gcd_coverage) }}</td>
-                  <td class="數字">{{ 格式化傷害數值(成績.dps) }}</td>
-                  <td class="數字">{{ 格式化傷害數值(成績.rdps) }}</td>
-                  <td class="數字">{{ 格式化傷害數值(成績.adps) }}</td>
-                  <td v-if="顯示版本紀錄" class="數字">{{ 取得個人成績紀錄版本(成績) || "—" }}</td>
-                  <td class="數字">{{ 格式化通關時間(成績.clear_time_seconds) }}</td>
+                  <td
+                    v-for="欄位 in 個人成績數值欄位"
+                    :key="欄位.key"
+                    class="數字 歷史數值欄位"
+                    :class="{
+                      歷史主要數值欄位: 欄位.highlight,
+                      歷史同場治療欄位: 欄位.companion,
+                    }"
+                    :data-label="欄位.label"
+                  >
+                    <span v-if="欄位.companion" class="同場治療玩家">
+                      <template v-if="成績.co_healer">
+                        <JobIcon
+                          class="職業圖示 職業標籤圖示"
+                          :code="成績.co_healer.job"
+                        />
+                        <span>{{ 成績.co_healer.character_name }} <small>@ {{ 成績.co_healer.server }}</small></span>
+                      </template>
+                      <template v-else>-</template>
+                    </span>
+                    <RankingCompactValue
+                      v-else
+                      :display-value="欄位.format(成績)"
+                      :full-value="取得個人成績欄位完整值(欄位, 成績)"
+                      :label="欄位.label"
+                      :percentage="欄位.percentage"
+                    />
+                  </td>
+                  <td v-if="顯示版本紀錄" class="數字 歷史版本欄位">{{ 取得個人成績紀錄版本(成績) || "—" }}</td>
+                  <td class="數字 歷史通關時間欄位">{{ 格式化通關時間(成績.clear_time_seconds) }}</td>
                 </tr>
               </tbody>
             </table>

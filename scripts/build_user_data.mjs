@@ -103,6 +103,8 @@ const jobRoleByJob = new Map(
   ),
 );
 const jobRoleOrder = new Map(jobRoleGroups.map((group, index) => [group.role, index]));
+const healerJobs = new Set(jobRoleGroups.find((group) => group.role === "role:healer")?.jobs || []);
+const tankJobs = new Set(jobRoleGroups.find((group) => group.role === "role:tank")?.jobs || []);
 
 function assertInside(parent, target) {
   const relative = path.relative(parent, target);
@@ -342,6 +344,48 @@ function toNumber(value) {
   return Number.isFinite(numberValue) ? numberValue : null;
 }
 
+function compactHealingStats(value) {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  return {
+    hps: toNumber(value.hps),
+    pure_healing: toNumber(value.pure_healing),
+    protection: toNumber(value.protection),
+    overheal_percent: toNumber(value.overheal_percent),
+  };
+}
+
+function compactTankStats(value) {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  return {
+    damage_taken: toNumber(value.damage_taken),
+    self_healing: toNumber(value.self_healing),
+    personal_protection: toNumber(value.personal_protection),
+    team_protection: toNumber(value.team_protection),
+    // 個人成績與排行榜必須沿用同一口徑：這是「有實際傷害落在狀態時窗內」的
+    // 有效 activation 比例，不是 buff 持續時間占比，也不是單招實際減免量。
+    mitigation_coverage_percent: toNumber(value.mitigation_coverage?.effective_activation_percent),
+  };
+}
+
+function compactCoHealer(value) {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const characterName = String(value.character_name || value.name || "").trim();
+  const server = String(value.server || "").trim();
+  const job = String(value.job || "").trim();
+  return characterName && server && healerJobs.has(job)
+    ? { character_name: characterName, server, job }
+    : null;
+}
+
 function sanitizeGcdCoverageForPublic(coverage) {
   if (coverage === undefined) {
     return undefined;
@@ -500,6 +544,48 @@ function toPositiveRank(value) {
 function toFflogsSourceId(value) {
   const sourceId = toNumber(value);
   return sourceId !== null && sourceId > 0 ? Math.trunc(sourceId) : null;
+}
+
+function playersMatch(left, right) {
+  const leftSourceId = toFflogsSourceId(left?.fflogs_source_id ?? left?.fflogs_id ?? left?.source_id);
+  const rightSourceId = toFflogsSourceId(right?.fflogs_source_id ?? right?.fflogs_id ?? right?.source_id);
+  if (leftSourceId !== null && rightSourceId !== null) {
+    return leftSourceId === rightSourceId;
+  }
+
+  return (left?.name || left?.character_name) === (right?.name || right?.character_name)
+    && left?.server === right?.server
+    && left?.job === right?.job;
+}
+
+function buildCoHealer(player, fightPlayers) {
+  if (!healerJobs.has(player?.job)) {
+    return null;
+  }
+
+  const healers = (fightPlayers || []).filter((candidate) => healerJobs.has(candidate?.job));
+  // 標準八人副本能以雙補唯一互相配對；聯盟副本缺少小隊編號，同場超過兩名
+  // 治療職業時不得依來源陣列順序猜測「另一補」。
+  if (healers.length !== 2) {
+    return null;
+  }
+
+  const playerIndex = healers.findIndex((candidate) => playersMatch(candidate, player));
+  if (playerIndex < 0) {
+    return null;
+  }
+
+  const companion = healers[playerIndex === 0 ? 1 : 0];
+  const characterName = companion?.name || companion?.character_name || "";
+  if (!characterName || !companion?.server || !companion?.job) {
+    return null;
+  }
+
+  return compactCoHealer({
+    character_name: characterName,
+    server: companion.server,
+    job: companion.job,
+  });
 }
 
 function entryJobRank(entry) {
@@ -819,6 +905,10 @@ function filterEntriesByVersionMode(entries, versionMode) {
 }
 
 function buildEntrySummary(entry) {
+  const healingStats = compactHealingStats(entry.healing_stats);
+  const tankStats = compactTankStats(entry.tank_stats);
+  const coHealer = compactCoHealer(entry.co_healer);
+
   return {
     id: entry.id,
     encounter_key: entry.encounter_key,
@@ -831,6 +921,9 @@ function buildEntrySummary(entry) {
     rdps: entry.rdps,
     adps: entry.adps,
     active_percent: entry.active_percent,
+    ...(healingStats ? { healing_stats: healingStats } : {}),
+    ...(tankStats ? { tank_stats: tankStats } : {}),
+    ...(coHealer ? { co_healer: coHealer } : {}),
     gcd_coverage: sanitizeGcdCoverageForPublic(entry.gcd_coverage),
     gcd_coverage_status: entry.gcd_coverage_status,
     clear_time_seconds: entry.clear_time_seconds,
@@ -850,6 +943,9 @@ function buildEntrySummary(entry) {
 }
 
 function buildReportVariant(entry) {
+  const healingStats = compactHealingStats(entry.healing_stats);
+  const tankStats = compactTankStats(entry.tank_stats);
+  const coHealer = compactCoHealer(entry.co_healer);
   const variant = {
     report_code: entry.report_code || null,
     report_url: entry.report_url || null,
@@ -864,6 +960,9 @@ function buildReportVariant(entry) {
     total_damage: toNumber(entry.total_damage),
     active_time_ms: toNumber(entry.active_time_ms),
     active_percent: toNumber(entry.active_percent),
+    ...(healingStats ? { healing_stats: healingStats } : {}),
+    ...(tankStats ? { tank_stats: tankStats } : {}),
+    ...(coHealer ? { co_healer: coHealer } : {}),
     clear_time_ms: toNumber(entry.clear_time_ms),
     clear_time_seconds: toNumber(entry.clear_time_seconds),
     damage_downtime_ms: toNumber(entry.damage_downtime_ms),
@@ -1440,6 +1539,9 @@ function makePublicEntry({ encounter, report, reportCode, fight, player, fightPl
   const activePercent =
     toNumber(player.active_percent) ??
     calculateActivePercent(player.active_time_ms, activePercentDurationMs, activePercentDurationSeconds);
+  const healingStats = healerJobs.has(job) ? compactHealingStats(player.healing_stats) : null;
+  const tankStats = tankJobs.has(job) ? compactTankStats(player.tank_stats) : null;
+  const coHealer = buildCoHealer(player, fightPlayers);
   const signature = {
     encounter_key: encounter.key,
     fight_hash: fight.fight_hash || null,
@@ -1471,6 +1573,9 @@ function makePublicEntry({ encounter, report, reportCode, fight, player, fightPl
     total_damage: toNumber(player.total_damage),
     active_time_ms: toNumber(player.active_time_ms),
     active_percent: activePercent,
+    ...(healingStats ? { healing_stats: healingStats } : {}),
+    ...(tankStats ? { tank_stats: tankStats } : {}),
+    ...(coHealer ? { co_healer: coHealer } : {}),
     ...(Object.hasOwn(player, "gcd_coverage") ? { gcd_coverage: sanitizeGcdCoverageForPublic(player.gcd_coverage) } : {}),
     ...(Object.hasOwn(player, "gcd_coverage_status") ? { gcd_coverage_status: player.gcd_coverage_status } : {}),
     clear_time_ms: clearTimeMs,
@@ -1600,6 +1705,9 @@ function collectEntriesFromRankingEntries({ ranking, encounter, includeHiddenRep
     .map((entry) => {
       const ranks = rankIndex.get(characterJobKey(entry)) || {};
       const fflogsSourceId = toFflogsSourceId(entry.fflogs_source_id ?? entry.fflogs_id ?? entry.source_id);
+      const healingStats = compactHealingStats(entry.healing_stats);
+      const tankStats = compactTankStats(entry.tank_stats);
+      const coHealer = compactCoHealer(entry.co_healer);
       const normalizedEntry = {
         id: entry.id || createId({ encounter_key: encounter.key, entry }),
         encounter_key: encounter.key,
@@ -1615,6 +1723,9 @@ function collectEntriesFromRankingEntries({ ranking, encounter, includeHiddenRep
         total_damage: toNumber(entry.total_damage),
         active_time_ms: toNumber(entry.active_time_ms),
         active_percent: toNumber(entry.active_percent),
+        ...(healingStats ? { healing_stats: healingStats } : {}),
+        ...(tankStats ? { tank_stats: tankStats } : {}),
+        ...(coHealer ? { co_healer: coHealer } : {}),
         ...(Object.hasOwn(entry, "gcd_coverage") ? { gcd_coverage: sanitizeGcdCoverageForPublic(entry.gcd_coverage) } : {}),
         ...(Object.hasOwn(entry, "gcd_coverage_status") ? { gcd_coverage_status: entry.gcd_coverage_status } : {}),
         clear_time_ms: toNumber(entry.clear_time_ms),
@@ -2074,6 +2185,9 @@ const inheritedReportVariantFields = new Set([
   "total_damage",
   "active_time_ms",
   "active_percent",
+  "healing_stats",
+  "tank_stats",
+  "co_healer",
   "clear_time_ms",
   "clear_time_seconds",
   "damage_downtime_ms",
