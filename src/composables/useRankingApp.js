@@ -17,6 +17,7 @@ import {
   顯示職業名稱,
 } from "../domain/jobs";
 import { 建立副本選單分組 } from "../domain/encounters";
+import { activityLogTimelineAnnotations } from "../utils/activityTimelineAnnotations";
 import { 讀取Json } from "../utils/fetchJson";
 import {
   解析紀錄日期,
@@ -84,7 +85,6 @@ import {
   篩選成就手冊適用成就,
 } from "../utils/userProfileBadges";
 import {
-  建立個人成績趨勢版本切點,
   建立個人成績簡表可選版本,
   建立個人成績簡表群組,
   成績符合個人成績簡表版本,
@@ -92,6 +92,16 @@ import {
   取得個人成績紀錄版本,
   正規化個人成績簡表版本,
 } from "../utils/userProfileClearSummary";
+import {
+  個人成績趨勢指標選項,
+  個人成績趨勢時間範圍選項,
+  個人成績趨勢預設副本範圍,
+  個人成績趨勢預設時間範圍,
+  個人成績趨勢預設指標,
+  個人成績趨勢預設職業範圍,
+  建立個人成績統一趨勢,
+  建立個人成績趨勢篩選選項,
+} from "../utils/userProfileTrend";
 import { 建立職業佔比分組, 取得統計範圍計數, 職業範圍類型 } from "../utils/statsDisplay";
 import { 顯示Honey粉絲榜, 顯示Gcd覆蓋率, 顯示作者相關標示 } from "../utils/siteFeatures";
 import { 寫入網址狀態, 讀取目前網址狀態 } from "../utils/urlState";
@@ -181,87 +191,6 @@ const 使用者歷史排序預設方向 = Object.freeze({
 const activityLogMobileMediaQuery = "(max-width: 720px)";
 const activityLogMobileDefaultRange = "30";
 const activityLogDesktopDefaultRange = "90";
-// 這裡保存時間軸脈絡事件，僅用於前端標註，不參與 Logs 或通關場次統計。
-// 台服開放節點維持主要標籤；國際服版本只提供日誌量判讀脈絡，因此用次要標籤呈現。
-const activityLogTimelineAnnotations = [
-  {
-    date: "2025-12-16",
-    title: "國際服 7.4",
-    detail: "霧中奇境",
-    importance: "secondary",
-  },
-  {
-    date: "2026-01-27",
-    title: "國際服 7.41",
-    detail: "霧中奇境",
-    importance: "secondary",
-  },
-  {
-    date: "2026-02-10",
-    title: "繁中服 7.01",
-    detail: "輕量級",
-  },
-  {
-    date: "2026-03-03",
-    title: "國際服 7.45",
-    detail: "霧中奇境",
-    importance: "secondary",
-  },
-  {
-    date: "2026-03-10",
-    title: "繁中服 7.05",
-    detail: "零式 輕量級",
-  },
-  {
-    date: "2026-04-21",
-    title: "繁中服 7.1",
-    detail: "極 永恆女王、幻 白虎",
-  },
-  {
-    date: "2026-04-28",
-    title: "國際服 7.5",
-    detail: "天際的行路",
-    importance: "secondary",
-  },
-  {
-    date: "2026-05-26",
-    title: "繁中服 7.11",
-    detail: "絕 伊甸",
-  },
-  {
-    date: "2026-06-02",
-    title: "國際服 7.51",
-    detail: "天際的行路",
-    importance: "secondary",
-  },
-  {
-    date: "2026-06-23",
-    title: "繁中服 7.15",
-    detail: "滅 黑暗之雲",
-  },
-  {
-    date: "2026-07-28",
-    title: "國際服 7.55",
-    detail: "天際的行路",
-    importance: "secondary",
-  },
-  {
-    date: "2026-07-28",
-    title: "繁中服 7.2",
-    detail: "極 澤蓮尼亞、次重量級",
-  },
-  {
-    date: "2026-08-04",
-    title: "繁中服 7.2",
-    detail: "零式 次重量級",
-  },
-  {
-    date: "2026-09-08",
-    title: "國際服 7.56",
-    detail: "天際的行路",
-    importance: "secondary",
-  },
-];
 const activityLogCategoryColorClasses = new Map([
   ["零式", "近期日誌分類色彩零式"],
   ["極", "近期日誌分類色彩極"],
@@ -337,8 +266,15 @@ const 使用者職業類型篩選 = ref("");
 const 使用者職業篩選 = ref("");
 const 使用者職業選單開啟 = ref(false);
 const 使用者歷史排序設定 = ref({});
-const 使用者趨勢職業選擇 = ref({});
-const 使用者趨勢選取點 = ref({});
+const 使用者趨勢副本範圍 = ref(個人成績趨勢預設副本範圍);
+const 使用者趨勢副本選單開啟 = ref(false);
+const 使用者趨勢職業範圍 = ref(個人成績趨勢預設職業範圍);
+const 使用者趨勢職業選單開啟 = ref(false);
+const 使用者趨勢時間範圍 = ref(個人成績趨勢預設時間範圍);
+const 使用者趨勢自訂開始日期 = ref("");
+const 使用者趨勢自訂結束日期 = ref("");
+const 使用者趨勢顯示指標 = ref(個人成績趨勢預設指標);
+const 使用者趨勢選取點 = ref(null);
 const 使用者簡表模式 = ref(false);
 const 使用者簡表版本 = ref(預設個人成績簡表版本);
 const 使用者簡表零式量級 = ref("");
@@ -841,62 +777,96 @@ function 選擇使用者職業(職業代碼) {
   使用者職業選單開啟.value = false;
 }
 
-function 選擇使用者趨勢職業(副本鍵值, 職業代碼) {
-  if (!副本鍵值 || !職業代碼) {
-    return;
+function 設定使用者趨勢副本範圍(副本範圍) {
+  使用者趨勢副本範圍.value = 副本範圍 || 個人成績趨勢預設副本範圍;
+  使用者趨勢副本選單開啟.value = false;
+  清除所有使用者趨勢選取點();
+}
+
+function 切換使用者趨勢副本選單() {
+  使用者職業選單開啟.value = false;
+  使用者趨勢職業選單開啟.value = false;
+  使用者趨勢副本選單開啟.value = !使用者趨勢副本選單開啟.value;
+}
+
+function 處理使用者趨勢副本選單失焦(event) {
+  if (!event.currentTarget.contains(event.relatedTarget)) {
+    使用者趨勢副本選單開啟.value = false;
   }
-
-  // 趨勢圖切換職業時，上一條曲線的暫時數值標記不能帶到新曲線。
-  清除使用者趨勢副本選取點(副本鍵值);
-  使用者趨勢職業選擇.value = {
-    ...使用者趨勢職業選擇.value,
-    [副本鍵值]: 職業代碼,
-  };
 }
 
-function 建立使用者趨勢選取點鍵(副本鍵值, 職業代碼) {
-  return `${副本鍵值 || ""}:${職業代碼 || ""}`;
+function 設定使用者趨勢職業範圍(職業範圍) {
+  使用者趨勢職業範圍.value = 職業範圍 || 個人成績趨勢預設職業範圍;
+  清除所有使用者趨勢選取點();
 }
 
-function 取得使用者趨勢選取點(副本鍵值, 職業代碼) {
-  return 使用者趨勢選取點.value[建立使用者趨勢選取點鍵(副本鍵值, 職業代碼)] || null;
+function 清除使用者趨勢職業範圍() {
+  設定使用者趨勢職業範圍(個人成績趨勢預設職業範圍);
+  使用者趨勢職業選單開啟.value = false;
 }
 
-function 設定使用者趨勢選取點(副本鍵值, 職業代碼, 點) {
-  if (!副本鍵值 || !職業代碼 || 點?.id === undefined || 點?.id === null) {
-    return;
-  }
-
-  const 鍵值 = 建立使用者趨勢選取點鍵(副本鍵值, 職業代碼);
-  使用者趨勢選取點.value = {
-    ...使用者趨勢選取點.value,
-    [鍵值]: 點,
-  };
+function 選擇使用者趨勢職能(職能代碼) {
+  設定使用者趨勢職業範圍(職能代碼);
 }
 
-function 清除使用者趨勢選取點(副本鍵值, 職業代碼) {
-  const 鍵值 = 建立使用者趨勢選取點鍵(副本鍵值, 職業代碼);
-  if (!使用者趨勢選取點.value[鍵值]) {
-    return;
-  }
-
-  使用者趨勢選取點.value = Object.fromEntries(
-    Object.entries(使用者趨勢選取點.value)
-      .filter(([目前鍵值]) => 目前鍵值 !== 鍵值),
+function 選擇使用者趨勢職業(職業代碼) {
+  const 職能代碼 = 職業所屬類型(職業代碼)?.代碼 || 個人成績趨勢預設職業範圍;
+  設定使用者趨勢職業範圍(
+    使用者趨勢職業範圍.value === 職業代碼 ? 職能代碼 : 職業代碼,
   );
+  使用者趨勢職業選單開啟.value = false;
 }
 
-function 清除使用者趨勢副本選取點(副本鍵值) {
-  const 鍵值前綴 = `${副本鍵值 || ""}:`;
-  const 其餘選取點 = Object.fromEntries(
-    Object.entries(使用者趨勢選取點.value)
-      .filter(([鍵值]) => !鍵值.startsWith(鍵值前綴)),
-  );
-  使用者趨勢選取點.value = 其餘選取點;
+function 切換使用者趨勢職業選單() {
+  使用者職業選單開啟.value = false;
+  使用者趨勢副本選單開啟.value = false;
+  使用者趨勢職業選單開啟.value = !使用者趨勢職業選單開啟.value;
+}
+
+function 處理使用者趨勢職業選單失焦(event) {
+  if (!event.currentTarget.contains(event.relatedTarget)) {
+    使用者趨勢職業選單開啟.value = false;
+  }
+}
+
+function 設定使用者趨勢時間範圍(時間範圍) {
+  使用者趨勢時間範圍.value = 個人成績趨勢時間範圍選項.some((選項) => 選項.value === 時間範圍)
+    ? 時間範圍
+    : 個人成績趨勢預設時間範圍;
+  清除所有使用者趨勢選取點();
+}
+
+function 設定使用者趨勢自訂開始日期(日期) {
+  使用者趨勢自訂開始日期.value = 日期 || "";
+  清除所有使用者趨勢選取點();
+}
+
+function 設定使用者趨勢自訂結束日期(日期) {
+  使用者趨勢自訂結束日期.value = 日期 || "";
+  清除所有使用者趨勢選取點();
+}
+
+function 設定使用者趨勢顯示指標(指標) {
+  使用者趨勢顯示指標.value = 個人成績趨勢指標選項.some((選項) => 選項.value === 指標)
+    ? 指標
+    : 個人成績趨勢預設指標;
+  清除所有使用者趨勢選取點();
+}
+
+function 設定使用者趨勢選取點(點) {
+  if (點?.id === undefined || 點?.id === null) {
+    return;
+  }
+
+  使用者趨勢選取點.value = 點;
+}
+
+function 清除使用者趨勢選取點() {
+  使用者趨勢選取點.value = null;
 }
 
 function 清除所有使用者趨勢選取點() {
-  使用者趨勢選取點.value = {};
+  清除使用者趨勢選取點();
 }
 
 function 切換使用者簡表模式() {
@@ -923,6 +893,8 @@ function 切換使用者職業選單() {
   統計職業選單開啟.value = false;
   職業選單開啟.value = false;
   職業分析選單開啟.value = false;
+  使用者趨勢副本選單開啟.value = false;
+  使用者趨勢職業選單開啟.value = false;
   使用者職業選單開啟.value = !使用者職業選單開啟.value;
 }
 
@@ -4354,191 +4326,79 @@ const 使用者分位亮點 = computed(() => {
     .slice(0, 4);
 });
 
-function 比較使用者趨勢職業預設排序(前一個, 後一個) {
-  // 同副本合併後，預設職業以玩家最常遊玩的紀錄數為主，平手才用近期與最佳成績穩定排序。
-  const 紀錄數差 = 後一個.點列表.length - 前一個.點列表.length;
-  if (紀錄數差 !== 0) {
-    return 紀錄數差;
-  }
-
-  const 最新時間差 =
-    new Date(後一個.最新?.recorded_at_iso || 0).getTime() - new Date(前一個.最新?.recorded_at_iso || 0).getTime();
-  if (最新時間差 !== 0) {
-    return 最新時間差;
-  }
-
-  if (使用者成績是否較佳(前一個.最佳, 後一個.最佳)) {
-    return -1;
-  }
-  if (使用者成績是否較佳(後一個.最佳, 前一個.最佳)) {
-    return 1;
-  }
-
-  const 職能順序差 = 職業類型排序值(前一個.職能?.代碼) - 職業類型排序值(後一個.職能?.代碼);
-  return 職能順序差 || 前一個.job_name.localeCompare(後一個.job_name, "zh-Hant-TW");
-}
-
-function 建立使用者趨勢數值標記(點, 鍵值後綴) {
-  return {
-    ...點,
-    key: `${點.id}-${鍵值後綴}`,
-    // 數值標記不得跟資料點重疊：高點往下、其他往上，邊緣點則往圖內展開。
-    標籤向下: 點.y < 16,
-    文字靠左: 點.x < 15,
-    文字靠右: 點.x > 85,
-  };
-}
-
-function 建立使用者成績趨勢項(副本, 職業代碼, 成績列表) {
-  const 職能 = 職業所屬類型(職業代碼);
-  const 數值列表 = 成績列表.map((成績) => 轉為數字(成績.rdps) || 0);
-  const 紀錄時間列表 = 成績列表.map((成績) => new Date(成績.recorded_at_iso || "").getTime());
-  const 起始時間戳記 = 紀錄時間列表[0];
-  const 結束時間戳記 = 紀錄時間列表.at(-1);
-  // 版本切點是實際時間，所以只有時間完整時才把趨勢橫軸改用線性時間軸。
-  // 舊資料缺失時間時保留等距樣本軸，並不顯示可能錯位的版本線。
-  const 使用時間橫軸 = 成績列表.length > 1
-    && 紀錄時間列表.every((時間戳記) => Number.isFinite(時間戳記))
-    && 結束時間戳記 > 起始時間戳記;
-  const 最低 = Math.min(...數值列表);
-  const 最高 = Math.max(...數值列表);
-  const 第一筆 = 成績列表[0];
-  const 最新 = 成績列表.at(-1);
-  const 有效成績列表 = 成績列表.filter((成績) => !成績.is_obsolete_record);
-  const 最佳 = 有效成績列表.reduce((目前最佳, 成績) => (使用者成績是否較佳(成績, 目前最佳) ? 成績 : 目前最佳), null);
-  const 點列表 = 成績列表.map((成績, index) => {
-    const rdps = 轉為數字(成績.rdps) || 0;
-    const x = 使用時間橫軸
-      ? ((紀錄時間列表[index] - 起始時間戳記) / (結束時間戳記 - 起始時間戳記)) * 100
-      : (成績列表.length === 1 ? 50 : (index / (成績列表.length - 1)) * 100);
-    const y = 最高 === 最低 ? 26 : 42 - ((rdps - 最低) / (最高 - 最低)) * 32;
-    return {
-      id: 成績.id,
-      job: 成績.job,
-      rdps,
-      gcd_coverage: 成績.gcd_coverage ?? null,
-      recorded_at_iso: 成績.recorded_at_iso,
-      過版紀錄: Boolean(成績.is_obsolete_record),
-      x: Number(x.toFixed(2)),
-      y: Number(y.toFixed(2)),
-    };
-  });
-  const 最高記錄點 = 點列表.find((點) => 點.rdps === 最高) || null;
-  const 最低記錄點 = 點列表.find((點) => 點.rdps === 最低) || null;
-  const 數值標記點列表 = [];
-  if (最高記錄點 && 最低記錄點 && 最高記錄點.id === 最低記錄點.id) {
-    數值標記點列表.push(建立使用者趨勢數值標記(最高記錄點, "最高最低"));
-  } else {
-    if (最高記錄點) {
-      數值標記點列表.push(建立使用者趨勢數值標記(最高記錄點, "最高"));
-    }
-    if (最低記錄點) {
-      數值標記點列表.push(建立使用者趨勢數值標記(最低記錄點, "最低"));
-    }
-  }
-  const 折線路徑 = 點列表.length > 1 ? 點列表.map((點, index) => `${index === 0 ? "M" : "L"} ${點.x} ${點.y}`).join(" ") : "";
-  const 線段列表 = 點列表.slice(1).map((點, index) => {
-    const 前一點 = 點列表[index];
-    return {
-      key: `${前一點.id}-${點.id}`,
-      path: `M ${前一點.x} ${前一點.y} L ${點.x} ${點.y}`,
-      過版紀錄: 前一點.過版紀錄 || 點.過版紀錄,
-    };
-  });
-  // 面積填色跟折線使用同一個版本判定：有效版本維持原色，碰到過版點的區段改用灰色。
-  // 這讓混合有效/過版紀錄的趨勢圖仍保有面積色塊，不會只剩幾條線而難以掃讀。
-  const 填色區塊列表 = 線段列表.map((線段, index) => {
-    const 起點 = 點列表[index];
-    const 終點 = 點列表[index + 1];
-    return {
-      key: `area-${線段.key}`,
-      path: `M ${起點.x} ${起點.y} L ${終點.x} ${終點.y} L ${終點.x} 46 L ${起點.x} 46 Z`,
-      過版紀錄: 線段.過版紀錄,
-    };
-  });
-
-  return {
-    key: `${副本.encounter_key}::${職業代碼}`,
-    encounter_key: 副本.encounter_key,
-    encounter_name: 副本.encounter_name,
-    encounter_category: 副本.encounter_category,
-    job: 職業代碼,
-    job_name: 顯示職業名稱(職業代碼),
-    job_color: 職業代碼色彩(職業代碼),
-    職能,
-    最新,
-    最佳,
-    變化: (轉為數字(最新?.rdps) || 0) - (轉為數字(第一筆?.rdps) || 0),
-    最低,
-    最高,
-    版本切點列表: 使用時間橫軸 ? 建立個人成績趨勢版本切點(起始時間戳記, 結束時間戳記) : [],
-    數值標記點列表,
-    折線路徑,
-    填色區塊列表,
-    線段列表,
-    點列表,
-  };
-}
-
-const 使用者成績趨勢 = computed(() => {
-  return 使用者副本成績.value
-    .map((副本) => {
-      const 職業成績索引 = new Map();
-      for (const 成績 of 副本.public_entries || []) {
-        const 職業代碼 = 成績.job;
-        if (!職業代碼 || 轉為數字(成績.rdps) === null) {
-          continue;
-        }
-
-        if (!職業成績索引.has(職業代碼)) {
-          職業成績索引.set(職業代碼, {
-            職業代碼,
-            成績列表: [],
-          });
-        }
-        職業成績索引.get(職業代碼).成績列表.push(成績);
-      }
-
-      const 職業趨勢列表 = Array.from(職業成績索引.values()).map(({ 職業代碼, 成績列表 }) => {
-        const 排序後成績 = 成績列表.sort((前一個, 後一個) => {
-          const 時間差 = new Date(前一個.recorded_at_iso || 0).getTime() - new Date(後一個.recorded_at_iso || 0).getTime();
-          return 時間差 || (前一個.rdps ?? 0) - (後一個.rdps ?? 0);
-        });
-
-        return 建立使用者成績趨勢項(副本, 職業代碼, 排序後成績);
-      }).sort(比較使用者趨勢職業預設排序);
-
-      if (職業趨勢列表.length === 0) {
-        return null;
-      }
-
-      const 已選職業 = 使用者趨勢職業選擇.value[副本.encounter_key];
-      const 目前趨勢 = 職業趨勢列表.find((趨勢) => 趨勢.job === 已選職業) || 職業趨勢列表[0];
-      const 職業選項 = 職業趨勢列表.map((趨勢) => ({
-        代碼: 趨勢.job,
-        名稱: 趨勢.job_name,
-        色彩: 趨勢.job_color,
-        職能: 趨勢.職能,
-        紀錄數: 趨勢.點列表.length,
-        已選取: 趨勢.job === 目前趨勢.job,
-      }));
-
-      return {
-        ...目前趨勢,
-        key: 副本.encounter_key,
-        趨勢key: 目前趨勢.key,
-        職業趨勢列表,
-        職業選項,
-        目前職業代碼: 目前趨勢.job,
-        多職業: 職業趨勢列表.length > 1,
-      };
-    })
-    .filter(Boolean)
-    .sort((前一個, 後一個) => {
-      const 副本順序差 = 取得副本排序值(前一個.encounter_key) - 取得副本排序值(後一個.encounter_key);
-      return 副本順序差 || 前一個.encounter_name.localeCompare(後一個.encounter_name, "zh-Hant-TW");
-    });
+const 使用者趨勢來源副本成績 = computed(() => {
+  // 趨勢圖有自己的職能／職業條件，所以來源只沿用角色、伺服器與版本快照，
+  // 不沿用頁面成績表的職業條件；否則圖上的「全部職業」會名實不符。
+  return 取得使用者副本成績(
+    使用者資料.value,
+    使用者伺服器篩選.value,
+    符合使用者版本篩選,
+    使用者代表成績是否較佳,
+  );
 });
+
+const 使用者趨勢篩選選項 = computed(() => 建立個人成績趨勢篩選選項(使用者趨勢來源副本成績.value));
+const 使用者趨勢副本選項 = computed(() => 使用者趨勢篩選選項.value.副本選項);
+const 使用者趨勢職能選項 = computed(() => 使用者趨勢篩選選項.value.職能選項);
+const 使用者趨勢職業選項 = computed(() => 使用者趨勢篩選選項.value.職業選項);
+const 使用者趨勢副本分組 = computed(() => 建立副本選單分組(
+  [
+    { value: 個人成績趨勢預設副本範圍, label: "全部副本", category: "全部" },
+    ...使用者趨勢副本選項.value,
+  ],
+  {
+    取鍵值: (選項) => 選項.value,
+    取名稱: (選項) => 選項.label,
+    取分類: (選項) => 選項.category,
+    取零式量級: (選項) => 取得零式量級(選項, 選項.value),
+  },
+));
+const 使用者趨勢副本選單文字 = computed(() => (
+  使用者趨勢副本選項.value.find((選項) => 選項.value === 使用者趨勢副本範圍.value)?.label
+  || "全部副本"
+));
+const 目前使用者趨勢職能 = computed(() => {
+  const 範圍 = 使用者趨勢職業範圍.value;
+  if (範圍?.startsWith("role:")) {
+    return 使用者趨勢職能選項.value.find((選項) => 選項.value === 範圍) || null;
+  }
+  const 職業 = 使用者趨勢職業選項.value.find((選項) => 選項.value === 範圍);
+  return 使用者趨勢職能選項.value.find((選項) => 選項.value === 職業?.role) || null;
+});
+const 使用者趨勢目前職業選項 = computed(() => (
+  目前使用者趨勢職能.value
+    ? 使用者趨勢職業選項.value.filter((選項) => 選項.role === 目前使用者趨勢職能.value.value)
+    : []
+));
+const 使用者趨勢職業選單文字 = computed(() => {
+  const 職業 = 使用者趨勢職業選項.value.find((選項) => 選項.value === 使用者趨勢職業範圍.value);
+  if (職業) {
+    return 目前使用者趨勢職能.value
+      ? `${目前使用者趨勢職能.value.label} / ${職業.label}`
+      : 職業.label;
+  }
+  return 目前使用者趨勢職能.value?.label || "全部職業";
+});
+const 使用者趨勢職業選單Icon路徑 = computed(() => {
+  const 職業 = 使用者趨勢職業選項.value.find((選項) => 選項.value === 使用者趨勢職業範圍.value);
+  if (職業) {
+    return 職業Icon路徑(職業.value);
+  }
+  return 目前使用者趨勢職能.value ? 職業類型Icon路徑(目前使用者趨勢職能.value.value) : "";
+});
+const 顯示使用者趨勢自訂日期 = computed(() => 使用者趨勢時間範圍.value === "custom");
+
+const 使用者成績趨勢 = computed(() => 建立個人成績統一趨勢(
+  使用者趨勢來源副本成績.value,
+  {
+    副本範圍: 使用者趨勢副本範圍.value,
+    職業範圍: 使用者趨勢職業範圍.value,
+    時間範圍: 使用者趨勢時間範圍.value,
+    自訂開始日期: 使用者趨勢自訂開始日期.value,
+    自訂結束日期: 使用者趨勢自訂結束日期.value,
+    指標: 使用者趨勢顯示指標.value,
+  },
+));
 
 function 建立比較角色項目(資料, 伺服器 = "") {
   if (!資料) {
@@ -5460,12 +5320,6 @@ function 切換分位顯示模式() {
   設定分位顯示模式(使用PR分位顯示.value ? 分位顯示模式前段 : 分位顯示模式PR);
 }
 
-function 取得使用者趨勢顯示數值標記(趨勢) {
-  const 已選取點 = 取得使用者趨勢選取點(趨勢.encounter_key, 趨勢.job);
-  // 有互動中的資料點時只保留該筆數值，避免最高／最低標記遮住使用者正在查看的紀錄。
-  return 已選取點 ? [建立使用者趨勢數值標記(已選取點, "選取")] : 趨勢.數值標記點列表;
-}
-
 function 讀取版本紀錄顯示偏好() {
   if (typeof window === "undefined") {
     return false;
@@ -5896,7 +5750,19 @@ watch(使用者伺服器篩選, (伺服器) => {
 watch([使用者資料, 使用者伺服器篩選, 使用者版本篩選, 使用者職業類型篩選, 使用者職業篩選], () => {
   // 篩選結果更換後不沿用舊副本的排序欄位，避免使用者誤把不同快照視為同一排序結果。
   使用者歷史排序設定.value = {};
-  使用者趨勢職業選擇.value = {};
+});
+
+watch([使用者資料, 使用者伺服器篩選, 使用者版本篩選], () => {
+  // 換角色、伺服器或版本快照時回到明確的預設範圍，避免新角色沒有舊選項時
+  // 留下空圖；頁面詳細表的職業篩選不在此列，因為趨勢圖有獨立職業條件。
+  使用者趨勢副本範圍.value = 個人成績趨勢預設副本範圍;
+  使用者趨勢副本選單開啟.value = false;
+  使用者趨勢職業範圍.value = 個人成績趨勢預設職業範圍;
+  使用者趨勢職業選單開啟.value = false;
+  使用者趨勢時間範圍.value = 個人成績趨勢預設時間範圍;
+  使用者趨勢自訂開始日期.value = "";
+  使用者趨勢自訂結束日期.value = "";
+  使用者趨勢顯示指標.value = 個人成績趨勢預設指標;
   清除所有使用者趨勢選取點();
 });
 
@@ -6156,7 +6022,14 @@ onUnmounted(() => {
     目前使用者支援職能,
     使用者歷史排序欄位,
     使用者歷史排序設定,
-    使用者趨勢職業選擇,
+    使用者趨勢副本範圍,
+    使用者趨勢副本選單開啟,
+    使用者趨勢職業範圍,
+    使用者趨勢職業選單開啟,
+    使用者趨勢時間範圍,
+    使用者趨勢自訂開始日期,
+    使用者趨勢自訂結束日期,
+    使用者趨勢顯示指標,
     使用者趨勢選取點,
     使用者簡表模式,
     使用者簡表版本,
@@ -6295,7 +6168,19 @@ onUnmounted(() => {
     清除使用者職業篩選,
     選擇使用者職業類型,
     選擇使用者職業,
+    設定使用者趨勢副本範圍,
+    切換使用者趨勢副本選單,
+    處理使用者趨勢副本選單失焦,
+    設定使用者趨勢職業範圍,
+    清除使用者趨勢職業範圍,
+    選擇使用者趨勢職能,
     選擇使用者趨勢職業,
+    切換使用者趨勢職業選單,
+    處理使用者趨勢職業選單失焦,
+    設定使用者趨勢時間範圍,
+    設定使用者趨勢自訂開始日期,
+    設定使用者趨勢自訂結束日期,
+    設定使用者趨勢顯示指標,
     取得使用者歷史排序欄位,
     取得使用者歷史排序欄位標籤,
     設定使用者歷史排序欄位,
@@ -6561,11 +6446,21 @@ onUnmounted(() => {
     目前使用者職業類型,
     使用者職業選單文字,
     使用者職業選單Icon路徑,
-    取得使用者趨勢選取點,
     設定使用者趨勢選取點,
     清除使用者趨勢選取點,
     清除所有使用者趨勢選取點,
-    取得使用者趨勢顯示數值標記,
+    個人成績趨勢指標選項,
+    個人成績趨勢時間範圍選項,
+    使用者趨勢副本選項,
+    使用者趨勢副本分組,
+    使用者趨勢副本選單文字,
+    使用者趨勢職能選項,
+    使用者趨勢職業選項,
+    使用者趨勢目前職業選項,
+    目前使用者趨勢職能,
+    使用者趨勢職業選單文字,
+    使用者趨勢職業選單Icon路徑,
+    顯示使用者趨勢自訂日期,
     符合使用者職業篩選,
     符合使用者版本篩選,
     取得個人成績紀錄版本,
@@ -6574,7 +6469,7 @@ onUnmounted(() => {
     建立使用者統計,
     使用者統計,
     使用者分位亮點,
-    建立使用者成績趨勢項,
+    使用者趨勢來源副本成績,
     使用者成績趨勢,
     建立比較角色項目,
     比較角色左,

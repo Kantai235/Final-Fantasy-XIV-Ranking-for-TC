@@ -1,6 +1,7 @@
 <script>
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import AchievementHandbook from "../components/AchievementHandbook.vue";
+import EncounterMenu from "../components/EncounterMenu.vue";
 import JobIcon from "../components/JobIcon.vue";
 import PlayerSearchHistoryPanel from "../components/PlayerSearchHistoryPanel.vue";
 import RankingCompactValue from "../components/RankingCompactValue.vue";
@@ -12,6 +13,7 @@ export default {
   name: "UserProfilePage",
   components: {
     AchievementHandbook,
+    EncounterMenu,
     JobIcon,
     PlayerSearchHistoryPanel,
     RankingCompactValue,
@@ -304,8 +306,8 @@ export default {
     }
 
     function 處理趨勢圖外部觸控(event) {
-      // 觸控裝置沒有 hover 離開事件；點擊資料點以外的位置時，主動回到
-      // 預設的最高／最低數值標記。桌面版仍由趨勢圖的 mouseleave 處理。
+      // 觸控裝置沒有 hover 離開事件；點擊資料點以外的位置時主動收起資訊卡，
+      // 桌面版則仍由趨勢圖的 mouseleave 處理，兩種操作都不會改變篩選條件。
       if (event.pointerType !== "touch" || event.target?.closest?.(".趨勢點")) {
         return;
       }
@@ -649,116 +651,314 @@ export default {
         </div>
       </section>
 
-      <section v-if="使用者成績趨勢.length > 0" class="成績趨勢區" aria-label="成績趨勢">
+      <section v-if="使用者趨勢副本選項.length > 0" class="成績趨勢區" aria-label="成績趨勢">
         <header class="成績趨勢標題">
-          <h2>成績趨勢</h2>
-          <span>公開 rDPS 歷史</span>
+          <div>
+            <h2>成績趨勢</h2>
+            <span>依時間排列公開成績</span>
+          </div>
+          <strong>{{ 使用者成績趨勢.點列表.length }} 筆紀錄</strong>
         </header>
-        <div class="成績趨勢列表">
-          <article v-for="趨勢 in 使用者成績趨勢" :key="趨勢.key" class="趨勢項">
-            <header class="趨勢項標題">
-              <div class="趨勢標題文字">
-                <small>{{ 趨勢.encounter_category || "副本" }}</small>
-                <strong>{{ 趨勢.encounter_name }}</strong>
-                <span v-if="!趨勢.多職業" class="職業標籤 趨勢職業標籤" :class="職業色彩類別(趨勢.job_color)">
-                  <JobIcon
-                    class="職業圖示 職業標籤圖示"
-                    :code="趨勢.job"
-                  />
-                  <span>{{ 趨勢.job_name || 顯示職業名稱(趨勢.job) }}</span>
-                </span>
-              </div>
-              <em :class="{ 上升: 趨勢.變化 > 0, 下降: 趨勢.變化 < 0 }">{{ 格式化帶號整數(趨勢.變化) }}</em>
-            </header>
-            <div v-if="趨勢.多職業" class="趨勢職業切換列" role="group" :aria-label="`${趨勢.encounter_name} 職業切換`">
+        <div class="成績趨勢控制列">
+          <div
+            class="欄位 副本選單欄位 成績趨勢篩選欄位"
+            @focusout="處理使用者趨勢副本選單失焦"
+          >
+            <span>副本</span>
+            <div class="副本選單">
               <button
-                v-for="選項 in 趨勢.職業選項"
-                :key="`${趨勢.encounter_key}-${選項.代碼}`"
-                class="趨勢職業按鈕"
+                class="副本選單按鈕"
                 type="button"
-                :class="[職業色彩類別(選項.色彩), { 作用中: 選項.已選取 }]"
-                :aria-pressed="選項.已選取"
-                @click="選擇使用者趨勢職業(趨勢.encounter_key, 選項.代碼)"
+                :aria-expanded="使用者趨勢副本選單開啟"
+                aria-haspopup="true"
+                @click="切換使用者趨勢副本選單"
               >
-                <JobIcon
-                  class="職業圖示 職業標籤圖示"
-                  :code="選項.代碼"
+                <span class="副本選單目前值">{{ 使用者趨勢副本選單文字 }}</span>
+                <span class="選單箭頭">▾</span>
+              </button>
+
+              <EncounterMenu
+                v-if="使用者趨勢副本選單開啟"
+                :分組="使用者趨勢副本分組"
+                :選取鍵值="使用者趨勢副本範圍"
+                標籤="選擇成績趨勢副本"
+                @選擇="設定使用者趨勢副本範圍($event.鍵值)"
+              />
+            </div>
+          </div>
+
+          <div
+            class="欄位 職業選單欄位 成績趨勢篩選欄位"
+            @focusout="處理使用者趨勢職業選單失焦"
+          >
+            <span>職業範圍</span>
+            <div class="職業選單">
+              <button
+                class="職業選單按鈕"
+                type="button"
+                :aria-expanded="使用者趨勢職業選單開啟"
+                aria-haspopup="true"
+                @click="切換使用者趨勢職業選單"
+              >
+                <span class="職業選單目前值">
+                  <JobIcon class="職業圖示" :src="使用者趨勢職業選單Icon路徑" />
+                  <span>{{ 使用者趨勢職業選單文字 }}</span>
+                </span>
+                <span class="選單箭頭">▾</span>
+              </button>
+
+              <div v-if="使用者趨勢職業選單開啟" class="職業選單面板">
+                <div class="職業選單分類欄" role="menu" aria-label="成績趨勢職業類型">
+                  <button
+                    class="職業選單項"
+                    type="button"
+                    :class="{ 已選取: 使用者趨勢職業範圍 === 'all' }"
+                    @click="清除使用者趨勢職業範圍"
+                  >
+                    全部職業
+                  </button>
+                  <button
+                    v-for="職能 in 使用者趨勢職能選項"
+                    :key="職能.value"
+                    class="職業選單項"
+                    type="button"
+                    :class="[
+                      職業色彩類別(職能.color),
+                      {
+                        已展開: 目前使用者趨勢職能?.value === 職能.value,
+                        已選取: 使用者趨勢職業範圍 === 職能.value,
+                      },
+                    ]"
+                    @click="選擇使用者趨勢職能(職能.value)"
+                  >
+                    <JobIcon class="職業圖示" kind="role" :code="職能.value" />
+                    <span>{{ 職能.label }}</span>
+                  </button>
+                </div>
+
+                <div class="職業選單職業欄" role="menu" aria-label="成績趨勢職業">
+                  <button
+                    v-for="職業 in 使用者趨勢目前職業選項"
+                    :key="職業.value"
+                    class="職業選單項"
+                    type="button"
+                    :class="[
+                      職業色彩類別(職業.color),
+                      { 已選取: 使用者趨勢職業範圍 === 職業.value },
+                    ]"
+                    @click="選擇使用者趨勢職業(職業.value)"
+                  >
+                    <JobIcon class="職業圖示" :code="職業.value" />
+                    <span>{{ 職業.label }}</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="欄位 成績趨勢篩選欄位 成績趨勢時間範圍欄位">
+            <label>
+              <span>時間範圍</span>
+              <select
+                :value="使用者趨勢時間範圍"
+                aria-label="成績趨勢時間範圍"
+                @change="設定使用者趨勢時間範圍($event.target.value)"
+              >
+                <option v-for="選項 in 個人成績趨勢時間範圍選項" :key="選項.value" :value="選項.value">
+                  {{ 選項.label }}
+                </option>
+              </select>
+            </label>
+            <div v-if="顯示使用者趨勢自訂日期" class="成績趨勢日期區間" aria-label="成績趨勢自訂日期區間">
+              <label>
+                <span>起</span>
+                <input
+                  :value="使用者趨勢自訂開始日期"
+                  type="date"
+                  aria-label="成績趨勢自訂開始日期"
+                  @change="設定使用者趨勢自訂開始日期($event.target.value)"
                 />
-                <span>{{ 選項.名稱 }}</span>
-                <small>{{ 選項.紀錄數 }} 筆</small>
+              </label>
+              <span>至</span>
+              <label>
+                <span>迄</span>
+                <input
+                  :value="使用者趨勢自訂結束日期"
+                  type="date"
+                  aria-label="成績趨勢自訂結束日期"
+                  @change="設定使用者趨勢自訂結束日期($event.target.value)"
+                />
+              </label>
+            </div>
+          </div>
+
+          <fieldset class="成績趨勢指標欄位">
+            <legend>顯示指標</legend>
+            <div class="成績趨勢指標切換" role="group" aria-label="成績趨勢顯示指標">
+              <button
+                v-for="選項 in 個人成績趨勢指標選項"
+                :key="選項.value"
+                class="成績趨勢指標按鈕"
+                type="button"
+                :class="{ 作用中: 使用者趨勢顯示指標 === 選項.value }"
+                :aria-pressed="使用者趨勢顯示指標 === 選項.value"
+                @click="設定使用者趨勢顯示指標(選項.value)"
+              >
+                {{ 選項.label }}
               </button>
             </div>
-            <div
-              class="趨勢圖"
-              :aria-label="`${趨勢.encounter_name} rDPS 趨勢${顯示版本紀錄 && 趨勢.版本切點列表.length > 0 ? `，版本切點：${趨勢.版本切點列表.map((切點) => 切點.label).join('、')}` : ''}`"
-              @mouseleave="清除使用者趨勢選取點(趨勢.encounter_key, 趨勢.job)"
-              @click="清除使用者趨勢選取點(趨勢.encounter_key, 趨勢.job)"
-            >
-              <svg class="趨勢曲線圖" viewBox="0 0 100 52" preserveAspectRatio="none" aria-hidden="true">
-                <line class="趨勢格線" x1="0" y1="10" x2="100" y2="10"></line>
-                <line class="趨勢格線" x1="0" y1="26" x2="100" y2="26"></line>
-                <line class="趨勢格線" x1="0" y1="42" x2="100" y2="42"></line>
-                <path
-                  v-for="區塊 in 趨勢.填色區塊列表"
-                  :key="區塊.key"
-                  class="趨勢面積"
-                  :class="{ 過版: 區塊.過版紀錄 }"
-                  :d="區塊.path"
-                ></path>
-                <path
-                  v-for="線段 in 趨勢.線段列表"
-                  :key="線段.key"
-                  class="趨勢折線"
-                  :class="{ 過版: 線段.過版紀錄 }"
-                  :d="線段.path"
-                ></path>
-              </svg>
+          </fieldset>
+        </div>
+
+        <div v-if="使用者成績趨勢.點列表.length > 0" class="統一趨勢圖表">
+          <div class="統一趨勢圖表標頭">
+            <strong>{{ 使用者成績趨勢.指標名稱 }}</strong>
+            <span>滑鼠移至標點或點擊標點查看詳細資料</span>
+          </div>
+          <div class="統一趨勢繪圖格">
+            <div class="統一趨勢Y軸" aria-hidden="true">
               <span
-                v-if="顯示版本紀錄 && 趨勢.版本切點列表.length > 0"
-                class="趨勢版本切點層"
-                aria-hidden="true"
+                v-for="刻度 in 使用者成績趨勢.Y軸刻度列表"
+                :key="刻度.key"
+                :style="{ top: `${(刻度.y / 52) * 100}%` }"
               >
-                <span
-                  v-for="切點 in 趨勢.版本切點列表"
-                  :key="切點.key"
-                  class="趨勢版本切點"
-                  :style="{ left: `${切點.x}%` }"
-                  :title="`繁中服 ${切點.label} 開始`"
-                >
-                  <small>{{ 切點.label }}</small>
-                </span>
-              </span>
-              <span class="趨勢數值標記層" aria-hidden="true">
-                <span
-                  v-for="點 in 取得使用者趨勢顯示數值標記(趨勢)"
-                  :key="點.key"
-                  class="趨勢數值標記"
-                  :class="{ 標籤向下: 點.標籤向下, 文字靠左: 點.文字靠左, 文字靠右: 點.文字靠右 }"
-                  :style="趨勢點樣式(點)"
-                >
-                  <strong>{{ 格式化傷害數值(點.rdps) }}</strong>
-                </span>
-              </span>
-              <span class="趨勢點層">
-                <button
-                  v-for="點 in 趨勢.點列表"
-                  :key="點.id"
-                  class="趨勢點"
-                  type="button"
-                  :class="{
-                    過版: 點.過版紀錄,
-                    選取中: 取得使用者趨勢選取點(趨勢.encounter_key, 趨勢.job)?.id === 點.id,
-                  }"
-                  :style="趨勢點樣式(點)"
-                  :aria-label="`${格式化紀錄時間(點.recorded_at_iso)}，${顯示職業名稱(點.job)}，rDPS ${格式化傷害數值(點.rdps)}${顯示Gcd覆蓋率 ? `，GCD ${格式化Gcd覆蓋率(點.gcd_coverage)}` : ''}${點.過版紀錄 ? '，過版紀錄' : ''}`"
-                  @mouseenter="設定使用者趨勢選取點(趨勢.encounter_key, 趨勢.job, 點)"
-                  @focus="設定使用者趨勢選取點(趨勢.encounter_key, 趨勢.job, 點)"
-                  @click.stop="設定使用者趨勢選取點(趨勢.encounter_key, 趨勢.job, 點)"
-                  @keydown.esc.stop="清除使用者趨勢選取點(趨勢.encounter_key, 趨勢.job)"
-                ></button>
+                {{ 使用者成績趨勢.指標 === 'rdps' ? 格式化傷害數值(刻度.value) : Math.round(刻度.value) }}
               </span>
             </div>
-          </article>
+            <div
+              class="統一趨勢圖表區"
+              @mouseleave="清除使用者趨勢選取點()"
+              @click="清除使用者趨勢選取點()"
+            >
+              <div
+                class="趨勢圖 統一趨勢圖"
+                :aria-label="`所有符合條件公開成績的${使用者成績趨勢.指標名稱}時間軸${使用者成績趨勢.版本切點列表.length > 0 ? `，版本更新：${使用者成績趨勢.版本切點列表.map((切點) => 切點.label).join('、')}` : ''}`"
+              >
+                <svg class="趨勢曲線圖" viewBox="0 0 100 52" preserveAspectRatio="none" aria-hidden="true">
+                  <line
+                    v-for="刻度 in 使用者成績趨勢.Y軸刻度列表"
+                    :key="刻度.key"
+                    class="趨勢格線"
+                    x1="2"
+                    :y1="刻度.y"
+                    x2="98"
+                    :y2="刻度.y"
+                  ></line>
+                  <path
+                    v-for="線段 in 使用者成績趨勢.線段列表"
+                    :key="線段.key"
+                    class="趨勢折線"
+                    :class="{ 過版: 線段.過版紀錄 }"
+                    :d="線段.path"
+                  ></path>
+                </svg>
+                <span
+                  v-if="使用者成績趨勢.版本切點列表.length > 0"
+                  class="趨勢版本切點層"
+                  aria-hidden="true"
+                >
+                  <span
+                    v-for="(切點, 切點索引) in 使用者成績趨勢.版本切點列表"
+                    :key="切點.key"
+                    class="趨勢版本切點"
+                    :class="{
+                      版本標籤第二列: 切點索引 % 2 === 1,
+                      版本標籤靠左: 切點.x < 18,
+                      版本標籤靠右: 切點.x > 82,
+                    }"
+                    :style="{ left: `${切點.x}%` }"
+                    :title="`${切點.label} 開放`"
+                  >
+                    <small>{{ 切點.label }}</small>
+                  </span>
+                </span>
+                <span class="趨勢點層">
+                  <button
+                    v-for="點 in 使用者成績趨勢.點列表"
+                    :key="點.id"
+                    class="趨勢點"
+                    type="button"
+                    :class="{
+                      過版: 點.過版紀錄,
+                      選取中: 使用者趨勢選取點?.id === 點.id,
+                    }"
+                    :style="{ ...趨勢點樣式(點), '--趨勢點色彩': 職業比較圖色彩(點.job) }"
+                    :aria-label="`${格式化紀錄時間(點.recorded_at_iso)}，${點.encounter_name}，${點.job_name}，${格式化PR值(點.pr_value)}，rDPS ${格式化傷害數值(點.rdps)}${點.過版紀錄 ? '，過版紀錄' : ''}`"
+                    :aria-pressed="使用者趨勢選取點?.id === 點.id"
+                    @mouseenter="設定使用者趨勢選取點(點)"
+                    @focus="設定使用者趨勢選取點(點)"
+                    @click.stop="設定使用者趨勢選取點(點)"
+                    @keydown.esc.stop="清除使用者趨勢選取點()"
+                  ></button>
+                </span>
+              </div>
+
+              <aside
+                v-if="使用者趨勢選取點"
+                class="趨勢標點資訊"
+                :class="{
+                  資訊向下: 使用者趨勢選取點.y < 25,
+                  資訊靠左: 使用者趨勢選取點.x < 30,
+                  資訊靠右: 使用者趨勢選取點.x > 70,
+                }"
+                :style="趨勢點樣式(使用者趨勢選取點)"
+                role="status"
+                aria-live="polite"
+                @click.stop
+              >
+                <header>
+                  <small>{{ 使用者趨勢選取點.encounter_category || "副本" }}</small>
+                  <strong>{{ 使用者趨勢選取點.encounter_name }}</strong>
+                </header>
+                <dl>
+                  <div>
+                    <dt>職業</dt>
+                    <dd>
+                      <JobIcon class="職業圖示 職業標籤圖示" :code="使用者趨勢選取點.job" />
+                      <span>{{ 使用者趨勢選取點.job_name }}</span>
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>PR 值</dt>
+                    <dd :class="同職分位色彩類別({ score_percentile: 使用者趨勢選取點.pr_value })">
+                      {{ 格式化PR值(使用者趨勢選取點.pr_value) }}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>rDPS</dt>
+                    <dd>{{ 格式化傷害數值(使用者趨勢選取點.rdps) }}</dd>
+                  </div>
+                  <div>
+                    <dt>紀錄時間</dt>
+                    <dd>{{ 格式化紀錄時間(使用者趨勢選取點.recorded_at_iso) }}</dd>
+                  </div>
+                </dl>
+              </aside>
+            </div>
+
+            <div aria-hidden="true"></div>
+            <div class="統一趨勢X軸" aria-hidden="true">
+              <span
+                v-for="刻度 in 使用者成績趨勢.時間刻度列表"
+                :key="刻度.key"
+                :class="{ 左邊緣: 刻度.邊緣 === '左', 右邊緣: 刻度.邊緣 === '右' }"
+                :style="{ left: `${刻度.x}%` }"
+              >
+                {{ 格式化紀錄日期(刻度.recorded_at_iso) }}
+              </span>
+            </div>
+          </div>
+
+          <p v-if="使用者成績趨勢.指標 === 'rdps'" class="成績趨勢註記">
+            rDPS 會受副本與職業差異影響，請搭配標點資訊解讀。
+          </p>
+          <p v-if="使用者成績趨勢.略過無時間紀錄數 > 0" class="成績趨勢註記">
+            {{ 使用者成績趨勢.略過無時間紀錄數 }} 筆缺少紀錄時間的舊資料未列入時間軸。
+          </p>
+        </div>
+
+        <div v-else class="成績趨勢空狀態">
+          目前篩選條件沒有可繪製的 {{ 使用者成績趨勢.指標名稱 }} 紀錄。
         </div>
       </section>
 

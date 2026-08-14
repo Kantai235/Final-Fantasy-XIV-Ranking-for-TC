@@ -314,8 +314,12 @@
 }
 
 @media (min-width: 721px) and (max-width: 980px) {
-  .成績趨勢列表 {
+  .成績趨勢控制列 {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .成績趨勢指標欄位 {
+    grid-column: 1 / -1;
   }
 }
 
@@ -1024,7 +1028,7 @@
     line-height: 1.15;
   }
 
-  .成績趨勢列表 {
+  .成績趨勢控制列 {
     grid-template-columns: 1fr;
   }
 
@@ -1050,6 +1054,45 @@
   .成績趨勢標題 {
     display: grid;
     gap: 4px;
+  }
+
+  .成績趨勢標題 > strong {
+    justify-self: start;
+  }
+
+  .統一趨勢圖表 {
+    padding: 12px 10px;
+  }
+
+  .統一趨勢圖表標頭 {
+    display: grid;
+    gap: 3px;
+  }
+
+  .統一趨勢繪圖格 {
+    grid-template-columns: 42px minmax(0, 1fr);
+    grid-template-rows: 260px 30px;
+    column-gap: 6px;
+  }
+
+  .統一趨勢Y軸,
+  .統一趨勢圖表區,
+  .統一趨勢圖 {
+    height: 260px;
+  }
+
+  .統一趨勢X軸 span:nth-child(even) {
+    display: none;
+  }
+
+  .趨勢標點資訊 {
+    width: min(250px, calc(100% - 16px));
+  }
+
+  .趨勢版本切點 small {
+    max-width: 132px;
+    padding: 4px 6px;
+    font-size: 0.58rem;
   }
 
   .統計工具列 {
@@ -1921,7 +1964,7 @@
     justify-content: flex-start;
   }
 
-  .趨勢圖 {
+  .趨勢圖:not(.統一趨勢圖) {
     height: 132px;
   }
 

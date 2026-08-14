@@ -246,7 +246,9 @@
 }
 
 .成績趨勢區 {
-  overflow: hidden;
+  /* 分組式副本／職業選單會向卡片外展開，因此外框不能裁掉浮動面板；
+     圖表本身仍由 .趨勢圖 負責裁切曲線與標點。 */
+  overflow: visible;
   border: 1px solid var(--邊框色);
   border-radius: 8px;
   background: var(--表面背景);
@@ -268,17 +270,24 @@
   font-weight: 820;
 }
 
+.成績趨勢標題 > div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
 .成績趨勢標題 span {
   color: var(--次要文字);
   font-size: 0.82rem;
   font-weight: 700;
 }
 
-.成績趨勢列表 {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 1px;
-  background: var(--邊框柔和色);
+.成績趨勢標題 > strong {
+  flex: 0 0 auto;
+  color: var(--重點色);
+  font-size: 0.82rem;
+  font-weight: 820;
+  font-variant-numeric: tabular-nums;
 }
 
 .使用者徽章區 {
@@ -1079,139 +1088,184 @@
   line-height: 1.35;
 }
 
-.趨勢項 {
+.成績趨勢控制列 {
+  position: relative;
+  z-index: 3;
   display: grid;
-  gap: 12px;
-  padding: 13px 14px;
+  grid-template-columns:
+    minmax(170px, 1.05fr)
+    minmax(170px, 1.05fr)
+    minmax(145px, 0.72fr)
+    minmax(190px, 0.82fr);
+  align-items: end;
+  gap: 14px;
+  border-bottom: 1px solid var(--邊框柔和色);
+  padding: 14px;
   background: var(--表面背景);
 }
 
-.趨勢項標題 {
-  min-width: 0;
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.趨勢標題文字 {
-  min-width: 0;
-  display: grid;
-  gap: 3px;
-}
-
-.趨勢項標題 small,
-.趨勢摘要 {
-  color: var(--次要文字);
-  font-size: 0.78rem;
-  font-weight: 700;
-}
-
-.趨勢項標題 strong {
-  min-width: 0;
-  overflow-wrap: anywhere;
-  color: var(--主要文字);
-  font-size: 0.94rem;
-  font-weight: 820;
-}
-
-.趨勢職業標籤 {
-  justify-self: start;
-  min-height: 24px;
-  margin-top: 2px;
-  font-size: 0.78rem;
-}
-
-.趨勢職業切換列 {
-  min-width: 0;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.趨勢職業按鈕 {
-  min-width: 0;
-  min-height: 32px;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  border: 1px solid var(--邊框色);
-  border-radius: 999px;
-  padding: 4px 8px;
-  color: var(--次要文字);
-  background: var(--表面背景柔和);
-  font: inherit;
-  font-size: 0.76rem;
-  font-weight: 780;
-  cursor: pointer;
-}
-
-.趨勢職業按鈕:hover:not(:disabled),
-.趨勢職業按鈕:focus-visible,
-.趨勢職業按鈕.作用中 {
-  color: var(--職業重點文字);
-}
-
-.趨勢職業按鈕.防護色:hover:not(:disabled),
-.趨勢職業按鈕.防護色:focus-visible,
-.趨勢職業按鈕.防護色.作用中 {
-  border-color: var(--防護色);
-  background: var(--防護色);
-}
-
-.趨勢職業按鈕.治療色:hover:not(:disabled),
-.趨勢職業按鈕.治療色:focus-visible,
-.趨勢職業按鈕.治療色.作用中 {
-  border-color: var(--治療色);
-  background: var(--治療色);
-}
-
-.趨勢職業按鈕.輸出色:hover:not(:disabled),
-.趨勢職業按鈕.輸出色:focus-visible,
-.趨勢職業按鈕.輸出色.作用中 {
-  border-color: var(--輸出色);
-  background: var(--輸出色);
-}
-
-.趨勢職業按鈕:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 3px var(--焦點陰影);
-}
-
-.趨勢職業按鈕 span,
-.趨勢職業按鈕 small {
-  min-width: 0;
-  white-space: nowrap;
-}
-
-.趨勢職業按鈕 small {
-  color: inherit;
-  opacity: 0.72;
-  font-size: 0.68rem;
+.成績趨勢篩選欄位 {
+  gap: 7px;
+  font-size: 0.82rem;
   font-weight: 760;
 }
 
-.趨勢項標題 em {
-  flex: 0 0 auto;
+.成績趨勢篩選欄位 select {
+  min-height: 40px;
+}
+
+.成績趨勢控制列 .職業選單面板 {
+  right: 0;
+  left: auto;
+}
+
+.成績趨勢時間範圍欄位 > label {
+  min-width: 0;
+  display: grid;
+  gap: 7px;
+}
+
+.成績趨勢日期區間 {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+  margin-top: 7px;
   color: var(--次要文字);
-  font-style: normal;
-  font-size: 0.86rem;
-  font-weight: 850;
+  font-size: 0.72rem;
+  font-weight: 720;
+}
+
+.成績趨勢日期區間 > span {
+  display: none;
+}
+
+.成績趨勢日期區間 label {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: center;
+  gap: 5px;
+}
+
+.成績趨勢日期區間 input {
+  width: 100%;
+  min-width: 0;
+  min-height: 36px;
+}
+
+.成績趨勢指標欄位 {
+  min-width: 0;
+  border: 0;
+  margin: 0;
+  padding: 0;
+}
+
+.成績趨勢指標欄位 legend {
+  margin-bottom: 7px;
+  color: var(--次要文字);
+  font-size: 0.82rem;
+  font-weight: 760;
+}
+
+.成績趨勢指標切換 {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 3px;
+  border: 1px solid var(--輸入邊框);
+  border-radius: 8px;
+  padding: 3px;
+  background: var(--輸入背景);
+}
+
+.成績趨勢指標按鈕 {
+  min-width: 0;
+  min-height: 32px;
+  border-color: transparent;
+  padding: 0 12px;
+  color: var(--次要文字);
+  background: transparent;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.成績趨勢指標按鈕:hover:not(:disabled),
+.成績趨勢指標按鈕:focus-visible {
+  color: var(--主要文字);
+  background: var(--表面背景柔和);
+}
+
+.成績趨勢指標按鈕.作用中,
+.成績趨勢指標按鈕.作用中:hover:not(:disabled) {
+  border-color: var(--重點色);
+  color: var(--重點文字);
+  background: var(--重點色);
+}
+
+.統一趨勢圖表 {
+  min-width: 0;
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  background: var(--表面背景);
+}
+
+.統一趨勢圖表標頭 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.統一趨勢圖表標頭 strong {
+  color: var(--主要文字);
+  font-size: 0.9rem;
+  font-weight: 840;
+}
+
+.統一趨勢圖表標頭 span,
+.成績趨勢註記 {
+  color: var(--次要文字);
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.統一趨勢繪圖格 {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  grid-template-rows: 300px 30px;
+  gap: 0 8px;
+}
+
+.統一趨勢Y軸 {
+  position: relative;
+  height: 300px;
+  color: var(--次要文字);
+  font-size: 0.7rem;
+  font-weight: 720;
   font-variant-numeric: tabular-nums;
 }
 
-.趨勢項標題 em.上升 {
-  color: var(--治療色);
+.統一趨勢Y軸 span {
+  position: absolute;
+  right: 0;
+  transform: translateY(-50%);
+  white-space: nowrap;
 }
 
-.趨勢項標題 em.下降 {
-  color: var(--輸出色);
+.統一趨勢圖表區 {
+  min-width: 0;
+  position: relative;
+  height: 300px;
+  overflow: visible;
 }
 
 .趨勢圖 {
   position: relative;
-  height: 118px;
+  height: 300px;
   overflow: hidden;
+  border: 1px solid var(--邊框色);
   border-radius: 8px;
   background: var(--表面背景柔和);
 }
@@ -1225,14 +1279,6 @@
 .趨勢格線 {
   stroke: var(--邊框柔和色);
   stroke-width: 0.8;
-}
-
-.趨勢面積 {
-  fill: color-mix(in srgb, var(--重點色) 18%, transparent);
-}
-
-.趨勢面積.過版 {
-  fill: color-mix(in srgb, var(--靜音文字) 20%, transparent);
 }
 
 .趨勢折線 {
@@ -1259,22 +1305,46 @@
   position: absolute;
   top: 0;
   bottom: 0;
-  border-left: 1px dashed color-mix(in srgb, var(--重點色) 70%, var(--邊框色));
+  border-left: 1px solid color-mix(in srgb, var(--重點色) 54%, var(--邊框色));
 }
 
 .趨勢版本切點 small {
   position: absolute;
-  top: 50%;
+  top: 10px;
   left: 50%;
-  transform: translate(-50%, -50%);
-  border-radius: 999px;
-  padding: 2px 5px;
+  width: max-content;
+  max-width: 190px;
+  transform: translateX(-50%);
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--重點色) 42%, var(--邊框色));
+  border-top: 2px solid color-mix(in srgb, var(--重點色) 78%, var(--邊框色));
+  border-radius: 7px;
+  padding: 4px 7px 5px;
   color: var(--次要文字);
-  background: color-mix(in srgb, var(--表面背景) 86%, transparent);
-  font-size: 0.62rem;
-  font-weight: 780;
+  background: color-mix(in srgb, var(--表面背景) 96%, var(--表面背景柔和));
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.14);
+  font-size: 0.66rem;
+  font-weight: 800;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.趨勢版本切點.版本標籤第二列 small {
+  top: 44px;
+}
+
+.趨勢版本切點.版本標籤靠左 small {
+  left: 6px;
+  transform: none;
+  text-align: left;
+}
+
+.趨勢版本切點.版本標籤靠右 small {
+  right: 6px;
+  left: auto;
+  transform: none;
+  text-align: right;
 }
 
 .趨勢點層 {
@@ -1300,10 +1370,10 @@
 }
 
 .趨勢點::after {
-  width: 8px;
-  height: 8px;
+  width: 9px;
+  height: 9px;
   content: "";
-  border: 2px solid var(--重點色);
+  border: 2px solid var(--趨勢點色彩, var(--重點色));
   border-radius: 999px;
   background: var(--表面背景);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--表面背景) 70%, transparent);
@@ -1314,7 +1384,7 @@
 .趨勢點.選取中::after,
 .趨勢點:focus-visible::after {
   transform: scale(1.35);
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--重點色) 28%, transparent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--趨勢點色彩, var(--重點色)) 28%, transparent);
 }
 
 .趨勢點.過版::after {
@@ -1322,53 +1392,139 @@
   background: var(--表面背景柔和);
 }
 
-.趨勢數值標記層 {
-  position: absolute;
-  inset: 0;
-  z-index: 3;
-  pointer-events: none;
+.統一趨勢X軸 {
+  position: relative;
+  min-width: 0;
+  height: 30px;
+  color: var(--次要文字);
+  font-size: 0.68rem;
+  font-weight: 720;
+  font-variant-numeric: tabular-nums;
 }
 
-.趨勢數值標記 {
+.統一趨勢X軸 span {
   position: absolute;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transform: translate(-50%, calc(-100% - 6px));
-  border-radius: 999px;
-  padding: 3px 7px;
-  color: var(--次要文字);
-  background: color-mix(in srgb, var(--表面背景) 90%, transparent);
-  font-variant-numeric: tabular-nums;
+  top: 7px;
+  transform: translateX(-50%);
   white-space: nowrap;
 }
 
-.趨勢數值標記 strong {
+.統一趨勢X軸 span.左邊緣 {
+  transform: none;
+}
+
+.統一趨勢X軸 span.右邊緣 {
+  transform: translateX(-100%);
+}
+
+.趨勢標點資訊 {
+  position: absolute;
+  z-index: 8;
+  width: min(284px, calc(100% - 24px));
+  transform: translate(-50%, calc(-100% - 13px));
+  border: 1px solid color-mix(in srgb, var(--重點色) 72%, var(--邊框色));
+  border-radius: 8px;
+  padding: 11px 12px;
   color: var(--主要文字);
-  font-size: 0.66rem;
+  background: color-mix(in srgb, var(--表面背景) 96%, transparent);
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.32);
+  pointer-events: auto;
+}
+
+.趨勢標點資訊.資訊向下 {
+  transform: translate(-50%, 13px);
+}
+
+.趨勢標點資訊.資訊靠左 {
+  transform: translate(13px, calc(-100% - 13px));
+}
+
+.趨勢標點資訊.資訊靠左.資訊向下 {
+  transform: translate(13px, 13px);
+}
+
+.趨勢標點資訊.資訊靠右 {
+  transform: translate(calc(-100% - 13px), calc(-100% - 13px));
+}
+
+.趨勢標點資訊.資訊靠右.資訊向下 {
+  transform: translate(calc(-100% - 13px), 13px);
+}
+
+.趨勢標點資訊 header {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  border-bottom: 1px solid var(--邊框柔和色);
+  padding-bottom: 8px;
+}
+
+.趨勢標點資訊 header small {
+  color: var(--重點色);
+  font-size: 0.7rem;
+  font-weight: 800;
+}
+
+.趨勢標點資訊 header strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 0.9rem;
+  font-weight: 840;
+}
+
+.趨勢標點資訊 dl {
+  display: grid;
+  gap: 0;
+  margin: 5px 0 0;
+}
+
+.趨勢標點資訊 dl > div {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  border-bottom: 1px solid var(--邊框柔和色);
+  padding: 6px 0;
+}
+
+.趨勢標點資訊 dl > div:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.趨勢標點資訊 dt {
+  color: var(--次要文字);
+  font-size: 0.72rem;
+  font-weight: 720;
+}
+
+.趨勢標點資訊 dd {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: 0.78rem;
   font-weight: 820;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 
-.趨勢數值標記.標籤向下 {
-  transform: translate(-50%, 6px);
+.成績趨勢註記 {
+  margin: -3px 0 0;
+  line-height: 1.45;
 }
 
-.趨勢數值標記.文字靠左 {
-  transform: translate(6px, calc(-100% - 6px));
-  justify-items: start;
-}
-
-.趨勢數值標記.文字靠右 {
-  transform: translate(calc(-100% - 6px), calc(-100% - 6px));
-  justify-items: end;
-}
-
-.趨勢數值標記.標籤向下.文字靠左 {
-  transform: translate(6px, 6px);
-}
-
-.趨勢數值標記.標籤向下.文字靠右 {
-  transform: translate(calc(-100% - 6px), 6px);
+.成績趨勢空狀態 {
+  padding: 40px 18px;
+  color: var(--次要文字);
+  background: var(--表面背景);
+  font-size: 0.86rem;
+  font-weight: 700;
+  text-align: center;
 }
 
 .個人成績概要 {

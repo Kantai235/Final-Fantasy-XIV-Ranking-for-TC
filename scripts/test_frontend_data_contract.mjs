@@ -37,7 +37,6 @@ import {
   篩選成就手冊適用成就,
 } from "../src/utils/userProfileBadges.js";
 import {
-  建立個人成績趨勢版本切點,
   建立個人成績簡表群組,
   建立個人成績簡表可選版本,
   成績符合個人成績簡表版本,
@@ -48,6 +47,13 @@ import {
   副本符合個人成績簡表版本,
   是個人成績簡表目標副本,
 } from "../src/utils/userProfileClearSummary.js";
+import { 建立繁中服版本更新切點 } from "../src/utils/activityTimelineAnnotations.js";
+import {
+  個人成績趨勢時間範圍選項,
+  個人成績趨勢預設時間範圍,
+  建立個人成績統一趨勢,
+  建立個人成績趨勢篩選選項,
+} from "../src/utils/userProfileTrend.js";
 import {
   建立Fflogs即時狀態顯示,
   建立報告索引Map,
@@ -646,8 +652,10 @@ async function validateUserProfileBadgeDataScope() {
 }
 
 async function validateUserProfileGameVersionFilter() {
-  const [source, profileSource, headerSource, controlsStyles, profileStyles, responsiveStyles] = await Promise.all([
+  const [source, timelineSource, trendSource, profileSource, headerSource, controlsStyles, profileStyles, responsiveStyles] = await Promise.all([
     readText(path.join(srcDir, "composables", "useRankingApp.js")),
+    readText(path.join(srcDir, "utils", "activityTimelineAnnotations.js")),
+    readText(path.join(srcDir, "utils", "userProfileTrend.js")),
     readText(path.join(srcDir, "pages", "UserProfilePage.vue")),
     readText(path.join(srcDir, "components", "AppHeader.vue")),
     readText(path.join(srcDir, "styles", "controls.css")),
@@ -714,30 +722,53 @@ async function validateUserProfileGameVersionFilter() {
     "設定視窗必須將個人成績單版本改為共用的版本紀錄偏好。",
   );
   assert(
-    source.includes("建立個人成績趨勢版本切點")
-      && source.includes("使用時間橫軸")
+    source.includes('import { activityLogTimelineAnnotations }')
+      && timelineSource.includes('region: "tc"')
+      && timelineSource.includes('patch: "7.11"')
+      && trendSource.includes("建立繁中服版本更新切點")
+      && trendSource.includes("使用線性時間軸")
       && profileSource.includes("趨勢版本切點層")
-      && profileSource.includes("趨勢.版本切點列表")
-      && profileStyles.includes("趨勢版本切點"),
-    "開啟版本資料時，成績趨勢必須以時間軸標示繁中服版本切點。",
+      && profileSource.includes("使用者成績趨勢.版本切點列表")
+      && profileSource.includes('v-if="使用者成績趨勢.版本切點列表.length > 0"')
+      && !profileSource.includes('v-if="顯示版本紀錄 && 使用者成績趨勢.版本切點列表.length > 0"')
+      && profileStyles.includes("版本標籤第二列"),
+    "成績趨勢必須固定沿用近期動態事件，只標示繁中服版本更新且不受版本紀錄偏好控制。",
   );
   assert(
-    source.includes("const 使用者趨勢選取點 = ref({});")
-      && source.includes("function 取得使用者趨勢顯示數值標記(趨勢)")
+    source.includes("const 使用者趨勢副本範圍 = ref(個人成績趨勢預設副本範圍);")
+      && source.includes("const 使用者趨勢副本選單開啟 = ref(false);")
+      && source.includes("const 使用者趨勢職業範圍 = ref(個人成績趨勢預設職業範圍);")
+      && source.includes("const 使用者趨勢職業選單開啟 = ref(false);")
+      && source.includes("const 使用者趨勢時間範圍 = ref(個人成績趨勢預設時間範圍);")
+      && source.includes("const 使用者趨勢顯示指標 = ref(個人成績趨勢預設指標);")
+      && source.includes("const 使用者趨勢選取點 = ref(null);")
       && source.includes("function 清除所有使用者趨勢選取點()")
-      && source.includes("使用者趨勢選取點.value = {};")
-      && profileSource.includes("趨勢數值標記層")
-      && profileSource.includes("取得使用者趨勢顯示數值標記(趨勢)")
-      && !profileSource.includes("<small>{{ 點.標籤 }}</small>")
+      && source.includes("使用者趨勢選取點.value = null;")
+      && trendSource.includes("建立個人成績統一趨勢")
+      && profileSource.includes('import EncounterMenu from "../components/EncounterMenu.vue";')
+      && profileSource.includes(':分組="使用者趨勢副本分組"')
+      && profileSource.includes('標籤="選擇成績趨勢副本"')
+      && profileSource.includes('aria-label="成績趨勢職業類型"')
+      && profileSource.includes('aria-label="成績趨勢職業"')
+      && profileSource.includes('aria-label="成績趨勢時間範圍"')
+      && profileSource.includes("個人成績趨勢時間範圍選項")
+      && profileSource.includes("個人成績趨勢指標選項")
+      && profileSource.includes('class="趨勢標點資訊"')
+      && profileSource.includes("使用者趨勢選取點.encounter_name")
+      && profileSource.includes("格式化PR值(使用者趨勢選取點.pr_value)")
+      && profileSource.includes("格式化傷害數值(使用者趨勢選取點.rdps)")
       && profileSource.includes("@mouseenter=\"設定使用者趨勢選取點")
       && profileSource.includes("@click.stop=\"設定使用者趨勢選取點")
       && profileSource.includes("@mouseleave=\"清除使用者趨勢選取點")
+      && profileSource.includes('class="統一趨勢圖表區"')
+      && /class="統一趨勢圖表區"[\s\S]*?class="趨勢圖 統一趨勢圖"[\s\S]*?<\/div>\s*<aside\s+v-if="使用者趨勢選取點"\s+class="趨勢標點資訊"/.test(profileSource)
       && profileSource.includes("window.addEventListener(\"pointerdown\", 處理趨勢圖外部觸控)")
-      && !profileSource.includes('class="趨勢摘要"')
-      && !profileSource.includes('class="趨勢刻度"')
+      && !profileSource.includes('class="成績趨勢列表"')
       && profileStyles.includes(".趨勢點::after")
-      && profileStyles.includes(".趨勢點.選取中::after"),
-    "趨勢預設只顯示最高／最低數值；懸停或點擊資料點時，必須改顯示選取紀錄並可回復預設標記。",
+      && profileStyles.includes(".趨勢點.選取中::after")
+      && /\.統一趨勢圖表區\s*\{[^}]*overflow:\s*visible;/s.test(profileStyles)
+      && /\.趨勢標點資訊\s*\{[^}]*pointer-events:\s*auto;/s.test(profileStyles),
+    "成績趨勢必須使用一張圖，以排行榜同款分組選單篩選副本／職業，預設近 30 天與 PR，並在懸停或點擊標點時顯示完整紀錄資訊。",
   );
   const 歷史排序欄位 = [
     "recordedAt",
@@ -847,18 +878,131 @@ function validateUserProfileGameVersionFallback() {
     "明確寫入的 game_version 必須優先，無法判讀時間的資料則不可臆測版本。",
   );
 
-  const 趨勢切點 = 建立個人成績趨勢版本切點(
+  const 趨勢切點 = 建立繁中服版本更新切點(
     Date.parse("2026-03-01T00:00:00.000Z"),
     Date.parse("2026-07-01T00:00:00.000Z"),
   );
   assert(
-    趨勢切點.map((切點) => 切點.label).join(",") === "7.05,7.1,7.15"
+    趨勢切點.map((切點) => 切點.label).join(",") === "7.05 零式輕量級,7.1 極永恆女王、幻白虎,7.11 絕伊甸,7.15 滅黑暗之雲"
+      && 趨勢切點.every((切點) => !切點.label.includes("繁中服") && !切點.label.includes("國際服"))
       && 趨勢切點.every((切點) => 切點.x > 0 && 切點.x < 100),
-    "成績趨勢必須只標示圖形時間範圍內的繁中服版本切點。",
+    "成績趨勢必須只標示範圍內的繁中服版本事件，並以版本與副本名稱呈現簡潔標籤。",
   );
   assert(
-    建立個人成績趨勢版本切點(NaN, Date.parse("2026-07-01T00:00:00.000Z")).length === 0,
+    建立繁中服版本更新切點(NaN, Date.parse("2026-07-01T00:00:00.000Z")).length === 0,
     "無法解析成績時間時，不可顯示可能錯位的版本切點。",
+  );
+}
+
+function validateUnifiedUserProfileTrend() {
+  const 副本成績 = [
+    {
+      encounter_key: "savage_m5s",
+      encounter_name: "零式 次重量級 1",
+      encounter_category: "零式",
+      public_entries: [
+        {
+          id: "m5-samurai",
+          job: "Samurai",
+          rdps: 12000,
+          recorded_at_iso: "2026-07-05T00:00:00.000Z",
+          performance: { score_percentile: 80 },
+        },
+        {
+          id: "m5-warrior",
+          job: "Warrior",
+          rdps: 8000,
+          recorded_at_iso: "2026-07-15T00:00:00.000Z",
+          performance: { score_percentile: 60 },
+        },
+      ],
+    },
+    {
+      encounter_key: "savage_m6s",
+      encounter_name: "零式 次重量級 2",
+      encounter_category: "零式",
+      public_entries: [
+        {
+          id: "m6-samurai",
+          job: "Samurai",
+          rdps: 15000,
+          recorded_at_iso: "2026-07-25T00:00:00.000Z",
+          performance: { rank: 10, sample_count: 100 },
+        },
+        {
+          id: "m6-bard-no-pr",
+          job: "Bard",
+          rdps: 9000,
+          recorded_at_iso: "2026-08-01T00:00:00.000Z",
+          performance: null,
+        },
+        {
+          id: "m6-no-time",
+          job: "Samurai",
+          rdps: 16000,
+          recorded_at_iso: "",
+          performance: { score_percentile: 95 },
+        },
+      ],
+    },
+  ];
+
+  const 篩選選項 = 建立個人成績趨勢篩選選項(副本成績);
+  assert(
+    篩選選項.副本選項.map((選項) => 選項.value).join(",") === "savage_m5s,savage_m6s"
+      && 篩選選項.職能選項.some((選項) => 選項.value === "role:tank")
+      && 篩選選項.職能選項.some((選項) => 選項.value === "role:melee")
+      && 篩選選項.職業選項.map((選項) => 選項.value).join(",") === "Warrior,Samurai,Bard",
+    "統一趨勢必須從玩家公開成績建立可用的副本、職能與職業選項。",
+  );
+
+  const 預設趨勢 = 建立個人成績統一趨勢(副本成績);
+  assert(
+    個人成績趨勢預設時間範圍 === "30"
+      && 個人成績趨勢時間範圍選項.map((選項) => 選項.value).join(",") === "7,14,30,90,all,custom"
+      && 預設趨勢.指標 === "pr"
+      && 預設趨勢.點列表.length === 3
+      && 預設趨勢.點列表.map((點) => 點.id).join(",") === "savage_m5s-m5-samurai,savage_m5s-m5-warrior,savage_m6s-m6-samurai"
+      && 預設趨勢.點列表.every((點, index, 列表) => index === 0 || 點.x > 列表[index - 1].x)
+      && 預設趨勢.Y軸刻度列表.map((刻度) => 刻度.value).join(",") === "100,75,50,25,0"
+      && 預設趨勢.日期範圍.start === "2026-07-03"
+      && 預設趨勢.日期範圍.end === "2026-08-01"
+      && 預設趨勢.略過無時間紀錄數 === 1,
+    "統一趨勢預設必須顯示全部副本、全部職業、近 30 天的 PR，依真實時間排序且不得猜測缺失時間。",
+  );
+
+  const 坦克趨勢 = 建立個人成績統一趨勢(副本成績, { 職業範圍: "role:tank" });
+  const 指定副本武士趨勢 = 建立個人成績統一趨勢(副本成績, {
+    副本範圍: "savage_m6s",
+    職業範圍: "Samurai",
+  });
+  const Rdps趨勢 = 建立個人成績統一趨勢(副本成績, { 指標: "rdps", 時間範圍: "all" });
+  const 七天Rdps趨勢 = 建立個人成績統一趨勢(副本成績, { 指標: "rdps", 時間範圍: "7" });
+  const 自訂日期趨勢 = 建立個人成績統一趨勢(副本成績, {
+    指標: "rdps",
+    時間範圍: "custom",
+    自訂開始日期: "2026-07-16",
+    自訂結束日期: "2026-07-14",
+  });
+  assert(
+    坦克趨勢.點列表.length === 1
+      && 坦克趨勢.點列表[0].job === "Warrior"
+      && 指定副本武士趨勢.點列表.length === 1
+      && 指定副本武士趨勢.點列表[0].encounter_key === "savage_m6s"
+      && Rdps趨勢.點列表.length === 4
+      && Rdps趨勢.點列表.some((點) => 點.id.endsWith("m6-bard-no-pr"))
+      && Rdps趨勢.版本切點列表.map((切點) => 切點.label).join(",") === "7.2 極澤蓮尼亞、次重量級"
+      && Rdps趨勢.Y軸刻度列表.length >= 2,
+    "統一趨勢必須正確套用指定副本、指定職能、指定職業與 rDPS 指標。",
+  );
+  assert(
+    七天Rdps趨勢.點列表.length === 1
+      && 七天Rdps趨勢.點列表[0].id.endsWith("m6-bard-no-pr")
+      && 自訂日期趨勢.點列表.length === 1
+      && 自訂日期趨勢.點列表[0].id.endsWith("m5-warrior")
+      && 自訂日期趨勢.日期範圍.start === "2026-07-14"
+      && 自訂日期趨勢.日期範圍.end === "2026-07-16",
+    "統一趨勢必須以最新可用日期套用近 N 天，並支援自訂日期及起迄反向輸入。",
   );
 }
 
@@ -2802,6 +2946,7 @@ async function main() {
   await validateUserProfileGameVersionFilter();
   await validateHelpTooltipPreference();
   validateUserProfileGameVersionFallback();
+  validateUnifiedUserProfileTrend();
   validateUserProfileClearSummary();
   await validateSavageProfileSummaryPresentation();
   await validateUserProfileSummaryJobFilter();

@@ -33,43 +33,6 @@ export function 取得個人成績紀錄版本(成績) {
   return 對應版本?.value || 個人成績簡表版本選項.at(-1)?.value || "";
 }
 
-// 趨勢圖的橫軸只有在每筆紀錄都能解析出時間時，才能精準對齊繁中服改版切點。
-// 切點標籤使用「切點之後」開始的版本：例如 7.05 的線就是 7.0 截止、
-// 7.05 開始的瞬間。這樣不需要另存趨勢標記，仍能與既有版本回推規則保持一致。
-export function 建立個人成績趨勢版本切點(起始時間戳記, 結束時間戳記) {
-  if (
-    !Number.isFinite(起始時間戳記)
-    || !Number.isFinite(結束時間戳記)
-    || 結束時間戳記 <= 起始時間戳記
-  ) {
-    return [];
-  }
-
-  const 時間範圍 = 結束時間戳記 - 起始時間戳記;
-  return 個人成績簡表版本選項
-    .map((版本, index) => {
-      if (index === 0) {
-        return null;
-      }
-
-      const 前一版本 = 個人成績簡表版本選項[index - 1];
-      const 切點時間戳記 = new Date(版本.available_from_iso || 前一版本?.record_cutoff_iso || "").getTime();
-      // 切點在圖形邊緣時不另外畫線，以免標籤被裁切；它也無法幫助辨識圖中的歷史分段。
-      if (!Number.isFinite(切點時間戳記) || 切點時間戳記 <= 起始時間戳記 || 切點時間戳記 >= 結束時間戳記) {
-        return null;
-      }
-
-      const x = Number((((切點時間戳記 - 起始時間戳記) / 時間範圍) * 100).toFixed(2));
-      return {
-        key: `game-version-${版本.value}`,
-        label: 版本.label,
-        starts_at_iso: new Date(切點時間戳記).toISOString(),
-        x,
-      };
-    })
-    .filter(Boolean);
-}
-
 export const 預設個人成績簡表版本 = "7.2";
 
 const 個人成績簡表版本索引 = new Map(個人成績簡表版本選項.map((版本, index) => [版本.value, { ...版本, index }]));
