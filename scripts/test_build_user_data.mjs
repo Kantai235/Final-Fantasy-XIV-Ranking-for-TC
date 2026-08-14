@@ -3,6 +3,7 @@ import { mkdtemp, readFile, rm, writeFile, mkdir } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { publicDataContracts, validateSchemaContract } from "../schemas/public_data_contracts.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const buildScriptPath = path.join(repoRoot, "scripts", "build_user_data.mjs");
@@ -972,6 +973,28 @@ async function assertFixtureOutput(tempRoot, expectedGlobalStatsText, expectedSe
       && healerEntry?.co_healer?.server === "鳳凰"
       && healerEntry?.co_healer?.job === "Scholar",
     "標準雙補場次應在個人成績保存可唯一辨識的同場另一補。",
+  );
+  const serverCompareEntries = serverCompare.servers.flatMap((server) => [
+    server.best_entry,
+    server.fastest_entry,
+    ...(server.encounters || []).flatMap((encounter) => [encounter.best_entry, encounter.fastest_entry]),
+  ]).filter(Boolean);
+  assert(
+    serverCompareEntries.every((entry) =>
+      !Object.hasOwn(entry, "healing_stats")
+      && !Object.hasOwn(entry, "tank_stats")
+      && !Object.hasOwn(entry, "co_healer")
+      && !Object.hasOwn(entry, "co_tank")),
+    "伺服器對比的共用成績摘要不得夾帶排行榜或個人成績專用的坦補詳細欄位。",
+  );
+  const serverCompareContractIssues = validateSchemaContract(
+    serverCompare,
+    publicDataContracts.serverComparePayload,
+    "fixture/public/data/server_compare.json",
+  );
+  assert(
+    serverCompareContractIssues.length === 0,
+    `伺服器對比 fixture 必須符合公開資料契約：${serverCompareContractIssues.join("；")}`,
   );
 
   if (expectedGlobalStatsText !== null) {

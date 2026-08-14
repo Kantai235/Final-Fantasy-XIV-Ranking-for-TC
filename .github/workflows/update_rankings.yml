@@ -59,7 +59,7 @@ jobs:
       # 每輪使用新 key 保存，並以前綴取回最近快取，讓中斷的檢核不會浪費已用的 FFLogs 額度。
       - name: 還原戰鬥完整性最小測量快取
         id: fight-integrity-cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: data/local-cache/fight-integrity
           key: fflogs-fight-integrity-v1-${{ github.run_id }}-${{ github.run_attempt }}
@@ -276,7 +276,7 @@ jobs:
 
       - name: 保存戰鬥完整性最小測量快取
         if: always() && steps.fight-integrity-cache-state.outputs.exists == 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: data/local-cache/fight-integrity
           key: fflogs-fight-integrity-v1-${{ github.run_id }}-${{ github.run_attempt }}

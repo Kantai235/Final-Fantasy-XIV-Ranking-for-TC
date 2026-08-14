@@ -905,10 +905,9 @@ function filterEntriesByVersionMode(entries, versionMode) {
 }
 
 function buildEntrySummary(entry) {
-  const healingStats = compactHealingStats(entry.healing_stats);
-  const tankStats = compactTankStats(entry.tank_stats);
-  const coHealer = compactCoHealer(entry.co_healer);
-
+  // 這份摘要會被近期動態、職業分析與伺服器對比等全站共用資料重複引用。
+  // 坦補詳細統計只屬於排行榜與個人成績契約；若在此沿用完整成績欄位，
+  // 不只會讓高頻共用 payload 膨脹，也會讓嚴格的 entrySummary 契約隨資料職業而漂移。
   return {
     id: entry.id,
     encounter_key: entry.encounter_key,
@@ -921,9 +920,6 @@ function buildEntrySummary(entry) {
     rdps: entry.rdps,
     adps: entry.adps,
     active_percent: entry.active_percent,
-    ...(healingStats ? { healing_stats: healingStats } : {}),
-    ...(tankStats ? { tank_stats: tankStats } : {}),
-    ...(coHealer ? { co_healer: coHealer } : {}),
     gcd_coverage: sanitizeGcdCoverageForPublic(entry.gcd_coverage),
     gcd_coverage_status: entry.gcd_coverage_status,
     clear_time_seconds: entry.clear_time_seconds,
