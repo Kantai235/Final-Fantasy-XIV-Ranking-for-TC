@@ -18,6 +18,9 @@ const defaultDescription =
   "整理 FFLogs 公開報告中的 FFXIV 繁中服零式、極、幻、滅與絕本成績，提供排行榜、全服統計、個人成績單、玩家比較與近期動態。";
 const genericOgImageUrl = new URL("og-image.png", siteUrl).href;
 const buildUserSharePages = process.env.FFXIV_TC_BUILD_USER_SHARE_PAGES !== "false";
+// Linux workflow 快取的是 fonts-noto-cjk TTC；其繁中 family 實際名稱為
+// Noto Sans CJK TC。Windows 仍優先使用微軟正黑體，讓本機與 Actions 都能穩定選字。
+const ogFontFamily = "Microsoft JhengHei, Noto Sans CJK TC, sans-serif";
 
 // postbuild 只讀取 public/data 的靜態聚合結果，輸出 dist/ 內的 HTML、PNG OG 圖、sitemap 與 robots。
 // 使用者索引在這裡仍由 public/data/users/index.json 提供，因為玩家分享頁與 OG 圖需要本輪最新摘要；
@@ -375,15 +378,15 @@ function buildOgSvg({ title, subtitle, highlights = [], footer = "ranking.init.e
   <rect width="1200" height="630" fill="#101214"/>
   <rect x="58" y="58" width="1084" height="514" fill="#171b1f" stroke="#303842" stroke-width="2"/>
   <rect x="58" y="58" width="10" height="514" fill="${escapeXml(accent)}"/>
-  <text x="126" y="184" fill="#f4f1ea" font-family="Microsoft JhengHei, Noto Sans TC, sans-serif" font-size="58" font-weight="800">${escapeXml(clampText(title, 22))}</text>
-  <text x="126" y="252" fill="#b7b1a8" font-family="Microsoft JhengHei, Noto Sans TC, sans-serif" font-size="30">${escapeXml(clampText(subtitle, 32))}</text>
-  <text x="126" y="300" fill="${escapeXml(accent)}" font-family="Microsoft JhengHei, Noto Sans TC, sans-serif" font-size="30">FFXIV 繁中服公開成績</text>
+  <text x="126" y="184" fill="#f4f1ea" font-family="${ogFontFamily}" font-size="58" font-weight="800">${escapeXml(clampText(title, 22))}</text>
+  <text x="126" y="252" fill="#b7b1a8" font-family="${ogFontFamily}" font-size="30">${escapeXml(clampText(subtitle, 32))}</text>
+  <text x="126" y="300" fill="${escapeXml(accent)}" font-family="${ogFontFamily}" font-size="30">FFXIV 繁中服公開成績</text>
   <line x1="120" y1="350" x2="620" y2="350" stroke="${escapeXml(accent)}" stroke-width="5"/>
-  <g font-family="Microsoft JhengHei, Noto Sans TC, sans-serif">
+  <g font-family="${ogFontFamily}">
   ${highlightMarkup}
   </g>
-  <text x="822" y="480" fill="${escapeXml(accent)}" font-family="Microsoft JhengHei, Noto Sans TC, sans-serif" font-size="25" font-weight="800">TC Rankings</text>
-  <text x="822" y="522" fill="#b7b1a8" font-family="Microsoft JhengHei, Noto Sans TC, sans-serif" font-size="22">${escapeXml(clampText(footer, 28))}</text>
+  <text x="822" y="480" fill="${escapeXml(accent)}" font-family="${ogFontFamily}" font-size="25" font-weight="800">TC Rankings</text>
+  <text x="822" y="522" fill="#b7b1a8" font-family="${ogFontFamily}" font-size="22">${escapeXml(clampText(footer, 28))}</text>
 </svg>
 `;
 }

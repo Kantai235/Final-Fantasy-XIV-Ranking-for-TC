@@ -71,10 +71,26 @@ jobs:
       - name: 設定 GitHub Pages
         uses: actions/configure-pages@v6
 
-      - name: 安裝 OG 圖中文字型
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y fonts-noto-cjk
+      # 與正式排程共用同一份字型快取；緊急部署不應再次承受 Ubuntu mirror
+      # 暫時降速，也不能因快取服務短暫失敗而阻止本輪已準備好的字型繼續建置。
+      - name: 還原 OG 圖中文字型快取
+        id: og-font-cache
+        continue-on-error: true
+        uses: actions/cache/restore@v5
+        with:
+          path: ~/.local/share/fonts/ffxiv-og
+          key: og-fonts-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/setup_og_fonts.sh') }}
+
+      - name: 準備 OG 圖中文字型
+        run: bash scripts/setup_og_fonts.sh
+
+      - name: 保存 OG 圖中文字型快取
+        if: steps.og-font-cache.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v5
+        with:
+          path: ~/.local/share/fonts/ffxiv-og
+          key: og-fonts-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/setup_og_fonts.sh') }}
 
       - name: 建置並驗證 GitHub Pages 靜態網站
         env:

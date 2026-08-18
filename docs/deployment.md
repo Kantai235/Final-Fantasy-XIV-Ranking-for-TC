@@ -45,7 +45,7 @@ npm run build
 10. 重新讀取主 repo 遠端 HEAD；若本輪期間已有新程式碼 commit，立即停止，避免舊 runner 發布資料。
 11. 執行 `npm run data:publish`。工具先驗證上一版 Data snapshot，再確認 report、`fight_id`、玩家與 checkpoint 沒有遺失，最後建立沒有 parent 的 root commit，並以 `force-with-lease` 更新 Data repo `main`。Git blob 以來源檔案的原始位元組寫入，且 snapshot 內的 `.gitattributes` 禁止換行轉換，確保 manifest 在 Windows 與 Linux runner 上有相同的大小與 SHA-256。這一步在 Pages 建置前完成，後續失敗也不會遺失 FFLogs 成果。
 12. 執行 `scripts/sync_user_leaderboard_repo.mjs`，將個別玩家成績、報告明細與 hidden 使用者差量以單一 root snapshot 更新到 Users repo。
-13. 執行 Vite/postbuild，產生主站、route fallback、低基數 SEO/OG 頁、`sitemap.xml`、`robots.txt` 與 `404.html`；正式流程不產生逐玩家分享頁與玩家 OG 圖。
+13. 從 Actions cache 還原 `$HOME/.local/share/fonts/ffxiv-og` 的 Noto Sans CJK TC Regular／Bold；cache miss 時才由 `scripts/setup_og_fonts.sh` 限時重試下載 Ubuntu `fonts-noto-cjk`，抽出必要字型並立即保存快取。接著執行 Vite/postbuild，產生主站、route fallback、低基數 SEO/OG 頁、`sitemap.xml`、`robots.txt` 與 `404.html`；正式流程不產生逐玩家分享頁與玩家 OG 圖。
 14. 執行 `npm run prune:pages-user-data`，讓 Pages artifact 只保留 `data/users/index.json`，個別玩家 JSON 仍由 Users repo 提供。
 15. 更新 Google Sheet 待收錄名單結果。
 16. 執行 Pages payload strict 稽核並寫入 `data/pages_payload_history.jsonl`，再執行第二次 `data:publish`，把趨勢納入新的 Data root snapshot。
@@ -58,6 +58,8 @@ npm run build
 `.github/workflows/emergency_deploy.yml` 是手動觸發的緊急部署通道，用於前端 hotfix、空白頁修復、SEO/OG 產物修正或 Cloudflare 快取異常。這條流程 checkout 主 repo 後先由 Data repo hydrate 最新權威快照，再執行 `npm run build`、上傳 `dist/` 並部署 GitHub Pages；它不會執行正式 FFLogs 抓取、不會推進掃描點，也不會發布新資料。
 
 緊急部署同樣只做淺層 partial clone，因為主 repo 只需要目前程式碼，資料則來自 Data repo 的單一 root snapshot。
+
+緊急部署與正式排程共用 `og-fonts-{OS}-{architecture}-{setup script hash}` Actions cache。快取只包含 OG SVG 使用的 Noto Sans CJK TC Regular／Bold，不保存整個 `/usr/share/fonts`；runner 每輪仍會執行 `fc-cache`，並確認 `fontconfig` 可辨識 Regular／Bold family，避免快取存在但實際轉圖時退回錯誤字型。
 
 手動執行方式：
 

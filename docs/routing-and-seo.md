@@ -67,7 +67,7 @@
 - `dist/sitemap.xml`
 - `dist/robots.txt`
 
-因 LINE、Facebook 與多數 OG 檢查器對 SVG 支援不一致，postbuild 會用 `sharp` 將內部 SVG 模板轉成 1200x630 PNG，讓各頁 `og:image` 與 `twitter:image` 都指向自己的實體預覽圖。逐玩家靜態分享頁與 `dist/og/users/*.png` 會跟收錄角色數同步成長，正式 Actions 預設以 `FFXIV_TC_BUILD_USER_SHARE_PAGES=false` 關閉這批高基數產物；本機若需要抽查玩家分享頁，可暫時把此環境變數設為 `true`。
+因 LINE、Facebook 與多數 OG 檢查器對 SVG 支援不一致，postbuild 會用 `sharp` 將內部 SVG 模板轉成 1200x630 PNG，讓各頁 `og:image` 與 `twitter:image` 都指向自己的實體預覽圖。Linux Actions runner 會以 `scripts/setup_og_fonts.sh` 將 Noto Sans CJK TC Regular／Bold 註冊到 `$HOME/.local/share/fonts/ffxiv-og`，並由正式排程與緊急部署共用 Actions cache，避免每輪重新下載整包 CJK 字型。逐玩家靜態分享頁與 `dist/og/users/*.png` 會跟收錄角色數同步成長，正式 Actions 預設以 `FFXIV_TC_BUILD_USER_SHARE_PAGES=false` 關閉這批高基數產物；本機若需要抽查玩家分享頁，可暫時把此環境變數設為 `true`。
 
 正式 workflow 會在 postbuild 完成後執行 `npm run prune:pages-user-data`，移除 `dist/data/users` 內除了 `index.json` 之外的個別玩家 JSON、`dist/data/user-entry-details` 這類大型 JSON；若逐玩家靜態分享頁曾被產生，也會移除 `dist/user/{玩家}`、`dist/og/users/*.png`，並從 `sitemap.xml` 移除玩家細項 URL。前端開啟玩家頁時，搜尋索引由主站 `/data/users/index.json` 提供；實際個別玩家成績單 JSON 由 users 專用 repo 載入。
 

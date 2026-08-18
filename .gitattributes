@@ -1,6 +1,10 @@
 # Auto detect text files and perform LF normalization
 * text=auto
 
+# GitHub Actions 直接以 Bash 執行 shell scripts；Windows checkout 也必須保留 LF，
+# 避免 CRLF 讓 shebang 或 shell 語法在 Linux runner 失效。
+*.sh text eol=lf
+
 # Ranking data is generated and can be very large.
 data/state.json -diff
 data/rankings/*.json -diff
