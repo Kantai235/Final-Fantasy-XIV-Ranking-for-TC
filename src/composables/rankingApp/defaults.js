@@ -1,4 +1,4 @@
-export const 預設副本鍵值 = "savage_m6s";
+export const 預設副本鍵值 = "savage_m7s";
 export const 預設排序欄位 = "rdps";
 export const 預設排序方向 = "desc";
 export const 預設比較職能 = "role:tank";
@@ -8,7 +8,7 @@ export const 預設統計副本鍵值 = "all";
 export const 預設統計職業範圍 = "all";
 export const 預設伺服器拆分模式 = "none";
 export const 預設統計傷害指標 = "rdps";
-export const 預設隊伍榜副本鍵值 = "savage_m6s";
+export const 預設隊伍榜副本鍵值 = "savage_m7s";
 export const 預設職業分析範圍 = "role:tank";
 
 export const 作者角色名稱 = "乾太";

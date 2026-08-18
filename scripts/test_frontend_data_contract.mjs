@@ -149,8 +149,8 @@ function validatePercentileDisplayFormatting() {
 }
 
 function validateRankingDefaults() {
-  assert(預設副本鍵值 === "savage_m6s", "排行榜目前必須預設顯示零式 M6S／糖彩狂潮。");
-  assert(預設隊伍榜副本鍵值 === "savage_m6s", "隊伍榜目前必須預設顯示零式 M6S／糖彩狂潮。");
+  assert(預設副本鍵值 === "savage_m7s", "排行榜目前必須預設顯示零式 M7S／野蠻憎惡。");
+  assert(預設隊伍榜副本鍵值 === "savage_m7s", "隊伍榜目前必須預設顯示零式 M7S／野蠻憎惡。");
 }
 
 function validateRankingCompactValueFormatting() {
