@@ -3,7 +3,7 @@ import childProcess from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const 專案根目錄 = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const 工具 = path.join(專案根目錄, "scripts/data_repository.mjs");
@@ -12,6 +12,8 @@ const 來源目錄 = path.join(測試根目錄, "source");
 const 還原目錄 = path.join(測試根目錄, "hydrate-target");
 const Data工作目錄 = path.join(測試根目錄, "data-worktree");
 const 還原Data工作目錄 = path.join(測試根目錄, "hydrate-data-worktree");
+const Partial還原目錄 = path.join(測試根目錄, "partial-hydrate-target");
+const PartialData工作目錄 = path.join(測試根目錄, "partial-data-worktree");
 const 遠端Repo = path.join(測試根目錄, "remote.git");
 
 function 執行(command, args, { cwd = 專案根目錄, env = process.env, allowFailure = false } = {}) {
@@ -255,6 +257,58 @@ try {
   assert.equal(遠端Git(["show", "main:public/data/announcements.json"]), originalAnnouncements);
   執行工具("verify");
 
+  // 2026-08 前的同步工具曾把 .data-repo 建成 blob:none promisor repo。即使後續
+  // fetch 加上 --no-filter，Git 仍可能因為 commit 已存在而不補傳缺少的 blob，
+  // 最後在 reset --hard 才隱性連網。這裡用真正的 partial clone 重現舊快取，
+  // 確保 hydrate 會在下載階段用 --refetch 補齊並移除 promisor 設定。
+  執行("git", ["--git-dir", 遠端Repo, "config", "uploadpack.allowFilter", "true"]);
+  fs.mkdirSync(PartialData工作目錄, { recursive: true });
+  執行("git", ["init", "-q"], { cwd: PartialData工作目錄 });
+  const 遠端FileUrl = pathToFileURL(遠端Repo).href;
+  執行("git", ["remote", "add", "origin", 遠端FileUrl], { cwd: PartialData工作目錄 });
+  執行("git", ["config", "remote.origin.promisor", "true"], { cwd: PartialData工作目錄 });
+  執行("git", ["config", "remote.origin.partialclonefilter", "blob:none"], {
+    cwd: PartialData工作目錄,
+  });
+  執行("git", ["fetch", "--depth=1", "--filter=blob:none", "origin", "main"], {
+    cwd: PartialData工作目錄,
+  });
+  const partialMissingBefore = 執行(
+    "git",
+    ["rev-list", "--objects", "--missing=print", "FETCH_HEAD"],
+    {
+      cwd: PartialData工作目錄,
+      env: { ...process.env, GIT_NO_LAZY_FETCH: "1" },
+    },
+  );
+  assert.match(partialMissingBefore.stdout, /^\?/mu, "fixture 必須先缺少 blob 才能驗證修復");
+
+  const partialHydrate = 執行(process.execPath, [工具, "hydrate", "--dry-run"], {
+    env: {
+      ...工具Env(Partial還原目錄, PartialData工作目錄),
+      DATA_REPO_URL: 遠端FileUrl,
+    },
+  });
+  assert.match(partialHydrate.stdout, /舊版 blob:none 快取/u, "必須明確說明正在修復舊快取");
+  assert.match(partialHydrate.stdout, /partial-clone 設定已移除/u, "補齊後必須退出 promisor 模式");
+  const partialMissingAfter = 執行(
+    "git",
+    ["rev-list", "--objects", "--missing=print", "FETCH_HEAD"],
+    {
+      cwd: PartialData工作目錄,
+      env: { ...process.env, GIT_NO_LAZY_FETCH: "1" },
+    },
+  );
+  assert.doesNotMatch(partialMissingAfter.stdout, /^\?/mu, "完整重抓後不可再缺少 snapshot blob");
+  assert.notEqual(
+    執行("git", ["config", "--get", "remote.origin.promisor"], {
+      cwd: PartialData工作目錄,
+      allowFailure: true,
+    }).status,
+    0,
+    "補齊後不可保留 promisor 設定",
+  );
+
   寫入(
     來源目錄,
     "data/fun/honey_b_fans.json",
@@ -280,11 +334,24 @@ try {
   寫入(還原目錄, "data/local-cache/keep.json", "保留快取");
   寫入(還原目錄, "data/rankings/stale.json", "刪除舊資料");
   寫入(還原目錄, "public/data/users/local.json", "保留 Users 衍生資料");
-  執行工具("hydrate", 還原目錄, 還原Data工作目錄, ["--force"]);
+  const hydrateResult = 執行工具("hydrate", 還原目錄, 還原Data工作目錄, ["--force"]);
+  assert.match(hydrateResult.stdout, /正在下載遠端 main snapshot/u, "hydrate 必須先顯示下載階段");
+  assert.match(hydrateResult.stdout, /正在驗證 snapshot 檔案雜湊/u, "hydrate 必須顯示驗證進度");
+  assert.match(hydrateResult.stdout, /正在比對本機受管理資料/u, "hydrate 必須顯示本機比對階段");
+  assert.match(hydrateResult.stdout, /正在還原 snapshot/u, "正式 hydrate 必須顯示還原進度");
   assert.equal(JSON.parse(fs.readFileSync(path.join(還原目錄, "data/state.json"), "utf8")).score, 200);
   assert(!fs.existsSync(path.join(還原目錄, "data/rankings/stale.json")), "hydrate 必須清除舊受管理資料");
   assert(fs.existsSync(path.join(還原目錄, "data/local-cache/keep.json")), "hydrate 不可刪除本機快取");
   assert(fs.existsSync(path.join(還原目錄, "public/data/users/local.json")), "hydrate 不可刪除 Users 衍生資料");
+
+  const dryRunResult = 執行工具(
+    "hydrate",
+    還原目錄,
+    還原Data工作目錄,
+    ["--dry-run"],
+  );
+  assert.match(dryRunResult.stdout, /dry-run=是/u, "dry-run 必須在開始時清楚標示模式");
+  assert.match(dryRunResult.stdout, /未寫入本機資料/u, "dry-run 完成時必須確認沒有寫入資料");
 
   執行工具("verify", 還原目錄, 還原Data工作目錄);
   console.log("Data repo 單一 root snapshot、排除規則、hydrate 與 manifest 驗證測試通過。");

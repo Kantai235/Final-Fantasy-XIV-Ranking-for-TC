@@ -167,6 +167,8 @@ npm run audit:pages-payload
 npm run sync:data -- --dry-run
 ```
 
+同步工具會依序顯示遠端 snapshot 下載、Git 工作目錄展開、manifest 檔案雜湊驗證與本機資料比對進度；單一步驟超過 10 秒時也會輸出已等待時間，避免首次下載大型快照時被誤認為程序卡死。`dry-run` 仍需下載並驗證完整 snapshot，因為只有取得所有檔案後才能安全判斷本機資料是否與權威來源一致。若 `.data-repo` 是舊版 `blob:none` partial clone，工具會在下載階段以完整 refetch 補齊缺少物件，離線確認完整後移除 promisor 設定；暫時性 HTTP/2 中斷則最多重試三次，不再延後到 `reset --hard` 才以不明確的 lazy-fetch 錯誤失敗。
+
 本機沒有未發布差異後，再還原最新版權威快照：
 
 ```bash

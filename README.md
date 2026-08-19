@@ -102,7 +102,7 @@ README 只保留入口與最小操作脈絡，完整說明請依主題閱讀：
 2. `scripts/build_user_data.mjs` 是 Data Building Layer。它讀取排行榜來源資料，產生個人成績單、個人成績報告細節、全服統計、近期動態、隊伍榜與伺服器對比等 `public/data/` 靜態 JSON；`build:user-data` 也會接續產生排行榜薄索引、Logs 狀態索引與公開更新狀態。正式部署時，個別玩家成績單 JSON 會先同步到專用 users repo，再從主站 Pages artifact 移除；高頻共用的 `data/users/index.json` 會保留在主站 `/data/`，讓 Cloudflare/GitHub Pages 快取承接玩家搜尋索引請求。
 3. `src/` 是 UI Presentation Layer。Vue 只讀取靜態 JSON 進行呈現、篩選與狀態管理：主站共用資料與個人成績單索引來自 Pages artifact 的 `/data/`，個別玩家成績單資料來自專用 users repo，不能直接呼叫 FFLogs API；`src/composables/rankingApp/` 承接排行榜預設值、注入 context 與排行列正規化，`src/styles/app.css` 則只作為樣式拆檔入口。
 
-權威來源資料存放於 `Final-Fantasy-XIV-Ranking-for-TC-Data`。主 repo 只追蹤程式碼與設定；本機或 workflow 必須先執行 `npm run data:hydrate` 還原經 manifest 驗證的最新資料，再進行抓取、建置或部署。Data repo 每次更新都以沒有 parent 的 root commit 取代 `main`，避免高頻 JSON 版本持續累積歷史容量；append-only report、fight、player 與 checkpoint 則由發布工具逐輪守恆檢查。
+權威來源資料存放於 `Final-Fantasy-XIV-Ranking-for-TC-Data`。主 repo 只追蹤程式碼與設定；本機或 workflow 必須先執行 `npm run data:hydrate` 還原經 manifest 驗證的最新資料，再進行抓取、建置或部署。Data repo 每次更新都以沒有 parent 的 root commit 取代 `main`，避免高頻 JSON 版本持續累積歷史容量；append-only report、fight、player 與 checkpoint 則由發布工具逐輪守恆檢查。同步期間會顯示下載、展開、檔案驗證與本機比對進度，長步驟也會定期回報已等待時間；舊版 `blob:none` 快取會在下載階段自動補齊，不再等到展開時才隱性抓取缺少物件。
 
 ## 常用指令
 
