@@ -794,9 +794,15 @@ async function assertFixtureOutput(tempRoot, expectedGlobalStatsText, expectedSe
   assert(usersIndex.generated_at_iso === "2026-01-02T03:04:05.000Z", "使用者索引應使用 ranking 更新時間作為 generated_at_iso。");
   assert(globalStats.generated_at_iso === "2026-01-02T03:04:05.000Z", "全服統計應使用 ranking 更新時間作為 generated_at_iso。");
   assert(usersIndex.total_users === 7, "fixture 應產生五位有公開成績的使用者與兩位空白入口。");
-  assert(usersIndex.achievements?.length === 14, "使用者索引應輸出十四項成就手冊統計。");
+  assert(usersIndex.achievements?.length === 16, "使用者索引應輸出十六項成就手冊統計。");
   const recentAchievement = usersIndex.achievements.find((achievement) => achievement.id === "recently-active");
   const highActivityAchievement = usersIndex.achievements.find((achievement) => achievement.id === "high-activity");
+  const lightStockTraderAchievement = usersIndex.achievements.find(
+    (achievement) => achievement.id === "savage-light-heavyweight-stock-trader",
+  );
+  const cruiserStockTraderAchievement = usersIndex.achievements.find(
+    (achievement) => achievement.id === "savage-cruiserweight-stock-trader",
+  );
   assert(recentAchievement?.holder_count > 0, "fixture 的最近公開紀錄應取得近期活躍成就。");
   assert(
     recentAchievement?.holder_percentage
@@ -804,6 +810,10 @@ async function assertFixtureOutput(tempRoot, expectedGlobalStatsText, expectedSe
     "成就獲得占比應以使用者索引總人數為分母。",
   );
   assert(highActivityAchievement?.holder_count === 0, "fixture 沒有玩家達到一百筆公開成績，不可取得高活躍成就。");
+  assert(
+    lightStockTraderAchievement?.holder_count === 0 && cruiserStockTraderAchievement?.holder_count === 0,
+    "fixture 沒有完整零式量級成績，兩項炒股仔仍須輸出目錄但獲得人數應為零。",
+  );
   assert(globalStats.total_character_count === 5, `全服角色數應把同名跨服角色視為不同玩家，實際 ${globalStats.total_character_count}。`);
   assert(globalStats.total_entry_count === 11, "全服 entry 數應包含六筆既有成績與 v8／v10～v13 正常成績。");
   const hiddenUser = usersIndex.users.find((user) => user.character_name === "隱藏角色");

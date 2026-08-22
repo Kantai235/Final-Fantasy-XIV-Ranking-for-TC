@@ -33,6 +33,7 @@ import {
   建立個人成績徽章,
   六絕踏破稱號,
   建立零式量級踏破徽章,
+  建立零式量級炒股仔徽章,
   成就手冊分類定義,
   取得個人成績成就目錄,
   篩選成就手冊適用成就,
@@ -267,16 +268,79 @@ function validateUserProfileBadges() {
       === JSON.stringify(預期前四枚徽章),
     "徽章必須依序顯示網站作者、六絕全通、次重量級與輕量級。",
   );
+
+  const 跨職炒股仔成績 = [...輕量級副本鍵值, ...次重量級副本鍵值].map((副本鍵值, 索引) => ({
+    encounter_key: 副本鍵值,
+    job: ["Paladin", "WhiteMage", "Monk", "Bard", "BlackMage", "Warrior", "Paladin", "WhiteMage"][索引],
+    performance: {
+      qualified: true,
+      sample_count: 200,
+      rank: 12,
+      // 畫面會把 94.5 四捨五入顯示成 PR 95；成就必須採相同門檻。
+      score_percentile: 94.5,
+    },
+  }));
+  const 炒股仔徽章 = 建立零式量級炒股仔徽章(跨職炒股仔成績);
+  assert(
+    JSON.stringify(炒股仔徽章.map((項目) => 項目.名稱))
+      === JSON.stringify(["次重量級的炒股仔", "輕量級的炒股仔"]),
+    "四層可使用不同職業，只要每層顯示 PR 95 以上就應取得對應量級炒股仔。",
+  );
+  for (const 炒股仔 of 炒股仔徽章) {
+    const 樣式類別 = new Set(String(炒股仔.樣式類別 || "").split(/\s+/).filter(Boolean));
+    const 量級樣式類別 = 炒股仔.名稱.startsWith("輕量級") ? "輕量級成就徽章" : "次重量級成就徽章";
+    for (const 必要樣式類別 of ["量級成就徽章", 量級樣式類別, "炒股仔徽章"]) {
+      assert(樣式類別.has(必要樣式類別), `「${炒股仔.名稱}」必須帶有「${必要樣式類別}」語意樣式類別。`);
+    }
+  }
+  assert(
+    炒股仔徽章.find((項目) => 項目.名稱 === "次重量級的炒股仔")?.說明 === "次重量每層皆 PR 95 以上"
+      && 炒股仔徽章.find((項目) => 項目.名稱 === "輕量級的炒股仔")?.說明 === "輕量級每層皆 PR 95 以上",
+    "炒股仔徽章應使用適合小尺寸卡片的精簡說明。",
+  );
+  const 含炒股仔的量級徽章 = 建立個人成績徽章({ 公開成績: 跨職炒股仔成績 });
+  assert(
+    JSON.stringify(含炒股仔的量級徽章.map((項目) => 項目.名稱))
+      === JSON.stringify(["次重量級踏破", "次重量級的炒股仔", "輕量級通關", "輕量級的炒股仔"]),
+    "同量級應先顯示四階進度，再顯示可獨立取得的炒股仔，並維持次重量級優先。",
+  );
+
+  const 未達顯示PR95 = 跨職炒股仔成績.map((成績) => (
+    成績.encounter_key === "savage_m4s"
+      ? { ...成績, performance: { ...成績.performance, score_percentile: 94.49 } }
+      : 成績
+  ));
+  assert(
+    !建立零式量級炒股仔徽章(未達顯示PR95).some((項目) => 項目.名稱 === "輕量級的炒股仔"),
+    "任一層四捨五入後仍未達 PR 95，就不可取得該量級炒股仔。",
+  );
+  const 未通過分位資格 = 跨職炒股仔成績.map((成績) => (
+    成績.encounter_key === "savage_m8s"
+      ? { ...成績, performance: { ...成績.performance, qualified: false } }
+      : 成績
+  ));
+  assert(
+    !建立零式量級炒股仔徽章(未通過分位資格).some((項目) => 項目.名稱 === "次重量級的炒股仔"),
+    "任一層未通過 Active 樣本資格，即使保存高 PR 也不可取得炒股仔。",
+  );
+  const 含過版高PR = 跨職炒股仔成績.map((成績) => (
+    成績.encounter_key === "savage_m4s" ? { ...成績, is_obsolete_record: true } : 成績
+  ));
+  assert(
+    !建立零式量級炒股仔徽章(含過版高PR).some((項目) => 項目.名稱 === "輕量級的炒股仔"),
+    "任一層只有過版高 PR 紀錄時，不可補發有效版本限定的炒股仔。",
+  );
+
   assert(!徽章名稱.has("零式全通"), "零式成就應改為依量級命名，不可保留固定的「零式全通」。");
-  assert(成就目錄.length === 14 && 成就Id.size === 成就目錄.length, "成就手冊必須列出十四項具有穩定 ID 的可取得成就。");
+  assert(成就目錄.length === 16 && 成就Id.size === 成就目錄.length, "成就手冊必須列出十六項具有穩定 ID 的可取得成就。");
   const 手冊分類數量 = new Map(成就手冊分類定義.map((分類) => [
     分類.id,
     成就目錄.filter((成就) => 成就.手冊分類 === 分類.id).length,
   ]));
   assert(
     JSON.stringify(Array.from(手冊分類數量.entries()))
-      === JSON.stringify([["ultimate", 1], ["savage", 8], ["other", 5]]),
-    "成就手冊必須依絕本 1 項、零式 8 階與其他 5 項建立固定分類。",
+      === JSON.stringify([["ultimate", 1], ["savage", 10], ["other", 5]]),
+    "成就手冊必須依絕本 1 項、零式 8 階加 2 項額外成就與其他 5 項建立固定分類。",
   );
   assert(
     成就目錄.every((成就) => (
@@ -284,12 +348,13 @@ function validateUserProfileBadges() {
       && 成就.手冊群組
       && 成就.手冊群組名稱
       && 成就.手冊進度群組
+      && 成就.手冊項目類型
     )),
-    "成就手冊目錄必須提供分類、呈現群組與互斥後的進度群組，不可由 Vue 依名稱猜測。",
+    "成就手冊目錄必須提供分類、呈現群組、項目類型與互斥後的進度群組，不可由 Vue 依名稱猜測。",
   );
   assert(
-    new Set(成就目錄.map((成就) => 成就.手冊進度群組)).size === 8,
-    "零式四階完整顯示後，總進度仍須以每量級一項計算為八項。",
+    new Set(成就目錄.map((成就) => 成就.手冊進度群組)).size === 10,
+    "零式四階以每量級一項計算，兩項炒股仔則獨立計入，總進度應為十項。",
   );
   const 量級成就Ids = new Set([
     "savage-light-heavyweight-week-one",
@@ -311,11 +376,19 @@ function validateUserProfileBadges() {
     [],
     Date.parse("2026-08-10T12:00:00+08:00"),
   );
-  assert(當前適用成就.length === 8, "目前目標計算應保留六項一般成就，並將兩個零式量級各收斂為一項。");
+  assert(當前適用成就.length === 10, "目前目標計算應保留六項一般成就與兩項炒股仔，並將兩個零式量級各收斂為一項。");
   assert(
     JSON.stringify(當前適用成就.filter((成就) => 量級成就Ids.has(成就.id)).map((成就) => 成就.id))
       === JSON.stringify(["savage-cruiserweight-week-one", "savage-light-heavyweight-all-floors-clear"]),
     "2026-08-10 未取得量級成就時，應顯示次重量級首週踏破與輕量級通關。",
+  );
+  const 炒股仔成就Ids = new Set([
+    "savage-cruiserweight-stock-trader",
+    "savage-light-heavyweight-stock-trader",
+  ]);
+  assert(
+    Array.from(炒股仔成就Ids).every((成就Id值) => 當前適用成就.some((成就) => 成就.id === 成就Id值)),
+    "炒股仔是可獨立取得的額外成就，不可被四階目前目標篩選移除。",
   );
 
   const 時間邊界案例 = [
@@ -410,13 +483,13 @@ function validateUserProfileBadges() {
       assert(樣式類別.size === 0, `「${預期名稱}」必須使用無特效的預設徽章外觀。`);
       return;
     }
-    const 量級樣式類別 = 量級名稱 === "輕量級" ? "輕量級踏破徽章" : "次重量級踏破徽章";
+    const 量級樣式類別 = 量級名稱 === "輕量級" ? "輕量級成就徽章" : "次重量級成就徽章";
     const 階級樣式類別 = 預期名稱.includes("【首週】")
       ? "首週踏破徽章"
       : 預期名稱.includes("【次週】")
         ? "次週踏破徽章"
         : "一般踏破徽章";
-    for (const 必要樣式類別 of ["量級踏破徽章", 量級樣式類別, 階級樣式類別]) {
+    for (const 必要樣式類別 of ["量級成就徽章", 量級樣式類別, "量級踏破徽章", 階級樣式類別]) {
       assert(
         樣式類別.has(必要樣式類別),
         `「${預期名稱}」必須帶有「${必要樣式類別}」語意樣式類別。`,
@@ -639,26 +712,38 @@ async function validateUserProfileBadgeDataScope() {
     "六絕全通稱號必須套用虹彩循環邊框，並尊重減少動態效果偏好。",
   );
   assert(
-    profileStyles.includes(".使用者徽章.量級踏破徽章")
-      && profileStyles.includes(".使用者徽章.輕量級踏破徽章::before")
+    profileStyles.includes(".使用者徽章.量級成就徽章")
+      && profileStyles.includes(".使用者徽章.輕量級成就徽章::before")
       && profileStyles.includes('content: "輕"')
-      && profileStyles.includes(".使用者徽章.次重量級踏破徽章::before")
+      && profileStyles.includes(".使用者徽章.次重量級成就徽章::before")
       && profileStyles.includes('content: "次"')
       && profileStyles.includes(".使用者徽章.首週踏破徽章")
       && profileStyles.includes(".使用者徽章.次週踏破徽章")
       && profileStyles.includes(".使用者徽章.一般踏破徽章")
       && profileStyles.includes(':root[data-theme="light"] .使用者徽章.首週踏破徽章')
       && profileStyles.includes("@keyframes 量級踏破掃光")
-      && profileStyles.includes(".使用者徽章.量級踏破徽章::after"),
-    "量級首週／次週／踏破徽章必須依輕／次量級與金／銀／銅階級套用背景字、掃光及亮色主題樣式。",
+      && profileStyles.includes(".使用者徽章.量級成就徽章.量級踏破徽章::after")
+      && profileStyles.includes(".使用者徽章.炒股仔徽章")
+      && profileStyles.includes("stroke-width='9'")
+      && profileStyles.includes("stroke-linecap='round'")
+      && profileStyles.includes("M305 8 L290 39 L272 17 Z")
+      && profileStyles.includes("inset: 3px 66px 3px 4px;")
+      && profileStyles.includes("animation: 炒股仔走勢推進 5.6s linear infinite;")
+      && profileStyles.includes("@keyframes 炒股仔走勢推進")
+      && profileStyles.includes(".使用者徽章.炒股仔徽章::after")
+      && profileStyles.includes("--炒股仔走勢色: #f06b72")
+      && profileStyles.includes("--炒股仔走勢色: #ad2f37")
+      && profileStyles.includes(':root[data-theme="light"] .使用者徽章.炒股仔徽章'),
+    "量級徽章必須套用輕／次背景字、踏破階級樣式，以及避開量級字的炒股仔紅色粗折線與大型箭頭。",
   );
   assert(
     source.includes("const 使用者成就手冊 = computed(() => {")
       && source.includes("使用者索引.value?.achievements")
       && source.includes("篩選成就手冊適用成就(")
       && source.includes("return 個人成績成就目錄.map((定義) => {")
-      && source.includes("目前適用: 目前適用成就Id.has(定義.id)")
+      && source.includes('目前適用: 定義.手冊項目類型 === "stage" && 目前適用成就Id.has(定義.id)')
       && source.includes("手冊進度群組: 定義.手冊進度群組")
+      && source.includes("手冊項目類型: 定義.手冊項目類型")
       && source.includes("成就手冊目前時間戳記.value")
       && source.includes("window.setInterval")
       && source.includes("window.clearInterval")
@@ -670,7 +755,9 @@ async function validateUserProfileBadgeDataScope() {
       && handbookSource.includes("處理分頁按鍵")
       && handbookSource.includes('event.key === "Escape"')
       && handbookSource.includes("分類查看成就與全站稀有度")
-      && handbookSource.includes("四階互斥")
+      && handbookSource.includes("四階進度")
+      && handbookSource.includes("額外成就")
+      && handbookSource.includes('成就.手冊項目類型 === \'stage\'')
       && profileStyles.includes(".成就手冊浮動按鈕")
       && profileStyles.includes("right: calc(18px + env(safe-area-inset-right));")
       && profileStyles.includes(".報告彈窗.成就手冊彈窗")
@@ -678,6 +765,7 @@ async function validateUserProfileBadgeDataScope() {
       && profileStyles.includes("grid-template-rows: auto auto auto minmax(0, 1fr) auto;")
       && profileStyles.includes(".成就手冊分頁列")
       && profileStyles.includes(".成就手冊內容區")
+      && profileStyles.includes(".成就手冊量級區段-bonus")
       && profileStyles.includes(".成就手冊清單"),
     "個人成績單必須提供右下角書本入口、固定高度的分類分頁、零式完整階段統計與依時間更新的目前目標。",
   );

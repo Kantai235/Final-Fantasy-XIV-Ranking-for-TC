@@ -83,7 +83,26 @@ export default {
         }
         群組.成就.push(成就);
       }
-      return Array.from(群組索引.values());
+      return Array.from(群組索引.values()).map((群組) => {
+        if (目前分類.value?.id !== "savage") {
+          return {
+            ...群組,
+            區段: [{ id: "standard", 名稱: "", 說明: "", 成就: 群組.成就 }],
+          };
+        }
+
+        // 零式量級同時有互斥的四階進度與可獨立取得的分位成就。區段結構由
+        // 工具層的穩定類型建立，避免模板依成就名稱猜測並誤標成「其他階段」。
+        const 階段成就 = 群組.成就.filter((成就) => 成就?.手冊項目類型 === "stage");
+        const 額外成就 = 群組.成就.filter((成就) => 成就?.手冊項目類型 === "bonus");
+        return {
+          ...群組,
+          區段: [
+            { id: "stage", 名稱: "四階進度", 說明: "同量級只計最高階一項", 成就: 階段成就 },
+            { id: "bonus", 名稱: "額外成就", 說明: "可獨立取得", 成就: 額外成就 },
+          ].filter((區段) => 區段.成就.length > 0),
+        };
+      });
     });
 
     function 確保目前分類可用() {
@@ -147,7 +166,7 @@ export default {
       if (成就?.已獲得) {
         return "已取得";
       }
-      if (成就?.手冊分類 === "savage") {
+      if (成就?.手冊項目類型 === "stage") {
         return 成就?.目前適用 ? "目前目標" : "其他階段";
       }
       return "未取得";
@@ -157,7 +176,7 @@ export default {
       if (成就?.已獲得) {
         return "✓";
       }
-      return 成就?.目前適用 ? "◇" : "·";
+      return 成就?.手冊項目類型 === "stage" && 成就?.目前適用 ? "◇" : "·";
     }
 
     function 格式化人數(數值) {
@@ -329,48 +348,60 @@ export default {
             >
               <header v-if="目前分類Id === 'savage'" class="成就手冊階段群組標題">
                 <h4 :id="`achievement-group-${群組.id}`">{{ 群組.名稱 }}</h4>
-                <span>四階互斥</span>
+                <span>量級成就</span>
               </header>
 
-              <ol class="成就手冊清單" :aria-label="`${群組.名稱}成就`">
-                <li
-                  v-for="成就 in 群組.成就"
-                  :key="成就.id"
-                  class="成就手冊項目"
-                  :class="{
-                    已取得: 成就.已獲得,
-                    尚未取得: !成就.已獲得,
-                    目前目標: !成就.已獲得 && 成就.手冊分類 === 'savage' && 成就.目前適用,
-                    其他階段: !成就.已獲得 && 成就.手冊分類 === 'savage' && !成就.目前適用,
-                  }"
-                >
-                  <span class="成就手冊狀態圖示" aria-hidden="true">{{ 取得成就狀態圖示(成就) }}</span>
-                  <div class="成就手冊項目內容">
-                    <div class="成就手冊項目標題">
-                      <span class="成就手冊分類">{{ 成就.分類 }}</span>
-                      <strong>{{ 成就.名稱 }}</strong>
-                      <span class="成就手冊取得狀態">{{ 取得成就狀態(成就) }}</span>
-                    </div>
-                    <p>{{ 成就.說明 }}</p>
-                    <div class="成就手冊稀有度">
-                      <span>
-                        <strong>{{ 成就.獲得人數 === null ? "—" : 格式化人數(成就.獲得人數) }}</strong>
-                        人獲得
+              <section
+                v-for="區段 in 群組.區段"
+                :key="區段.id"
+                class="成就手冊量級區段"
+                :class="`成就手冊量級區段-${區段.id}`"
+              >
+                <header v-if="區段.名稱" class="成就手冊量級區段標題">
+                  <strong>{{ 區段.名稱 }}</strong>
+                  <span>{{ 區段.說明 }}</span>
+                </header>
+
+                <ol class="成就手冊清單" :aria-label="`${群組.名稱}${區段.名稱 || '成就'}`">
+                  <li
+                    v-for="成就 in 區段.成就"
+                    :key="成就.id"
+                    class="成就手冊項目"
+                    :class="{
+                      已取得: 成就.已獲得,
+                      尚未取得: !成就.已獲得,
+                      目前目標: !成就.已獲得 && 成就.手冊項目類型 === 'stage' && 成就.目前適用,
+                      其他階段: !成就.已獲得 && 成就.手冊項目類型 === 'stage' && !成就.目前適用,
+                    }"
+                  >
+                    <span class="成就手冊狀態圖示" aria-hidden="true">{{ 取得成就狀態圖示(成就) }}</span>
+                    <div class="成就手冊項目內容">
+                      <div class="成就手冊項目標題">
+                        <span class="成就手冊分類">{{ 成就.分類 }}</span>
+                        <strong>{{ 成就.名稱 }}</strong>
+                        <span class="成就手冊取得狀態">{{ 取得成就狀態(成就) }}</span>
+                      </div>
+                      <p>{{ 成就.說明 }}</p>
+                      <div class="成就手冊稀有度">
+                        <span>
+                          <strong>{{ 成就.獲得人數 === null ? "—" : 格式化人數(成就.獲得人數) }}</strong>
+                          人獲得
+                        </span>
+                        <span>{{ 格式化獲得占比(成就.獲得占比) }}</span>
+                      </div>
+                      <span class="成就手冊占比軌道" aria-hidden="true">
+                        <span :style="成就占比樣式(成就.獲得占比)"></span>
                       </span>
-                      <span>{{ 格式化獲得占比(成就.獲得占比) }}</span>
                     </div>
-                    <span class="成就手冊占比軌道" aria-hidden="true">
-                      <span :style="成就占比樣式(成就.獲得占比)"></span>
-                    </span>
-                  </div>
-                </li>
-              </ol>
+                  </li>
+                </ol>
+              </section>
             </section>
           </div>
         </section>
 
         <p class="成就手冊資料說明">
-          成就依本站收錄的公開 FFLogs 通關紀錄判定；零式各量級四階互斥，未取得只代表目前沒有符合條件的公開資料。
+          成就依本站收錄的公開 FFLogs 通關紀錄判定；零式四階互斥，炒股仔則依有效版本內各層的本站同職 PR 獨立判定。未取得只代表目前沒有符合條件的公開資料。
         </p>
       </section>
     </div>
