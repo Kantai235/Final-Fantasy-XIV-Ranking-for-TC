@@ -129,7 +129,9 @@
   }
 
   .成就手冊彈窗 {
-    gap: 14px;
+    height: calc(100vh - 24px);
+    height: calc(100dvh - 24px);
+    gap: 10px;
     max-height: calc(100vh - 24px);
     padding: 16px;
   }
@@ -146,11 +148,40 @@
     padding-top: 11px;
   }
 
+  .成就手冊分頁列 {
+    gap: 0;
+  }
+
+  .成就手冊分頁 {
+    flex: 1 0 96px;
+    min-width: 96px;
+    padding: 7px 9px 9px;
+  }
+
+  .成就手冊內容區 {
+    gap: 12px;
+    padding-right: 2px;
+  }
+
+  .成就手冊分類標題 {
+    gap: 10px;
+    padding-bottom: 9px;
+  }
+
+  .成就手冊分類標題 p {
+    font-size: 0.7rem;
+  }
+
+  .成就手冊階段群組列表.零式分組 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .成就手冊清單 {
     grid-template-columns: minmax(0, 1fr);
   }
 
   .成就手冊項目 {
+    min-height: 0;
     grid-template-columns: 30px minmax(0, 1fr);
     gap: 9px;
     padding: 11px;
@@ -213,7 +244,8 @@
   .報告彈窗遮罩,
   .報告彈窗,
   .成就手冊浮動按鈕,
-  .成就手冊浮動提示 {
+  .成就手冊浮動提示,
+  .成就手冊分頁 {
     transition: none;
   }
 }

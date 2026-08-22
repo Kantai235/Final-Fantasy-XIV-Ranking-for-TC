@@ -33,6 +33,7 @@ import {
   建立個人成績徽章,
   六絕踏破稱號,
   建立零式量級踏破徽章,
+  成就手冊分類定義,
   取得個人成績成就目錄,
   篩選成就手冊適用成就,
 } from "../src/utils/userProfileBadges.js";
@@ -268,6 +269,28 @@ function validateUserProfileBadges() {
   );
   assert(!徽章名稱.has("零式全通"), "零式成就應改為依量級命名，不可保留固定的「零式全通」。");
   assert(成就目錄.length === 14 && 成就Id.size === 成就目錄.length, "成就手冊必須列出十四項具有穩定 ID 的可取得成就。");
+  const 手冊分類數量 = new Map(成就手冊分類定義.map((分類) => [
+    分類.id,
+    成就目錄.filter((成就) => 成就.手冊分類 === 分類.id).length,
+  ]));
+  assert(
+    JSON.stringify(Array.from(手冊分類數量.entries()))
+      === JSON.stringify([["ultimate", 1], ["savage", 8], ["other", 5]]),
+    "成就手冊必須依絕本 1 項、零式 8 階與其他 5 項建立固定分類。",
+  );
+  assert(
+    成就目錄.every((成就) => (
+      成就.手冊分類
+      && 成就.手冊群組
+      && 成就.手冊群組名稱
+      && 成就.手冊進度群組
+    )),
+    "成就手冊目錄必須提供分類、呈現群組與互斥後的進度群組，不可由 Vue 依名稱猜測。",
+  );
+  assert(
+    new Set(成就目錄.map((成就) => 成就.手冊進度群組)).size === 8,
+    "零式四階完整顯示後，總進度仍須以每量級一項計算為八項。",
+  );
   const 量級成就Ids = new Set([
     "savage-light-heavyweight-week-one",
     "savage-light-heavyweight-week-two",
@@ -288,7 +311,7 @@ function validateUserProfileBadges() {
     [],
     Date.parse("2026-08-10T12:00:00+08:00"),
   );
-  assert(當前適用成就.length === 8, "成就手冊應保留六項一般成就，並將兩個零式量級各收斂為一項。");
+  assert(當前適用成就.length === 8, "目前目標計算應保留六項一般成就，並將兩個零式量級各收斂為一項。");
   assert(
     JSON.stringify(當前適用成就.filter((成就) => 量級成就Ids.has(成就.id)).map((成就) => 成就.id))
       === JSON.stringify(["savage-cruiserweight-week-one", "savage-light-heavyweight-all-floors-clear"]),
@@ -633,21 +656,30 @@ async function validateUserProfileBadgeDataScope() {
     source.includes("const 使用者成就手冊 = computed(() => {")
       && source.includes("使用者索引.value?.achievements")
       && source.includes("篩選成就手冊適用成就(")
+      && source.includes("return 個人成績成就目錄.map((定義) => {")
+      && source.includes("目前適用: 目前適用成就Id.has(定義.id)")
+      && source.includes("手冊進度群組: 定義.手冊進度群組")
       && source.includes("成就手冊目前時間戳記.value")
       && source.includes("window.setInterval")
       && source.includes("window.clearInterval")
       && profileSource.includes("<AchievementHandbook")
       && handbookSource.includes('class="成就手冊浮動按鈕"')
       && handbookSource.includes('role="dialog"')
+      && handbookSource.includes('role="tablist"')
+      && handbookSource.includes('role="tabpanel"')
+      && handbookSource.includes("處理分頁按鍵")
       && handbookSource.includes('event.key === "Escape"')
-      && handbookSource.includes("查看目前適用成就與全站稀有度")
-      && handbookSource.includes('aria-label="目前適用成就"')
+      && handbookSource.includes("分類查看成就與全站稀有度")
+      && handbookSource.includes("四階互斥")
       && profileStyles.includes(".成就手冊浮動按鈕")
       && profileStyles.includes("right: calc(18px + env(safe-area-inset-right));")
       && profileStyles.includes(".報告彈窗.成就手冊彈窗")
       && profileStyles.includes("width: min(1080px, 100%);")
+      && profileStyles.includes("grid-template-rows: auto auto auto minmax(0, 1fr) auto;")
+      && profileStyles.includes(".成就手冊分頁列")
+      && profileStyles.includes(".成就手冊內容區")
       && profileStyles.includes(".成就手冊清單"),
-    "個人成績單必須提供右下角書本入口、可關閉的寬版無障礙彈窗與依時間更新的適用成就清單。",
+    "個人成績單必須提供右下角書本入口、固定高度的分類分頁、零式完整階段統計與依時間更新的目前目標。",
   );
 }
 
