@@ -314,11 +314,10 @@
   box-shadow: inset 0 0 0 1px var(--作者色柔和);
 }
 
-/* 量級踏破徽章沿用同一張卡片骨架，再由「輕／次」與「首週／次週／踏破」
- * 兩組語意類別組合出六種樣式。這讓成就規則仍留在資料工具中，CSS 只負責
- * 視覺階級；基礎「通關」刻意不帶這些類別，以使用預設無特效卡片。未來若
- * 新增重量級，也不必在 Vue 元件內判斷成就名稱。 */
-.使用者徽章.量級踏破徽章 {
+/* 量級成就共用卡片骨架與「輕／次」背景字，再由踏破階級或炒股仔額外類別
+ * 決定視覺。成就規則仍留在資料工具中，CSS 只處理外觀；基礎「通關」刻意
+ * 不帶量級類別，以使用預設無特效卡片。 */
+.使用者徽章.量級成就徽章 {
   --量級踏破外框色: var(--邊框色);
   --量級踏破標題色: var(--主要文字);
   --量級踏破說明色: var(--次要文字);
@@ -411,7 +410,7 @@
 
 /* 背景字只用來識別量級，不取代可讀的成就名稱。稍微逆時針傾斜並壓低
  * 不透明度，讓「輕／次」有印章感，同時不干擾上層的名稱與取得條件。 */
-.使用者徽章.量級踏破徽章::before {
+.使用者徽章.量級成就徽章::before {
   position: absolute;
   z-index: 0;
   top: 50%;
@@ -429,17 +428,17 @@
   pointer-events: none;
 }
 
-.使用者徽章.輕量級踏破徽章::before {
+.使用者徽章.輕量級成就徽章::before {
   content: "輕";
 }
 
-.使用者徽章.次重量級踏破徽章::before {
+.使用者徽章.次重量級成就徽章::before {
   content: "次";
 }
 
 /* 斜向掃光只經過卡片表面；名稱與條件固定在較高圖層，動畫不會降低文字
  * 對比。各階級透過自訂屬性控制亮度與週期，而不是複製三套 keyframes。 */
-.使用者徽章.量級踏破徽章::after {
+.使用者徽章.量級成就徽章.量級踏破徽章::after {
   position: absolute;
   z-index: 1;
   top: -38%;
@@ -455,20 +454,57 @@
   pointer-events: none;
 }
 
-.使用者徽章.量級踏破徽章 strong,
-.使用者徽章.量級踏破徽章 span {
+.使用者徽章.量級成就徽章 strong,
+.使用者徽章.量級成就徽章 span {
   position: relative;
   z-index: 2;
 }
 
-.使用者徽章.量級踏破徽章 strong {
+.使用者徽章.量級成就徽章 strong {
   color: var(--量級踏破標題色);
   letter-spacing: 0.035em;
   text-shadow: 0 1px 10px var(--量級踏破光暈色);
 }
 
-.使用者徽章.量級踏破徽章 span {
+.使用者徽章.量級成就徽章 span {
   color: var(--量級踏破說明色);
+}
+
+/* 炒股仔依台灣股市「紅漲」慣例，以紅色上升折線表達「每層 PR 95 以上」。
+ * 不加入交易介面常見的格線；粗折線依轉折點由左往右逐段揭露，再於量級字
+ * 左側用大型實心箭頭收尾，避免箭頭蓋住右側的「輕／次」識別字。 */
+.使用者徽章.炒股仔徽章 {
+  --量級踏破外框色: #d65c62;
+  --量級踏破標題色: #ffd0d2;
+  --量級踏破說明色: #d8b0b2;
+  --量級踏破面光色: rgba(216, 76, 84, 0.2);
+  --量級踏破底色: rgba(117, 31, 38, 0.22);
+  --量級踏破裝飾字色: rgba(255, 111, 119, 0.14);
+  --量級踏破星點色: rgba(255, 190, 194, 0.66);
+  --量級踏破星點淡色: rgba(226, 91, 99, 0.3);
+  --量級踏破內框色: rgba(255, 172, 177, 0.2);
+  --量級踏破光暈色: rgba(214, 70, 79, 0.24);
+  --量級踏破光暈模糊: 12px;
+  --量級踏破光暈範圍: -7px;
+  --炒股仔走勢色: #f06b72;
+  --炒股仔走勢不透明度: 0.72;
+  --炒股仔走勢遮罩: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 320 80' preserveAspectRatio='none'%3E%3Cpath d='M0 72 L50 61 L96 66 L142 55 L183 59 L221 43 L256 49 L281 28' fill='none' stroke='white' stroke-width='9' stroke-linecap='round' stroke-linejoin='round' vector-effect='non-scaling-stroke'/%3E%3Cpath d='M305 8 L290 39 L272 17 Z' fill='white'/%3E%3Ccircle cx='50' cy='61' r='5.5' fill='white'/%3E%3Ccircle cx='142' cy='55' r='5.5' fill='white'/%3E%3Ccircle cx='221' cy='43' r='5.5' fill='white'/%3E%3C/svg%3E");
+}
+
+.使用者徽章.炒股仔徽章::after {
+  position: absolute;
+  z-index: 1;
+  inset: 3px 66px 3px 4px;
+  content: "";
+  background: var(--炒股仔走勢色);
+  -webkit-mask: var(--炒股仔走勢遮罩) center / 100% 100% no-repeat;
+  mask: var(--炒股仔走勢遮罩) center / 100% 100% no-repeat;
+  -webkit-clip-path: inset(0 100% 0 0);
+  clip-path: inset(0 100% 0 0);
+  opacity: 0;
+  animation: 炒股仔走勢推進 5.6s linear infinite;
+  will-change: clip-path, opacity;
+  pointer-events: none;
 }
 
 /* 亮色主題改用較深的金屬文字與裝飾字，避免亮底上的金、銀、銅失去對比。 */
@@ -514,6 +550,79 @@
   --量級踏破掃光色: rgba(255, 255, 255, 0.68);
 }
 
+:root[data-theme="light"] .使用者徽章.炒股仔徽章 {
+  --量級踏破外框色: #a9363d;
+  --量級踏破標題色: #7d242a;
+  --量級踏破說明色: #6f4d50;
+  --量級踏破面光色: rgba(190, 54, 63, 0.15);
+  --量級踏破底色: rgba(225, 112, 119, 0.14);
+  --量級踏破裝飾字色: rgba(139, 37, 44, 0.1);
+  --量級踏破星點色: rgba(139, 37, 44, 0.38);
+  --量級踏破星點淡色: rgba(255, 255, 255, 0.84);
+  --量級踏破內框色: rgba(255, 255, 255, 0.48);
+  --量級踏破光暈色: rgba(167, 47, 55, 0.16);
+  --炒股仔走勢色: #ad2f37;
+  --炒股仔走勢不透明度: 0.78;
+}
+
+@keyframes 炒股仔走勢推進 {
+  0%,
+  8% {
+    -webkit-clip-path: inset(0 100% 0 0);
+    clip-path: inset(0 100% 0 0);
+    opacity: 0;
+  }
+
+  16% {
+    -webkit-clip-path: inset(0 84% 0 0);
+    clip-path: inset(0 84% 0 0);
+    opacity: var(--炒股仔走勢不透明度);
+  }
+
+  24% {
+    -webkit-clip-path: inset(0 70% 0 0);
+    clip-path: inset(0 70% 0 0);
+  }
+
+  32% {
+    -webkit-clip-path: inset(0 56% 0 0);
+    clip-path: inset(0 56% 0 0);
+  }
+
+  40% {
+    -webkit-clip-path: inset(0 43% 0 0);
+    clip-path: inset(0 43% 0 0);
+  }
+
+  48% {
+    -webkit-clip-path: inset(0 31% 0 0);
+    clip-path: inset(0 31% 0 0);
+  }
+
+  56% {
+    -webkit-clip-path: inset(0 20% 0 0);
+    clip-path: inset(0 20% 0 0);
+  }
+
+  64% {
+    -webkit-clip-path: inset(0 12% 0 0);
+    clip-path: inset(0 12% 0 0);
+  }
+
+  72%,
+  90% {
+    -webkit-clip-path: inset(0);
+    clip-path: inset(0);
+    opacity: var(--炒股仔走勢不透明度);
+  }
+
+  100% {
+    -webkit-clip-path: inset(0);
+    clip-path: inset(0);
+    opacity: 0;
+  }
+}
+
 @keyframes 量級踏破掃光 {
   0%,
   18% {
@@ -537,9 +646,17 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .使用者徽章.量級踏破徽章::after {
+  .使用者徽章.量級成就徽章.量級踏破徽章::after {
     animation: none;
     opacity: 0;
+  }
+
+  .使用者徽章.炒股仔徽章::after {
+    -webkit-clip-path: inset(0);
+    clip-path: inset(0);
+    animation: none;
+    opacity: var(--炒股仔走勢不透明度);
+    will-change: auto;
   }
 }
 
@@ -817,9 +934,13 @@
 
 .報告彈窗.成就手冊彈窗 {
   width: min(1080px, 100%);
+  height: min(820px, calc(100vh - 48px));
+  height: min(820px, calc(100dvh - 48px));
   max-height: min(820px, calc(100vh - 48px));
   display: grid;
-  gap: 18px;
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+  gap: 14px;
+  overflow: hidden;
   padding: 22px;
   background:
     radial-gradient(circle at 92% 0%, rgba(214, 163, 84, 0.14), transparent 30%),
@@ -886,6 +1007,216 @@
   line-height: 1.45;
 }
 
+/* 分頁只負責切換資訊範圍；全站獲得人數仍取自同一份 users/index.json。
+ * 讓彈窗外框固定、只有內容區捲動，可避免絕本 1 項、零式 8 階與其他 5 項
+ * 之間切換時整個對話框跳動，也讓關閉按鈕與分類導覽始終留在同一位置。 */
+.成就手冊分頁列 {
+  min-width: 0;
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--邊框色);
+  scrollbar-width: thin;
+}
+
+.成就手冊分頁 {
+  min-width: 112px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  padding: 8px 14px 10px;
+  color: var(--次要文字);
+  background: transparent;
+  transition:
+    border-color 0.18s ease,
+    color 0.18s ease,
+    background-color 0.18s ease;
+}
+
+.成就手冊分頁:hover:not(:disabled) {
+  color: var(--主要文字);
+  background: rgba(214, 163, 84, 0.07);
+}
+
+.成就手冊分頁:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--焦點陰影);
+}
+
+.成就手冊分頁.作用中 {
+  border-bottom-color: var(--重點色);
+  color: var(--重點色);
+  background: rgba(214, 163, 84, 0.1);
+}
+
+.成就手冊分頁 strong {
+  font-size: 0.86rem;
+  font-weight: 860;
+}
+
+.成就手冊分頁 span {
+  min-width: 34px;
+  border-radius: 999px;
+  padding: 3px 6px;
+  color: var(--次要文字);
+  background: var(--輸入背景);
+  font-size: 0.66rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.成就手冊分頁.作用中 span {
+  color: var(--重點色);
+  background: rgba(214, 163, 84, 0.13);
+}
+
+.成就手冊內容區 {
+  min-height: 0;
+  display: grid;
+  align-content: start;
+  gap: 14px;
+  overflow-y: auto;
+  padding: 2px 6px 2px 0;
+  outline: none;
+  scrollbar-gutter: stable;
+}
+
+.成就手冊內容區:focus-visible {
+  border-radius: 6px;
+  box-shadow: inset 0 0 0 2px var(--焦點陰影);
+}
+
+.成就手冊分類標題 {
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px solid var(--邊框柔和色);
+  padding: 2px 2px 11px;
+}
+
+.成就手冊分類標題 h3,
+.成就手冊分類標題 p,
+.成就手冊階段群組標題 h4 {
+  margin: 0;
+}
+
+.成就手冊分類標題 h3 {
+  color: var(--主要文字);
+  font-size: 1rem;
+  line-height: 1.35;
+  text-wrap: balance;
+}
+
+.成就手冊分類標題 p {
+  max-width: 70ch;
+  margin-top: 3px;
+  color: var(--次要文字);
+  font-size: 0.74rem;
+  line-height: 1.45;
+  text-wrap: pretty;
+}
+
+.成就手冊分類標題 > span {
+  flex: 0 0 auto;
+  border: 1px solid rgba(214, 163, 84, 0.34);
+  border-radius: 999px;
+  padding: 5px 8px;
+  color: var(--重點色);
+  background: rgba(214, 163, 84, 0.09);
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 850;
+  line-height: 1;
+}
+
+.成就手冊階段群組列表 {
+  min-width: 0;
+  display: grid;
+  gap: 18px;
+}
+
+.成就手冊階段群組列表.零式分組 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.成就手冊階段群組 {
+  min-width: 0;
+  display: grid;
+  align-content: start;
+  gap: 9px;
+}
+
+.成就手冊階段群組標題 {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding-inline: 2px;
+}
+
+.成就手冊階段群組標題 h4 {
+  color: var(--主要文字);
+  font-size: 0.86rem;
+  line-height: 1.35;
+}
+
+.成就手冊階段群組標題 span {
+  color: var(--靜音文字);
+  font-size: 0.66rem;
+  font-weight: 760;
+}
+
+.成就手冊量級區段 {
+  min-width: 0;
+  display: grid;
+  gap: 7px;
+}
+
+.成就手冊量級區段-bonus {
+  margin-top: 3px;
+  border-top: 1px solid var(--邊框柔和色);
+  padding-top: 10px;
+}
+
+.成就手冊量級區段標題 {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding-inline: 2px;
+}
+
+.成就手冊量級區段標題 strong {
+  color: var(--次要文字);
+  font-size: 0.72rem;
+  font-weight: 830;
+}
+
+.成就手冊量級區段標題 span {
+  color: var(--靜音文字);
+  font-size: 0.64rem;
+  font-weight: 720;
+}
+
+.成就手冊量級區段-bonus .成就手冊量級區段標題 strong,
+.成就手冊量級區段-bonus .成就手冊分類 {
+  color: #f0787e;
+}
+
+:root[data-theme="light"] .成就手冊量級區段-bonus .成就手冊量級區段標題 strong,
+:root[data-theme="light"] .成就手冊量級區段-bonus .成就手冊分類 {
+  color: #9e3037;
+}
+
 .成就手冊清單 {
   min-height: 0;
   display: grid;
@@ -896,8 +1227,13 @@
   list-style: none;
 }
 
+.成就手冊階段群組列表.零式分組 .成就手冊清單 {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .成就手冊項目 {
   min-width: 0;
+  min-height: 122px;
   display: grid;
   grid-template-columns: 34px minmax(0, 1fr);
   gap: 10px;
@@ -916,11 +1252,23 @@
   background:
     linear-gradient(135deg, rgba(214, 163, 84, 0.13), transparent 58%),
     var(--表面背景柔和);
-  box-shadow: inset 3px 0 0 var(--重點色);
 }
 
 .成就手冊項目.尚未取得 {
-  opacity: 0.72;
+  opacity: 1;
+}
+
+.成就手冊項目.目前目標 {
+  border-color: rgba(214, 163, 84, 0.44);
+  opacity: 1;
+}
+
+.成就手冊項目.其他階段 {
+  border-color: var(--邊框柔和色);
+}
+
+.成就手冊項目.其他階段 .成就手冊分類 {
+  color: var(--靜音文字);
 }
 
 .成就手冊狀態圖示 {
@@ -990,6 +1338,12 @@
   border-color: rgba(214, 163, 84, 0.4);
   color: var(--重點色);
   background: rgba(214, 163, 84, 0.1);
+}
+
+.成就手冊項目.目前目標 .成就手冊取得狀態 {
+  border-color: rgba(214, 163, 84, 0.34);
+  color: var(--重點色);
+  background: rgba(214, 163, 84, 0.08);
 }
 
 .成就手冊項目 p {

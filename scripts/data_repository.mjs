@@ -12,6 +12,7 @@ const Repo說明檔名 = "README.md";
 const Git屬性檔名 = ".gitattributes";
 const Git緩衝上限 = 512 * 1024 * 1024;
 const GitHub單檔上限 = 100 * 1024 * 1024;
+const 長步驟心跳毫秒 = 10_000;
 
 class DataRepoError extends Error {
   constructor(message, details = []) {
@@ -154,25 +155,52 @@ function 建立Sha256(filePath) {
   return crypto.createHash("sha256").update(fs.readFileSync(filePath)).digest("hex");
 }
 
-function 收集受管理檔案(sourceRoot) {
-  const files = [];
+function 收集受管理檔案路徑(sourceRoot) {
+  const paths = [];
   for (const topLevel of ["data", "public/data"]) {
     const absoluteRoot = path.join(sourceRoot, topLevel);
     for (const absolutePath of 遞迴收集檔案(absoluteRoot)) {
       const relativePath = 正規化路徑(path.relative(sourceRoot, absolutePath));
-      if (!是否受管理資料(relativePath)) {
-        continue;
+      if (是否受管理資料(relativePath)) {
+        paths.push({ absolutePath, relativePath });
       }
-      const stats = fs.statSync(absolutePath);
-      files.push({
-        path: relativePath,
-        absolutePath,
-        sizeBytes: stats.size,
-        sha256: 建立Sha256(absolutePath),
-      });
     }
   }
-  files.sort((left, right) => left.path.localeCompare(right.path, "en"));
+  paths.sort((left, right) => left.relativePath.localeCompare(right.relativePath, "en"));
+  return paths;
+}
+
+function 建立百分比進度回報(label, total) {
+  let 下次百分比 = 10;
+  return (completed) => {
+    if (total <= 0) {
+      return;
+    }
+    const percent = Math.floor((completed / total) * 100);
+    if (percent < 下次百分比 && completed !== total) {
+      return;
+    }
+    console.log(
+      `${label}：${completed.toLocaleString("en-US")}/${total.toLocaleString("en-US")}（${percent}%）。`,
+    );
+    下次百分比 = Math.min(100, (Math.floor(percent / 10) + 1) * 10);
+  };
+}
+
+function 收集受管理檔案(sourceRoot, { progressLabel = null } = {}) {
+  const files = [];
+  const managedPaths = 收集受管理檔案路徑(sourceRoot);
+  const 回報進度 = progressLabel ? 建立百分比進度回報(progressLabel, managedPaths.length) : null;
+  for (const [index, { absolutePath, relativePath }] of managedPaths.entries()) {
+    const stats = fs.statSync(absolutePath);
+    files.push({
+      path: relativePath,
+      absolutePath,
+      sizeBytes: stats.size,
+      sha256: 建立Sha256(absolutePath),
+    });
+    回報進度?.(index + 1);
+  }
   return files;
 }
 
@@ -221,9 +249,14 @@ function 遮蔽敏感內容(value) {
   return output;
 }
 
-function 執行(command, args, { cwd, input, allowFailure = false, maxBuffer = Git緩衝上限 } = {}) {
+function 執行(
+  command,
+  args,
+  { cwd, input, env = process.env, allowFailure = false, maxBuffer = Git緩衝上限 } = {},
+) {
   const result = childProcess.spawnSync(command, args, {
     cwd,
+    env,
     encoding: "utf8",
     input,
     maxBuffer,
@@ -240,12 +273,162 @@ function 執行(command, args, { cwd, input, allowFailure = false, maxBuffer = G
   return result;
 }
 
+function 格式化耗時(milliseconds) {
+  const totalSeconds = Math.max(0, Math.floor(milliseconds / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return minutes > 0 ? `${minutes} 分 ${seconds} 秒` : `${seconds} 秒`;
+}
+
+function 解析Git進度(output) {
+  const labels = {
+    "Enumerating objects": "列舉物件",
+    "Counting objects": "計算物件",
+    "Compressing objects": "壓縮物件",
+    "Receiving objects": "下載物件",
+    "Resolving deltas": "整理差異",
+    "Updating files": "展開檔案",
+  };
+  const matches = [
+    ...String(output || "").matchAll(
+      /(?:^|[\r\n])(?:remote:\s*)?(Enumerating objects|Counting objects|Compressing objects|Receiving objects|Resolving deltas|Updating files):\s*(?:(\d+)%\s*\(([^)]+)\)|(\d+))/gu,
+    ),
+  ];
+  const latest = matches[matches.length - 1];
+  if (!latest) {
+    return null;
+  }
+  const percent = latest[2] === undefined ? null : Number(latest[2]);
+  const count = latest[3] || latest[4] || null;
+  return {
+    phase: latest[1],
+    percent,
+    text: `${labels[latest[1]]}${percent === null ? "" : ` ${percent}%`}${count ? `（${count}）` : ""}`,
+  };
+}
+
+async function 執行並顯示進度(
+  command,
+  args,
+  {
+    cwd,
+    input,
+    env = process.env,
+    allowFailure = false,
+    maxBuffer = Git緩衝上限,
+    progressLabel,
+  },
+) {
+  console.log(`${progressLabel}...`);
+  const startedAt = Date.now();
+
+  return new Promise((resolve, reject) => {
+    const child = childProcess.spawn(command, args, {
+      cwd,
+      env,
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    const stdoutChunks = [];
+    const stderrChunks = [];
+    let outputBytes = 0;
+    let recentStderr = "";
+    let latestProgress = null;
+    let lastReportedPhase = null;
+    let lastReportedPercent = -10;
+    let settled = false;
+
+    const 結束 = (callback) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearInterval(heartbeat);
+      callback();
+    };
+
+    const 保存輸出 = (chunks, chunk) => {
+      outputBytes += chunk.length;
+      if (outputBytes > maxBuffer) {
+        child.kill("SIGTERM");
+        結束(() => reject(new DataRepoError(`${progressLabel}的輸出超過安全緩衝上限。`)));
+        return false;
+      }
+      chunks.push(chunk);
+      return true;
+    };
+
+    const 回報Git進度 = () => {
+      const parsed = 解析Git進度(recentStderr);
+      if (!parsed) {
+        return;
+      }
+      latestProgress = parsed.text;
+      const 階段變更 = parsed.phase !== lastReportedPhase;
+      const 百分比前進 = parsed.percent !== null && parsed.percent >= lastReportedPercent + 10;
+      const 階段完成 = parsed.percent === 100 && lastReportedPercent !== 100;
+      if (階段變更 || 百分比前進 || 階段完成) {
+        console.log(`${progressLabel}：${parsed.text}。`);
+        lastReportedPhase = parsed.phase;
+        lastReportedPercent = parsed.percent ?? -10;
+      }
+    };
+
+    const heartbeat = setInterval(() => {
+      const current = latestProgress ? `，目前為${latestProgress}` : "";
+      console.log(`${progressLabel} 仍在進行（已等待 ${格式化耗時(Date.now() - startedAt)}${current}）...`);
+    }, 長步驟心跳毫秒);
+    heartbeat.unref?.();
+
+    child.stdout.on("data", (chunk) => 保存輸出(stdoutChunks, chunk));
+    child.stderr.on("data", (chunk) => {
+      if (!保存輸出(stderrChunks, chunk)) {
+        return;
+      }
+      recentStderr = `${recentStderr}${chunk.toString("utf8")}`.slice(-16_384);
+      回報Git進度();
+    });
+    child.on("error", (error) => 結束(() => reject(error)));
+    child.on("close", (status, signal) => {
+      結束(() => {
+        const stdout = Buffer.concat(stdoutChunks).toString("utf8");
+        const stderr = Buffer.concat(stderrChunks).toString("utf8");
+        const result = { status: status ?? 1, signal, stdout, stderr };
+        if (result.status === 0) {
+          console.log(`${progressLabel} 完成（${格式化耗時(Date.now() - startedAt)}）。`);
+          resolve(result);
+          return;
+        }
+        if (allowFailure) {
+          resolve(result);
+          return;
+        }
+        reject(
+          new DataRepoError(
+            `${command} ${args.map(遮蔽敏感內容).join(" ")} 執行失敗（exit code ${result.status}）。`,
+            [遮蔽敏感內容(stderr || stdout || signal || "")],
+          ),
+        );
+      });
+    });
+
+    if (input !== undefined) {
+      child.stdin.end(input);
+    } else {
+      child.stdin.end();
+    }
+  });
+}
+
 function Git(repoDir, args, options = {}) {
   return 執行("git", args, { ...options, cwd: repoDir });
 }
 
 function Git輸出(repoDir, args, options = {}) {
   return String(Git(repoDir, args, options).stdout || "").trim();
+}
+
+function Git並顯示進度(repoDir, args, options) {
+  return 執行並顯示進度("git", args, { ...options, cwd: repoDir });
 }
 
 function 取得RepoUrl() {
@@ -290,21 +473,119 @@ function 初始化Repo(repoDir, branch) {
   Git(repoDir, ["symbolic-ref", "HEAD", `refs/heads/${branch}`]);
 }
 
-function 取得遠端快照(repoDir, branch) {
-  const fetched = Git(repoDir, ["fetch", "--depth=1", "--filter=blob:none", "origin", branch], {
+function 是PartialClone(repoDir) {
+  const promisor = Git輸出(repoDir, ["config", "--bool", "--get", "remote.origin.promisor"], {
     allowFailure: true,
   });
-  if (fetched.status === 0) {
-    const remoteHead = Git輸出(repoDir, ["rev-parse", "FETCH_HEAD"]);
-    Git(repoDir, ["update-ref", `refs/remotes/origin/${branch}`, remoteHead]);
-    return remoteHead;
+  const filter = Git輸出(repoDir, ["config", "--get", "remote.origin.partialclonefilter"], {
+    allowFailure: true,
+  });
+  return promisor === "true" || Boolean(filter);
+}
+
+function 取得缺少物件(repoDir, commit) {
+  const result = Git(repoDir, ["rev-list", "--objects", "--missing=print", commit], {
+    allowFailure: true,
+    // 完整性檢查本身不得觸發 promisor remote 的隱性下載，否則下載進度與錯誤
+    // 會再次落到後續 reset，讓使用者誤以為 Git 展開工作目錄卡住或損壞。
+    env: { ...process.env, GIT_NO_LAZY_FETCH: "1" },
+  });
+  if (result.status !== 0) {
+    return [`無法離線列出 ${commit.slice(0, 12)} 的物件`];
+  }
+  return String(result.stdout || "")
+    .split(/\r?\n/u)
+    .filter((line) => line.startsWith("?"));
+}
+
+function 是暫時性Git下載錯誤(message) {
+  return /(?:RPC failed|HTTP\/2 stream|early EOF|unexpected disconnect|connection.*(?:reset|closed)|timed?\s*out|operation.*timed out|HTTP (?:408|429|5\d\d))/iu.test(
+    message,
+  );
+}
+
+function 等待(milliseconds) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+async function 取得遠端快照(repoDir, branch) {
+  // hydrate、verify 與 publish 都會逐檔驗證完整 snapshot。舊版曾用 blob:none
+  // 建立 promisor repo；只補上 --no-filter 不會讓 Git 重新傳送既有 commit 缺少的
+  // blob，reset 時反而會偷偷 lazy fetch。偵測到舊快取時使用 --refetch 明確補齊，
+  // 並在離線確認所有物件齊全後移除 partial-clone 設定。
+  let 需要完整重抓 = 是PartialClone(repoDir);
+  if (需要完整重抓) {
+    console.log("Data repo：偵測到舊版 blob:none 快取，將在下載階段補齊完整 snapshot。");
   }
 
-  const message = 遮蔽敏感內容(fetched.stderr || fetched.stdout || "");
-  if (/couldn(?:'|’)t find remote ref|remote branch .* not found|repository is empty/iu.test(message)) {
-    return null;
+  let 最後缺少物件數 = 0;
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    const fetched = await Git並顯示進度(
+      repoDir,
+      [
+        "fetch",
+        "--depth=1",
+        ...(需要完整重抓 ? ["--refetch"] : []),
+        "--no-filter",
+        "--progress",
+        "origin",
+        branch,
+      ],
+      {
+        allowFailure: true,
+        progressLabel: `Data repo：正在下載遠端 ${branch} snapshot${attempt > 1 ? `（第 ${attempt} 次）` : ""}`,
+      },
+    );
+    const message = 遮蔽敏感內容(fetched.stderr || fetched.stdout || "");
+
+    if (fetched.status === 0) {
+      const remoteHead = Git輸出(repoDir, ["rev-parse", "FETCH_HEAD"]);
+      const missingObjects = 取得缺少物件(repoDir, remoteHead);
+      最後缺少物件數 = missingObjects.length;
+      if (missingObjects.length === 0) {
+        Git(repoDir, ["update-ref", `refs/remotes/origin/${branch}`, remoteHead]);
+        if (是PartialClone(repoDir)) {
+          Git(repoDir, ["config", "--unset-all", "remote.origin.promisor"], {
+            allowFailure: true,
+          });
+          Git(repoDir, ["config", "--unset-all", "remote.origin.partialclonefilter"], {
+            allowFailure: true,
+          });
+          console.log("Data repo：完整 snapshot 已補齊，舊版 partial-clone 設定已移除。");
+        }
+        return remoteHead;
+      }
+
+      需要完整重抓 = true;
+      console.log(
+        `Data repo：下載後仍缺少 ${missingObjects.length.toLocaleString("en-US")} 個物件，將完整重試。`,
+      );
+    } else if (
+      /couldn(?:'|’)t find remote ref|remote branch .* not found|repository is empty/iu.test(message)
+    ) {
+      return null;
+    } else if (!是暫時性Git下載錯誤(message)) {
+      throw new DataRepoError("無法取得 Data repo 快照。", [message]);
+    }
+
+    if (attempt < 3) {
+      console.log(`Data repo：下載連線暫時中斷，${attempt} 秒後重試。`);
+      await 等待(attempt * 1_000);
+    } else {
+      const details = [];
+      if (最後缺少物件數 > 0) {
+        details.push(
+          `遠端 commit 仍缺少 ${最後缺少物件數.toLocaleString("en-US")} 個物件，已停止在展開工作目錄之前。`,
+        );
+      }
+      if (message) {
+        details.push(message);
+      }
+      throw new DataRepoError("Data repo snapshot 下載重試後仍不完整。", details);
+    }
   }
-  throw new DataRepoError("無法取得 Data repo 快照。", [message]);
+
+  throw new DataRepoError("無法取得 Data repo 快照。");
 }
 
 function 從Commit讀取Json(repoDir, commit, filePath) {
@@ -479,7 +760,7 @@ function 驗證快照追蹤路徑(repoDir, commit, manifest) {
   }
 }
 
-function 驗證Repo快照(repoDir, branch, commit) {
+async function 驗證Repo快照(repoDir, branch, commit) {
   const manifest = 從Commit讀取Json(repoDir, commit, Manifest檔名);
   驗證Manifest結構(manifest);
   const parents = Git輸出(repoDir, ["show", "-s", "--format=%P", commit]);
@@ -487,9 +768,16 @@ function 驗證Repo快照(repoDir, branch, commit) {
     throw new DataRepoError("Data repo main 必須是沒有 parent 的單一 root snapshot。", [parents]);
   }
 
-  Git(repoDir, ["reset", "--hard", commit]);
+  await Git並顯示進度(repoDir, ["reset", "--hard", commit], {
+    env: { ...process.env, GIT_NO_LAZY_FETCH: "1" },
+    progressLabel: "Data repo：正在展開遠端 snapshot",
+  });
   const verifiedFiles = [];
-  for (const expected of manifest.files) {
+  const 回報進度 = 建立百分比進度回報(
+    "Data repo：正在驗證 snapshot 檔案雜湊",
+    manifest.files.length,
+  );
+  for (const [index, expected] of manifest.files.entries()) {
     const absolutePath = path.resolve(repoDir, expected.path);
     if (!是否在目錄內(repoDir, absolutePath) || !fs.existsSync(absolutePath)) {
       throw new DataRepoError(`Data repo 快照缺少檔案：${expected.path}`);
@@ -504,6 +792,7 @@ function 驗證Repo快照(repoDir, branch, commit) {
       sizeBytes: stats.size,
       sha256: actualSha,
     });
+    回報進度(index + 1);
   }
   const signature = 建立內容簽章(verifiedFiles);
   if (signature !== manifest.content_signature) {
@@ -711,14 +1000,14 @@ function 確認AppendOnly歷史(previousRoot, currentRoot) {
 }
 
 function 清除本機受管理資料(sourceRoot) {
-  const files = 收集受管理檔案(sourceRoot);
-  for (const file of files) {
+  for (const file of 收集受管理檔案路徑(sourceRoot)) {
     fs.rmSync(file.absolutePath, { force: true });
   }
 }
 
 function 複製快照到來源(repoDir, sourceRoot, manifest) {
-  for (const file of manifest.files) {
+  const 回報進度 = 建立百分比進度回報("Data repo：正在還原 snapshot", manifest.files.length);
+  for (const [index, file] of manifest.files.entries()) {
     const sourcePath = path.resolve(repoDir, file.path);
     const targetPath = path.resolve(sourceRoot, file.path);
     if (!是否在目錄內(repoDir, sourcePath) || !是否在目錄內(sourceRoot, targetPath)) {
@@ -726,18 +1015,23 @@ function 複製快照到來源(repoDir, sourceRoot, manifest) {
     }
     fs.mkdirSync(path.dirname(targetPath), { recursive: true });
     fs.copyFileSync(sourcePath, targetPath);
+    回報進度(index + 1);
   }
 }
 
-function 執行Hydrate(options) {
+async function 執行Hydrate(options) {
+  console.log(`Data repo：準備同步 ${options.branch} snapshot；dry-run=${options.dryRun ? "是" : "否"}。`);
   初始化Repo(options.repoDir, options.branch);
-  const remoteHead = 取得遠端快照(options.repoDir, options.branch);
+  const remoteHead = await 取得遠端快照(options.repoDir, options.branch);
   if (!remoteHead) {
     throw new DataRepoError("Data repo 尚無可載入的 main snapshot。");
   }
-  const manifest = 驗證Repo快照(options.repoDir, options.branch, remoteHead);
+  const manifest = await 驗證Repo快照(options.repoDir, options.branch, remoteHead);
 
-  const currentFiles = 收集受管理檔案(options.sourceRoot);
+  console.log("Data repo：正在比對本機受管理資料；此步驟只讀取檔案，不會覆寫內容。");
+  const currentFiles = 收集受管理檔案(options.sourceRoot, {
+    progressLabel: "Data repo：正在計算本機資料雜湊",
+  });
   let currentSignature = null;
   if (currentFiles.length > 0) {
     currentSignature = 建立內容簽章(currentFiles);
@@ -826,9 +1120,9 @@ function 是否符合Manifest檔案(content, expected) {
   );
 }
 
-function 執行RepairEol(options) {
+async function 執行RepairEol(options) {
   初始化Repo(options.repoDir, options.branch);
-  const remoteHead = 取得遠端快照(options.repoDir, options.branch);
+  const remoteHead = await 取得遠端快照(options.repoDir, options.branch);
   if (!remoteHead) {
     throw new DataRepoError("Data repo 尚無可修復的 main snapshot。");
   }
@@ -840,7 +1134,10 @@ function 執行RepairEol(options) {
     throw new DataRepoError("Data repo main 必須是沒有 parent 的單一 root snapshot。", [parents]);
   }
   驗證快照追蹤路徑(options.repoDir, remoteHead, manifest);
-  Git(options.repoDir, ["reset", "--hard", remoteHead]);
+  await Git並顯示進度(options.repoDir, ["reset", "--hard", remoteHead], {
+    env: { ...process.env, GIT_NO_LAZY_FETCH: "1" },
+    progressLabel: "Data repo：正在展開待修復 snapshot",
+  });
 
   const files = [];
   const repairedPaths = [];
@@ -884,14 +1181,14 @@ function 執行RepairEol(options) {
   }
 
   if (repairedPaths.length === 0) {
-    驗證Repo快照(options.repoDir, options.branch, remoteHead);
+    await 驗證Repo快照(options.repoDir, options.branch, remoteHead);
     console.log("Data repo 快照沒有需要修復的換行轉換。");
     return;
   }
 
   確認必要來源(files);
   const commit = 建立RootCommit(options.repoDir, options.branch, files, manifest);
-  驗證Repo快照(options.repoDir, options.branch, commit);
+  await 驗證Repo快照(options.repoDir, options.branch, commit);
   console.log(`Data repo 已安全還原 ${repairedPaths.length} 個檔案的 CRLF 原始位元組。`);
   if (options.dryRun) {
     console.log(`Data repo repair-eol dry run 已建立本機 root snapshot ${commit}，未推送。`);
@@ -900,15 +1197,17 @@ function 執行RepairEol(options) {
   推送RootCommit(options.repoDir, options.branch, remoteHead, commit);
 }
 
-function 執行Publish(options) {
-  const files = 收集受管理檔案(options.sourceRoot);
+async function 執行Publish(options) {
+  const files = 收集受管理檔案(options.sourceRoot, {
+    progressLabel: "Data repo：正在計算待發布資料雜湊",
+  });
   確認必要來源(files);
   const manifest = 建立Manifest(files, options);
 
   初始化Repo(options.repoDir, options.branch);
-  const remoteHead = 取得遠端快照(options.repoDir, options.branch);
+  const remoteHead = await 取得遠端快照(options.repoDir, options.branch);
   const previousManifest = remoteHead
-    ? 驗證Repo快照(options.repoDir, options.branch, remoteHead)
+    ? await 驗證Repo快照(options.repoDir, options.branch, remoteHead)
     : null;
   const remoteParents = remoteHead
     ? Git輸出(options.repoDir, ["show", "-s", "--format=%P", remoteHead])
@@ -934,31 +1233,31 @@ function 執行Publish(options) {
   推送RootCommit(options.repoDir, options.branch, remoteHead, commit);
 }
 
-function 執行Verify(options) {
+async function 執行Verify(options) {
   初始化Repo(options.repoDir, options.branch);
-  const remoteHead = 取得遠端快照(options.repoDir, options.branch);
+  const remoteHead = await 取得遠端快照(options.repoDir, options.branch);
   if (!remoteHead) {
     throw new DataRepoError("Data repo 尚無可驗證的 main snapshot。");
   }
-  驗證Repo快照(options.repoDir, options.branch, remoteHead);
+  await 驗證Repo快照(options.repoDir, options.branch, remoteHead);
 }
 
-function main(options) {
+async function main(options) {
   if (options.command === "hydrate") {
-    執行Hydrate(options);
+    await 執行Hydrate(options);
   } else if (options.command === "publish") {
-    執行Publish(options);
+    await 執行Publish(options);
   } else if (options.command === "repair-eol") {
-    執行RepairEol(options);
+    await 執行RepairEol(options);
   } else {
-    執行Verify(options);
+    await 執行Verify(options);
   }
 }
 
 let options = null;
 try {
   options = 解析參數(process.argv.slice(2));
-  main(options);
+  await main(options);
 } catch (error) {
   console.error(error.message);
   for (const detail of error.details || []) {
