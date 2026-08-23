@@ -511,6 +511,71 @@ class FightIntegrityBackfillCacheTest(unittest.TestCase):
 
         self.assertTrue(backfill.candidate_needs_check(self.candidate, self.config))
 
+    def test_changed_enemy_damage_upper_limit_rechecks_only_affected_fight(self) -> None:
+        """門檻校準只重判可能跨界的既有量測，不重掃全部絕伊甸戰鬥。"""
+
+        self.candidate.encounter_key = "ultimate_futures_rewritten"
+        self.config.known_enemy_capacity = known_capacity.KnownEnemyCapacityPolicy(
+            enabled=True,
+            rules={
+                "ultimate_futures_rewritten": known_capacity.KnownEnemyCapacityRule(
+                    maximum_full_party_damage=151_500_000,
+                    maximum_enemy_damage=152_000_000,
+                )
+            },
+        )
+        self.candidate.fight["data_integrity"] = {
+            "calculation_version": integrity.CALCULATION_VERSION,
+            "status": "suspected",
+            "hidden_from_public": True,
+            "reasons": ["enemy_damage_exceeds_confirmed_total_damage_upper_limit"],
+            "metrics": {
+                "enemy_damage": 151_594_717,
+                "enemy_hp_capacity": 159_808_327,
+                "target_count": 8,
+                "known_full_party_damage": {
+                    "damage_source": "enemy_damage",
+                    "enemy_damage": 151_594_717,
+                    "maximum_enemy_damage": 151_500_000,
+                    "exceeds_maximum_enemy_damage": True,
+                },
+            },
+        }
+
+        self.assertTrue(backfill.candidate_needs_check(self.candidate, self.config))
+        self.assertEqual(
+            backfill.seed_measurement_cache_from_results([self.candidate], self.cache),
+            1,
+        )
+
+        result, cache_hit, api_queried = backfill.evaluate_candidate(
+            None,
+            None,
+            self.candidate,
+            self.config,
+            "2026-08-23T10:57:23Z",
+            self.cache,
+            refresh_cache=False,
+            offline_only=True,
+        )
+
+        self.assertEqual(result["status"], "valid")
+        self.assertFalse(result["hidden_from_public"])
+        self.assertTrue(cache_hit)
+        self.assertFalse(api_queried)
+
+        self.candidate.fight["data_integrity"]["status"] = "valid"
+        self.candidate.fight["data_integrity"]["hidden_from_public"] = False
+        self.candidate.fight["data_integrity"]["metrics"]["enemy_damage"] = 151_294_749
+        self.candidate.fight["data_integrity"]["metrics"]["known_full_party_damage"][
+            "enemy_damage"
+        ] = 151_294_749
+        self.candidate.fight["data_integrity"]["metrics"]["known_full_party_damage"][
+            "exceeds_maximum_enemy_damage"
+        ] = False
+
+        self.assertFalse(backfill.candidate_needs_check(self.candidate, self.config))
+
     def test_v9_m6s_valid_result_enters_v10_distribution_recheck(self) -> None:
         self.candidate.encounter_key = "savage_m6s"
         self.candidate.fight.update({

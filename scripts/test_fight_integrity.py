@@ -854,7 +854,7 @@ class FightIntegrityTest(unittest.TestCase):
         screen = known_capacity.KnownEnemyCapacityScreen(
             encounter_key="ultimate_futures_rewritten",
             team_total_damage=152_651_798,
-            maximum_enemy_damage=151_500_000,
+            maximum_enemy_damage=152_000_000,
             damage_source="enemy_damage",
         )
 
@@ -873,7 +873,35 @@ class FightIntegrityTest(unittest.TestCase):
         )
         known_metrics = result["metrics"]["known_full_party_damage"]
         self.assertEqual(known_metrics["damage_source"], "enemy_damage")
-        self.assertEqual(known_metrics["maximum_enemy_damage"], 151_500_000)
+        self.assertEqual(known_metrics["maximum_enemy_damage"], 152_000_000)
+
+    def test_futures_rewritten_reviewed_enemy_damage_stays_public(self) -> None:
+        """新門檻須保留已人工核對、逐目標承傷均未超過生命值的正常戰鬥。"""
+
+        screen = known_capacity.KnownEnemyCapacityScreen(
+            encounter_key="ultimate_futures_rewritten",
+            team_total_damage=151_594_717,
+            maximum_enemy_damage=152_000_000,
+            damage_source="enemy_damage",
+        )
+
+        result = integrity.evaluate(
+            checked_at_iso="2026-08-23T10:57:23Z",
+            enemy_damage=151_594_717,
+            enemy_hp_capacity=159_808_327,
+            target_count=8,
+            attack_marker=False,
+            hp_ratio_threshold=1.15,
+            suspected_hp_ratio_threshold=1.14,
+            known_capacity_screen=screen,
+        )
+
+        self.assertEqual(result["status"], "valid")
+        self.assertFalse(result["hidden_from_public"])
+        self.assertNotIn(
+            "enemy_damage_exceeds_confirmed_total_damage_upper_limit",
+            result["reasons"],
+        )
 
     def test_unverifiable_fight_is_fail_closed(self) -> None:
         result = integrity.make_unverifiable_result(

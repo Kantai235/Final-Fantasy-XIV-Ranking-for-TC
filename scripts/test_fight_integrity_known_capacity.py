@@ -311,7 +311,7 @@ class KnownEnemyCapacityPolicyTest(unittest.TestCase):
         )
         self.assertEqual(
             policy.rules["ultimate_futures_rewritten"].maximum_enemy_damage,
-            151_500_000,
+            152_000_000,
         )
         self.assertEqual(
             policy.rules["ultimate_bahamut"].maximum_full_party_damage,

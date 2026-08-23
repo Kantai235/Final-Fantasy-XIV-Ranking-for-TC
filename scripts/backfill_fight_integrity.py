@@ -182,9 +182,6 @@ def has_query_context(fight: dict[str, Any]) -> bool:
 def needs_known_capacity_recheck(candidate: Candidate, config: IntegrityConfig) -> bool:
     """判斷既有 fight 是否缺少現行固定生命池或固定總傷害的證據。"""
 
-    screen = config.known_enemy_capacity.screen(candidate.encounter_key, candidate.fight)
-    if screen is None:
-        return False
     result = integrity.current_result(candidate.fight)
     # 已有敵方生命池 1.15 倍高信心結論時不可被僅有「玩家傷害上限」的離線證據
     # 降級成 suspected。它本來已隱藏，且不需要額外重查或消耗 API 配額。
@@ -192,6 +189,41 @@ def needs_known_capacity_recheck(candidate: Candidate, config: IntegrityConfig) 
         return False
     metrics = result.get("metrics") if isinstance(result, dict) else None
     known_metrics = metrics.get("known_full_party_damage") if isinstance(metrics, dict) else None
+    rule = config.known_enemy_capacity.rules.get(candidate.encounter_key)
+
+    # 敵方承傷上限是可獨立調整的暫時門檻，不應為了門檻校準而升高全域
+    # calculation version、連帶重驗其他副本。只要既有量測高於新舊門檻中較低者，
+    # 調高或調低上限都可能改變公開分類，便以已保存的最小量測重新套用規則；
+    # 明顯低於兩個門檻的正常戰鬥不需進入回補批次，也不會重查 FFLogs API。
+    if isinstance(known_metrics, dict) and rule is not None:
+        previous_maximum_enemy_damage = integrity.to_number(
+            known_metrics.get("maximum_enemy_damage")
+        )
+        current_maximum_enemy_damage = integrity.to_number(
+            rule.maximum_enemy_damage
+        )
+        measured_enemy_damage = integrity.to_number(known_metrics.get("enemy_damage"))
+        if (
+            previous_maximum_enemy_damage != current_maximum_enemy_damage
+            and measured_enemy_damage is not None
+        ):
+            affected_thresholds = [
+                threshold
+                for threshold in (
+                    previous_maximum_enemy_damage,
+                    current_maximum_enemy_damage,
+                )
+                if threshold is not None
+            ]
+            if (
+                not affected_thresholds
+                or measured_enemy_damage > min(affected_thresholds)
+            ):
+                return True
+
+    screen = config.known_enemy_capacity.screen(candidate.encounter_key, candidate.fight)
+    if screen is None:
+        return False
     if screen.has_required_full_party_damage_range:
         if screen.needs_enemy_damage_for_low_full_party_total:
             return not (
