@@ -147,12 +147,12 @@
 
 ### F. 版本切點與過版紀錄
 1. `config/encounters.json` 的 `version_cutoff` 用來描述副本版本有效期限；`極 佐拉加` 與 `極 豔翼蛇鳥` 的過版切點是台灣時間 2026-04-21 18:00（`2026-04-21T10:00:00.000Z`），輕量級零式 M1S～M4S、`極 永恆女王` 與 `滅 黑暗之雲` 的過版切點是台灣時間 2026-07-28 13:00（`2026-07-28T05:00:00.000Z`）。
-2. `scripts/fetch_fflogs.py --rebuild-public` 會依 `start_time` 標記公開排行榜條目的 `is_obsolete_record`、`version_status` 與 `version_cutoff_iso`，並為支援切點的副本輸出 `version_ranking_entries.all|valid|obsolete`；這是避免前端重新實作排行榜去重與排序規則。
-3. `scripts/build_user_data.mjs` 會在全服統計、個人成績單與隊伍榜輸出 `version_slices.all|valid|obsolete`。同職分位、個人最佳紀錄與職業最佳紀錄只能使用 `valid` 紀錄，過版紀錄只作為歷史資料呈現與追溯。
-4. 前端版本篩選一律使用 `version=all|valid|obsolete` 的網址狀態；若副本沒有 `version_cutoff`，必須自動回到 `all`，避免非過版副本出現無效篩選。
+2. `scripts/fetch_fflogs.py --rebuild-public` 會依 `start_time` 標記公開排行榜條目的 `is_obsolete_record`、`version_status` 與 `version_cutoff_iso`。排行榜可依使用者偏好用 `game_version` 做繁中服版本累積篩選，或只用既有過版標記做時效篩選；無論哪種模式都不得再輸出重複的 `version_ranking_entries.all|valid|obsolete`。
+3. `scripts/build_user_data.mjs` 會在全服統計與隊伍榜輸出 `version_slices.all|valid|obsolete`；個人成績單不複製整份切片，而是在每筆公開成績保存 `is_obsolete_record`／`version_status`，由前端依目前條件篩選。同職分位、個人最佳紀錄與職業最佳紀錄只能使用 `valid` 紀錄，過版紀錄只作為歷史資料呈現與追溯。
+4. 全服統計、玩家比較與隊伍榜的版本時效篩選仍使用 `version=all|valid|obsolete`；排行榜的共用「版本紀錄」偏好開啟時使用 `gameVersion`，直接顯示目前已開放的實際遊戲版本作為預設，並顯示每筆版本。偏好關閉時，排行榜若有 `version_cutoff` 則改使用 `version=all|valid|obsolete` 的紀錄時效篩選；網址只能寫入目前模式的條件。
 5. 個人成績簡表另有繁中服遊戲版本快照，和 `version_cutoff` 的 valid／obsolete 語意分離，目前預設選擇 7.2。`profile_summary_available_from` 決定副本首次可見版本，選填的 `profile_summary_available_until` 可讓輪替內容只保留至最後一個歷史版本；版本選項以「下一版本開放時間」排除後續 `recorded_at_iso`。已公告的未來版本需保存明確開放時間，並在時間到達前標示待開放、到達後自動可選。未公告開放時間時不得用目前時間或猜測日期切分歷史戰鬥。
 6. 個人成績簡表的零式會列出所選遊戲版本中全部已開放量級，預設選取最新量級，但可切換查看較早量級。`profile_summary_savage_tier` 必須保存量級 key、名稱、遞增順序與量級內 1～4 層；某量級四層皆有該版本有效通關時，量級按鈕顯示彩色勾勾，量級內樓層仍顯示職業與 PR。新增次重量級、重量級時提高 order 即可讓簡表加入新量級，舊量級的排行榜與個人成績仍維持歷史追溯。
-7. `config/game_versions.json` 是個人成績單 `game_version` 的唯一繁中服競技版本切點來源。`build_user_data.mjs` 必須以戰鬥 `recorded_at_iso` 在建置層寫入版本標籤；此欄位只用於玩家辨識當時的技能／裝備環境，不得改變 `version_cutoff` 的 valid／obsolete、排名或 PR 語意。前端以 localStorage 偏好控制顯示，預設關閉；開啟時個人分位亮點的 PR 在左、版本在右，成績列摘要與歷史表皆在 aDPS 後顯示版本，並在一般成績單依目前伺服器的已收錄版本提供篩選。版本條件需與職業篩選交集，並以「截至選定版本」的累積快照套用：選擇 7.1 時包含 7.0、7.05 與 7.1，最新版本即完整成績單，不另設「全部版本」。關閉版本顯示時需清除版本條件。個別玩家 JSON 來自專用資料來源，若舊資料尚未帶入 `game_version`，前端僅可依同一組繁中服切點從 `recorded_at_iso` 回推顯示與篩選版本；明確欄位永遠優先，無法判讀時間時不可臆測。
+7. `config/game_versions.json` 是建置層寫入個人成績單與排行榜 `game_version` 的唯一繁中服競技版本切點來源。`build_user_data.mjs` 與 `build_ranking_table_data.mjs` 必須以戰鬥 `recorded_at_iso` 寫入版本標籤；此欄位只用於玩家辨識當時的技能／裝備環境，不得改變 `version_cutoff` 的 valid／obsolete、排名或 PR 語意。前端以共用 localStorage「版本紀錄」偏好控制顯示，預設關閉；開啟時個人分位亮點、成績列摘要與歷史表顯示版本，並在一般成績單依目前伺服器的已收錄版本提供篩選。版本條件需與職業篩選交集，並以「截至選定版本」的累積快照套用：選擇 7.1 時包含 7.0、7.05 與 7.1，最新版本即完整成績單，不另設「全部版本」。關閉版本顯示時需清除版本條件。個別玩家 JSON 來自專用資料來源，若舊資料尚未帶入 `game_version`，`src/utils/userProfileClearSummary.js` 只可用與設定同步的繁中服切點從 `recorded_at_iso` 回推顯示與篩選版本；明確欄位永遠優先，無法判讀時間時不可臆測。個人成績簡表的歷史畫面範圍仍是獨立產品規則，不可反向取代建置層設定。
 
 8. 個人成績趨勢固定將符合目前角色、伺服器與版本快照的公開紀錄收斂為一張真實時間軸圖。圖表使用與排行榜一致的雙欄分組選單，提供全部／指定副本、全部職業／指定職能／指定職業，以及 PR 值／rDPS 三組獨立條件；頁面詳細成績表的職業篩選不得限縮圖表自己的「全部職業」來源。時間範圍提供近 7／14／30／90 天、全部資料與自訂日期，預設以目前副本／職業範圍內最新可用紀錄為終點顯示近 30 個繁中服日曆日。時間軸只納入可解析 `recorded_at_iso` 的紀錄，不得以等距位置猜測缺失時間。版本更新標註固定沿用近期動態 Logs 趨勢的共用事件表，只取繁中服事件且不受「版本紀錄」顯示偏好控制；標籤省略「繁中服」前綴，以「7.11 絕伊甸」格式顯示版本與開放內容。滑鼠懸停、鍵盤聚焦或觸控點擊標點時必須顯示副本、職業、PR、rDPS 與紀錄時間，離開圖表、按 Escape 或點擊圖表空白處後收起資訊卡；跨副本／職業的 rDPS 只作時間檢視，不代表相同母體排名。
 
@@ -176,17 +176,7 @@
 4. 若使用者貼上的 report 完全不在公開或 hidden delta 索引中，前端只能回報「尚未在公開索引找到」並列出排程與常見原因；不能宣稱已即時確認 private、deleted、沒有繁中服玩家或沒有通關，這類精確判斷仍只能由資料管線下一輪掃描或站務端受保護診斷工具完成。
 5. 待處理名單只以 report code 為單位；即使使用者貼上的 FFLogs 網址帶有 `fight` 參數，也不得把 queue 語意改成指定 fight 補抓。Public 且可讀的 report 可使用一般待收錄或重查；只有本站公開索引已命中且 Apps Script 明確確認 FFLogs 非 Public 或不可讀時，才可使用 `review_existing_visibility` 重新確認公開狀態。workflow 仍須完整重掃整份 report；只有重建後的 hidden delta 真的命中時，收尾才可把該列標為 `hidden`，避免暫時性錯誤或前端參數直接隱藏資料。
 
-### I. 版本紀錄與排行榜時效篩選調整
-1. 本項技術決策僅取代 F.2 與 F.4 中「排行榜」的部分；全服統計、玩家比較與隊伍榜仍保留 `version=all|valid|obsolete` 與 `version_slices` 的有效／過版資料語意。
-2. 公開排行榜不再輸出 `version_ranking_entries`，排行榜薄索引也不再輸出 `version_table_rows`。這兩份資料都是同一排行榜為 valid／obsolete 時效篩選保留的重複切片；刪除後仍保留來源 `ranking_entries`、`version_cutoff` 與每筆紀錄的過版標記，避免 GitHub Pages 載荷重複成長。
-3. 排行榜版本紀錄只使用 `gameVersion` 的累積遊戲版本條件，選單直接顯示實際版本；未手動選擇時，於已開放版本中自動預設最新版本。若選擇早於副本 `profile_summary_available_from` 的版本，空狀態必須指出繁中服開放版本，並要求至少選擇該版本，不得顯示泛用的無資料訊息。
-
-### J. 共用版本紀錄偏好
-1. 本項取代 I.3 的排行榜選單顯示條件。設定視窗的「版本紀錄」是個人成績單與排行榜共用的 localStorage 偏好，預設關閉；既有個人成績單版本偏好鍵值必須繼續可讀寫，避免使用者設定遺失。
-2. 偏好開啟時，排行榜使用 `gameVersion` 累積篩選、顯示版本欄，並隱藏紀錄時效；偏好關閉時，隱藏版本欄與累積版本選單，若副本有 `version_cutoff` 則改顯示 `version=all|valid|obsolete` 紀錄時效。網址只能保存目前模式使用的條件。
-3. 兩種前端篩選都只能使用薄索引既有的 `game_version` 與 `is_obsolete_record`，不得恢復 `version_ranking_entries` 或 `version_table_rows`，以維持 GitHub Pages 容量控制。
-
-### K. 2026-07-28 後普攻資料完整性暫時防護
+### I. 2026-07-28 後普攻資料完整性暫時防護
 1. `scripts/fight_integrity.py` 是唯一集中定義此暫時規則的模組；`scripts/fetch_fflogs.py` 對新收錄 fight 會在寫入排行來源前立即檢核，必要時查詢「依目標傷害」、`targetResources.maxHitPoints` 與設定指定的 ability 7／8 事件，`scripts/backfill_fight_integrity.py` 則只分批回補既有資料，兩者都只處理台灣時間 `2026-07-28T18:00:00+08:00` 後的 fight，且不保存 raw events。全隊敵方承傷／敵方最大生命池總和嚴格大於 `1.15` 時標記為 `excluded`；倍率介於 `1.14` 至 `1.15` 時標記為 `suspected`，用來補足 Attack 標記漏報但尚未達高信心排除門檻的邊界群組；`damage_done_summary.exploitDetails` 出現 `guid=7` 或 `Attack` 仍會直接標記為 `suspected`。不可使用泛用 `exploit:6`，因為它在正常紀錄也會大量出現。
 2. v10 對 M5S～M8S 的標準 8 人、無超越之力通關查詢完整 ability 7 事件頁，只採 `type=damage`，並以 `hitType=1`、非直擊及 `amount / multiplier` 建立純一般普攻基準。物理職業至少 60 筆普攻、30 筆純一般普攻才列入；單人須同時達每擊中位數 `max(10,000, 參考值×2)` 與占個人總傷 `max(15%, 參考值×1.5)`。至少 3 人且占合格樣本 60%，或 2 名物理職業另有異常非物理職業時標為 `suspected`；至少 4 人、占 75%，且異常組每擊中位數至少 15,000、普攻占比中位數至少 20% 時標為 `excluded`。不得用單一玩家、單一尖峰，或只符合每擊傷害／占比其中之一來排除整場。
 3. 檢核結果必須寫在 `fights[].data_integrity`，其中 `hidden_from_public=true` 只會使該 fight 從 `ranking_entries`、公開排行榜、個人成績、隊伍榜與近期動態消失；report、fight、players 與其檢核證據均保留。不得把此情況轉為 `report_hidden`，也不得整份 report 刪除。同一物理戰鬥若有多份上傳，任一來源明確標為 `excluded`／`suspected` 時，相同 `fight_hash` 的所有 report 變體都必須一併排除；`unverifiable` 不得跨 report 傳播。

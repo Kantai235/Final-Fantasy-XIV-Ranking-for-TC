@@ -107,8 +107,8 @@ jobs:
 
       - name: 從 Pages artifact 移除個人成績單部署資料
         run: |
-          # 緊急部署同樣只讓主站 artifact 保留分享頁、OG 圖、共用使用者索引與非使用者資料；
-          # 逐玩家靜態分享頁與個別玩家成績單 JSON 仍由專用 users repo / SPA route 提供。
+          # 緊急部署同樣只讓主站 artifact 保留共用使用者索引與非使用者資料；
+          # 逐玩家靜態分享頁與玩家 OG 圖不部署；個別玩家 JSON 由 users repo 提供，玩家路徑由 SPA 接手。
           npm run prune:pages-user-data
 
       - name: 上傳 GitHub Pages artifact

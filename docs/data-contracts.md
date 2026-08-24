@@ -18,7 +18,7 @@ npm run sync:data -- --dry-run
 
 若本機已有不同資料，dry-run 會停止且不寫入。必須先暫停 workflow、保存本機成果，才能以最新 Data snapshot 開始下一輪；不得用 `--force` 掩蓋未知差異。`npm run data:publish` 會逐一確認既有 report、`fight_id`、玩家身分與 checked-report checkpoint 未遺失，再建立沒有 parent 的 root commit，並以 `force-with-lease` 阻止競爭覆寫。
 
-`data/state.json.support_metrics_report_backfill` 是坦補支援統計由新往舊回補的獨立 checkpoint。`cutoff_sort_time` 固定為繁中服 7.2 開放時間，`cursor_sort_time`／`cursor_report_code` 表示已選批次中最舊的 report，`retry_report_codes` 保留暫時失敗項目；`calculation_version` 或 `mitigation_rules_version` 改變時，游標會安全回到固定切點。這些欄位不得用一般掃描 state 覆蓋或在尚未完成時刪除。
+`data/state.json.support_metrics_report_backfill` 是坦補支援統計由新往舊回補的獨立 checkpoint。`cutoff_sort_time` 固定為繁中服 7.2 開放時間，`cursor_sort_time`／`cursor_report_code` 表示已選批次中最舊的 report，`retry_report_codes` 保留暫時失敗紀錄；`calculation_version` 或 `mitigation_rules_version` 改變時，游標會安全回到固定切點。這些欄位不得用一般掃描 state 覆蓋或在尚未完成時刪除。
 
 ## 副本清單
 
@@ -38,7 +38,7 @@ npm run sync:data -- --dry-run
 
 `enabled` 只控制下一輪 Python 爬蟲是否掃描該副本，不代表前端是否顯示。前端選單來源是 `public/data/encounters.json`；只要副本已有 `data/rankings/` 或 `public/data/rankings/` 歷史資料，即使 `enabled=false`，仍應保留在公開清單中，避免既有排行榜與個人成績單消失。
 
-個人成績簡表的版本選擇採「版本快照」：先用 `profile_summary_available_from` 與選填的 `profile_summary_available_until` 界定副本的可見版本，再以每個版本的下一個繁中服版本開放時間排除之後的 `recorded_at_iso`。因此選擇 7.0 時，極豔翼蛇鳥／極佐拉加會保留至 7.05 開放前，而 7.05 之後的同副本戰鬥不會混入。幻白虎最後可見於 7.15，7.2 改由幻朱雀呈現。7.15 的截止時間是 2026-07-28 13:00（`2026-07-28T05:00:00.000Z`）；7.2 在此時間到達前維持待開放，到達後自動可選。這與 `version_cutoff` 的 valid／obsolete 語意分離：前者是歷史畫面的時間範圍，後者是副本難度是否已過版。
+個人成績簡表的版本選擇採「版本快照」：先用 `profile_summary_available_from` 與選填的 `profile_summary_available_until` 界定副本的可見版本，再以每個版本的下一個繁中服版本開放時間排除之後的 `recorded_at_iso`。因此選擇 7.0 時，極豔翼蛇鳥／極佐拉加會保留至 7.05 開放前，而 7.05 之後的同副本戰鬥不會混入。幻白虎以 `profile_summary_available_until="7.2"` 保留至 7.2，並與 7.2 新增的幻朱雀固定同時顯示；即使玩家沒有白虎公開成績，白虎仍顯示為尚未收錄。7.15 的截止時間是 2026-07-28 13:00（`2026-07-28T05:00:00.000Z`）；7.2 在此時間到達前維持待開放，到達後自動可選。這與 `version_cutoff` 的 valid／obsolete 語意分離：前者是歷史畫面的時間範圍，後者是副本難度是否已過版。
 
 個人成績條目的 `game_version` 則是另一個顯示欄位：`scripts/build_user_data.mjs` 讀取 `config/game_versions.json`，以戰鬥的 `recorded_at_iso` 對應繁中服已確認的競技版本更新切點並寫入版本標籤。它不改變排名、PR、有效／過版判定或歷史資料；前端共用的「版本紀錄」設定預設隱藏，使用者開啟後才會在個人分位亮點、成績列摘要與歷史紀錄中顯示，並在一般個人成績單查詢列依目前伺服器的已收錄版本提供篩選。版本條件與職業條件交集套用，且版本選擇代表「截至該版本」的累積快照：選擇 7.1 時包含 7.0、7.05 與 7.1，最新版本即完整成績單，不另設「全部版本」。關閉版本資料時必須清除條件，避免隱性縮小成績單範圍。個別玩家 JSON 由專用資料來源提供，舊資料若尚未寫入該欄位，前端只可依相同固定切點與 `recorded_at_iso` 回推版本供顯示與篩選；有明確欄位時一律以欄位值為準，無法解析時間時不可猜測。歷史表格的自訂排序僅在前端對目前已篩選的 `public_entries` 建立排序檢視，不改寫 JSON 或排名語意；每個副本各自保存排序欄位與方向。可排序欄位為紀錄時間、同職分位、Active、GCD、DPS、rDPS、aDPS、版本與通關時間；缺值固定置後，同職分位會依目前 PR／前 N% 顯示模式採用相應的高低排序方向，切換顯示模式時會保留使用者原本的高低排序意圖。
 
@@ -46,7 +46,7 @@ npm run sync:data -- --dry-run
 
 零式在版本快照中會列出全部已開放量級；簡表預設選取 `profile_summary_savage_tier.order` 最大的一組，但可切換至較早量級。因此 7.05 與 7.15 只提供輕量級 1～4；7.2 會同時提供輕量級與次重量級，預設顯示次重量級 1～4（M5S／熱舞綠光、M6S／糖彩狂潮、M7S／野蠻憎惡、M8S／呼嘯之劍）。某量級四層皆有該版本有效通關時，該量級按鈕會亮起彩色勾勾；量級內的第 1～4 層仍依一般簡表規則顯示職業與 PR。這只影響簡表呈現，不會刪除舊量級的個人成績或排行歷史。
 
-開啟版本資料時，成績趨勢會在已知繁中服更新切點插入對應版本的垂直線。只有圖中的每筆 `recorded_at_iso` 都可解析時，前端才會改用時間橫軸並畫出切點；若有日期缺漏則保留既有等距樣本軸且不顯示切點，避免利用不完整資料畫出錯位的版本線。預設標記只顯示最高與最低 rDPS 數值；使用者以滑鼠懸停、鍵盤聚焦或觸控點擊資料點時，前端只顯示該點數值，離開圖表、按 Escape 或點擊圖表空白處後恢復預設標記。
+成績趨勢固定使用真實時間橫軸，無法解析 `recorded_at_iso` 的舊紀錄會被略過並由介面顯示略過數量，不得以等距位置猜測時間。圖表會在目前時間範圍內插入已知繁中服版本事件的垂直線；這些標註與近期動態共用 `src/utils/activityTimelineAnnotations.js`，不受「版本紀錄」顯示偏好控制。使用者以滑鼠懸停、鍵盤聚焦或觸控點擊資料點時，資訊卡會顯示副本、職業、PR、rDPS 與紀錄時間；離開圖表、按 Escape 或點擊圖表空白處後收起。
 
 ## 排行榜來源資料
 
@@ -143,7 +143,7 @@ Honey B. Lovely 粉絲榜來源在 `data/fun/honey_b_fans.json`，公開檔在 `
 
 個人成績單會保留前端顯示所需的 `gcd_coverage`，但不輸出 `gcd_coverage_status`。後者是 GCD 回補與抓取流程的診斷狀態，會隨每筆歷史成績大量重複；需要追查演算法來源或失敗原因時，應回到排行榜來源資料或 `data/rankings/` 的 report 分片查證。
 
-前端讀取個人成績單時，`data/users/index.json` 預設由主站 `/data/users/index.json` 提供，讓所有訪客共用的搜尋索引套用主站 CDN 快取；個別玩家成績單主檔與 `user-entry-details` 則透過 `src/utils/publicData.js` 的 users 專用 repo 基底讀取。`VITE_USER_DATA_BASE_URL` 可在部署環境覆寫個別玩家資料基底；`VITE_USER_INDEX_BASE_URL` 可在需要獨立索引 CDN 時覆寫索引基底。檔案內的 `file_path` / `base_path` 仍維持 `data/...` 相對路徑，讓主站與專用 repo 可以共用同一份資料契約。
+前端讀取個人成績單時，`data/users/index.json` 預設由主站 `/data/users/index.json` 提供，讓所有訪客共用的搜尋索引套用主站 CDN 快取；個別玩家成績單主檔與 `user-entry-details` 則透過 `src/utils/publicData.js` 的 users 專用 repo 基底讀取。`VITE_USER_DATA_BASE_URL` 可在部署環境覆寫個別玩家資料基底，`VITE_USER_DATA_FALLBACK_BASE_URLS` 可用逗號或換行加入備援來源；`VITE_USER_INDEX_BASE_URL` 可在需要獨立索引 CDN 時覆寫索引基底。檔案內的 `file_path` / `base_path` 仍維持 `data/...` 相對路徑，讓主站與專用 repo 可以共用同一份資料契約。
 
 `public/data/user-entry-details/{玩家檔名}.json` 使用 `format="user_entry_details_v1"`，`entries` 以成績 `id` 為 key。使用者點擊個人成績單的「報告」按鈕時，前端才依 `report_detail_path` 載入這份細節檔並補回報告彈窗分頁。這讓 `public/data/users/` 能維持較薄的列表資料，同時保留每個來源 report code、fight、FFLogs 連結與外部工具深連結所需欄位。細節檔內的 `report_variants` 只保存每個來源必要或與主檔代表成績不同的欄位；前端會先套用主檔成績，再覆蓋來源分頁欄位。
 
@@ -206,7 +206,7 @@ UCoB（絕巴哈姆特，encounterID 1073）通關判斷需由資料管線補判
 
 ## 全域公告資料
 
-全域公告由 `public/data/announcements.json` 提供，`npm run build:user-data` 會同步產生 `public/data/all/announcements.json`，避免額外檢視流程讀取 hidden delta 根目錄資料時公告缺檔。公告是 commit 維護的營運靜態內容，不屬於 FFLogs 抓取或使用者統計建置產物。
+全域公告由 `public/data/announcements.json` 提供，並隨 Data repo snapshot commit 維護。`npm run build:user-data` 會同步產生 `public/data/all/announcements.json`，避免額外檢視流程讀取 hidden delta 根目錄資料時公告缺檔；公告不屬於 FFLogs 抓取或使用者統計建置產物。
 
 公告檔格式：
 
@@ -237,7 +237,7 @@ UCoB（絕巴哈姆特，encounterID 1073）通關判斷需由資料管線補判
 - `version_status`
 - `version_cutoff_iso`
 
-`scripts/build_user_data.mjs` 會在全服統計、個人成績單與隊伍榜輸出 `version_slices.all|valid|obsolete`。同職分位、個人最佳紀錄與職業最佳紀錄只能使用 `valid` 紀錄，過版紀錄只作為歷史資料呈現與追溯。
+`scripts/build_user_data.mjs` 會在全服統計與隊伍榜輸出 `version_slices.all|valid|obsolete`。個人成績單不複製整份版本切片，而是在每筆公開成績保留 `is_obsolete_record`／`version_status`，由前端依查詢條件篩選。同職分位、個人最佳紀錄與職業最佳紀錄只能使用 `valid` 紀錄，過版紀錄只作為歷史資料呈現與追溯。
 
 全服統計、玩家比較與隊伍榜仍以 `version=all|valid|obsolete` 的網址狀態篩選有效／過版資料；排行榜依共用偏好擇一使用 `gameVersion` 累積版本紀錄或 `version=all|valid|obsolete` 紀錄時效，且兩種模式都不讀取或輸出 `version_ranking_entries` 與 `version_table_rows`。
 

@@ -1,148 +1,136 @@
 # 系統架構
 
-本專案是靜態化分離架構：Python 負責抓取 FFLogs，Node.js 負責把來源資料建置成網站可讀的統計 JSON，Vue 只負責呈現靜態 JSON。主站共用資料與個人成績單索引部署在 Pages artifact 的 `/data/`；個別玩家成績單 JSON 另外同步到 users 專用 repo，避免主站 artifact 隨玩家數量無限制膨脹。
+本專案採靜態化分離架構：Python 保存可追溯的 FFLogs 來源脈絡，Node.js 建置前端可直接讀取的統計 JSON，Vue 只處理呈現與使用者端篩選。高頻來源資料與個別玩家 JSON 分散到專用 repo，主站 Pages artifact 只保留共用資料與玩家搜尋索引。
 
-`apps-script/fflogs-report-status/` 是額外的站務輔助 Web App 範本，用於即時查詢單一 FFLogs report 對站務 OAuth client 是否可讀，並在 report 已 Public 時寫入 Google Sheet 待收錄名單。它不寫入排行榜來源資料，也不是資料管線權威來源；實際收錄仍以 `scripts/fetch_fflogs.py` 下一輪掃描結果為準。
+逐檔責任見 [codebase-map.md](codebase-map.md)，使用者功能見 [features.md](features.md)，JSON 格式與歷史保護見 [data-contracts.md](data-contracts.md)。
+
+## 資料流
 
 ```mermaid
 flowchart LR
-  FFLogs["FFLogs GraphQL API"] --> Fetch["scripts/fetch_fflogs.py"]
-  Fetch --> Source["data/rankings/ 與 data/state.json"]
-  Source --> Builder["scripts/build_user_data.mjs"]
-  Builder --> Public["public/data/ 靜態 JSON"]
-  Public --> UserRepo["users 專用 repo"]
-  Public --> PagesData["Pages artifact /data"]
-  UserRepo --> Vue["src/ Vue 3 / Vite 前端"]
-  PagesData --> Vue
+  FFLogs["FFLogs GraphQL API"] --> Fetch["Python 正式抓取與回補"]
+  Fetch --> Source["Data repo<br/>data/rankings、state、共用 public/data"]
+  Source --> Build["Node.js 建置與驗證"]
+  Build --> Shared["Pages artifact<br/>共用 /data 與 users/index.json"]
+  Build --> Users["Users repo<br/>個別玩家與報告細節"]
+  Shared --> Vue["Vue 3 / Vite SPA"]
+  Users --> Vue
+  Vue --> Pages["GitHub Pages / Cloudflare"]
+  FFLogs --> Apps
+  Apps["Apps Script<br/>report 即時可讀狀態"] --> Queue["Google Sheet 待處理名單"]
+  Queue --> Fetch
 ```
 
-## 三層責任邊界
+### Repo 分工
 
-### Data Fetching Layer
+| Repo／產物 | 保存內容 | 不保存內容 |
+| --- | --- | --- |
+| 主 repo | 程式碼、設定、文件、靜態 icon／圖片與 workflow。 | `data/`、`public/data/`、本機快取、OAuth 憑證。 |
+| Data repo | 權威 `data/`、共用 `public/data/` 根層 JSON、`public/data/fun/` 與 manifest。 | 可重建薄索引、hidden delta、個別玩家檔、報告細節。 |
+| Users repo | 最新個別玩家主檔、使用者報告細節與 hidden 使用者差量。 | 歷史版本；每輪收斂為單一 root snapshot。 |
+| Pages artifact | 前端 bundle、共用資料、`data/users/index.json`、低基數 SEO／OG 頁。 | 個別玩家 JSON、逐玩家靜態頁與玩家 OG 圖。 |
 
-`scripts/fetch_fflogs.py` 是唯一可直接呼叫 FFLogs GraphQL API 的資料管線入口，負責：
+Data repo 的 report／fight／player／checkpoint 是 append-only 歷史資產。root snapshot 會替換 repo Git 歷史以控制容量，但發布工具會先比較前後 manifest 與資料身分，不能因快照收斂而遺失內容。
 
-- OAuth 憑證讀取與多憑證輪替。
-- FFLogs 限流、重試、暫時性 500/502/503/504 與逾時處理。
-- 淺層 reports 掃描、延遲掃描、歷史補查與既有 report 狀態巡檢。
-- 以 `masterData.actors(type: "Player")` 與 `playerDetails` 確認繁中服玩家。
-- 寫入 `data/rankings/`、`public/data/rankings/` 與 `data/state.json`。
+## Data Fetching Layer
 
-GraphQL 查詢字串集中在 `scripts/fflogs_pipeline/graphql_queries.py`；這個子模組只描述 FFLogs 欄位需求，不處理限流、掃描游標、資料寫入或 UI 產物格式。`fetch_fflogs.py` 仍是資料權威入口，拆出查詢文本只是降低單檔責任，避免未來調整查詢欄位時誤動掃描策略。
+`scripts/fetch_fflogs.py` 是正式排行榜掃描的唯一入口，負責：
 
-這一層只保存可重建排行榜所需的 report/fight/player 脈絡，不應輸出 UI 專用格式。
-`scripts/fetch_honey_b_fans.py` 是例外的趣味資料管線，固定解析 M2S `心醉魂迷：奴役` 衍生紀錄，來源寫入 `data/fun/honey_b_fans.json`，公開輸出寫入 `public/data/fun/honey_b_fans.json`；它不得寫入正式 `data/rankings/` 或 `data/state.json`。
+- 讀取單組或多組 OAuth Client Credentials。
+- 滑動視窗限流、憑證輪替、429 冷卻、暫時性 HTTP／連線錯誤重試與執行時間預算。
+- 近期、延遲、歷史 reports 掃描，以及既有 report 公開狀態巡檢。
+- 查完整 fight list 並依 fight 層 encounter／difficulty 分派 mixed report。
+- 以 `masterData.actors(type: "Player")` 與 `playerDetails` 判斷繁中服玩家。
+- 整理 Damage Done、Healing、坦克承傷／防護／減傷與選填 GCD 結果。
+- 寫入 `data/rankings/`、`data/state.json`，並由來源重建 `public/data/rankings/` 與 `public/data/encounters.json`。
 
-### Data Building Layer
+`scripts/fflogs_pipeline/graphql_queries.py` 只保存查詢字串與 alias builder；OAuth、限流、游標、玩家判斷與檔案寫入仍留在主腳本。`scripts/fflogs_pipeline/state_store.py` 與 `support_metrics.py` 分別封裝 state 分片與坦補支援純計算。
 
-`scripts/build_user_data.mjs` 負責把來源資料整理成前端可直接讀取的靜態 JSON：
+回補腳本可以重用 `fetch_fflogs.py` 的認證與解析函式，但不得形成第二套正式掃描規則：
 
-- `public/data/users/*.json`
-- `public/data/user-entry-details/*.json`
-- `public/data/users/index.json`
-- `public/data/global_stats.json`
-- `public/data/activity.json`
-- `public/data/team_rankings.json`
-- `public/data/server_compare.json`
-- `public/data/ranking-tables/*.json`
-- `public/data/ranking-details/*.json`
-- `public/data/report_status_index.json`
-- `public/data/update_status.json`
-- `public/data/all/` hidden delta 與額外檢視索引
+- `backfill_missing_fflogs_data.py`：既有必要欄位與支援統計。
+- `backfill_gcd_coverage.py`：既有 GCD。
+- `backfill_fight_integrity.py`：既有 fight 完整性證據。
 
-複雜排序、分位數、隊友統計、職業分布與版本切片應在這一層完成。`config/game_versions.json` 的繁中服競技版本切點會依 `recorded_at_iso` 轉為個人成績與排行榜薄索引列的 `game_version`；薄索引另附帶同一份極小 `game_versions` 中繼資料，供 Vue 在「版本紀錄」偏好開啟時做累積版本篩選。偏好關閉時則只使用每列既有的 `is_obsolete_record` 做紀錄時效篩選，兩種模式都不得複製五套完整排行榜。個別玩家 JSON 由專用資料來源提供，若舊資料暫未同步 `game_version`，Vue 只能依同一組固定切點與 `recorded_at_iso` 回推顯示／篩選版本，且明確欄位優先。若新增前端畫面需要新的統計欄位，請先擴充這一層，再讓 Vue 讀取結果。
-同名角色若出現在不同伺服器，公開衍生資料會以「角色名稱 + 伺服器」拆成不同玩家；目前不再自動處理轉服合併，也不再把另一個伺服器列為搜尋 alias。
-正式 GitHub Actions 會在資料驗證後把 `public/data/users`、`public/data/user-entry-details` 與 hidden 使用者差量同步到 `Final-Fantasy-XIV-Ranking-for-TC-Users`，再於 Pages 建置完成後移除 `dist/data/users` 內除了 `index.json` 之外的個別玩家檔、`dist/data/user-entry-details`、`dist/data/all/users` 與 `dist/data/all/user-entry-details`。這不改變資料建置層的輸出契約，只是部署時把大型個別玩家 JSON 放到專用資料來源，並讓所有訪客共用的搜尋索引留在主站 CDN 快取層。
+`fetch_honey_b_fans.py` 是獨立趣味資料管線，只能寫 `data/fun/` 與 `public/data/fun/`，不得混入正式排行榜。Apps Script 只查單一 report 的即時可讀狀態並寫待處理 Sheet，也不是排行榜來源。
 
-全域公告是例外的營運靜態內容：`public/data/announcements.json` 直接隨 commit 維護，不從 FFLogs 或使用者統計建置而來；`build_user_data.mjs` 只負責把它同步到 `public/data/all/announcements.json`。這讓公告可快速發佈，同時不碰 append-only 排行榜歷史資料。
+抓取層只保存可重建排行榜所需的 report／fight／player 與小型衍生摘要，不輸出 Vue 專用欄位，也不落地 Healing table、DamageTaken／Buff／Debuff raw events、Casts graph 或 FFLogs All raw events。
 
-### UI Presentation Layer
+## Data Building Layer
 
-`src/` 是 Vue 3 / Vite 前端，只能讀取靜態 JSON：
+正式排行榜與主站統計主要由 Node.js 把來源資料轉為前端資料契約：
 
-- `src/pages/` 放主要頁面。
-- `src/components/` 放跨頁共用元件。
-- `src/composables/` 放前端狀態、篩選、排序與資料讀取邏輯。
-- `src/composables/rankingApp/` 放 `useRankingApp()` 的拆分子模組：`context.js` 管理 app 注入、`defaults.js` 管理預設值與選項、`useRankingData.js` 管理排行榜列正規化、排序與按需載入細節。
-- `src/utils/` 放格式化、分享網址狀態、靜態資料 URL 與 fetch 工具。
-- `src/domain/` 放 FFXIV 職業與職能等領域設定。
-- `src/styles/app.css` 是樣式入口清單；設計 token、版面骨架、控制項、頁面樣式、表格彈窗與響應式規則分散在同目錄的主題檔，避免所有視覺責任集中在單一 CSS 檔。
+- `scripts/build_user_data.mjs`：使用者主檔、使用者報告細節、全服統計、近期動態、隊伍榜、伺服器對比、成就持有率與 hidden 使用者差量。
+- `scripts/build_ranking_table_data.mjs`：排行榜薄索引、按需報告細節、坦補支援欄位、唯一搭檔與 hidden delta。
+- `scripts/build_report_status_index.mjs`：FAQ 使用的壓縮 report／fight 索引。
+- `scripts/build_public_status_data.mjs`：公開更新與排程摘要。
+- `scripts/validate_data.mjs` 與 `schemas/public_data_contracts.mjs`：驗證欄位、索引、分片、來源／衍生資料一致性與禁止 raw payload。
 
-前端元件不得直接呼叫 FFLogs API，也不要在 Vue 內重做全服統計或資料聚合。
-`src/utils/publicData.js` 集中處理資料基底：排行榜、全服統計、活動資料、公告與 `data/users/index.json` 使用主站 `/data/`；個別玩家成績單主檔與 report 分頁細節預設使用 users 專用 repo，可用 `VITE_USER_DATA_BASE_URL` 覆寫。若未來要把索引搬到獨立 CDN，可另外用 `VITE_USER_INDEX_BASE_URL` 覆寫索引基底。
-公告元件只能讀取 `public/data/announcements.json`，並用瀏覽器 `localStorage` 保存使用者已關閉公告 id；這個狀態不會寫回公開資料。
+Honey 是前一節所述的獨立 Python 趣味管線；`scripts/fetch_honey_b_fans.py --rebuild-public` 只會由既有 `data/fun/` 來源重建公開 Honey JSON，不改由 Node.js 接手，也不會混入正式排行榜聚合。
 
-## 專案結構
+`npm run build:user-data` 會先執行主要使用者聚合，再串接排行榜薄索引、report 狀態與公開更新狀態；「指令輸出」和「單一腳本責任」不可混為一談。
+
+複雜排序、同場去重、分位、版本、隊友、隊伍、職業分布與成就全站統計都在此層完成。新增頁面需要統計欄位時，順序是：
+
+1. 確認來源是否已有足夠脈絡。
+2. 擴充 Node.js 建置器與公開 schema。
+3. 補上資料建置及守恆測試。
+4. 最後讓 Vue 讀取欄位。
+
+不得在 Vue 掃描所有玩家檔案或排行榜來源重做聚合。
+
+## UI Presentation Layer
+
+`src/` 是 Vue 3／Vite SPA。它只能讀取：
+
+- 主站 `/data/` 的副本、排行榜薄索引、全服統計、近期動態、隊伍榜、伺服器對比、公告、report 索引與使用者搜尋索引。
+- Users repo 的個別玩家主檔與 `user-entry-details`；預設主來源為 raw GitHub，備援為 jsDelivr，可由 `VITE_USER_DATA_BASE_URL` 與 `VITE_USER_DATA_FALLBACK_BASE_URLS` 覆寫。
+- 選填獨立 CDN 的使用者索引；預設仍由主站 `/data/users/index.json` 提供，可用 `VITE_USER_INDEX_BASE_URL` 覆寫。
+
+`src/utils/publicData.js` 集中組合上述 URL。頁面與元件不得自行硬編 repo URL，也不得直接呼叫 FFLogs。唯一的前端跨網域站務互動是 FAQ 透過 `src/utils/reportStatus.js` 以 JSONP 呼叫公開 Apps Script endpoint，查詢 report 可讀狀態或送入受限待處理名單；OAuth 留在 Apps Script Properties，不進瀏覽器。
+
+### 前端狀態邊界
+
+- `src/App.vue` 建立並 provide 單一 app context，依網址模式非同步載入頁面。
+- `src/composables/useRankingApp.js` 協調跨頁資料與狀態。
+- `src/composables/rankingApp/defaults.js`、`context.js`、`useRankingData.js` 分別管理固定預設、注入與排行榜資料。
+- `src/domain/` 保存職業／副本領域定義；`src/utils/` 保存可獨立測試的格式、網址、資料來源與個人成績規則。
+- `src/styles/app.css` 只作為樣式入口，依序匯入 token、殼層、控制項、頁面、表格／彈窗與響應式檔案；它本身不再累積畫面規則。
+
+專案沒有 Vue Router；`src/utils/urlState.js` 使用 History API 管理乾淨路徑與舊 query 相容，GitHub Pages 則由 postbuild 產生 route HTML 與 `404.html` fallback。
+
+## 營運靜態內容與瀏覽器狀態
+
+`public/data/announcements.json` 是隨 Data repo snapshot commit 維護的營運內容，不由 FFLogs 統計生成；`build_user_data.mjs` 只把它同步到 hidden 檢視所需的 `public/data/all/announcements.json`。公告關閉、主題、分位模式、版本紀錄、說明提示與玩家搜尋歷程都保存在瀏覽器 `localStorage`，不寫回公開資料。
+
+GA4 是選填功能：`src/analytics.js` 只有在 `VITE_GA_MEASUREMENT_ID` 存在時載入，開發環境還需明確設定 `VITE_GA_ENABLE_IN_DEV=true`。
+
+## 目錄結構
 
 ```text
 .
-├── src/
-│   ├── App.vue
-│   ├── components/
-│   ├── composables/
-│   │   └── rankingApp/
-│   ├── domain/
-│   ├── pages/
-│   ├── styles/
-│   ├── utils/
-│   └── main.js
-├── scripts/
-│   ├── fetch_fflogs.py
-│   ├── fflogs_pipeline/
-│   ├── fetch_honey_b_fans.py
-│   ├── gcd_coverage_core.py
-│   ├── backfill_gcd_coverage.py
-│   ├── backfill_gcd_coverage_xivanalysis.py
-│   ├── build_user_data.mjs
-│   ├── build_report_status_index.mjs
-│   ├── build_public_status_data.mjs
-│   ├── validate_data.mjs
-│   ├── compact_ranking_data.py
-│   ├── compact_state.py
-│   └── build_spa_fallback.mjs
-├── apps-script/
-│   └── fflogs-report-status/
-├── config/
-│   ├── encounters.json
-│   ├── game_versions.json
-│   ├── fflogs.json
-│   └── site.json
-├── data/
-│   ├── rankings/
-│   ├── fun/
-│   ├── state.json
-│   └── update_status.json
-├── public/
-│   ├── data/
-│   ├── favicon.svg
-│   ├── site.webmanifest
-│   └── icons/jobs/
-├── docs/
-└── .github/workflows/update_rankings.yml
+├── .github/workflows/     # 正式更新與緊急部署
+├── apps-script/           # report 即時可讀狀態 Web App
+├── config/                # 副本、版本、FFLogs、完整性與站台設定
+├── docs/                  # 主題文件與 GCD 稽核證據
+├── schemas/               # 可執行公開資料契約
+├── scripts/               # 抓取、建置、回補、驗證、同步與維運工具
+├── src/                   # Vue 頁面、元件、狀態、領域、工具與樣式
+├── public/                # 靜態資產；public/data 由 hydrate／建置產生
+├── data/                  # Data repo hydrate 的來源資料，不由主 repo 追蹤
+└── dist/                  # Vite／postbuild 產物，不進 Git
 ```
 
-## 前端頁面範圍
-
-- 排行榜：依副本、伺服器、職業類型、職業與關鍵字篩選成績；共用「版本紀錄」偏好開啟時提供累積版本篩選與版本欄，關閉時則為有 `version_cutoff` 的副本提供紀錄時效篩選。
-- 全服統計：伺服器分布、職業分布、零式進度概覽與資料狀態。
-- 個人成績單：各副本最佳紀錄、歷史紀錄、同職分位、常同場隊友與分享用代表職業；開啟版本紀錄時可依目前伺服器與職業交集選擇繁中服競技版本的累積快照，所選版本會包含該版本及所有較早紀錄，最新版本即完整成績單。
-- 設定：主題、分位顯示與共用的版本紀錄等偏好保存在瀏覽器；說明提示按鈕預設顯示，關閉時會連同 Teleport 彈窗內的提示一併隱藏。
-- 成績趨勢：版本資料開啟且紀錄時間完整時，以線性時間軸渲染，並在繁中服更新切點標示垂直版本線；缺少時間則保留等距資料點軸。
-- 玩家比較：依職能或職業並排比較兩名玩家。
-- 隊伍榜：同場 8 人公開紀錄的最速通關、隊伍 rDPS 與成員組成。
-- 伺服器對比：收錄玩家、副本通關、職能比例、熱門職業與副本落點。
-- 職業分析：各職能與職業的 rDPS 分位、副本分布、伺服器分布與代表紀錄。
-- 近期動態：最新公開成績、刷新個人最佳、新收錄玩家、伺服器活躍、副本活躍，以及由 Data Building Layer 預先去重的 Logs / 通關場次趨勢與副本分類占比。圖表上的台服與國際服改版時間標註屬於前端靜態脈絡，不參與資料管線統計。
-- 常見問題：整理站務常見問答，並內嵌 FFLogs 檢查工具；工具解析使用者貼上的 FFLogs report 網址，先比對 `public/data/report_status_index.json`、`public/data/all/report_status_index.json` 與 `public/data/update_status.json`，回報目前公開索引是否命中與排程推估。若使用者按下「查詢公開狀態」，前端會以 JSONP 呼叫 Apps Script Web App，確認 FFLogs API 目前是否可讀取該 report；Public 且可讀時可再送出待收錄或重新排查需求，由 Apps Script 寫入 Google Sheet，workflow 下一輪透過 Google Sheets API 讀取後餵給 `FFLOGS_RETRY_REPORT_CODES`。workflow 收尾會依公開索引、排行榜來源、公開 report 分片與 state checkpoint 回寫已收錄、無通關或無繁中服玩家的結果，不由前端或 Apps Script 直接判定排行榜收錄結果。前端仍不直接呼叫 FFLogs API，也不接觸 OAuth 或 Sheet API 憑證。正式路徑為 `/faq`，舊 `/logs` 保留為相容入口。
-- Honey B. Lovely 粉絲榜：獨立趣味頁，顯示 M2S 近 7 天 `心醉魂迷：奴役` 粉絲榜、近 7 天報告彈窗、歷史追溯與連續入榜標示，不參與正式排行榜聚合。
+每個檔案的具體責任與測試對應集中在 [codebase-map.md](codebase-map.md)，避免架構文件再維護一份容易遺漏內容的巨型樹狀清單。
 
 ## 功能旗標
 
-臨時隱藏或恢復作者相關 UI 標示、社群 / Telegram 連結或 GCD 覆蓋率時，只調整 `src/utils/siteFeatures.js`：
+暫時隱藏或恢復作者、社群、Telegram、GCD 與 Honey UI 時，只調整 `src/utils/siteFeatures.js`。旗標只影響畫面，不改動公開 JSON 或排行榜歷史。
 
-- `顯示作者相關標示`
-- `顯示社群連結`
-- `顯示Telegram連結`
-- `顯示Gcd覆蓋率`
+目前狀態：
 
-目前 `顯示Gcd覆蓋率=true`，網站會顯示 GCD 欄位。這些旗標只影響前端呈現，不改動公開資料或排行榜歷史資料結構。
+- 作者相關標示：開啟。
+- 一般社群連結：關閉。
+- Telegram：開啟。
+- GCD 覆蓋率：開啟。
+- Honey B. Lovely 粉絲榜：開啟。

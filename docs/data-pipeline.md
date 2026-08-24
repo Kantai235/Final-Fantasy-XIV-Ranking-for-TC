@@ -7,7 +7,7 @@
 1. 執行 FFLogs 抓取：
 
    ```bash
-   python scripts/fetch_fflogs.py
+   npm run python -- scripts/fetch_fflogs.py
    ```
 
    這一步會讀取 `config/encounters.json` 的啟用副本、掃描 FFLogs reports、篩選繁中服玩家、更新 `data/rankings/*.json`、`data/rankings/*.reports/*.json`、`public/data/rankings/*.json` 與 `data/state.json`。
@@ -19,7 +19,7 @@
    ```
 
    這一步會產生 `public/data/users/`、`public/data/user-entry-details/`、`public/data/users/index.json`、`public/data/global_stats.json`、`public/data/activity.json`、`public/data/team_rankings.json` 與 `public/data/server_compare.json`。
-   同時會在 `public/data/all/` 產生 hidden delta：有 hidden 成績的個人成績單才輸出差量檔，沒有 hidden 成績的索引項目會直接指回公開成績單。
+   同時會在 `public/data/all/` 產生 hidden delta：有 hidden 成績的個人成績單才輸出差量檔，沒有 hidden 成績的索引條目會直接指回公開成績單。
    指令結束前也會執行 `npm run build:ranking-tables`，由公開排行榜產生 `public/data/ranking-tables/` 薄索引與 `public/data/ranking-details/` 按需載入細節檔，並把 `public/data/all/rankings|ranking-tables|ranking-details` 轉成 hidden delta；接著執行 `npm run build:report-status` 與 `npm run build:public-status`，輸出常見問題頁 FFLogs 檢查工具使用的 `public/data/report_status_index.json`、`public/data/all/report_status_index.json` 與 `public/data/update_status.json`。
    正式部署會把使用者主檔與個人成績報告細節同步到 users 專用 repo；`public/data/users` 仍是資料建置與驗證的來源產物，不能在 postbuild 前刪除，因為本機抽查或暫時開啟 `FFXIV_TC_BUILD_USER_SHARE_PAGES=true` 時仍需要本輪最新使用者索引。
 
@@ -33,7 +33,7 @@
 
    若 report 已 Public 且 FFLogs API 可讀，使用者可送出「加入待收錄名單」或「要求重新排查」。另一個受限例外是：本站公開索引已命中 report，且 Apps Script 明確確認 FFLogs 目前非 Public 或不可讀時，可送出 `review_existing_visibility` 公開狀態重新排查。這不是前端直接隱藏資料；Apps Script 只寫入 report code，正式 workflow 仍會在下一輪以受保護 client 完整確認。若仍不可存取，`fetch_fflogs.py` 才會在來源分片標記 hidden。即使使用者貼上的網址含有 `fight` 參數，待處理名單也只以 report code 為單位。workflow 會在 `fetch_fflogs.py` 前執行 `scripts/read_fflogs_refresh_queue.mjs`，透過 Google Sheets API 讀取 `status=queued|pending|retry` 的列，合併成 `FFLOGS_RETRY_REPORT_CODES`，讓下一輪候選穿透已處理快取並完整重掃整份 report。
 
-   `npm run build:user-data` 重新產生 `public/data/report_status_index.json` 與 hidden delta 後，workflow 會執行 `scripts/complete_fflogs_refresh_queue.mjs`。此腳本不刪除 Sheet 列，而是以 report code 為單位，把公開索引、`data/rankings/*.json` 的 `ranking_entries[].source_reports`，以及公開 report 分片中的命中列標記為 `status=done`；分片是 reports -> fights -> players 的權威來源，因此即使該 report 的玩家成績未成為排行榜代表列，也會正確結束待收錄流程。`review_existing_visibility` 則只在 hidden delta 索引命中時標記為 `hidden`，避免把前端的即時結果或暫時性錯誤誤當成移除成功。若 `data/state.json` 已確認 `skipped_no_clear` 或 `skipped_no_traditional_chinese_players`，則分別標記為 `not_eligible_no_clear` 或 `not_eligible_no_traditional_chinese_players`，並寫入可讀原因，避免每輪 workflow 永久強制重掃。收尾也會校正 A:N 的固定欄位標題，並只針對純數字的既有 `last_message` 依已知終止結果補回可讀訊息；這些是待處理申請的終止狀態，資料管線本身對近期 `skipped_no_clear` report 的 24 小時重試規則仍照常生效。此流程不再檢查或等待指定 fight，避免把待處理名單誤用成單場補抓。
+   `npm run build:user-data` 重新產生 `public/data/report_status_index.json` 與 hidden delta 後，workflow 會執行 `scripts/complete_fflogs_refresh_queue.mjs`。此腳本不刪除 Sheet 列，而是以 report code 為單位，把公開索引、`data/rankings/*.json` 的 `ranking_entries[].source_reports`，以及公開 report 分片中的命中列標記為 `status=done`；分片是 reports -> fights -> players 的權威來源，因此即使該 report 的玩家成績未成為排行榜代表列，只要至少有一場通過公開完整性規則，仍會正確結束待收錄流程。若分片內所有 fight 都因缺少、過舊、未知或未通過目前相容的 `data_integrity` 判定而被隱藏，則改標記為 `review_required_data_integrity`，交由站務複核，不會向申請者誤報已公開。`review_existing_visibility` 則只在 hidden delta 索引命中時標記為 `hidden`，避免把前端的即時結果或暫時性錯誤誤當成移除成功。若 `data/state.json` 已確認 `skipped_no_clear` 或 `skipped_no_traditional_chinese_players`，則分別標記為 `not_eligible_no_clear` 或 `not_eligible_no_traditional_chinese_players`，並寫入可讀原因，避免每輪 workflow 永久強制重掃。收尾也會校正 A:N 的固定欄位標題，並只針對純數字的既有 `last_message` 依已知終止結果補回可讀訊息；這些是待處理申請的終止狀態，資料管線本身對近期 `skipped_no_clear` report 的 24 小時重試規則仍照常生效。此流程不再檢查或等待指定 fight，避免把待處理名單誤用成單場補抓。
 
 3. 驗證資料完整性：
 
@@ -84,7 +84,7 @@ npm run fetch:honey-fans
 | 近期掃描 | `incremental_lookback_hours=24`，讓最近一天的 no-clear / incomplete report 重新深查。 |
 | 延遲掃描 | workflow 預設掃 24-72 小時前的 reports，一般只選 state 與排行榜都沒見過的新 report；UCoB 通關規則重判例外會重查需要更新 `clear_rule_revision` 的既有 report。 |
 | 歷史補查 | workflow 預設每輪掃 1 個 168 小時視窗，最多選入 600 份深層候選，且同一 zone/difficulty 群組最多 150 份，抓回後來才公開或延後匯出的 logs。 |
-| 既有 report 狀態巡檢 | workflow 預設每輪由舊到新檢查固定數量，將不可存取 report 標記 hidden。 |
+| 既有 report 狀態巡檢 | workflow 預設每輪先檢查尚未巡檢的較新 report，再依最久未巡檢順序輪替固定數量，將不可存取 report 標記 hidden。 |
 | 新 report GCD 即時計算 | workflow 預設查同一場 FFLogs `Casts` graph，只保存 GCD 衍生結果。 |
 | 站務 report 排除 | `excluded_report_codes` 會讓指定 report 從近期、延遲、歷史、手動補抓、公開重建與既有狀態巡檢排除，避免疑似灌水或其他不採計紀錄重新進入排行榜。 |
 
@@ -108,6 +108,14 @@ npm run fetch:honey-fans
 延遲掃描固定檢查 24-72 小時前的 reports，但使用嚴格已知 report 集合：凡是已在 state 或排行榜出現過的 report 原則上都會略過。這段主要補抓後來才出現在 reports 查詢中的新 report，不重查既有 no-clear 紀錄；唯一例外是 UCoB 通關規則重判，因舊版可能把 `fightPercentage=80` 的通關寫成 `skipped_no_clear`，所以尚未寫入目前 `clear_rule_revision` 的已知 UCoB report 仍會穿透快取重新深查。
 
 歷史補查會從副本的 `history_scan_start_date`、`scan_start_date` 或 `initial_scan_start_date` 開始，依 `data/state.json` 內各副本的 `history_scan_cursor_at` 往後輪巡。一般副本只會把尚未在 state 或排行榜中的 report 選入候選，適合抓回當時未公開、後來改成公開，或 FFLogs 延後完成匯出的更舊 logs。候選先受整輪 `FFLOGS_HISTORY_MAX_DEEP_REPORTS_PER_RUN` 限制，再受 `FFLOGS_HISTORY_MAX_DEEP_REPORTS_PER_GROUP_PER_RUN` 的 zone/difficulty 分組限制，避免舊絕本同區大量候選讓其它副本長時間沒有深查預算。絕本額外支援通關規則重判：當程式內的 `clear_rule_revision` 更新時，近期、延遲與歷史來源只要看到本次規則版本明確影響的既有絕本 report，都要讓該副本穿透 checked_reports 已處理快取重新深查；目前受影響的是 UCoB。已確認沒有繁中服玩家的 report 不會因通關規則版本重刷，因為通關判斷不會改變 `masterData` 的玩家伺服器。重判完成後會在 `checked_reports` / `processed_reports` 記錄版本，避免同一份 report 每輪都被重刷。若深查上限使本輪候選出現 deferred，`fetch_fflogs.py` 會把 `history_scan_cursor_at` 停在最後一筆已選候選 report 的 `startTime`；若該副本本輪未分到深查額度，游標會停回本輪時間窗起點，避免尚未處理的 report 被推到下一輪全區間輪巡後才重試。
+
+### Mixed report 分派
+
+FFLogs 的 top-level report zone 只代表報告主要內容，不能保證 report 內所有 fight 都屬於該 zone。同一份上傳可能同時包含幻本與零式；只依 `reports(zoneID)` 的來源分類會漏掉其它啟用副本。
+
+任一掃描群組找到 report 且確認包含繁中服玩家後，`fetch_fflogs.py` 會查完整 fight list，再依每場的 `encounterID`、`difficulty` 與通關語意分派到所有啟用且已到 `scan_start_date` 的副本。同 zone／difficulty 群組仍保留既有 no-clear checkpoint；跨 zone 只處理完整 fight list 實際命中的副本，不能把無關副本寫成 `skipped_no_clear`。
+
+目前 revision 為 `mixed_report_dispatch_2026_06_05`，完成後寫入 checked／processed report。舊 report 缺少此 revision 時，近期、延遲與歷史候選可穿透已處理快取一次；`npm run audit:mixed-report-dispatch` 會輸出已知 report 覆蓋率、待重判數與歷史游標估算，供 Actions Step Summary 追蹤。
 
 ## 治療與坦克支援統計
 
@@ -137,6 +145,71 @@ npm run backfill:support:history
 `backfill:support` 固定以 `2026-07-28T05:00:00Z`（台灣時間 2026-07-28 13:00）為起點、以程式啟動時間為終點，依最舊 report 優先處理並每 25 份寫回一次；中斷後重跑只會選取仍缺少目前 `calculation_version` 或減傷規則版本的 fight。compact 後不再保存 `matched_players`，回補器會由既有 `fight.players` 重建繁中服伺服器摘要，避免每份 report 多打一個 masterData request；若舊來源連玩家列都不完整，才退回正式深層查詢。
 
 正式 workflow 的 `--stateful-support-metrics-backfill` 使用 `data/state.json.support_metrics_report_backfill` 保存固定切點、`cursor_sort_time`／`cursor_report_code`、失敗重試清單、支援統計版本與減傷規則版本。每輪預設處理 25 份切點以前的 report 並由新往舊推進；`FFLOGS_SUPPORT_METRICS_BACKFILL_REPORT_LIMIT=0` 可暫停，`FFLOGS_SUPPORT_METRICS_BACKFILL_CUTOFF_ISO` 可明確覆寫切點。計算或規則版本提升時會保留固定切點、清除舊 cursor，從 7.2 切點重新檢查。這個 state 不會改動一般增量／延遲／歷史 report 掃描游標。
+
+## 戰鬥完整性檢核
+
+這是針對台灣時間 `2026-07-28T18:00:00+08:00` 後特定 FFLogs 普攻解析異常的可撤除防護。純規則集中在 `scripts/fight_integrity.py`；新收錄 fight 由 `fetch_fflogs.py` 在建立排行來源前立即檢查，歷史資料由 `scripts/backfill_fight_integrity.py` 小批量回補。兩條路徑共用相同設定、純判定與最小量測快取。
+
+### 資料狀態
+
+結果寫在 `fights[].data_integrity`，不轉為整份 `report_hidden`：
+
+- `valid`：目前規則確認可公開。
+- `not_applicable`：明確不適用一般生命池語意的副本。
+- `suspected`／`excluded`：從公開衍生資料隱藏，但保留 report、fight、players 與證據。
+- `unverifiable`：可重現地缺少必要證據，採 fail-closed 隱藏。
+- `integrity_measurement_failed`：執行期例外，後續批次必須重試。
+
+同一物理戰鬥若有多份上傳，任一來源明確為 `suspected` 或 `excluded` 時，相同 `fight_hash` 的變體都不得進入排行榜、個人成績、隊伍榜或近期動態；暫時性的 `unverifiable` 不跨 report 傳播，避免壓過另一份已驗證來源。
+
+目前純判定版本是 v13。公開建置與待收錄收尾的相容清單允許 v8～v12 的 `valid`／`not_applicable` 繼續公開；Python 回補候選器則另外把 M5S～M8S 缺少 v11 `target_damage_profile`，以及幻朱雀缺少 v13 副本／職業普攻 reference 或 ability 7／8 證據的場次排入精準重驗。建置層只消費回補後寫入來源分片的最終狀態，不自行把「尚待補證據」推論成 hidden，避免全域版本提升時讓其它正常資料整批下架。
+
+### 判定層次
+
+規則與數值來源是 `config/fflogs.json.fight_integrity_check`、`config/fight_integrity_baselines.json` 與 `config/fight_integrity_known_enemy_hp.json`。處理順序的重要語意為：
+
+1. 已明示的固定敵方承傷範圍、完整隊伍單向硬上限與逐 NPC GUID profile 優先。玩家列合計可能漏掉 Limit Break，因此低於下限不能直接判定異常，需改查 FFLogs Target Damage；高於明示上限才是足夠的異常證據。
+2. 舊副本可用切點前、`fight_hash` 去重且完整繁中隊伍的 `players[].total_damage` P99 做本地預篩。低於保守上緣可減少 API；超過上緣不是排除證據，仍需查 Target Damage／生命池。
+3. 一般生命池規則比較敵方承傷與敵方最大生命池總和；嚴格超過 1.15 倍為 `excluded`，1.14～1.15 或 FFLogs `guid=7`／`Attack` 證據為 `suspected`。
+4. M5S～M8S 的逐目標 profile 以 NPC GUID、最大生命值、有效承傷實例數與轉場比例交叉驗證；總量正確但傷害在目標間錯誤轉移仍不得通過。
+5. 幻朱雀的副本／職業普攻規則涵蓋全部 21 個戰鬥職業。單一玩家必須同時跨過每擊中位數、普攻占比與普攻 DPS 三項門檻才標為 `suspected`，避免正常 1 點 packet 或單一尖峰誤判。
+
+固定數字、目前副本清單與逐目標 profile 詳列於 [config/README.md](../config/README.md)。設定檔是判定資料來源；文件不得另創不同門檻。
+
+### 最小量測快取
+
+`data/local-cache/fight-integrity/measurements.json` 不進 Git，只保存：
+
+- 彙總 Target Damage、最大生命池與目標數。
+- 需要 profile 時的 NPC GUID、逐目標承傷、最大生命值與有效實例數。
+- 匿名化的 ability ID、source ID、職業、事件數、中位數、占比與每秒傷害。
+- 可重現的無法量測原因與來源指紋。
+
+快取不保存玩家名稱、report 內 actor ID、OAuth、完整 Target table 或 raw events。來源指紋未變時，即使 `--force` 也優先離線重判；只有缺少必要 ability、來源改變或明確 `--refresh-cache` 才再次使用 FFLogs 額度。Actions 以 cache 接續這個本機目錄。
+
+### 操作
+
+預覽本輪候選：
+
+```bash
+npm run backfill:fight-integrity -- --dry-run
+```
+
+一般小批次：
+
+```bash
+npm run backfill:fight-integrity
+```
+
+只用既有快取、固定規則與歷史基準離線重判：
+
+```bash
+npm run backfill:fight-integrity -- --force --offline-only --report-limit 999999
+```
+
+可用可重複 `--report-code`、`--encounter-key` 與含時區的 `--recorded-at-or-after` 限縮人工稽核。FFLogs GraphQL 回傳 `reportData.report=null` 時，來源 report 視為已無法讀取並標記 hidden；暫時性 HTTP／連線錯誤不得誤判為永久 hidden。
+
+workflow 以 `FFLOGS_FIGHT_INTEGRITY_ENABLED` 控制是否新增檢核，以 `FFLOGS_FIGHT_INTEGRITY_REPORT_LIMIT` 控制歷史批次；停用不會移除既有結果。runner 啟動時記錄完整性規則檔 Git revision，Data publish 前再次比對遠端；執行期間規則變更時必須停止舊 runner，不能回寫過期結論。
 
 ## GCD 覆蓋率
 
@@ -220,7 +293,7 @@ npm run audit:gcd:xivanalysis
 修改後執行：
 
 ```bash
-python scripts/fetch_fflogs.py
+npm run python -- scripts/fetch_fflogs.py
 npm run build:user-data
 npm run validate:data
 ```

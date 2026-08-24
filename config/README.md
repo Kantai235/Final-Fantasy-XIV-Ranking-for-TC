@@ -1,11 +1,11 @@
 # 設定檔說明
 
-`.env` 只放敏感資訊，例如 FFLogs OAuth client ID / secret，並且不要提交實際值。
+`.env` 主要放敏感資訊與只影響當次本機執行的覆寫，例如 FFLogs OAuth client ID／secret；不得提交實際值。可長期保存的非敏感預設仍應維護在本目錄的 JSON 設定檔。
 
 非敏感設定集中在這個目錄：
 
 - `encounters.json`：副本名稱、FFLogs ID、啟用狀態、目前高難標記、個人成績簡表版本與起掃日期。
-- `game_versions.json`：繁中服競技版本的更新切點；資料建置層依通關紀錄時間寫入個人成績單的 `game_version`，供使用者選擇顯示或隱藏。
+- `game_versions.json`：繁中服競技版本的更新切點；資料建置層依通關紀錄時間寫入個人成績單與排行榜薄索引的 `game_version`，供使用者選擇顯示或隱藏。
 - `fflogs.json`：FFLogs 爬蟲的掃描、限流、重試與手動補抓參數。
 - `site.json`：正式站台網址、Vite base path 與本機開發/預覽允許的 host。Cloudflare 規則腳本也會以 `site_url` 推導預設 hostname。
 
@@ -22,13 +22,13 @@
 - 新增副本時先確認 `zone_id`、`encounter_id`、`difficulty` 與 `scan_start_date`，再執行資料更新流程。若 `scan_start_date` 是未來時間，爬蟲會在開放前略過它，公開清單也會等首份排行榜檔案建立後才列出，避免提早顯示空選項或造成讀取 404。輪替下架副本可設定選填的 `scan_end_date`；關閉時間到達後停止新增掃描，但既有排行榜與公開歷史資料仍會保留。
 - `ultimate_futures_rewritten` 對應繁中服 2026-05-26 開放的 7.11「絕 伊甸」；FFLogs v2 `worldData.zones` 顯示 Futures Rewritten 的 `zone_id=65`、`encounter_id=1079`、`difficulty=100`。
 - `chaotic_cloud_of_darkness` 對應繁中服 2026-06-23 18:00 維護後開放的 7.15「滅 黑暗之雲」；FFLogs 排行榜頁顯示 Alliance Raids (Chaotic) 的 `zone_id=66`、Cloud of Darkness 的 `encounter_id=2061`，本專案沿用非零式高難度的 `difficulty=100`。`scan_start_date` 使用 `2026-06-23T18:00:00+08:00`，避免維護前候選 report 進入新分類掃描窗。
-- 7.2 確定於繁中服 2026-07-28 13:00 開放。`extreme_zelenia` 對應 FFLogs Trials II (Extreme) 的 `zone_id=67`、Zelenia `encounter_id=1080`、`difficulty=100`，其 `scan_start_date` 使用 `2026-07-28T13:00:00+08:00`；`savage_m5s` 至 `savage_m8s` 對應 AAC Cruiserweight 的 `zone_id=68`、`encounter_id=97` 至 `100`、`difficulty=101`，並以 `profile_summary_savage_tier.key="cruiserweight"`、`label="次重量級"`、`order=2`、`floor=1` 至 `4` 表示。次重量級因資料收錄排程調整，四層的 `scan_start_date` 統一延至 `2026-08-04T13:00:00+08:00`；這不影響 7.2 的遊戲版本切點或個人成績簡表的量級定義。同一時間 `savage_m1s` 至 `savage_m4s`、`extreme_queen_eternal` 與 `chaotic_cloud_of_darkness` 套用 `version_cutoff` 成為過版資料；`unreal_byakko` 以 `scan_end_date` 停止掃描，但以 `profile_summary_available_until="7.2"` 保留至 7.2 簡表，新增的 `unreal_suzaku` 則使用 Trials (Unreal) `zone_id=64`、`encounter_id=3010`、`difficulty=100` 與 7.2 起掃時間。7.2 簡表的幻本固定同時列出白虎與朱雀，不會因個別玩家缺少白虎成績而移除白虎項目。
+- 7.2 確定於繁中服 2026-07-28 13:00 開放。`extreme_zelenia` 對應 FFLogs Trials II (Extreme) 的 `zone_id=67`、Zelenia `encounter_id=1080`、`difficulty=100`，其 `scan_start_date` 使用 `2026-07-28T13:00:00+08:00`；`savage_m5s` 至 `savage_m8s` 對應 AAC Cruiserweight 的 `zone_id=68`、`encounter_id=97` 至 `100`、`difficulty=101`，並以 `profile_summary_savage_tier.key="cruiserweight"`、`label="次重量級"`、`order=2`、`floor=1` 至 `4` 表示。次重量級因資料收錄排程調整，四層的 `scan_start_date` 統一延至 `2026-08-04T13:00:00+08:00`；這不影響 7.2 的遊戲版本切點或個人成績簡表的量級定義。同一時間 `savage_m1s` 至 `savage_m4s`、`extreme_queen_eternal` 與 `chaotic_cloud_of_darkness` 套用 `version_cutoff` 成為過版資料；`unreal_byakko` 以 `scan_end_date` 停止掃描，但以 `profile_summary_available_until="7.2"` 保留至 7.2 簡表，新增的 `unreal_suzaku` 則使用 Trials (Unreal) `zone_id=64`、`encounter_id=3010`、`difficulty=100` 與 7.2 起掃時間。7.2 簡表的幻本固定同時列出白虎與朱雀，不會因個別玩家缺少白虎成績而移除白虎列。
 
 ## `game_versions.json` 的判讀重點
 
 - `versions` 必須依 `starts_at_iso` 由舊到新排序；第一筆以 `null` 表示最早已收錄的版本，讓更早的公開戰鬥仍有可追溯標籤。
 - `patch` 是穩定的繁中服競技版本鍵值，`label` 是寫入公開個人成績資料的顯示文字。新增版本時必須同時提供已確認的繁中服開放時間；不可依國際服日期或瀏覽器目前時間猜測切點。
-- `game_version` 與副本的 `version_cutoff` 完全分離：前者標示紀錄時的技能／裝備環境，後者判定該副本是否已過版。變更此檔後必須重跑 `npm run build:user-data`，讓既有個人成績單重新取得版本欄位。前端開啟版本資料時，個人成績單會依目前選取伺服器的 `game_version` 產生版本選單，並與職業篩選交集；每個選項都是截至該版本的累積快照，最新版本即完整資料，不另設「全部版本」。個別玩家 JSON 由專用資料來源提供；若舊資料尚未同步此欄位，前端只可用相同更新切點與 `recorded_at_iso` 回推版本，並以明確欄位優先。
+- `game_version` 與副本的 `version_cutoff` 完全分離：前者標示紀錄時的技能／裝備環境，後者判定該副本是否已過版。變更此檔後必須重跑 `npm run build:user-data`；此指令會接續執行 `build:ranking-tables`，讓既有個人成績單與排行榜薄索引重新取得版本欄位。前端開啟版本資料時，個人成績單會依目前選取伺服器的 `game_version` 產生版本選單，並與職業篩選交集；每個選項都是截至該版本的累積快照，最新版本即完整資料，不另設「全部版本」。個別玩家 JSON 由專用資料來源提供；若舊資料尚未同步此欄位，前端只可用相同更新切點與 `recorded_at_iso` 回推版本，並以明確欄位優先。
 
 ## `fflogs.json` 的判讀重點
 
@@ -36,7 +36,7 @@
 - `no_clear_retry_hours` 控制 `skipped_no_clear` 與尚未完整匯出 report 的近期重試窗。這個值預設 24 小時，讓剛上傳但稍後才匯出 kill 的 report 不會被舊快取永久擋住。
 - `delayed_scan_enabled`、`delayed_scan_recent_gap_hours`、`delayed_scan_lookback_hours` 與 `delayed_max_deep_reports_per_run` 控制延遲淺層掃描。GitHub Actions 預設開啟 24-72 小時前的固定區段，一般只把 state 與排行榜都沒見過的新 report 選入深層處理；UCoB 通關規則重判是例外，尚未寫入目前 `clear_rule_revision` 的既有 report 仍需重查。
 - `history_scan_enabled`、`history_scan_full_run`、`history_scan_window_hours`、`history_scan_windows_per_run`、`history_scan_recent_gap_hours`、`history_max_deep_reports_per_run` 與 `history_max_deep_reports_per_group_per_run` 控制歷史補查。專案預設在 `config/fflogs.json` 關閉，避免本機一般執行時額外掃描舊時間窗；GitHub Actions 會用同名大寫 `FFLOGS_` 環境變數暫時開啟輪巡，目前 workflow 預設每輪掃 1 個 168 小時視窗，最多選入 600 份深層候選，且同一個 zone/difficulty 群組最多選入 150 份，避免舊絕本同區候選長時間吃滿整輪深查預算。`history_scan_full_run=true` 只適合人工維護時使用，會讓歷史補查忽略每輪視窗數上限。
-- `existing_report_status_check_enabled` 與 `existing_report_status_check_limit` 控制既有排行榜 report 狀態巡檢。專案預設關閉，GitHub Actions 預設每輪由舊到新檢查 25 筆副本/report 紀錄，游標保存在 `data/state.json`，跑完後會回到最舊紀錄繼續輪巡。
+- `existing_report_status_check_enabled` 與 `existing_report_status_check_limit` 控制既有排行榜 report 狀態巡檢。專案預設關閉，GitHub Actions 預設每輪先檢查尚未巡檢的較新 report，再依最久未巡檢順序輪替 25 份；最近完成時間保存在 report 的 `report_status_checked_at`，整輪摘要則寫入 `data/state.json.existing_report_status_check`。
 - `fetch_gcd_coverage_enabled` 與 `fetch_gcd_coverage_max_fights_per_run` 控制新 report 落地時是否即時計算 GCD 覆蓋率，以及每輪最多查幾場 fight 的 Casts graph。專案預設關閉，GitHub Actions 會用 `FFLOGS_FETCH_GCD_COVERAGE_ENABLED=true` 與 `FFLOGS_FETCH_GCD_COVERAGE_MAX_FIGHTS_PER_RUN=150` 開啟。
 - `fight_integrity_check` 是可撤除的暫時性資料品質防護，專門檢查台灣時間 2026-07-28 18:00 後受普攻解析問題影響的 fight。`cutoff_iso` 是時區明確的啟用切點；`hp_ratio_threshold=1.15` 代表全隊對敵方目標造成的傷害嚴格超過其最大生命池總和 15% 時，以 `data_integrity.status="excluded"` 隱藏。`suspected_hp_ratio_threshold=1.14` 代表 1.14 至 1.15 倍的邊界群組會以 `status="suspected"` 隱藏，但不列為高信心排除：極澤蓮尼亞實測此區間 11 場中有 8 場已有 `Attack` 標記，另 3 場漏報標記，且正常未標記的下一個倍率僅 1.120350。`damage_done_summary.exploitDetails` 出現 `guid=7`／`Attack` 時，即使倍率未達 1.14 也會以 `status="suspected"` 隱藏。泛用 `exploit:6` 不參與判定。`historical_baseline_file` 指向可獨立移除的 `config/fight_integrity_baselines.json`：它只使用切點前、以 `fight_hash` 去重且完整繁中隊伍的 `players[].total_damage` P99 作為本地預篩上緣。低於上緣 5% 的舊副本新紀錄會直接標為正常，避免不必要的 API 查詢；超過上緣時仍必須以生命池量測確認，基準本身永遠不會直接產生 `excluded`。若高端候選無法量測，才以 `suspected` 隱藏。`excluded_encounter_keys` 用於生命池語意不適用的多階段副本（目前為 `ultimate_bahamut`），避免誤判。`scripts/backfill_fight_integrity.py` 會將彙總敵方承傷、生命池、目標數，以及需要固定 profile 時的 NPC GUID／逐目標承傷／最大生命值／實例數存在 `.gitignore` 排除的 `data/local-cache/fight-integrity/measurements.json`，讓規則重跑可離線復查；既有 `data_integrity.metrics` 會直接植入快取，來源指紋改變或指定 `--refresh-cache` 才會重新讀取 FFLogs。workflow 以 GitHub Actions cache 接續這份本機快取。停用 `enabled` 或 workflow 的 `FFLOGS_FIGHT_INTEGRITY_ENABLED=false` 只停止新增檢核，既有標記仍會持續從公開產物隱藏。
 - 補充（目前規則優先於上述一般預篩的處理順序）：`known_enemy_capacity_file` 指向可獨立撤除的 `config/fight_integrity_known_enemy_hp.json`。極澤蓮尼亞設定固定敵方生命池 `92,086,232`，並要求 `players[].total_damage` 加總必須落在 `92,086,132–92,086,332`；幻朱雀保留固定敵方生命池 `127,613,543` 作為量測脈絡，依站務暫時性收錄決定要求完整隊伍傷害落在 `71,280,000–72,720,000`（72m ±1%）。兩者的玩家合計在範圍內且沒有 `Attack` 標記時可直接離線判為有效，高於上限時可直接標記異常；低於下限只代表玩家傷害下限不足，因為 Limit Break 不會歸屬 `players[]`，此時必須改以既有快取或 FFLogs Target Damage 比對相同範圍。這是暫時性的嚴格收錄門檻，不應推論為幻朱雀完整敵方承傷的普遍生命池語意。`maximum_full_party_damage` 是不同語意的單向硬上限：絕伊甸、絕巴哈姆特、M1、M3、M4 分別設為 `151,500,000`、`13,230,230`、`75,870,000`、`96,523,000`、`114,526,000`；只有完整隊伍總傷害嚴格超過上限才標記 `suspected`，低於上限一律繼續走既有量測／例外規則，絕不可直接判定正常。這條規則必須早於 `ultimate_bahamut` 的多階段生命池 `not_applicable` 例外，避免異常高傷害被例外放行。所有切點後缺少 `data_integrity`、`unverifiable` 或其他非 `valid`／`not_applicable` 狀態的 fight 均採 fail-closed，先從公開衍生資料隱藏。一次性本機清理應使用 `scripts/backfill_fight_integrity.py --force --offline-only --report-limit 999999`，它只使用既有快取、固定規則與歷史基準，絕不建立 OAuth 或呼叫 FFLogs API；無法離線確認的 fight 會寫入 `unverifiable` 並保持隱藏，待後續正常管線以快取或量測覆核。
@@ -57,4 +57,4 @@
 - `retry_report_codes` 會在一般掃描中強制重抓指定 report code；若同時出現在 `excluded_report_codes`，排除清單優先。
 - `only_report_codes` 只處理指定 report code，且不推進掃描點，適合手動補抓或除錯；若同時出現在 `excluded_report_codes`，排除清單優先。
 - 手動補抓完成後應清空 `retry_report_codes` 與 `only_report_codes`，避免排程重複處理同一批 report。`excluded_report_codes` 則只有在站務確認可重新採計時才移除。
-- 所有 `fflogs.json` 非敏感執行設定都可用 `FFLOGS_{設定名稱大寫}` 環境變數暫時覆寫，例如 `FFLOGS_HISTORY_SCAN_WINDOWS_PER_RUN=2`。環境變數只影響當次執行，不會改寫設定檔。
+- `fflogs.json` 的頂層純量與清單執行設定可用 `FFLOGS_{設定名稱大寫}` 環境變數暫時覆寫，例如 `FFLOGS_HISTORY_SCAN_WINDOWS_PER_RUN=2`。巢狀的 `fight_integrity_check` 不接受整個物件覆寫，目前只有 `enabled` 另由 `FFLOGS_FIGHT_INTEGRITY_ENABLED` 控制。環境變數只影響當次執行，不會改寫設定檔。

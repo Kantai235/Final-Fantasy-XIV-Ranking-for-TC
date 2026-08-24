@@ -2,13 +2,13 @@
 
 本專案部署在 GitHub Pages，站台本身是純靜態 Vue/Vite 產物。Cloudflare 的角色是放在 GitHub Pages 前方做快取、壓縮、部署後清除快取與節流，目標是讓大量重複瀏覽命中 Cloudflare 邊緣節點，降低 GitHub Pages origin 流量，同時讓每 30 分鐘一次的資料更新能在部署後快速生效。
 
-查證日期：2026-05-13。
+外部服務限制查證日期：2026-08-25。方案能力可能調整，套用規則前仍應以本節連結的官方文件為準；下文的路徑、TTL 與 workflow 行為則以目前專案程式碼為準。
 
 ## 官方限制脈絡
 
-- GitHub Pages 官方文件列出每月 100 GB 軟性頻寬上限；若超出，GitHub 可能無法服務站台或建議在前方放第三方 CDN。
+- GitHub Pages 官方文件列出每月 100 GB 軟性頻寬上限、發布站台 1 GB 上限與 10 分鐘部署逾時；若超出，GitHub 可能無法服務站台或建議在前方放第三方 CDN。本專案另用 `scripts/audit_pages_payload.mjs` 在上傳 artifact 前執行更嚴格的自訂預算。
 - Cloudflare 預設會依副檔名快取靜態資源，但不會預設快取 HTML 或 JSON。本專案主站最大的流量壓力正是 Pages artifact 內的 `/data/**/*.json`；個人成績單搜尋索引 `data/users/index.json` 會保留在主站 artifact 以承接高頻搜尋請求，個別玩家成績單 JSON 則部署到 users 專用 repo。主站 JSON 仍必須用 Cache Rules 明確設定。
-- Cloudflare Free 方案可設定 Edge Cache TTL，但最短 Edge TTL 是 2 小時；本專案每 30 分鐘更新資料，因此不能只靠 TTL 自然過期，必須在 GitHub Pages 部署成功後透過 Purge API 主動清除會變動的路徑。
+- Cloudflare Free 方案可設定 Edge Cache TTL，但目前最短 Edge TTL 是 2 小時；本專案每 30 分鐘更新資料，因此不能只靠 TTL 自然過期，必須在 GitHub Pages 部署成功後透過 Purge API 主動清除會變動的路徑。
 - Cloudflare Rate Limiting Rules 可在邊緣節點對超量請求回應 429；Free 方案目前只有 1 條規則、10 秒計數週期，因此本專案採用保守的單條全站節流規則。
 - Facebook 分享偵錯工具若回 403，通常不是 GitHub Pages 靜態檔本身，而是 Cloudflare 的 Security Level、Under Attack mode、國家/ASN 自訂規則或節流擋到 Meta 爬蟲；Meta 常用 ASN 為 `AS32934` 與 `AS63293`。
 
@@ -16,8 +16,11 @@
 
 - [GitHub Pages limits](https://docs.github.com/en/pages/getting-started-with-github-pages/github-pages-limits)
 - [Cloudflare default cache behavior](https://developers.cloudflare.com/cache/concepts/default-cache-behavior/)
+- [Cloudflare Edge and Browser Cache TTL](https://developers.cloudflare.com/cache/how-to/edge-browser-cache-ttl/)
 - [Cloudflare Cache Rules settings](https://developers.cloudflare.com/cache/how-to/cache-rules/settings/)
 - [Cloudflare Rate Limiting Rules](https://developers.cloudflare.com/waf/rate-limiting-rules/)
+- [Cloudflare：Issues sharing to Facebook](https://developers.cloudflare.com/waf/troubleshooting/facebook-sharing/)
+- [Cloudflare Error 526](https://developers.cloudflare.com/support/troubleshooting/http-status-codes/cloudflare-5xx-errors/error-526/)
 - [GitHub Pages custom domain DNS records](https://docs.github.com/en/pages/configuring-a-custom-domain-for-your-github-pages-site/managing-a-custom-domain-for-your-github-pages-site)
 
 ## DNS 設定
@@ -37,7 +40,7 @@ GitHub Pages 自訂網域仍需在 repository Settings → Pages 設定。因本
 | `/assets/*` | 365 天 | 365 天 | Vite 產物檔名含 hash，可長效快取。 |
 | `/icons/*`、favicon、`site.webmanifest`、`/og/*`、`/og-image.png` | 6 小時 | 1 小時 | 網站圖示、職業圖示與 OG 圖可快取，但 OG 圖會隨資料建置更新。 |
 | `/data/*` | 2 小時 | 5 分鐘 | 排行榜 JSON 每 30 分鐘排程更新；Edge TTL 撐高 HIT ratio，部署成功後由 workflow purge 變動路徑。 |
-| SPA HTML、route fallback、`robots.txt`、`sitemap.xml` | 2 小時 | 5 分鐘 | HTML 是靜態產物；部署後 purge 讓 SEO/OG fallback 快速更新。 |
+| 首頁、`.html`、`robots.txt`、`sitemap.xml`，以及 `/stats`、`/user`、`/compare`、`/teams`、`/servers`、`/jobs`、`/activity`、`/honey-fans` 的乾淨路徑 | 2 小時 | 5 分鐘 | 這些 HTML／route fallback 是靜態產物；部署後 purge 讓 SEO/OG fallback 快速更新。 |
 
 4xx 與 5xx 不做長時間快取，避免 GitHub Pages 暫時錯誤被放大。
 
@@ -51,7 +54,7 @@ npm run cloudflare:purge
 
 這支腳本會用兩個 Cloudflare Purge API 請求處理會隨每 30 分鐘資料更新變動的內容：
 
-- Prefix purge：`/data`、`/stats`、`/user`、`/compare`、`/teams`、`/servers`、`/jobs`、`/activity`、`/og`
+- Prefix purge：`/data`、`/stats`、`/user`、`/compare`、`/teams`、`/servers`、`/jobs`、`/activity`、`/honey-fans`、`/og`
 - File purge：首頁、`index.html`、`404.html`、`sitemap.xml`、`robots.txt`、`og-image.png`、favicon、Apple touch icon 與 `site.webmanifest`
 
 這比每 30 分鐘 purge everything 更適合本專案，因為 Vite hashed assets 和職業圖示可以繼續長效命中 Cloudflare，不必每次資料更新都讓所有靜態資源重新冷啟動。
@@ -144,8 +147,11 @@ npm run cloudflare:purge -- --dry-run
 
 ```bash
 curl -I https://ranking.init.engineer/data/rankings/savage_m4s.json
-curl -I https://ranking.init.engineer/assets/index-q40GMfNq.js
+asset_path="$(node -e 'const html=require("node:fs").readFileSync("dist/index.html","utf8");const match=html.match(/src="\.?\/(assets\/index-[^"]+\.js)"/);if(!match)process.exit(1);process.stdout.write(match[1]);')"
+curl -I "https://ranking.init.engineer/${asset_path}"
 ```
+
+第二個指令從本輪 `dist/index.html` 取得實際的 Vite hash 檔名，避免文件內的舊 hash 在下一次建置後失效；執行前需先完成 `npm run build`。
 
 第一次通常會看到 `CF-Cache-Status: MISS` 或 `EXPIRED`，第二次應該轉為 `HIT`。若 JSON 維持 `DYNAMIC`，代表 `/data/*` Cache Rule 沒有命中。
 
@@ -195,7 +201,7 @@ GitHub origin 流量 ~= 使用者流量 * (1 - Cloudflare HIT ratio)
 可承載頁面載入次數 ~= 100 GB / (單次載入大小 * (1 - Cloudflare HIT ratio))
 ```
 
-舉例：若排行榜首屏 gzip 後約 623 KB，Cloudflare HIT 95%，則 GitHub origin 只需要承擔約 5% 請求，約可支撐 `100 GB / (623 KB * 0.05)`，也就是三百萬次以上排行榜首屏載入。實際數字請以 `npm run cloudflare:estimate` 的本機輸出與 Cloudflare Analytics 為準。
+若 `npm run cloudflare:estimate` 實測某情境單次載入為 `S`，Cloudflare HIT ratio 為 `H`，則可用 `100 GB / (S * (1 - H))` 估算 GitHub origin 的月載入次數。實際數字會隨目前 artifact 與使用者資料來源改變，應以該指令輸出及 Cloudflare Analytics 為準，不在文件固定一個容易過期的 KB 範例。
 
 ## 注意事項
 

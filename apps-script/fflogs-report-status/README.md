@@ -48,12 +48,12 @@ function setupSecretsOnce() {
 | `site_status` | 前端當下判斷的站內狀態，例如 `missing`、`found`、`fight_missing`。 |
 | `fight_text` | 使用者網址指定的 fight。 |
 | `fflogs_access` / `visibility` / `archive_accessible` | Apps Script 送出時重新確認的 FFLogs 狀態。 |
-| `status` | workflow 會讀取 `queued`、`pending` 或 `retry`；收尾後依結果標記為 `done`、`hidden`、`not_eligible_no_clear` 或 `not_eligible_no_traditional_chinese_players`。 |
+| `status` | workflow 會讀取 `queued`、`pending` 或 `retry`；收尾後依結果標記為 `done`、`hidden`、`review_required_data_integrity`、`not_eligible_no_clear` 或 `not_eligible_no_traditional_chinese_players`。 |
 | `request_count` | 同一 report 重複送出的次數。 |
 | `last_message` | 給站務看的最近處理摘要。 |
 | `source` | 來源，目前主站使用 `faq`。 |
 
-若不想讓某筆繼續被 workflow 讀取，可手動把 `status` 改成 `done`、`ignored` 或其它非 `queued/pending/retry` 的值。正式 workflow 也會在收尾時把已收錄、無通關或無繁中服玩家的列改為對應終止狀態，不會刪除列。
+若不想讓某筆繼續被 workflow 讀取，可手動把 `status` 改成 `done`、`ignored` 或其它非 `queued/pending/retry` 的值。正式 workflow 也會在收尾時把已收錄、已 hidden、等待完整性複核、無通關或無繁中服玩家的列改為對應終止狀態，不會刪除列。
 
 ## 部署 Web App
 
@@ -86,7 +86,7 @@ curl -L "https://script.google.com/macros/s/你的部署ID/exec?report=FFLOGS_RE
 ```json
 {
   "ok": true,
-  "script_version": "fflogs-report-status-v1",
+  "script_version": "fflogs-report-status-v4",
   "report_code": "FFLOGS_REPORT_CODE",
   "fflogs_access": "accessible",
   "visibility": "public",
@@ -118,7 +118,7 @@ JSONP 會用於公開狀態查詢，以及在 report 已 Public 且可讀時送�
 VITE_FFLOGS_REPORT_STATUS_WEB_APP_URL=https://script.google.com/macros/s/你的部署ID/exec
 ```
 
-這個 URL 是公開唯讀 endpoint，不是 FFLogs OAuth secret。若之後在 Apps Script 重新建立部署、換了部署 ID，更新此環境變數後重新建置前端即可。
+這個 URL 是公開 endpoint，不是 FFLogs OAuth secret；一般狀態查詢不寫入資料，只有 `action=enqueue` 且通過 Public／可讀或既有紀錄可見度複核條件時，才會更新待處理 Sheet。若之後在 Apps Script 重新建立部署、換了部署 ID，更新此環境變數後重新建置前端即可。
 
 ## 回傳狀態
 
@@ -137,7 +137,7 @@ VITE_FFLOGS_REPORT_STATUS_WEB_APP_URL=https://script.google.com/macros/s/你的�
 
 ## Workflow 讀取待收錄名單
 
-GitHub Actions 使用 `scripts/read_fflogs_refresh_queue.mjs` 透過 Google Sheets API 讀取 `pending` 工作表，將符合條件的 report code 寫入 `FFLOGS_RETRY_REPORT_CODES`。workflow 收尾時會掃描公開狀態索引、排行榜 `source_reports` 與公開 report 分片：已收錄會標記為 `done`；`review_existing_visibility` 只有在 hidden delta 索引確實命中時才標記為 `hidden`；已確認沒有支援副本通關會標記為 `not_eligible_no_clear`；未發現繁中服玩家會標記為 `not_eligible_no_traditional_chinese_players`。後兩者會保留原因文字且不會再次送入強制重掃；資料管線既有的近期 no-clear 重試規則不受影響。需要設定：
+GitHub Actions 使用 `scripts/read_fflogs_refresh_queue.mjs` 透過 Google Sheets API 讀取 `pending` 工作表，將符合條件的 report code 寫入 `FFLOGS_RETRY_REPORT_CODES`。workflow 收尾時會掃描公開／hidden 狀態索引、排行榜 `source_reports`、公開 report 分片、fight 完整性結果與 state checkpoint：已公開收錄會標記為 `done`；`review_existing_visibility` 只有在 hidden delta 索引確實命中時才標記為 `hidden`；report 雖已抓取但所有 fight 都被目前完整性規則隱藏時標記為 `review_required_data_integrity`；已確認沒有支援副本通關會標記為 `not_eligible_no_clear`；未發現繁中服玩家會標記為 `not_eligible_no_traditional_chinese_players`。後兩者會保留原因文字且不會再次送入強制重掃；資料管線既有的近期 no-clear 重試規則不受影響。需要設定：
 
 - Repository Variable `FFLOGS_REFRESH_QUEUE_SPREADSHEET_ID`
 - Repository Variable `FFLOGS_REFRESH_QUEUE_SHEET_NAME`，預設 `pending`

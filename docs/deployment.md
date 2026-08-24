@@ -45,8 +45,8 @@ npm run build
 10. 重新讀取主 repo 遠端 HEAD；若本輪期間已有新程式碼 commit，立即停止，避免舊 runner 發布資料。
 11. 執行 `npm run data:publish`。工具先驗證上一版 Data snapshot，再確認 report、`fight_id`、玩家與 checkpoint 沒有遺失，最後建立沒有 parent 的 root commit，並以 `force-with-lease` 更新 Data repo `main`。Git blob 以來源檔案的原始位元組寫入，且 snapshot 內的 `.gitattributes` 禁止換行轉換，確保 manifest 在 Windows 與 Linux runner 上有相同的大小與 SHA-256。這一步在 Pages 建置前完成，後續失敗也不會遺失 FFLogs 成果。
 12. 執行 `scripts/sync_user_leaderboard_repo.mjs`，將個別玩家成績、報告明細與 hidden 使用者差量以單一 root snapshot 更新到 Users repo。
-13. 從 Actions cache 還原 `$HOME/.local/share/fonts/ffxiv-og` 的 Noto Sans CJK TC Regular／Bold；cache miss 時才由 `scripts/setup_og_fonts.sh` 限時重試下載 Ubuntu `fonts-noto-cjk`，抽出必要字型並立即保存快取。接著執行 Vite/postbuild，產生主站、route fallback、低基數 SEO/OG 頁、`sitemap.xml`、`robots.txt` 與 `404.html`；正式流程不產生逐玩家分享頁與玩家 OG 圖。
-14. 執行 `npm run prune:pages-user-data`，讓 Pages artifact 只保留 `data/users/index.json`，個別玩家 JSON 仍由 Users repo 提供。
+13. 從 Actions cache 還原 `$HOME/.local/share/fonts/ffxiv-og` 的 Noto Sans CJK TC Regular／Bold；cache miss 時才由 `scripts/setup_og_fonts.sh` 限時重試下載 Ubuntu `fonts-noto-cjk`，抽出必要字型並立即保存快取。接著執行 Vite/postbuild，產生主站、route fallback、低基數 SEO/OG 頁、`sitemap.xml`、`robots.txt` 與 `404.html`；`FFXIV_TC_BUILD_USER_SHARE_PAGES` 預設為 `false`，因此正式流程預設不產生逐玩家分享頁與玩家 OG 圖。
+14. 執行 `npm run prune:pages-user-data`，讓 Pages artifact 在使用者資料中只保留 `data/users/index.json`；即使人工開啟逐玩家分享頁建置，這一步仍會移除玩家頁與玩家 OG 圖，個別玩家 JSON 由 Users repo 提供。
 15. 更新 Google Sheet 待收錄名單結果。
 16. 執行 Pages payload strict 稽核並寫入 `data/pages_payload_history.jsonl`，再執行第二次 `data:publish`，把趨勢納入新的 Data root snapshot。
 17. 執行 Cloudflare 容量估算與 purge dry-run 摘要。
@@ -70,14 +70,13 @@ npm run build
    - `scoped`：只清除本專案既有 prefix 與核心檔案，適合一般靜態頁或資料路徑更新。
 4. 執行後確認 workflow 的 `記錄 GitHub Pages 部署網址` 與 `清除 Cloudflare CDN 快取` 步驟完成。
 
-緊急部署仍會跑 `npm run build`，因此會從 Data snapshot 重建公開排行榜、個人成績單、排行榜薄索引、Logs 狀態索引、Honey B. Lovely 粉絲榜公開 JSON、低基數 SEO/OG 靜態頁、`sitemap.xml`、`robots.txt` 與 `404.html`，並執行 `validate:data`。建置完成後同樣會執行 `npm run prune:pages-user-data`，讓主站 artifact 只保留 `data/users/index.json`，不重新帶回大型個別玩家成績單 JSON、逐玩家靜態分享頁或玩家 OG 圖。它不向 FFLogs 取得新資料，也不會同步 Users 或發布 Data repo。
+緊急部署仍會跑 `npm run build`，因此會從 Data snapshot 重建公開排行榜、個人成績單、排行榜薄索引、Logs 狀態索引、Honey B. Lovely 粉絲榜公開 JSON、低基數 SEO/OG 靜態頁、`sitemap.xml`、`robots.txt` 與 `404.html`，並執行 `validate:data`。建置完成後同樣會執行 `npm run prune:pages-user-data`，讓主站 artifact 在使用者資料中只保留 `data/users/index.json`，不重新帶回大型個別玩家成績單 JSON、逐玩家靜態分享頁或玩家 OG 圖。它不向 FFLogs 取得新資料，也不會同步 Users 或發布 Data repo。
 
 ## GitHub Secrets 與 Variables
 
-必要 Secrets：
+正式更新必要 Secrets：
 
-- `FFLOGS_CLIENT_ID`
-- `FFLOGS_CLIENT_SECRET`
+- 至少一種完整 FFLogs OAuth 憑證格式：單組 `FFLOGS_CLIENT_ID` + `FFLOGS_CLIENT_SECRET`、成對的 `FFLOGS_CLIENT_IDS` + `FFLOGS_CLIENT_SECRETS`，或 `FFLOGS_CLIENT_CREDENTIALS_JSON`。
 - `GIT_PAT`，需可推送 `Kantai235/Final-Fantasy-XIV-Ranking-for-TC-Data` 與 `Kantai235/Final-Fantasy-XIV-Ranking-for-TC-Users`，用來發布權威資料快照及同步個人成績單快照。
 
 可選 Secrets：
@@ -90,6 +89,9 @@ npm run build
 - `CLOUDFLARE_PURGE_API_TOKEN`
 - `CLOUDFLARE_API_TOKEN`，只作為 purge token 相容 fallback
 - `VITE_GA_MEASUREMENT_ID`
+- `GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON`，FFLogs 待收錄 Sheet 的 service account JSON
+- `GOOGLE_SHEETS_CLIENT_EMAIL` 與 `GOOGLE_SHEETS_PRIVATE_KEY`，前一項的拆分格式
+- `FFLOGS_REFRESH_QUEUE_SPREADSHEET_ID`，只作為同名 repository variable 的相容 fallback
 
 常用 Variables：
 
@@ -107,6 +109,8 @@ npm run build
 - `FFLOGS_HISTORY_SCAN_RECENT_GAP_HOURS`
 - `FFLOGS_HISTORY_MAX_DEEP_REPORTS_PER_RUN`
 - `FFLOGS_HISTORY_MAX_DEEP_REPORTS_PER_GROUP_PER_RUN`
+- `FFLOGS_MAX_RUNTIME_SECONDS`
+- `FFLOGS_RUNTIME_GRACE_SECONDS`
 - `FFLOGS_EXISTING_REPORT_STATUS_CHECK_ENABLED`
 - `FFLOGS_EXISTING_REPORT_STATUS_CHECK_LIMIT`
 - `FFLOGS_FETCH_GCD_COVERAGE_ENABLED`
@@ -114,6 +118,10 @@ npm run build
 - `FFLOGS_RECENT_GCD_BACKFILL_REPORT_LIMIT`
 - `FFLOGS_GCD_BACKFILL_REPORT_LIMIT`
 - `FFLOGS_GCD_BACKFILL_CUTOFF_ISO`
+- `FFLOGS_SUPPORT_METRICS_BACKFILL_REPORT_LIMIT`
+- `FFLOGS_SUPPORT_METRICS_BACKFILL_CUTOFF_ISO`
+- `FFLOGS_FIGHT_INTEGRITY_ENABLED`
+- `FFLOGS_FIGHT_INTEGRITY_REPORT_LIMIT`
 - `FFLOGS_REFRESH_QUEUE_SPREADSHEET_ID`
 - `FFLOGS_REFRESH_QUEUE_SHEET_NAME`
 - `FFLOGS_REFRESH_QUEUE_MAX_CODES`
@@ -126,14 +134,21 @@ npm run build
 - `HONEY_FANS_HISTORY_WINDOW_HOURS`
 - `CLOUDFLARE_HOSTNAME`
 - `CLOUDFLARE_MANAGE_RATE_LIMIT`
+- `FFXIV_TC_BUILD_USER_SHARE_PAGES`
+- `PAGES_PAYLOAD_HISTORY_LIMIT`
 - `VITE_GA_MEASUREMENT_ID`
 - `VITE_FFLOGS_REPORT_STATUS_WEB_APP_URL`
 - `VITE_USER_DATA_BASE_URL`
+- `VITE_USER_DATA_FALLBACK_BASE_URLS`
 - `VITE_USER_INDEX_BASE_URL`
+
+`VITE_USER_DATA_FALLBACK_BASE_URLS` 已由前端支援，但目前兩條 workflow 尚未傳入此變數；若部署需要自訂備援來源，必須同步在正式更新與緊急部署的 Vite build `env` 加入它，不能只在 repository variables 建立同名值。`VITE_FFLOGS_REPORT_STATUS_WEB_APP_URL` 目前也使用版控內預設 URL，workflow 沒有傳入時不影響建置；只有更換 Apps Script deployment ID 時才需要同步 build env。
 
 workflow 預設掃全部地區候選 report，近期 24 小時完整重查，24-72 小時一般只選未知 report；UCoB 通關規則重判是例外，尚未寫入目前 `clear_rule_revision` 的既有 report 仍會重新深查。歷史補查則以每輪 1 個 168 小時視窗、最多 600 份深層候選且同一 zone/difficulty 群組最多 150 份的設定檢查更舊時間窗是否有新的公開 logs 可抓取，同時對新落地 fight 即時計算 GCD 覆蓋率。主排行榜更新的時間目標是落在 GitHub-hosted runner 6 小時硬上限內；正式排程預設 `FFLOGS_MAX_RUNTIME_SECONDS=6000` 與 `FFLOGS_RUNTIME_GRACE_SECONDS=900`，遇到長冷卻時會保留 `active_scan` 續跑位置，讓後續資料建置與 Data snapshot 發布仍能在同一輪完成。Honey B. Lovely 粉絲榜另以 `HONEY_FANS_*` variables 控制近期掃描天數、每輪歷史檢查上限與查詢切窗，預設為近 3 天、每輪 200 場、24 小時切窗。
 
-FFLogs 待收錄名單需要額外設定 Google Sheet 與 service account。Apps Script 會寫入 `FFLOGS_REFRESH_QUEUE_SPREADSHEET_ID` 指定的 Sheet；workflow 會用 `GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON` secret，或 `GOOGLE_SHEETS_CLIENT_EMAIL` + `GOOGLE_SHEETS_PRIVATE_KEY` secrets，透過 Google Sheets API 讀取 `status=queued|pending|retry` 的 report code。Data snapshot 發布成功後，workflow 會再依公開狀態索引、`data/rankings/*.json` 的 `source_reports` 與公開 report 分片，回寫 `done`、無通關或無繁中服玩家的終止狀態，因此 service account 必須被分享為該 Sheet 的編輯者；Apps Script 執行者帳號也需要可編輯該 Sheet。
+坦補支援統計的 stateful 歷史回補預設每輪 25 份，固定切點為 `2026-07-28T05:00:00Z`；設 `FFLOGS_SUPPORT_METRICS_BACKFILL_REPORT_LIMIT=0` 可暫停。戰鬥完整性歷史回補同樣預設每輪 25 份；`FFLOGS_FIGHT_INTEGRITY_ENABLED=false` 停止新增檢核，`FFLOGS_FIGHT_INTEGRITY_REPORT_LIMIT=0` 略過該輪歷史批次，但既有 `hidden_from_public` 結果仍持續生效。
+
+FFLogs 待收錄名單需要額外設定 Google Sheet 與 service account。Apps Script 會寫入 `FFLOGS_REFRESH_QUEUE_SPREADSHEET_ID` 指定的 Sheet；workflow 會用 `GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON` secret，或 `GOOGLE_SHEETS_CLIENT_EMAIL` + `GOOGLE_SHEETS_PRIVATE_KEY` secrets，透過 Google Sheets API 讀取 `status=queued|pending|retry` 的 report code。Data snapshot 發布成功後，workflow 會再依公開／hidden 狀態索引、`data/rankings/*.json` 的 `source_reports`、公開 report 分片、fight 完整性結果與 state checkpoint，回寫 `done`、`hidden`、`review_required_data_integrity`、無通關或無繁中服玩家的終止狀態，因此 service account 必須被分享為該 Sheet 的編輯者；Apps Script 執行者帳號也需要可編輯該 Sheet。
 
 ## 暫停的維護步驟
 
