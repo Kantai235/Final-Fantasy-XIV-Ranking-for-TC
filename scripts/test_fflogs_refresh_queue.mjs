@@ -75,6 +75,66 @@ async function main() {
           },
         }],
       },
+      IntegrityV10Valid123: {
+        report_code: "IntegrityV10Valid123",
+        fights: [{
+          data_integrity: {
+            calculation_version: 10,
+            status: "valid",
+            hidden_from_public: false,
+          },
+        }],
+      },
+      IntegrityV11Valid123: {
+        report_code: "IntegrityV11Valid123",
+        fights: [{
+          data_integrity: {
+            calculation_version: 11,
+            status: "valid",
+            hidden_from_public: false,
+          },
+        }],
+      },
+      IntegrityV12Valid123: {
+        report_code: "IntegrityV12Valid123",
+        fights: [{
+          data_integrity: {
+            calculation_version: 12,
+            status: "not_applicable",
+            hidden_from_public: false,
+          },
+        }],
+      },
+      IntegrityV13Valid123: {
+        report_code: "IntegrityV13Valid123",
+        fights: [{
+          data_integrity: {
+            calculation_version: 13,
+            status: "valid",
+            hidden_from_public: false,
+          },
+        }],
+      },
+      IntegrityV7Valid123: {
+        report_code: "IntegrityV7Valid123",
+        fights: [{
+          data_integrity: {
+            calculation_version: 7,
+            status: "valid",
+            hidden_from_public: false,
+          },
+        }],
+      },
+      IntegrityV14Valid123: {
+        report_code: "IntegrityV14Valid123",
+        fights: [{
+          data_integrity: {
+            calculation_version: 14,
+            status: "valid",
+            hidden_from_public: false,
+          },
+        }],
+      },
       MissingIntegrity123: {
         report_code: "MissingIntegrity123",
         report_end_time_iso: "2026-07-29T00:00:00.000Z",
@@ -108,7 +168,19 @@ async function main() {
     assert(indexedReportCodes.has("IntegrityV8Valid123"), "v8 已驗證正常的 report 應維持公開收錄");
     assert(!integrityBlockedReportCodes.has("IntegrityV8Valid123"), "v8 正常 report 不得誤列為站務複核");
     assert(!indexedReportCodes.has("IntegrityV8Failed123"), "v8 失敗 report 不得回覆為公開收錄");
-    assert(integrityBlockedReportCodes.has("IntegrityV8Failed123"), "v8 失敗 report 必須等待 v9 複核");
+    assert(integrityBlockedReportCodes.has("IntegrityV8Failed123"), "v8 失敗 report 必須等待新版複核");
+    assert(indexedReportCodes.has("IntegrityV10Valid123"), "相容的 v10 正常 report 應維持公開收錄");
+    assert(!integrityBlockedReportCodes.has("IntegrityV10Valid123"), "相容的 v10 正常 report 不得誤列為站務複核");
+    assert(indexedReportCodes.has("IntegrityV11Valid123"), "相容的 v11 正常 report 應維持公開收錄");
+    assert(!integrityBlockedReportCodes.has("IntegrityV11Valid123"), "相容的 v11 正常 report 不得誤列為站務複核");
+    assert(indexedReportCodes.has("IntegrityV12Valid123"), "相容的 v12 not_applicable report 應維持公開收錄");
+    assert(!integrityBlockedReportCodes.has("IntegrityV12Valid123"), "相容的 v12 not_applicable report 不得誤列為站務複核");
+    assert(indexedReportCodes.has("IntegrityV13Valid123"), "目前 v13 正常 report 應維持公開收錄");
+    assert(!integrityBlockedReportCodes.has("IntegrityV13Valid123"), "目前 v13 正常 report 不得誤列為站務複核");
+    assert(!indexedReportCodes.has("IntegrityV7Valid123"), "早於相容清單的 v7 report 不得回覆為公開收錄");
+    assert(integrityBlockedReportCodes.has("IntegrityV7Valid123"), "早於相容清單的 v7 report 必須等待站務複核");
+    assert(!indexedReportCodes.has("IntegrityV14Valid123"), "尚未明示相容的未知新版 report 不得回覆為公開收錄");
+    assert(integrityBlockedReportCodes.has("IntegrityV14Valid123"), "尚未明示相容的未知新版 report 必須等待站務複核");
     assert(!indexedReportCodes.has("MissingIntegrity123"), "新制切點後缺少完整性結果的 report 不得回覆為公開收錄");
     assert(integrityBlockedReportCodes.has("MissingIntegrity123"), "新制切點後缺少完整性結果的 report 必須進入站務複核集合");
     assert(indexedReportCodes.has("LegacyNoIntegrity123"), "新制切點前缺少完整性結果的 report 應維持向後相容");

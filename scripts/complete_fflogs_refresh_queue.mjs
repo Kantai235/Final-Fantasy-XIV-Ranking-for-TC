@@ -25,11 +25,13 @@ const REPORT_CODE_PATTERN = /^[A-Za-z0-9]{8,32}$/;
 const QUEUED_STATUSES = new Set(["queued", "pending", "retry"]);
 const STATE_STATUS_NO_CLEAR = "skipped_no_clear";
 const STATE_STATUS_NO_TRADITIONAL_CHINESE_PLAYERS = "skipped_no_traditional_chinese_players";
-// 必須與 scripts/fight_integrity.py 及 build_user_data.mjs 同步。v8 已確認正常的 fight
-// 維持公開；v8 失敗、缺少判定或更舊版本才交由站務複核及 v9 回補。
+// 必須與 scripts/fight_integrity.py 及 build_user_data.mjs 同步。v13 只強制幻朱雀
+// 補齊副本／職業普攻證據；其它副本已確認正常的 v8～v12 fight 仍維持公開。
+// hidden、缺少判定、過舊或未知版本才交由站務複核，避免待收錄收尾把已公開的
+// 合法 report 誤標成 integrity_review。
 const FIGHT_INTEGRITY_CUTOFF_MS = Date.parse("2026-07-28T18:00:00+08:00");
-const CURRENT_FIGHT_INTEGRITY_CALCULATION_VERSION = 9;
-const LEGACY_PUBLIC_COMPATIBLE_FIGHT_INTEGRITY_VERSIONS = new Set([8]);
+const CURRENT_FIGHT_INTEGRITY_CALCULATION_VERSION = 13;
+const LEGACY_PUBLIC_COMPATIBLE_FIGHT_INTEGRITY_VERSIONS = new Set([8, 9, 10, 11, 12]);
 const PUBLIC_FIGHT_INTEGRITY_STATUSES = new Set(["valid", "not_applicable"]);
 
 // Apps Script 與 workflow 都以這組欄位順序存取同一份 Sheet。工作表可能曾被

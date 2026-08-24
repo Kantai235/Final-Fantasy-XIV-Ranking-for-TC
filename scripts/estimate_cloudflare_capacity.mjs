@@ -161,7 +161,7 @@ function buildScenario(name, files) {
 const scenarios = [
   buildScenario("排行榜首屏", [...appShellFiles, "data/encounters.json", "data/rankings/savage_m4s.json"]),
   buildScenario("全服統計首屏", [...appShellFiles, "data/encounters.json", "data/global_stats.json"]),
-  ...(userIndexFile
+  ...(userIndexFile && userFiles.length > 0
     ? [
         buildScenario("個人成績單首屏（artifact 內含中位數使用者檔）", [
           ...appShellFiles,
@@ -177,10 +177,11 @@ const scenarios = [
         ].filter(Boolean)),
       ]
     : [
-        buildScenario("個人成績單首屏（主站殼層；users repo 外部載入）", [
+        buildScenario("個人成績單首屏（主站殼層與搜尋索引；users repo 外部載入）", [
           ...appShellFiles,
           "data/encounters.json",
-        ]),
+          userIndexFile,
+        ].filter(Boolean)),
       ]),
   {
     name: "完整 dist 冷爬一次",
