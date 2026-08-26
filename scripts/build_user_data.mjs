@@ -5,6 +5,7 @@ import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { 建立個人成績徽章, 取得個人成績成就目錄 } from "../src/utils/userProfileBadges.js";
+import { resolvePhysicalFightHash } from "./fight_identity.mjs";
 
 // 本檔是資料管線的 Data Building Layer。
 // 它讀取 data/rankings 的可追溯原始資料與 ranking_entries，聚合成前端可直接讀取的靜態 JSON。
@@ -448,23 +449,38 @@ function isConfirmedFightIntegrityAnomaly(fight) {
     && confirmedFightIntegrityAnomalyStatuses.has(String(integrity?.status || ""));
 }
 
-function collectConfirmedAnomalousFightHashes(ranking) {
+function buildFightIdentityEncounter(ranking, encounter) {
+  // public/data/encounters.json 為了前端精簡化，舊快照可能沒有 encounter_id／difficulty；
+  // reports 所在的 ranking 主檔仍保留這些 FFLogs 身分欄位。建置 v2 指紋時必須合併
+  // 兩邊契約，否則歷史資料會因公開清單缺欄而退回不穩定的 v1 hash。
+  return {
+    ...(ranking?.encounter || {}),
+    ...(encounter || {}),
+    encounter_id: encounter?.encounter_id ?? ranking?.encounter?.encounter_id,
+    difficulty: encounter?.difficulty ?? ranking?.encounter?.difficulty,
+  };
+}
+
+function collectConfirmedAnomalousFightHashes(ranking, encounter) {
   const fightHashes = new Set();
   for (const report of Object.values(ranking?.reports || {})) {
     for (const fight of report?.fights || []) {
       // 同一場戰鬥可能被多位隊員分別上傳。只要任一來源已取得明確異常證據，
-      // 就必須排除相同 fight_hash 的所有變體，否則換一份 report 仍會把異常成績帶回公開產物。
-      if (fight?.fight_hash && isConfirmedFightIntegrityAnomaly(fight)) {
-        fightHashes.add(fight.fight_hash);
+      // 就必須排除相同 v2 fight_hash 的所有變體。歷史分片仍是 v1 時也在記憶體
+      // 依穩定欄位重算，避免同一場因通關或 damage table 的 1 ms／小數漂移而回流。
+      const fightHash = resolvePhysicalFightHash(fight, encounter);
+      if (fightHash && isConfirmedFightIntegrityAnomaly(fight)) {
+        fightHashes.add(fightHash);
       }
     }
   }
   return fightHashes;
 }
 
-function isIntegrityHiddenFightOrDuplicate(fight, report, confirmedAnomalousFightHashes) {
+function isIntegrityHiddenFightOrDuplicate(fight, report, encounter, confirmedAnomalousFightHashes) {
+  const fightHash = resolvePhysicalFightHash(fight, encounter);
   return isIntegrityHiddenFight(fight, report)
-    || Boolean(fight?.fight_hash && confirmedAnomalousFightHashes.has(fight.fight_hash));
+    || Boolean(fightHash && confirmedAnomalousFightHashes.has(fightHash));
 }
 
 function hiddenReportFields(report) {
@@ -1508,7 +1524,7 @@ function normalizeFileBaseName(characterName, usedNames) {
   return candidate;
 }
 
-function makePublicEntry({ encounter, report, reportCode, fight, player, fightPlayers }) {
+function makePublicEntry({ encounter, report, reportCode, fight, fightHash, player, fightPlayers }) {
   // 個人成績單需要同場隊友、職業排名與完整時間欄位，因此這裡會從 report/fight/player 重組公開 entry。
   // 若來源只有 ranking_entries，collectEntriesFromRankingEntries 會走相容路徑，但就不會有隊友資訊。
   const characterName = player.name || player.character_name;
@@ -1538,21 +1554,24 @@ function makePublicEntry({ encounter, report, reportCode, fight, player, fightPl
   const healingStats = healerJobs.has(job) ? compactHealingStats(player.healing_stats) : null;
   const tankStats = tankJobs.has(job) ? compactTankStats(player.tank_stats) : null;
   const coHealer = buildCoHealer(player, fightPlayers);
-  const signature = {
-    encounter_key: encounter.key,
-    fight_hash: fight.fight_hash || null,
-    report_code: reportCode,
-    fight_id: fight.fight_id,
-    character_name: characterName,
-    server,
-    job,
-    active_time_ms: toNumber(player.active_time_ms),
-    rdps: toNumber(player.rdps),
-    adps: toNumber(player.adps),
-    dps: toNumber(player.dps),
-    total_damage: toNumber(player.total_damage),
-    damage_time_ms: damageTimeMs,
-  };
+  const signature = fightHash
+    ? {
+        encounter_key: encounter.key,
+        fight_hash: fightHash,
+        character_name: characterName,
+        server,
+        job,
+      }
+    : {
+        // 極舊資料若缺少副本／時間／完整隊伍，寧可保留來源層級的獨立 ID，
+        // 也不能再用近似輸出值跨 report 猜測同場。
+        encounter_key: encounter.key,
+        report_code: reportCode,
+        fight_id: fight.fight_id,
+        character_name: characterName,
+        server,
+        job,
+      };
 
   const entry = {
     id: createId(signature),
@@ -1608,12 +1627,13 @@ function makePublicEntry({ encounter, report, reportCode, fight, player, fightPl
 }
 
 function collectEntriesFromReports({ ranking, encounter, includeHiddenReports = false }) {
-  // 完整 reports 是最可信來源：它能辨識同場玩家、重複上傳與 fight_hash。
-  // fight_hash 是同一場戰鬥跨 report 的共同指紋；有它時不再把輸出數值納入去重 key，
-  // 避免同一場戰鬥因不同上傳者的 table 細節差異被拆成多筆個人成績。
+  // 完整 reports 是最可信來源：它能辨識同場玩家、重複上傳與物理戰鬥。
+  // 歷史 v1 fight_hash 會在記憶體重算為 v2；v2 不含輸出／通關時間，因此不同
+  // 上傳者的 table 毫秒或小數漂移不會再把同一場拆成多筆個人成績。
   const entriesByExactKey = new Map();
   const rankIndex = buildJobRankIndex(ranking.ranking_entries || []);
-  const confirmedAnomalousFightHashes = collectConfirmedAnomalousFightHashes(ranking);
+  const fightIdentityEncounter = buildFightIdentityEncounter(ranking, encounter);
+  const confirmedAnomalousFightHashes = collectConfirmedAnomalousFightHashes(ranking, fightIdentityEncounter);
 
   for (const [fallbackReportCode, report] of Object.entries(ranking.reports || {})) {
     if (!report || typeof report !== "object") {
@@ -1628,21 +1648,22 @@ function collectEntriesFromReports({ ranking, encounter, includeHiddenReports = 
       if (!fight || typeof fight !== "object") {
         continue;
       }
-      if (isIntegrityHiddenFightOrDuplicate(fight, report, confirmedAnomalousFightHashes)) {
+      if (isIntegrityHiddenFightOrDuplicate(fight, report, fightIdentityEncounter, confirmedAnomalousFightHashes)) {
         continue;
       }
 
       const fightPlayers = Array.isArray(fight.players) ? fight.players : [];
+      const fightHash = resolvePhysicalFightHash(fight, fightIdentityEncounter);
       for (const player of fightPlayers) {
-        const entry = makePublicEntry({ encounter, report, reportCode, fight, player, fightPlayers });
+        const entry = makePublicEntry({ encounter, report, reportCode, fight, fightHash, player, fightPlayers });
         if (!entry) {
           continue;
         }
 
-        const exactKey = fight.fight_hash
+        const exactKey = fightHash
           ? createId({
               encounter_key: entry.encounter_key,
-              fight_hash: fight.fight_hash,
+              fight_hash: fightHash,
               character_name: entry.character_name,
               server: entry.server,
               job: entry.job,
@@ -1650,15 +1671,11 @@ function collectEntriesFromReports({ ranking, encounter, includeHiddenReports = 
           : createId({
               encounter_key: entry.encounter_key,
               fight_hash: null,
+              report_code: entry.report_code,
+              fight_id: entry.fight_id,
               character_name: entry.character_name,
               server: entry.server,
               job: entry.job,
-              active_time_ms: entry.active_time_ms,
-              rdps: entry.rdps,
-              adps: entry.adps,
-              dps: entry.dps,
-              total_damage: entry.total_damage,
-              damage_time_ms: entry.damage_time_ms,
             });
         const existing = entriesByExactKey.get(exactKey);
         if (existing) {
@@ -1871,7 +1888,7 @@ function compareTeamRecords(left, right) {
   return entryRecordedAtMs(right) - entryRecordedAtMs(left);
 }
 
-function buildTeamRecord({ encounter, report, reportCode, fight }) {
+function buildTeamRecord({ encounter, report, reportCode, fight, fightHash }) {
   const players = summarizeTeamPlayers(Array.isArray(fight?.players) ? fight.players : []);
   if (players.length !== 8) {
     return null;
@@ -1888,11 +1905,12 @@ function buildTeamRecord({ encounter, report, reportCode, fight }) {
   const totalDps = players.reduce((sum, player) => sum + (toNumber(player.dps) || 0), 0);
   const identity = {
     encounter_key: encounter.key,
-    fight_hash: fight.fight_hash || null,
-    report_code: reportCode,
-    fight_id: fight.fight_id ?? null,
-    clear_time_seconds: clearTimeSeconds,
-    players: players.map((player) => `${player.character_name}@${player.server}:${player.job}`),
+    ...(fightHash
+      ? { fight_hash: fightHash }
+      : {
+          report_code: reportCode,
+          fight_id: fight.fight_id ?? null,
+        }),
   };
 
   const record = {
@@ -1918,9 +1936,10 @@ function buildTeamRecord({ encounter, report, reportCode, fight }) {
 
 function collectTeamRecordsFromReports({ ranking, encounter, includeHiddenReports = false }) {
   // 隊伍榜以 fight 為單位，和個人榜不同：同一場戰鬥若被不同隊員上傳，只保留一筆並累計 duplicate_count。
-  // fight_hash 是最佳識別來源；缺少時才退回 report/fight/player 簽章，避免誤合併不同隊伍的相近時間紀錄。
+  // v2 fight_hash 是最佳識別來源；欄位不足時才退回 report/fight 身分，避免用相近輸出誤合併不同 pull。
   const recordsByFight = new Map();
-  const confirmedAnomalousFightHashes = collectConfirmedAnomalousFightHashes(ranking);
+  const fightIdentityEncounter = buildFightIdentityEncounter(ranking, encounter);
+  const confirmedAnomalousFightHashes = collectConfirmedAnomalousFightHashes(ranking, fightIdentityEncounter);
 
   for (const [fallbackReportCode, report] of Object.entries(ranking.reports || {})) {
     if (!report || typeof report !== "object") {
@@ -1935,19 +1954,23 @@ function collectTeamRecordsFromReports({ ranking, encounter, includeHiddenReport
       if (!fight || typeof fight !== "object") {
         continue;
       }
-      if (isIntegrityHiddenFightOrDuplicate(fight, report, confirmedAnomalousFightHashes)) {
+      if (isIntegrityHiddenFightOrDuplicate(fight, report, fightIdentityEncounter, confirmedAnomalousFightHashes)) {
         continue;
       }
 
-      const record = buildTeamRecord({ encounter, report, reportCode, fight });
+      const fightHash = resolvePhysicalFightHash(fight, fightIdentityEncounter);
+      const record = buildTeamRecord({ encounter, report, reportCode, fight, fightHash });
       if (!record) {
         continue;
       }
 
-      const dedupeKey = fight.fight_hash ? `${encounter.key}:${fight.fight_hash}` : record.id;
+      const dedupeKey = fightHash ? `${encounter.key}:${fightHash}` : record.id;
       const existing = recordsByFight.get(dedupeKey);
       if (existing) {
-        existing.duplicate_count += 1;
+        const duplicateCount = existing.duplicate_count + 1;
+        const representative = compareTeamRecords(record, existing) < 0 ? record : existing;
+        representative.duplicate_count = duplicateCount;
+        recordsByFight.set(dedupeKey, representative);
         continue;
       }
 
@@ -2675,9 +2698,10 @@ function addActivityLogsFromReports(
   { ranking, encounter, includeHiddenReports = false },
 ) {
   // 近期動態的 Logs 曲線以 reports/fights/players 權威來源建立：
-  // report_code 回答「有多少份 FFLogs 日誌」，fight_hash 回答「去重後有多少場通關」。
+  // report_code 回答「有多少份 FFLogs 日誌」，v2 fight_hash 回答「去重後有多少場通關」。
   // 這兩個口徑若在 Vue 端用 ranking_entries 反推，會把同場多份上傳或同一 report 內多場戰鬥混在一起。
-  const confirmedAnomalousFightHashes = collectConfirmedAnomalousFightHashes(ranking);
+  const fightIdentityEncounter = buildFightIdentityEncounter(ranking, encounter);
+  const confirmedAnomalousFightHashes = collectConfirmedAnomalousFightHashes(ranking, fightIdentityEncounter);
   for (const [fallbackReportCode, report] of Object.entries(ranking.reports || {})) {
     if (!report || typeof report !== "object") {
       continue;
@@ -2691,7 +2715,7 @@ function addActivityLogsFromReports(
       if (!fight || typeof fight !== "object") {
         continue;
       }
-      if (isIntegrityHiddenFightOrDuplicate(fight, report, confirmedAnomalousFightHashes)) {
+      if (isIntegrityHiddenFightOrDuplicate(fight, report, fightIdentityEncounter, confirmedAnomalousFightHashes)) {
         continue;
       }
 
@@ -2702,8 +2726,9 @@ function addActivityLogsFromReports(
         continue;
       }
 
-      const fightKey = fight.fight_hash
-        ? `${encounter.key}:${fight.fight_hash}`
+      const fightHash = resolvePhysicalFightHash(fight, fightIdentityEncounter);
+      const fightKey = fightHash
+        ? `${encounter.key}:${fightHash}`
         : `${encounter.key}:${reportCode}:${fight.fight_id ?? ""}:${recordedAtMs}`;
       addActivityLogObservation(accumulator, encounter, dateKey, recordedAtMs, {
         reportKey: reportCode || null,
@@ -2715,7 +2740,7 @@ function addActivityLogsFromReports(
 
 function addActivityLogsFromEntries(accumulator, { entries, encounter }) {
   // 舊資料若沒有 reports 分片，至少用 ranking_entries 建出相容的 Logs 與通關場次粗估。
-  // 這條路徑沒有 fight_hash 與同場完整隊友，因此只作為舊格式保底，不應成為新統計的主要來源。
+  // 這條路徑沒有 report/fight 完整隊友，因此只作為舊格式保底，不應成為新統計的主要來源。
   for (const entry of entries || []) {
     const recordedAtMs = entryRecordedAtMs(entry);
     const dateKey = taiwanDateKeyFromMs(recordedAtMs);
@@ -2724,8 +2749,9 @@ function addActivityLogsFromEntries(accumulator, { entries, encounter }) {
     }
 
     const reportKey = entry.report_code || entry.report_url || null;
-    const fightKey = entry.fight_hash
-      ? `${encounter.key}:${entry.fight_hash}`
+    const fightHash = resolvePhysicalFightHash(entry, encounter);
+    const fightKey = fightHash
+      ? `${encounter.key}:${fightHash}`
       : `${encounter.key}:${reportKey || entry.id}:${entry.fight_id ?? ""}:${recordedAtMs}`;
 
     addActivityLogObservation(accumulator, encounter, dateKey, recordedAtMs, {

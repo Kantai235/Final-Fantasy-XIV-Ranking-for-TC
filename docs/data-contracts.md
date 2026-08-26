@@ -160,6 +160,8 @@ Honey B. Lovely 粉絲榜來源在 `data/fun/honey_b_fans.json`，公開檔在 `
 
 `fight_hash` 用於辨識不同 report 上傳的同一場戰鬥；`source_reports` 與 `duplicate_count` 必須保留，不能因去重而刪掉來源線索。
 
+`fight_hash_version=2` 的物理戰鬥指紋固定由 `encounter_id`、`difficulty`、絕對開戰時間 `recorded_at` 與排序後的完整「角色名稱＋伺服器＋職業」名單組成。通關時間、`damage_time_ms`、rDPS／aDPS／DPS、總傷害與活躍時間都是可能因 FFLogs 上傳來源或 table 邊界而微幅漂移的表現值，不得再參與身分計算。Python 資料取得層寫入 v2 時，會將不同的舊簽章追加至 `legacy_fight_hashes` 供追溯；Node.js 建置層讀到未標記 v2 的歷史分片時，會用同一契約在記憶體重算。若上述穩定欄位不完整，只能保守沿用既有 hash 或退回 `report_code + fight_id`，不可用近似輸出值猜測同場。
+
 個人成績單會用 `fight_hash + 角色 + 伺服器 + 職業` 合併同一場戰鬥的多份上傳。合併列保留代表成績與細節指標，完整 `report_variants` 與 `source_reports` 由 `user-entry-details` 按需載入，讓前端報告彈窗可分頁切換不同 report 來源。
 
 個人成績單未套用職業篩選時，副本代表列與分享用代表職業優先選同職 `job_rank` 最前面的有效紀錄；`summary.best_rdps` 仍保留最高 rDPS，避免把「代表職業」與「最高輸出」混成同一件事。

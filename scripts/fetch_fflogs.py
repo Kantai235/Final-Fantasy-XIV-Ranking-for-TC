@@ -3423,38 +3423,91 @@ def 建立_sha256(內容: Any) -> str:
     return hashlib.sha256(原文.encode("utf-8")).hexdigest()
 
 
-def 建立戰鬥簽章(戰鬥: dict[str, Any]) -> str:
-    # 同一場戰鬥可能由不同隊員上傳成多份 report；用通關時間與全隊成績建立簽章來辨識同場戰鬥。
+物理戰鬥簽章版本 = 2
+
+
+def 建立戰鬥簽章(戰鬥: dict[str, Any]) -> str | None:
+    """建立跨 report 穩定的物理戰鬥指紋。
+
+    同一場戰鬥由不同隊員上傳時，FFLogs 的 combatTime、Damage Done table
+    邊界與小數捨入可能相差數毫秒或 0.01 DPS。這些值只能用來挑選代表成績，
+    不能成為身分的一部分，否則同一場會被拆成多筆並污染場次與 PR 母體。
+
+    recorded_at 是 report startTime 加 fight startTime 得到的絕對開戰時間；目前
+    跨上傳來源會維持一致。再搭配副本、難度與完整角色／伺服器／職業名單，
+    可在不依賴任何輸出衍生值的前提下辨識物理戰鬥。
+    """
+    副本_id = 轉_int_or_none(戰鬥.get("encounter_id"))
+    難度 = 轉_int_or_none(戰鬥.get("difficulty"))
+    紀錄時間 = 轉_int_or_none(戰鬥.get("recorded_at"))
+    if 紀錄時間 is None:
+        紀錄時間 = 解析_iso_時間毫秒(戰鬥.get("recorded_at_iso"))
+
+    原始玩家清單 = 戰鬥.get("players")
+    if not isinstance(原始玩家清單, list):
+        原始玩家清單 = []
     玩家簽章 = [
         {
-            "name": 玩家.get("name"),
-            "server": 玩家.get("server"),
-            "job": 玩家.get("job"),
-            "dps": 玩家.get("dps"),
-            "total_damage": 玩家.get("total_damage"),
+            "name": str(玩家.get("name") or 玩家.get("character_name") or "").strip(),
+            "server": str(玩家.get("server") or "").strip(),
+            "job": str(玩家.get("job") or "").strip(),
         }
-        for 玩家 in 戰鬥.get("players", [])
+        for 玩家 in 原始玩家清單
         if isinstance(玩家, dict)
+    ]
+    玩家簽章 = [
+        玩家
+        for 玩家 in 玩家簽章
+        if 玩家["name"] and 玩家["server"] and 玩家["job"]
     ]
     玩家簽章.sort(
         key=lambda 玩家: (
-            玩家.get("name") or "",
-            玩家.get("server") or "",
-            玩家.get("job") or "",
-            玩家.get("dps") or 0,
-            玩家.get("total_damage") or 0,
+            玩家["name"],
+            玩家["server"],
+            玩家["job"],
         )
     )
+
+    # 欄位不足時不能退回通關時間／DPS 等近似簽章，否則仍會重現本次問題。
+    # 呼叫端會保守沿用舊 fight_hash，或以 report + fight 作為未合併來源身分。
+    if (
+        副本_id is None
+        or 難度 is None
+        or 紀錄時間 is None
+        or not 玩家簽章
+        or len(玩家簽章) != len(原始玩家清單)
+    ):
+        return None
+
     return 建立_sha256(
         {
-            "encounter_id": 戰鬥.get("encounter_id"),
-            "difficulty": 戰鬥.get("difficulty"),
-            "clear_time_ms": 戰鬥.get("clear_time_ms"),
-            "damage_downtime_ms": 戰鬥.get("damage_downtime_ms"),
-            "damage_time_ms": 戰鬥.get("damage_time_ms"),
+            "difficulty": 難度,
+            "encounter_id": 副本_id,
+            "fight_hash_version": 物理戰鬥簽章版本,
             "players": 玩家簽章,
+            "recorded_at_ms": 紀錄時間,
         }
     )
+
+
+def 套用物理戰鬥簽章(戰鬥: dict[str, Any]) -> str | None:
+    """將 v2 指紋套到 fight，並保留所有既有 v1 值供歷史追溯。"""
+    新簽章 = 建立戰鬥簽章(戰鬥)
+    舊簽章 = str(戰鬥.get("fight_hash") or "").strip()
+    if not 新簽章:
+        return 舊簽章 or None
+
+    if 舊簽章 and 舊簽章 != 新簽章:
+        舊簽章清單 = 戰鬥.get("legacy_fight_hashes")
+        if not isinstance(舊簽章清單, list):
+            舊簽章清單 = []
+        戰鬥["legacy_fight_hashes"] = list(
+            dict.fromkeys([*(str(值) for 值 in 舊簽章清單 if 值), 舊簽章])
+        )
+
+    戰鬥["fight_hash"] = 新簽章
+    戰鬥["fight_hash_version"] = 物理戰鬥簽章版本
+    return 新簽章
 
 
 def 成績是否優先(候選: dict[str, Any], 目前最佳: dict[str, Any] | None) -> bool:
@@ -3773,19 +3826,31 @@ def 登記排行榜條目(
     精確成績鍵值 = 標準成績["id"]
     既有成績 = 精確成績索引.get(精確成績鍵值)
     if 既有成績:
-        既有來源報告 = 既有成績.setdefault("source_reports", [])
-        for 報告代碼 in 標準成績.get("source_reports") or []:
-            if 報告代碼 not in 既有來源報告:
-                既有來源報告.append(報告代碼)
-        既有成績["duplicate_count"] = max(
-            轉_int_or_none(既有成績.get("duplicate_count")) or 1,
+        # v2 fight_hash 會把同一物理戰鬥的微小 table 漂移正確收斂；代表列仍依
+        # rDPS／通關時間／aDPS 規則挑選，但所有來源與已回補衍生欄位都要保留。
+        代表成績 = 標準成績 if 成績是否優先(標準成績, 既有成績) else 既有成績
+        另一來源 = 既有成績 if 代表成績 is 標準成績 else 標準成績
+        # source_reports 固定依資料讀取順序累加，不受代表成績改選影響；
+        # 否則單純的小數漂移就會讓產物每次重建時重排來源。
+        既有來源報告 = list(
+            dict.fromkeys(
+                [
+                    *(既有成績.get("source_reports") or []),
+                    *(標準成績.get("source_reports") or []),
+                ]
+            )
+        )
+        代表成績["source_reports"] = 既有來源報告
+        代表成績["duplicate_count"] = max(
+            轉_int_or_none(代表成績.get("duplicate_count")) or 1,
+            轉_int_or_none(另一來源.get("duplicate_count")) or 1,
             len(既有來源報告) or 1,
         )
         # 同一場戰鬥可能被多位隊員上傳成多份 report。代表成績若剛好來自尚未回補 GCD 的
-        # 上傳來源，仍應從其他同分同場 variant 保留已補算的 GCD，避免前端顯示因去重順序而漂移。
-        合併GCD覆蓋率衍生欄位(既有成績, 標準成績)
-        合併坦補支援統計衍生欄位(既有成績, 標準成績)
-        標準成績 = 既有成績
+        # 上傳來源，仍應從其他同場 variant 保留已補算的 GCD，避免前端顯示因去重順序而漂移。
+        合併GCD覆蓋率衍生欄位(代表成績, 另一來源)
+        合併坦補支援統計衍生欄位(代表成績, 另一來源)
+        精確成績索引[精確成績鍵值] = 代表成績
     else:
         精確成績索引[精確成績鍵值] = 標準成績
 
@@ -4085,7 +4150,7 @@ def 建立排行榜條目(
 
     # 完整性判定屬於物理戰鬥，不屬於單一上傳 report。同一場可由多名隊員上傳，
     # 若只隱藏其中一份，去重器會改選另一份來源，使完全相同的異常 rDPS 回到榜單。
-    # 先為所有來源建立 fight_hash，再彙整已確認異常的 hash；unverifiable 不傳播，
+    # 先為所有來源建立 v2 fight_hash，再彙整已確認異常的 hash；unverifiable 不傳播，
     # 避免一份暫時查詢失敗的上傳壓過另一份已驗證正常來源。
     已確認異常戰鬥簽章: set[str] = set()
     for 報告 in 報告索引.values():
@@ -4094,9 +4159,8 @@ def 建立排行榜條目(
         for 戰鬥 in 報告.get("fights") or []:
             if not isinstance(戰鬥, dict):
                 continue
-            戰鬥簽章 = 建立戰鬥簽章(戰鬥)
-            戰鬥["fight_hash"] = 戰鬥簽章
-            if 戰鬥已確認資料完整性異常(戰鬥):
+            戰鬥簽章 = 套用物理戰鬥簽章(戰鬥)
+            if 戰鬥簽章 and 戰鬥已確認資料完整性異常(戰鬥):
                 已確認異常戰鬥簽章.add(戰鬥簽章)
 
     for 報告代碼, 報告 in 報告索引.items():
@@ -4112,12 +4176,16 @@ def 建立排行榜條目(
         for 戰鬥 in 報告.get("fights") or []:
             if not isinstance(戰鬥, dict):
                 continue
-            戰鬥簽章 = str(戰鬥.get("fight_hash") or 建立戰鬥簽章(戰鬥))
+            戰鬥簽章 = 套用物理戰鬥簽章(戰鬥)
             if (
                 戰鬥已標記資料完整性隱藏(戰鬥)
-                or 戰鬥簽章 in 已確認異常戰鬥簽章
+                or (戰鬥簽章 and 戰鬥簽章 in 已確認異常戰鬥簽章)
             ):
                 continue
+
+            # 欄位不足的極舊資料不能用 DPS／通關時間猜測同場；退回 report/fight
+            # 只會少合併，不會把兩場不同戰鬥錯誤收斂成同一筆。
+            戰鬥去重識別 = 戰鬥簽章 or f"report:{報告代碼}:fight:{戰鬥.get('fight_id')}"
 
             for 玩家 in 戰鬥.get("players") or []:
                 if not isinstance(玩家, dict):
@@ -4133,14 +4201,8 @@ def 建立排行榜條目(
                 角色鍵值 = f"{名稱}@{伺服器}:{職業}"
                 精確成績鍵值 = 建立_sha256(
                     {
-                        "fight_hash": 戰鬥簽章,
+                        "fight_identity": 戰鬥去重識別,
                         "character": 角色鍵值,
-                        "active_time_ms": 玩家.get("active_time_ms"),
-                        "rdps": 玩家.get("rdps"),
-                        "adps": 玩家.get("adps"),
-                        "dps": dps,
-                        "total_damage": 玩家.get("total_damage"),
-                        "damage_time_ms": 戰鬥.get("damage_time_ms"),
                     }
                 )
                 成績 = {
@@ -4178,6 +4240,7 @@ def 建立排行榜條目(
                     # 這個 ID 只用來組外部工具深連結，仍以角色名稱、伺服器與職業作為排行榜身分主鍵。
                     "fflogs_source_id": 玩家.get("fflogs_id"),
                     "fight_hash": 戰鬥簽章,
+                    "fight_hash_version": 戰鬥.get("fight_hash_version"),
                     "source_reports": [報告代碼],
                     "duplicate_count": 1,
                 }

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import contextlib
 import io
 import tempfile
@@ -105,6 +106,68 @@ def 建立測試排行榜報告(報告代碼: str, *, 有GCD: bool = False) -> d
 
 
 class FetchFFLogsBatchTest(unittest.TestCase):
+    def test_physical_fight_hash_ignores_fflogs_metric_drift(self) -> None:
+        原始戰鬥 = 建立測試排行榜戰鬥()
+        漂移戰鬥 = copy.deepcopy(原始戰鬥)
+        漂移戰鬥.update(
+            {
+                "clear_time_ms": 610_001,
+                "clear_time_seconds": 610.001,
+                "damage_downtime_ms": 9_999,
+                "damage_time_ms": 600_002,
+                "damage_time_seconds": 600.002,
+            }
+        )
+        漂移玩家 = 漂移戰鬥["players"][0]
+        漂移玩家.update(
+            {
+                "dps": 21_000.01,
+                "rdps": 19_999.98,
+                "adps": 20_500.02,
+                "total_damage": 12_000_007,
+                "active_time_ms": 589_999,
+            }
+        )
+
+        原始簽章 = fflogs.建立戰鬥簽章(原始戰鬥)
+        漂移簽章 = fflogs.建立戰鬥簽章(漂移戰鬥)
+
+        self.assertEqual(原始簽章, 漂移簽章)
+        self.assertEqual(
+            原始簽章,
+            "a150b4d498855002880c7dd0c9211377d52d708bae5141d3a2dfe8bd864b77ce",
+            "Python 與 Node.js 必須對同一份 v2 輸入產生完全相同的簽章。",
+        )
+
+    def test_physical_fight_hash_keeps_distinct_time_and_roster_separate(self) -> None:
+        原始戰鬥 = 建立測試排行榜戰鬥()
+        不同時間戰鬥 = copy.deepcopy(原始戰鬥)
+        不同時間戰鬥["recorded_at_iso"] = "2026-06-08T00:00:00.001+00:00"
+        不同名單戰鬥 = copy.deepcopy(原始戰鬥)
+        不同名單戰鬥["players"][0]["server"] = "鳳凰"
+
+        原始簽章 = fflogs.建立戰鬥簽章(原始戰鬥)
+        self.assertNotEqual(原始簽章, fflogs.建立戰鬥簽章(不同時間戰鬥))
+        self.assertNotEqual(原始簽章, fflogs.建立戰鬥簽章(不同名單戰鬥))
+
+        名單不完整戰鬥 = copy.deepcopy(原始戰鬥)
+        名單不完整戰鬥["players"].append({"name": "缺欄角色", "job": "Monk"})
+        self.assertIsNone(
+            fflogs.建立戰鬥簽章(名單不完整戰鬥),
+            "名單不完整時應保守退回，不得以玩家子集猜測同場。",
+        )
+
+    def test_applying_v2_fight_hash_preserves_legacy_identity(self) -> None:
+        戰鬥 = 建立測試排行榜戰鬥()
+        戰鬥["fight_hash"] = "legacy-v1-hash"
+
+        新簽章 = fflogs.套用物理戰鬥簽章(戰鬥)
+        fflogs.套用物理戰鬥簽章(戰鬥)
+
+        self.assertEqual(戰鬥["fight_hash"], 新簽章)
+        self.assertEqual(戰鬥["fight_hash_version"], 2)
+        self.assertEqual(戰鬥["legacy_fight_hashes"], ["legacy-v1-hash"])
+
     def test_scheduled_encounter_waits_until_scan_start_time(self) -> None:
         副本設定 = {
             "key": "savage_m5s",
@@ -326,6 +389,25 @@ class FetchFFLogsBatchTest(unittest.TestCase):
         self.assertEqual(玩家["gcd_coverage_status"]["state"], "ok")
 
     def test_duplicate_ranking_entry_uses_gcd_from_any_source_report(self) -> None:
+        第一份報告 = 建立測試排行榜報告("first-upload", 有GCD=False)
+        第二份報告 = 建立測試排行榜報告("second-upload", 有GCD=True)
+        第二份戰鬥 = 第二份報告["fights"][0]
+        第二份戰鬥.update(
+            {
+                "clear_time_ms": 610_001,
+                "clear_time_seconds": 610.001,
+                "damage_time_ms": 600_001,
+                "damage_time_seconds": 600.001,
+            }
+        )
+        第二份戰鬥["players"][0].update(
+            {
+                "dps": 21_000.01,
+                "rdps": 20_000.01,
+                "adps": 20_500.01,
+                "total_damage": 12_000_007,
+            }
+        )
         排行榜 = {
             "encounter": {
                 "key": "fixture_encounter",
@@ -333,8 +415,8 @@ class FetchFFLogsBatchTest(unittest.TestCase):
                 "category": "零式",
             },
             "reports": {
-                "first-upload": 建立測試排行榜報告("first-upload", 有GCD=False),
-                "second-upload": 建立測試排行榜報告("second-upload", 有GCD=True),
+                "first-upload": 第一份報告,
+                "second-upload": 第二份報告,
             },
         }
 
@@ -343,6 +425,7 @@ class FetchFFLogsBatchTest(unittest.TestCase):
         self.assertEqual(len(排行榜條目), 1)
         self.assertEqual(排行榜條目[0]["duplicate_count"], 2)
         self.assertEqual(排行榜條目[0]["source_reports"], ["first-upload", "second-upload"])
+        self.assertEqual(排行榜條目[0]["fight_hash_version"], 2)
         self.assertEqual(排行榜條目[0]["gcd_coverage"]["percent"], 99.5)
         self.assertEqual(排行榜條目[0]["gcd_coverage_status"]["calculation_version"], 1)
 

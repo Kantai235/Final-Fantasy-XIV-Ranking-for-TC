@@ -11,6 +11,7 @@
    ```
 
    這一步會讀取 `config/encounters.json` 的啟用副本、掃描 FFLogs reports、篩選繁中服玩家、更新 `data/rankings/*.json`、`data/rankings/*.reports/*.json`、`public/data/rankings/*.json` 與 `data/state.json`。
+   新寫入的 fight 會使用 `fight_hash_version=2` 物理戰鬥指紋，只採副本、難度、絕對開戰時間與完整玩家名單；FFLogs 通關時間或輸出 table 的微小漂移不會產生另一場身分。歷史 v1 分片不需要先覆寫，`build_user_data.mjs` 會以相同契約在記憶體重算，使個人成績、同職 PR、隊伍榜與近期動態使用一致的去重口徑。
 
 2. 建置前端統計資料：
 

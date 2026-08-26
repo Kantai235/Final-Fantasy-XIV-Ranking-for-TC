@@ -4,6 +4,11 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { publicDataContracts, validateSchemaContract } from "../schemas/public_data_contracts.mjs";
+import {
+  calculatePhysicalFightHash,
+  physicalFightHashVersion,
+  resolvePhysicalFightHash,
+} from "./fight_identity.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const buildScriptPath = path.join(repoRoot, "scripts", "build_user_data.mjs");
@@ -13,6 +18,57 @@ function assert(condition, message) {
   if (!condition) {
     throw new Error(message);
   }
+}
+
+function assertPhysicalFightHashContract() {
+  const baseFight = {
+    encounter_id: 96,
+    difficulty: 101,
+    clear_time_ms: 610000,
+    damage_time_ms: 600000,
+    recorded_at_iso: "2026-06-08T00:00:00+00:00",
+    players: [
+      {
+        name: "測試角色",
+        server: "巴哈姆特",
+        job: "BlackMage",
+        dps: 21000,
+        rdps: 20000,
+        adps: 20500,
+        total_damage: 12000000,
+      },
+    ],
+  };
+  const driftedFight = structuredClone(baseFight);
+  Object.assign(driftedFight, {
+    clear_time_ms: 610001,
+    damage_time_ms: 600002,
+  });
+  Object.assign(driftedFight.players[0], {
+    dps: 21000.01,
+    rdps: 19999.98,
+    adps: 20500.02,
+    total_damage: 12000007,
+  });
+
+  const expectedHash = "a150b4d498855002880c7dd0c9211377d52d708bae5141d3a2dfe8bd864b77ce";
+  assert(physicalFightHashVersion === 2, "物理戰鬥簽章版本應為 v2。");
+  assert(calculatePhysicalFightHash(baseFight) === expectedHash, "Node.js 產生的 v2 簽章未與 Python 契約一致。");
+  assert(calculatePhysicalFightHash(driftedFight) === expectedHash, "FFLogs 時間或 DPS 微小漂移不得拆分同一場戰鬥。");
+
+  const differentTimeFight = structuredClone(baseFight);
+  differentTimeFight.recorded_at_iso = "2026-06-08T00:00:00.001+00:00";
+  const differentRosterFight = structuredClone(baseFight);
+  differentRosterFight.players[0].server = "鳳凰";
+  const incompleteRosterFight = structuredClone(baseFight);
+  incompleteRosterFight.players.push({ name: "缺欄角色", job: "Monk" });
+  assert(calculatePhysicalFightHash(differentTimeFight) !== expectedHash, "不同開戰時間不得被誤合併。");
+  assert(calculatePhysicalFightHash(differentRosterFight) !== expectedHash, "不同玩家名單不得被誤合併。");
+  assert(calculatePhysicalFightHash(incompleteRosterFight) === null, "名單不完整時不得以玩家子集猜測同場。");
+  assert(
+    resolvePhysicalFightHash({ ...baseFight, fight_hash: "legacy-v1-hash" }) === expectedHash,
+    "未標記 v2 的歷史戰鬥必須由建置層以穩定欄位重算。",
+  );
 }
 
 async function writeJson(filePath, data) {
@@ -227,11 +283,13 @@ async function createFixture(tempRoot) {
       fights: [
         {
           fight_id: 9,
-          fight_hash: "fixture-fight",
-          clear_time_ms: 600000,
-          clear_time_seconds: 600,
-          damage_time_ms: 550000,
-          damage_time_seconds: 550,
+          // 歷史 v1 會把這些 FFLogs table 漂移算成另一個 hash；
+          // 建置層必須以 v2 穩定欄位重算，並保留 report variant。
+          fight_hash: "fixture-fight-drifted-v1",
+          clear_time_ms: 600001,
+          clear_time_seconds: 600.001,
+          damage_time_ms: 550001,
+          damage_time_seconds: 550.001,
           recorded_at: 1767322800000,
           recorded_at_iso: "2026-01-02T03:00:00.000Z",
           players: [
@@ -450,6 +508,7 @@ async function createFixture(tempRoot) {
         {
           fight_id: 10,
           fight_hash: "integrity-hidden-fixture-fight",
+          fight_hash_version: 2,
           clear_time_ms: 500000,
           clear_time_seconds: 500,
           damage_time_ms: 450000,
@@ -489,6 +548,7 @@ async function createFixture(tempRoot) {
         {
           fight_id: 18,
           fight_hash: "integrity-hidden-fixture-fight",
+          fight_hash_version: 2,
           clear_time_ms: 500000,
           clear_time_seconds: 500,
           damage_time_ms: 450000,
@@ -926,6 +986,13 @@ async function assertFixtureOutput(tempRoot, expectedGlobalStatsText, expectedSe
     mainUserData.encounters[0]?.best_entry?.tank_stats?.mitigation_coverage_percent === 96.15,
     "個人成績單副本代表列應保留坦克支援統計。",
   );
+  const mirroredPhysicalFightEntries = mainUserData.encounters[0]?.public_entries?.filter(
+    (entry) => entry.job === "Paladin" && entry.recorded_at_iso === "2026-01-02T03:00:00.000Z",
+  ) || [];
+  assert(
+    mirroredPhysicalFightEntries.length === 1,
+    "同一物理戰鬥的時間／DPS 漂移不得增加個人成績筆數或同職 PR 樣本。",
+  );
   assert(mainUserData.encounters[0]?.best_entry?.duplicate_count === 2, "合併後的個人成績應保留來源 report 數。");
   assert(mainUserData.encounters[0]?.best_entry?.report_detail_path?.startsWith("data/user-entry-details/"), "合併後的個人成績應保留按需載入報告細節路徑。");
   assert(mainUserData.encounters[0]?.best_entry?.report_detail_id === mainUserData.encounters[0]?.best_entry?.id, "合併後的個人成績應保留報告細節 id。");
@@ -1021,6 +1088,7 @@ async function assertFixtureOutput(tempRoot, expectedGlobalStatsText, expectedSe
 }
 
 async function main() {
+  assertPhysicalFightHashContract();
   await assertFightIntegrityVersionContract();
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), "ffxiv-tc-build-user-data-"));
   try {
