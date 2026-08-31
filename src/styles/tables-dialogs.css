@@ -367,9 +367,19 @@ td {
   max-width: 100%;
 }
 
-.排行榜百分比小數 {
+/* 成績列摘要會把標籤用的 small 設為靜音色；提高此數值片段的選擇器權重，
+   才能讓小數位確實跟隨同一筆主數值，而不是誤套標籤樣式。 */
+.排行榜百分比小數,
+.成績列數值 .排行榜百分比小數 {
+  color: inherit;
   font-size: 0.84em;
   line-height: 1;
+}
+
+.排行榜百分比片段 {
+  display: inline-flex;
+  align-items: baseline;
+  white-space: nowrap;
 }
 
 .排行榜縮寫數值 {

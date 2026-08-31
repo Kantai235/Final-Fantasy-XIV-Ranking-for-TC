@@ -300,6 +300,30 @@ async function createFixture(tempRoot) {
               },
             },
             {
+              // 同場搭檔需要保留展示數值，但缺少 dps，故不會成為另一份玩家成績單。
+              name: "坦克隊友",
+              server: "泰坦",
+              job: "Warrior",
+              rdps: 80,
+              fflogs_id: 104,
+              active_time_ms: 495000,
+              active_percent: 90,
+              tank_stats: {
+                damage_taken: 5000000,
+                self_healing: 1200000,
+                personal_protection: 360000,
+                team_protection: 680000,
+                mitigation_coverage: {
+                  effective_activation_percent: 92.5,
+                },
+              },
+              gcd_coverage: {
+                percent: 93.5,
+                calculation_version: 1,
+                source: "fflogs_casts_graph",
+              },
+            },
+            {
               name: "治療隊友",
               server: "伊弗利特",
               job: "WhiteMage",
@@ -324,6 +348,19 @@ async function createFixture(tempRoot) {
               server: "鳳凰",
               job: "Scholar",
               fflogs_id: 103,
+              rdps: 55,
+              active_percent: 88,
+              healing_stats: {
+                hps: 16000,
+                pure_healing: 7000000,
+                protection: 3600000,
+                overheal_percent: 42.5,
+              },
+              gcd_coverage: {
+                percent: 92.25,
+                calculation_version: 1,
+                source: "fflogs_casts_graph",
+              },
             },
           ],
         },
@@ -384,6 +421,29 @@ async function createFixture(tempRoot) {
               },
             },
             {
+              name: "坦克隊友",
+              server: "泰坦",
+              job: "Warrior",
+              rdps: 81,
+              fflogs_id: 306,
+              active_time_ms: 496000,
+              active_percent: 90.18,
+              tank_stats: {
+                damage_taken: 5001000,
+                self_healing: 1201000,
+                personal_protection: 361000,
+                team_protection: 681000,
+                mitigation_coverage: {
+                  effective_activation_percent: 92.75,
+                },
+              },
+              gcd_coverage: {
+                percent: 93.75,
+                calculation_version: 1,
+                source: "fflogs_casts_graph",
+              },
+            },
+            {
               name: "治療隊友",
               server: "伊弗利特",
               job: "WhiteMage",
@@ -406,6 +466,19 @@ async function createFixture(tempRoot) {
               server: "鳳凰",
               job: "Scholar",
               fflogs_id: 305,
+              rdps: 55.5,
+              active_percent: 88.1,
+              healing_stats: {
+                hps: 16050,
+                pure_healing: 7005000,
+                protection: 3605000,
+                overheal_percent: 42.4,
+              },
+              gcd_coverage: {
+                percent: 92.5,
+                calculation_version: 1,
+                source: "fflogs_casts_graph",
+              },
             },
           ],
         },
@@ -1073,7 +1146,12 @@ async function assertFixtureOutput(tempRoot, expectedGlobalStatsText, expectedSe
     mainFixtureEncounter.best_entry?.tank_stats?.mitigation_coverage_percent === 96.15,
     "個人成績單副本代表列應保留坦克支援統計。",
   );
-  const mirroredPhysicalFightEntries = mainUserData.encounters[0]?.public_entries?.filter(
+  assert(
+    mainFixtureEncounter.best_entry?.co_tank?.character_name === "坦克隊友"
+      && mainFixtureEncounter.best_entry?.co_tank?.job === "Warrior",
+    "坦克個人成績副本代表列應保留唯一可辨識的同場另一坦。",
+  );
+  const mirroredPhysicalFightEntries = mainFixtureEncounter.public_entries?.filter(
     (entry) => entry.job === "Paladin" && entry.recorded_at_iso === "2026-01-02T03:00:00.000Z",
   ) || [];
   assert(
@@ -1091,6 +1169,14 @@ async function assertFixtureOutput(tempRoot, expectedGlobalStatsText, expectedSe
   assert(
     mainUserBestDetail?.report_variants?.some((variant) => variant.report_code === "RPT1B" && variant.fight_id === 9),
     "報告分頁資料應包含另一位上傳者的 report 與 fight。",
+  );
+  assert(
+    mainUserBestDetail?.report_variants?.some((variant) => (
+      variant.report_code === "RPT1B"
+      && variant.co_tank?.rdps === 81
+      && variant.co_tank?.tank_stats?.mitigation_coverage_percent === 92.75
+    )),
+    "同一場不同 report 的另一坦摘要有差異時，報告分頁必須保存該變體。",
   );
   assert(
     !mainUserBestDetail?.report_variants?.some((variant) => Object.hasOwn(variant.gcd_coverage || {}, "raw_graph_downtime_percent")),
@@ -1111,10 +1197,23 @@ async function assertFixtureOutput(tempRoot, expectedGlobalStatsText, expectedSe
       && mainUserEntry?.tank_stats?.mitigation_coverage_percent === 96.15,
     "坦克個人成績應保留精簡後的承傷、自補、防護與有效減傷覆蓋率。",
   );
+  assert(
+    mainUserEntry?.co_tank?.character_name === "坦克隊友"
+      && mainUserEntry?.co_tank?.server === "泰坦"
+      && mainUserEntry?.co_tank?.job === "Warrior"
+      && mainUserEntry?.co_tank?.rdps === 80
+      && mainUserEntry?.co_tank?.active_percent === 90
+      && mainUserEntry?.co_tank?.gcd_coverage?.percent === 93.5
+      && mainUserEntry?.co_tank?.tank_stats?.team_protection === 680000,
+    "標準雙坦場次應保存另一坦身分、rDPS、Active、GCD 與坦克支援摘要。",
+  );
   assert(!Object.hasOwn(mainUserEntry.gcd_coverage || {}, "raw_graph_downtime_percent"), "個人成績單不應輸出 GCD 內部診斷欄位。");
   assert(!Object.hasOwn(mainUserEntry, "gcd_coverage_status"), "個人成績單不應輸出 GCD 診斷狀態，避免首屏 payload 膨脹。");
-  assert(mainUserData.frequent_teammates[0]?.character_name === "治療隊友", "測試角色應彙整同場隊友。");
-  assert(mainUserData.frequent_teammates[0]?.co_clear_count === 1, "同一場戰鬥的重複 report 不應灌水常同場隊友次數。");
+  const fixtureHealerTeammate = mainUserData.frequent_teammates.find(
+    (teammate) => teammate.character_name === "治療隊友",
+  );
+  assert(fixtureHealerTeammate, "測試角色應彙整同場隊友。");
+  assert(fixtureHealerTeammate?.co_clear_count === 1, "同一場戰鬥的重複 report 不應灌水常同場隊友次數。");
 
   const healerUser = usersIndex.users.find((user) => user.character_name === "治療隊友");
   assert(healerUser, "fixture 應產生治療隊友的個人成績單。");
@@ -1135,8 +1234,12 @@ async function assertFixtureOutput(tempRoot, expectedGlobalStatsText, expectedSe
   assert(
     healerEntry?.co_healer?.character_name === "測試角色"
       && healerEntry?.co_healer?.server === "鳳凰"
-      && healerEntry?.co_healer?.job === "Scholar",
-    "標準雙補場次應在個人成績保存可唯一辨識的同場另一補。",
+      && healerEntry?.co_healer?.job === "Scholar"
+      && healerEntry?.co_healer?.rdps === 55
+      && healerEntry?.co_healer?.active_percent === 88
+      && healerEntry?.co_healer?.gcd_coverage?.percent === 92.25
+      && healerEntry?.co_healer?.healing_stats?.protection === 3600000,
+    "標準雙補場次應保存另一補身分、rDPS、Active、GCD 與治療支援摘要。",
   );
   const serverCompareEntries = serverCompare.servers.flatMap((server) => [
     server.best_entry,

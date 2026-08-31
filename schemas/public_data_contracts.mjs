@@ -205,10 +205,15 @@ const userTankStatsSchema = objectOf({
   mitigation_coverage_percent: nullableNumberSchema,
 });
 
-const coHealerSchema = objectOf({
+const coSupportPlayerSchema = objectOf({
   character_name: stringSchema,
   server: stringSchema,
   job: stringSchema,
+  active_percent: optional(numberSchema),
+  gcd_coverage: optional(gcdCoverageSchema),
+  rdps: optional(numberSchema),
+  healing_stats: optional(userHealingStatsSchema),
+  tank_stats: optional(userTankStatsSchema),
 });
 
 const reportVariantSchema = objectOf({
@@ -228,7 +233,8 @@ const reportVariantSchema = objectOf({
   active_percent: nullableNumberSchema,
   healing_stats: optional(userHealingStatsSchema),
   tank_stats: optional(userTankStatsSchema),
-  co_healer: optional(coHealerSchema),
+  co_healer: optional(coSupportPlayerSchema),
+  co_tank: optional(coSupportPlayerSchema),
   clear_time_ms: nullableNumberSchema,
   clear_time_seconds: nullableNumberSchema,
   damage_downtime_ms: nullableNumberSchema,
@@ -259,7 +265,8 @@ const compactReportVariantSchema = objectOf({
   active_percent: optional(nullableNumberSchema),
   healing_stats: optional(userHealingStatsSchema),
   tank_stats: optional(userTankStatsSchema),
-  co_healer: optional(coHealerSchema),
+  co_healer: optional(coSupportPlayerSchema),
+  co_tank: optional(coSupportPlayerSchema),
   clear_time_ms: optional(nullableNumberSchema),
   clear_time_seconds: optional(nullableNumberSchema),
   damage_downtime_ms: optional(nullableNumberSchema),
@@ -324,7 +331,8 @@ const fullEntrySchema = objectOf({
   active_percent: numberSchema,
   healing_stats: optional(userHealingStatsSchema),
   tank_stats: optional(userTankStatsSchema),
-  co_healer: optional(coHealerSchema),
+  co_healer: optional(coSupportPlayerSchema),
+  co_tank: optional(coSupportPlayerSchema),
   gcd_coverage: optional(gcdCoverageSchema),
   gcd_coverage_status: optional(gcdCoverageStatusSchema),
   clear_time_ms: numberSchema,

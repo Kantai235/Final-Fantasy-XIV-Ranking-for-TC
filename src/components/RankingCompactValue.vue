@@ -61,7 +61,7 @@ export default {
 
 <template>
   <template v-if="!有完整數值提示">
-    <template v-if="百分比片段">{{ 百分比片段.整數 }}.<small class="排行榜百分比小數">{{ 百分比片段.小數 }}</small>%</template>
+    <span v-if="百分比片段" class="排行榜百分比片段">{{ 百分比片段.整數 }}.<small class="排行榜百分比小數">{{ 百分比片段.小數 }}</small>%</span>
     <template v-else>{{ displayValue }}</template>
   </template>
   <button
@@ -75,7 +75,7 @@ export default {
     @blur="關閉提示"
     @keydown.esc.prevent.stop="關閉提示並移焦"
   >
-    <template v-if="百分比片段">{{ 百分比片段.整數 }}.<small class="排行榜百分比小數">{{ 百分比片段.小數 }}</small>%</template>
+    <span v-if="百分比片段" class="排行榜百分比片段">{{ 百分比片段.整數 }}.<small class="排行榜百分比小數">{{ 百分比片段.小數 }}</small>%</span>
     <span v-else>{{ displayValue }}</span>
     <span class="排行榜完整數值提示" role="tooltip">{{ fullValue }}</span>
   </button>

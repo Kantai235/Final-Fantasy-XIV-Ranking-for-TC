@@ -4255,7 +4255,7 @@ def 建立排行榜條目(
                     成績["gcd_coverage"] = 玩家.get("gcd_coverage")
                 if "gcd_coverage_status" in 玩家:
                     成績["gcd_coverage_status"] = 玩家.get("gcd_coverage_status")
-                # 支援統計目前只保存在來源 ranking_entries，讓後續 Node.js 建置層可做補師搭檔
+                # 支援統計目前只保存在來源 ranking_entries，讓後續 Node.js 建置層可做坦／補搭檔
                 # 與坦克排行聚合；尚未完成呈現契約前，不加入 public ranking allowlist。
                 if isinstance(玩家.get("healing_stats"), dict):
                     成績["healing_stats"] = 玩家.get("healing_stats")

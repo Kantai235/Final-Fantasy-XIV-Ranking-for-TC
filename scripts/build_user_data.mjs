@@ -370,11 +370,15 @@ function compactTankStats(value) {
     team_protection: toNumber(value.team_protection),
     // 個人成績與排行榜必須沿用同一口徑：這是「有實際傷害落在狀態時窗內」的
     // 有效 activation 比例，不是 buff 持續時間占比，也不是單招實際減免量。
-    mitigation_coverage_percent: toNumber(value.mitigation_coverage?.effective_activation_percent),
+    // report variant 與主檔共用壓縮流程，輸入可能已經是公開摘要格式；
+    // 先讀扁平欄位，才能避免二次壓縮時把另一坦的減傷覆蓋率洗成 null。
+    mitigation_coverage_percent: toNumber(
+      value.mitigation_coverage_percent ?? value.mitigation_coverage?.effective_activation_percent,
+    ),
   };
 }
 
-function compactCoHealer(value) {
+function compactSupportCompanion(value, allowedJobs, statsKey) {
   if (!value || typeof value !== "object") {
     return null;
   }
@@ -382,9 +386,42 @@ function compactCoHealer(value) {
   const characterName = String(value.character_name || value.name || "").trim();
   const server = String(value.server || "").trim();
   const job = String(value.job || "").trim();
-  return characterName && server && healerJobs.has(job)
-    ? { character_name: characterName, server, job }
-    : null;
+  if (!characterName || !server || !allowedJobs.has(job)) {
+    return null;
+  }
+
+  const companion = {
+    character_name: characterName,
+    server,
+    job,
+  };
+  const activePercent = toNumber(value.active_percent);
+  const rdps = toNumber(value.rdps ?? value.dps);
+  if (activePercent !== null) {
+    companion.active_percent = activePercent;
+  }
+  if (rdps !== null) {
+    companion.rdps = rdps;
+  }
+  if (Object.hasOwn(value, "gcd_coverage")) {
+    companion.gcd_coverage = sanitizeGcdCoverageForPublic(value.gcd_coverage);
+  }
+
+  const supportStats = statsKey === "healing_stats"
+    ? compactHealingStats(value.healing_stats)
+    : compactTankStats(value.tank_stats);
+  if (supportStats) {
+    companion[statsKey] = supportStats;
+  }
+  return companion;
+}
+
+function compactCoHealer(value) {
+  return compactSupportCompanion(value, healerJobs, "healing_stats");
+}
+
+function compactCoTank(value) {
+  return compactSupportCompanion(value, tankJobs, "tank_stats");
 }
 
 function sanitizeGcdCoverageForPublic(coverage) {
@@ -574,33 +611,34 @@ function playersMatch(left, right) {
     && left?.job === right?.job;
 }
 
-function buildCoHealer(player, fightPlayers) {
-  if (!healerJobs.has(player?.job)) {
+function buildSupportCompanion(player, fightPlayers, fight, role) {
+  const roleJobs = role === "tank" ? tankJobs : healerJobs;
+  if (!roleJobs.has(player?.job)) {
     return null;
   }
 
-  const healers = (fightPlayers || []).filter((candidate) => healerJobs.has(candidate?.job));
-  // 標準八人副本能以雙補唯一互相配對；聯盟副本缺少小隊編號，同場超過兩名
-  // 治療職業時不得依來源陣列順序猜測「另一補」。
-  if (healers.length !== 2) {
+  const rolePlayers = (fightPlayers || []).filter((candidate) => roleJobs.has(candidate?.job));
+  // 標準八人副本能以雙坦／雙補唯一互相配對；聯盟副本缺少小隊編號，同場
+  // 超過兩名同職能玩家時不得依來源陣列順序猜測搭檔。
+  if (rolePlayers.length !== 2) {
     return null;
   }
 
-  const playerIndex = healers.findIndex((candidate) => playersMatch(candidate, player));
+  const playerIndex = rolePlayers.findIndex((candidate) => playersMatch(candidate, player));
   if (playerIndex < 0) {
     return null;
   }
 
-  const companion = healers[playerIndex === 0 ? 1 : 0];
-  const characterName = companion?.name || companion?.character_name || "";
-  if (!characterName || !companion?.server || !companion?.job) {
-    return null;
-  }
-
-  return compactCoHealer({
-    character_name: characterName,
-    server: companion.server,
-    job: companion.job,
+  const companion = rolePlayers[playerIndex === 0 ? 1 : 0];
+  const compact = role === "tank" ? compactCoTank : compactCoHealer;
+  return compact({
+    ...companion,
+    character_name: companion?.name || companion?.character_name || "",
+    active_percent: toNumber(companion?.active_percent) ?? calculateActivePercent(
+      companion?.active_time_ms,
+      toNumber(fight?.fflogs_total_time_ms) ?? toNumber(fight?.clear_time_ms),
+      fight?.clear_time_seconds,
+    ),
   });
 }
 
@@ -958,6 +996,7 @@ function buildReportVariant(entry) {
   const healingStats = compactHealingStats(entry.healing_stats);
   const tankStats = compactTankStats(entry.tank_stats);
   const coHealer = compactCoHealer(entry.co_healer);
+  const coTank = compactCoTank(entry.co_tank);
   const variant = {
     report_code: entry.report_code || null,
     report_url: entry.report_url || null,
@@ -975,6 +1014,7 @@ function buildReportVariant(entry) {
     ...(healingStats ? { healing_stats: healingStats } : {}),
     ...(tankStats ? { tank_stats: tankStats } : {}),
     ...(coHealer ? { co_healer: coHealer } : {}),
+    ...(coTank ? { co_tank: coTank } : {}),
     clear_time_ms: toNumber(entry.clear_time_ms),
     clear_time_seconds: toNumber(entry.clear_time_seconds),
     damage_downtime_ms: toNumber(entry.damage_downtime_ms),
@@ -1554,7 +1594,10 @@ function makePublicEntry({ encounter, report, reportCode, fight, fightHash, play
     calculateActivePercent(player.active_time_ms, activePercentDurationMs, activePercentDurationSeconds);
   const healingStats = healerJobs.has(job) ? compactHealingStats(player.healing_stats) : null;
   const tankStats = tankJobs.has(job) ? compactTankStats(player.tank_stats) : null;
-  const coHealer = buildCoHealer(player, fightPlayers);
+  // 個人成績的同場列只消費這份建置摘要。Vue 不得回頭掃描排行榜或隊友清單
+  // 猜測配對，才能和排行榜維持相同的「恰有兩名同職能玩家」業務規則。
+  const coHealer = buildSupportCompanion(player, fightPlayers, fight, "healer");
+  const coTank = buildSupportCompanion(player, fightPlayers, fight, "tank");
   const signature = fightHash
     ? {
         encounter_key: encounter.key,
@@ -1592,6 +1635,7 @@ function makePublicEntry({ encounter, report, reportCode, fight, fightHash, play
     ...(healingStats ? { healing_stats: healingStats } : {}),
     ...(tankStats ? { tank_stats: tankStats } : {}),
     ...(coHealer ? { co_healer: coHealer } : {}),
+    ...(coTank ? { co_tank: coTank } : {}),
     ...(Object.hasOwn(player, "gcd_coverage") ? { gcd_coverage: sanitizeGcdCoverageForPublic(player.gcd_coverage) } : {}),
     ...(Object.hasOwn(player, "gcd_coverage_status") ? { gcd_coverage_status: player.gcd_coverage_status } : {}),
     clear_time_ms: clearTimeMs,
@@ -1722,6 +1766,7 @@ function collectEntriesFromRankingEntries({ ranking, encounter, includeHiddenRep
       const healingStats = compactHealingStats(entry.healing_stats);
       const tankStats = compactTankStats(entry.tank_stats);
       const coHealer = compactCoHealer(entry.co_healer);
+      const coTank = compactCoTank(entry.co_tank);
       const normalizedEntry = {
         id: entry.id || createId({ encounter_key: encounter.key, entry }),
         encounter_key: encounter.key,
@@ -1740,6 +1785,7 @@ function collectEntriesFromRankingEntries({ ranking, encounter, includeHiddenRep
         ...(healingStats ? { healing_stats: healingStats } : {}),
         ...(tankStats ? { tank_stats: tankStats } : {}),
         ...(coHealer ? { co_healer: coHealer } : {}),
+        ...(coTank ? { co_tank: coTank } : {}),
         ...(Object.hasOwn(entry, "gcd_coverage") ? { gcd_coverage: sanitizeGcdCoverageForPublic(entry.gcd_coverage) } : {}),
         ...(Object.hasOwn(entry, "gcd_coverage_status") ? { gcd_coverage_status: entry.gcd_coverage_status } : {}),
         clear_time_ms: toNumber(entry.clear_time_ms),
@@ -2208,6 +2254,7 @@ const inheritedReportVariantFields = new Set([
   "healing_stats",
   "tank_stats",
   "co_healer",
+  "co_tank",
   "clear_time_ms",
   "clear_time_seconds",
   "damage_downtime_ms",

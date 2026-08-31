@@ -532,6 +532,21 @@ button:disabled {
   grid-template-columns: minmax(220px, 1.1fr) minmax(200px, 0.82fr) minmax(128px, 0.42fr) auto auto;
 }
 
+.個人成績搜尋表單.個人成績搜尋表單同場職能 {
+  grid-template-columns: minmax(220px, 1.2fr) minmax(190px, 0.78fr) minmax(190px, 0.66fr) auto auto;
+}
+
+.個人成績搜尋表單.個人成績搜尋表單版本篩選.個人成績搜尋表單同場職能 {
+  grid-template-columns:
+    minmax(210px, 1.1fr) minmax(180px, 0.74fr) minmax(178px, 0.62fr)
+    minmax(118px, 0.38fr) auto auto;
+}
+
+.個人成績同場職能切換欄位 .核取選項 {
+  min-height: 42px;
+  white-space: nowrap;
+}
+
 .簡表版本欄位 select,
 .個人成績版本欄位 select {
   min-width: 128px;

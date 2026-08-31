@@ -2767,23 +2767,31 @@ th .說明提示內容 {
 }
 
 .個人成績列.個人成績列支援職能 {
-  /* 支援職能在同一列多三個欄位；保留副本與職業辨識寬度，其餘統計允許等比例
-     收斂，避免桌面版因固定最小寬度產生橫向捲軸。 */
+  /* 坦克有六個支援數值；保留副本與職業辨識寬度，其餘統計允許等比例收斂，
+     避免桌面版因固定最小寬度產生橫向捲軸。搭檔改放歷史相鄰列，不占摘要軌道。 */
   --個人成績欄位: minmax(128px, 1.3fr) minmax(76px, 0.72fr) minmax(58px, 0.5fr)
     minmax(66px, 0.56fr) minmax(44px, 0.4fr) minmax(44px, 0.4fr)
-    repeat(5, minmax(0, 0.48fr)) var(--個人成績支援末欄, minmax(0, 0.56fr)) minmax(62px, 0.5fr);
+    repeat(6, minmax(0, 0.48fr)) minmax(62px, 0.5fr);
   --個人成績欄距: 5px;
 }
 
 .個人成績列.個人成績列治療職能 {
-  --個人成績支援末欄: minmax(108px, 0.9fr);
+  /* 治療職業只有 rDPS、HPS、純治療、防護量與 OH% 五欄。 */
+  --個人成績欄位: minmax(128px, 1.3fr) minmax(76px, 0.72fr) minmax(58px, 0.5fr)
+    minmax(66px, 0.56fr) minmax(44px, 0.4fr) minmax(44px, 0.4fr)
+    repeat(5, minmax(0, 0.5fr)) minmax(62px, 0.5fr);
 }
 
 .個人成績列.個人成績列支援職能.個人成績列顯示版本 {
   --個人成績欄位: minmax(128px, 1.3fr) minmax(76px, 0.72fr) minmax(58px, 0.5fr)
     minmax(66px, 0.56fr) minmax(44px, 0.4fr) minmax(44px, 0.4fr)
-    repeat(5, minmax(0, 0.48fr)) var(--個人成績支援末欄, minmax(0, 0.56fr))
-    minmax(48px, 0.38fr) minmax(62px, 0.5fr);
+    repeat(6, minmax(0, 0.48fr)) minmax(48px, 0.38fr) minmax(62px, 0.5fr);
+}
+
+.個人成績列.個人成績列治療職能.個人成績列顯示版本 {
+  --個人成績欄位: minmax(128px, 1.3fr) minmax(76px, 0.72fr) minmax(58px, 0.5fr)
+    minmax(66px, 0.56fr) minmax(44px, 0.4fr) minmax(44px, 0.4fr)
+    repeat(5, minmax(0, 0.5fr)) minmax(48px, 0.38fr) minmax(62px, 0.5fr);
 }
 
 .個人成績列[open] {
@@ -2875,26 +2883,6 @@ th .說明提示內容 {
   overflow: visible;
 }
 
-.同場治療玩家 {
-  min-width: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 5px;
-}
-
-.同場治療玩家 > span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.同場治療玩家 small {
-  font-size: 0.82em;
-  white-space: nowrap;
-}
-
 .個人成績列表 .排行榜縮寫數值:hover:not(:disabled),
 .個人成績列表 .排行榜縮寫數值:focus,
 .個人成績列表 .排行榜縮寫數值:active,
@@ -2970,7 +2958,20 @@ th .說明提示內容 {
 }
 
 .歷史表格.歷史表格支援職能 tr {
+  /* 坦補歷史紀錄維持一筆一列，沿用摘要已依職能與版本精算的欄寬。
+     只收斂留白並讓縮寫數值完整溢出儲存格，不加寬表格也不縮小字級。 */
   grid-template-columns: var(--個人成績欄位);
+  column-gap: 4px;
+  padding-inline: 10px;
+}
+
+.歷史表格.歷史表格支援職能 th .表頭說明標籤 {
+  gap: 2px;
+}
+
+.歷史表格.歷史表格支援職能 th .表頭排序按鈕 {
+  min-width: 0;
+  padding-inline: 2px;
 }
 
 .歷史表格 thead tr {
@@ -2985,25 +2986,60 @@ th .說明提示內容 {
   border-bottom: 0;
 }
 
+.歷史表格 .歷史紀錄群組 {
+  border-bottom: 1px solid var(--邊框柔和色);
+}
+
+.歷史表格 .歷史紀錄群組:last-child {
+  border-bottom: 0;
+}
+
+.歷史表格 .歷史同場職能列 {
+  background: color-mix(in srgb, var(--重點色) 6%, var(--表面背景));
+}
+
 .歷史表格 th,
 .歷史表格 td {
   min-width: 0;
   border-bottom: 0;
   padding: 11px 0;
   background: transparent;
+  white-space: nowrap;
 }
 
 .歷史表格 td {
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow: visible;
+  text-overflow: clip;
 }
 
 .歷史表格 td.歷史數值欄位 {
   overflow: visible;
 }
 
-.歷史表格 .歷史同場治療欄位 {
-  text-align: right;
+.歷史同場職能玩家身份 {
+  min-width: 0;
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 0.22em;
+  line-height: 1.25;
+  white-space: normal;
+}
+
+.歷史同場職能玩家身份 strong,
+.歷史同場職能玩家身份 small {
+  overflow-wrap: anywhere;
+}
+
+.歷史同場職能玩家身份 strong {
+  color: var(--主要文字);
+  font-size: 0.86rem;
+}
+
+.歷史同場職能玩家身份 small {
+  color: var(--靜音文字);
+  font-size: 0.72rem;
+  font-weight: 720;
 }
 
 .歷史表格 .歷史報告欄位 {

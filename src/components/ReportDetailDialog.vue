@@ -1,10 +1,12 @@
 <script>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import RankingCompactValue from "./RankingCompactValue.vue";
 import ReportExternalLinks from "./ReportExternalLinks.vue";
 
 export default {
   name: "ReportDetailDialog",
   components: {
+    RankingCompactValue,
     ReportExternalLinks,
   },
   props: {
@@ -249,7 +251,13 @@ export default {
                   <span class="說明提示內容" role="tooltip">{{ 項目.tooltip }}</span>
                 </span>
               </dt>
-              <dd>{{ 項目.value }}</dd>
+              <dd>
+                <RankingCompactValue
+                  :display-value="項目.value"
+                  :label="項目.label"
+                  :percentage="項目.percentage"
+                />
+              </dd>
             </div>
           </div>
 
@@ -262,7 +270,13 @@ export default {
                   <span class="說明提示內容" role="tooltip">{{ 項目.tooltip }}</span>
                 </span>
               </dt>
-              <dd>{{ 項目.value }}</dd>
+              <dd>
+                <RankingCompactValue
+                  :display-value="項目.value"
+                  :label="項目.label"
+                  :percentage="項目.percentage"
+                />
+              </dd>
             </div>
           </div>
 

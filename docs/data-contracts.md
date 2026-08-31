@@ -62,7 +62,7 @@ npm run sync:data -- --dry-run
 
 新寫入的 report 不保存 `fflogs_raw`、`master_data` 與 `matched_players`。這些大型 raw 欄位可依 report code 重查，停止落地是為避免 Git repo 容量快速膨脹。
 
-新收錄 fight 會為補師玩家加上選填 `healing_stats`，為坦克玩家加上選填 `tank_stats`，並在 fight 層保存小型 `support_metrics_summary`。Healing table 只落地純治療、實際防護、過量治療與 HPS 衍生值；DamageTaken／Buffs／Debuffs events 只在記憶體完整分頁後計算承傷與減傷覆蓋，不保存 raw events。舊資料缺少這些 key 仍屬合法；來源 `ranking_entries` 可保存摘要供後續 Node.js 聚合，但本階段不擴充 `public/data/rankings` 公開 allowlist。補師搭檔必須由建置層用同一 fight 內的玩家列關聯，Python 不得預先寫成 UI 專用格式。
+新收錄 fight 會為補師玩家加上選填 `healing_stats`，為坦克玩家加上選填 `tank_stats`，並在 fight 層保存小型 `support_metrics_summary`。Healing table 只落地純治療、實際防護、過量治療與 HPS 衍生值；DamageTaken／Buffs／Debuffs events 只在記憶體完整分頁後計算承傷與減傷覆蓋，不保存 raw events。舊資料缺少這些 key 仍屬合法；來源 `ranking_entries` 可保存摘要供後續 Node.js 聚合，但本階段不擴充 `public/data/rankings` 公開 allowlist。坦／補搭檔必須由建置層用同一 fight 內的玩家列關聯，並只在恰有兩名相同職能玩家時寫入 `co_tank`／`co_healer`；Python 不得預先寫成 UI 專用格式。
 
 `healing_stats.overheal_percent` 的固定分母是 `pure_healing + overheal`，不含護盾；`tank_stats.personal_protection` 與 `team_protection` 是實際消耗護盾量。`mitigation_coverage.effective_activation_percent` 只把有傷害落在狀態時窗內的 activation 視為有效，並以全副本共用的玩家 Status ID 規則計算，不依賴副本機制 ID。FFLogs 的 namespaced Status ID 會先正規化；同次團隊技能散落在各 target 的狀態封包會收斂為一個 activation，單體充能技能則維持分開。傷害覆蓋量使用各事件的 `unmitigatedAmount` 並對重疊時窗取聯集；它只能回答「多少原始傷害發生於減傷有效期間」，不能把重疊減傷精確歸因為單招實際減免量。
 

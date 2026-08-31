@@ -346,6 +346,16 @@
 }
 
 @media (min-width: 721px) and (max-width: 980px) {
+  .個人成績搜尋表單.個人成績搜尋表單同場職能,
+  .個人成績搜尋表單.個人成績搜尋表單版本篩選.個人成績搜尋表單同場職能 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .個人成績搜尋表單.個人成績搜尋表單同場職能 > button {
+    width: 100%;
+    min-width: 0;
+  }
+
   .成績趨勢控制列 {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -809,7 +819,8 @@
   /* 簡表與版本篩選都會額外套用 class，必須以相同權重覆寫桌面版多欄設定。 */
   .使用者搜尋表單,
   .個人成績搜尋表單.個人成績搜尋表單簡表模式,
-  .個人成績搜尋表單.個人成績搜尋表單版本篩選 {
+  .個人成績搜尋表單.個人成績搜尋表單版本篩選,
+  .個人成績搜尋表單.個人成績搜尋表單同場職能 {
     grid-template-columns: minmax(0, 1fr);
     gap: 12px;
   }
@@ -821,6 +832,10 @@
   .個人成績搜尋表單 > button {
     width: 100%;
     min-width: 0;
+    min-height: 44px;
+  }
+
+  .個人成績同場職能切換欄位 .核取選項 {
     min-height: 44px;
   }
 
@@ -1985,15 +2000,6 @@
 
   .成績列數值版本 {
     grid-column: 1 / -1;
-  }
-
-  .成績列數值同場治療 {
-    grid-column: 1 / -1;
-  }
-
-  .成績列數值同場治療 .同場治療玩家 {
-    width: 100%;
-    justify-content: flex-start;
   }
 
   .趨勢圖:not(.統一趨勢圖) {
@@ -3181,6 +3187,23 @@
     gap: 8px;
   }
 
+  .歷史表格 .歷史紀錄群組 {
+    display: grid;
+    gap: 0;
+    border-bottom: 0;
+  }
+
+  .歷史表格 .歷史紀錄群組含同場職能 .歷史主要紀錄列 {
+    border-bottom: 0;
+    border-radius: 8px 8px 0 0;
+  }
+
+  .歷史表格 .歷史同場職能列 {
+    border-top-color: var(--邊框柔和色);
+    border-radius: 0 0 8px 8px;
+    background: color-mix(in srgb, var(--重點色) 7%, var(--表面背景));
+  }
+
   .歷史表格 tr {
     grid-template-columns: repeat(6, minmax(0, 1fr));
     align-items: stretch;
@@ -3228,6 +3251,19 @@
   .歷史表格 td:nth-child(2)::before,
   .歷史表格 td:nth-child(3)::before {
     content: none;
+  }
+
+  .歷史表格 .歷史同場職能列 .歷史同場職能空白欄位 {
+    display: none;
+  }
+
+  .歷史表格 .歷史同場職能玩家欄位 {
+    grid-column: 2 / -1;
+    white-space: normal;
+  }
+
+  .歷史表格 .歷史同場職能玩家身份 {
+    width: 100%;
   }
 
   .歷史表格 td:nth-child(2) .職業標籤 {
@@ -3362,14 +3398,9 @@
     background: color-mix(in srgb, var(--重點色) 10%, var(--表面背景));
   }
 
-  .歷史表格.歷史表格支援職能 td.歷史同場治療欄位,
   .歷史表格.歷史表格支援職能 td.歷史版本欄位,
   .歷史表格.歷史表格支援職能 td.歷史通關時間欄位 {
     grid-column: 1 / -1;
-  }
-
-  .歷史表格.歷史表格支援職能 td.歷史同場治療欄位 .同場治療玩家 {
-    justify-self: end;
   }
 
   .歷史表格.歷史表格支援職能 td.歷史版本欄位,

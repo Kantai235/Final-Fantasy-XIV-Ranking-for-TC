@@ -1041,14 +1041,47 @@ async function validateUserProfileGameVersionFilter() {
     source.includes("const 目前使用者支援職能 = computed(() => {")
       && source.includes('使用者職業類型篩選.value === "role:tank"')
       && source.includes('使用者職業類型篩選.value === "role:healer"')
+      && source.includes("const 顯示使用者同場職能職業 = ref(false);")
+      && source.includes("顯示使用者同場職能職業.value = false;")
       && profileSource.includes("const 個人成績數值欄位 = computed(() => {")
-      && profileSource.includes('label: "同場另一補"')
+      && !profileSource.includes('label: "同場另一補"')
+      && !profileSource.includes('label: "同場另一坦"')
       && profileSource.includes("成績?.healing_stats?.pure_healing")
       && profileSource.includes("成績?.tank_stats?.mitigation_coverage_percent")
+      && profileSource.includes('v-model="顯示使用者同場職能職業"')
+      && profileSource.includes("同場{{ 使用者同場職能名稱 }}職業")
+      && profileSource.includes("成績?.co_tank : 成績?.co_healer")
       && profileSource.includes("<RankingCompactValue")
       && profileSource.includes("歷史表格支援職能")
+      && profileSource.includes('class="歷史同場職能列"')
+      && profileSource.includes("取得使用者同場職能成績(成績).character_name")
+      && profileSource.includes("@{{ 取得使用者同場職能成績(成績).server }}")
+      && controlsStyles.includes("個人成績搜尋表單同場職能")
+      && profileStyles.includes("歷史同場職能玩家身份")
+      && profileSource.includes('class="數字 歷史同職分位欄位"')
+      && profileStyles.includes(".歷史表格 {\n  width: 100%;\n  min-width: 0;")
+      && profileStyles.includes(".歷史表格.歷史表格支援職能 tr {")
+      && profileStyles.includes("grid-template-columns: var(--個人成績欄位);\n  column-gap: 4px;\n  padding-inline: 10px;")
+      && !profileStyles.includes("grid-template-columns: repeat(8, minmax(0, 1fr));")
+      && !profileStyles.includes(".歷史表格.歷史表格支援職能 .歷史數值欄位,")
+      && profileStyles.includes("overflow: visible;\n  text-overflow: clip;")
+      && !profileStyles.includes("min-width: 1210px")
+      && !profileStyles.includes(".歷史表格外框 {\n  max-width: 100%;\n  overflow-x: auto;")
       && responsiveStyles.includes(".歷史表格.歷史表格支援職能 td.歷史數值欄位"),
-    "個人成績單選定坦克／治療職能或職業後，摘要、歷史與手機卡片必須切換為對應支援統計並支援雙補關聯。",
+    "個人成績單選定坦克／治療範圍後，必須可選擇在歷史紀錄顯示唯一可辨識的同場職能玩家；桌面坦補表格必須在原寬度內維持一筆一列，不得縮字、加寬、分層或以省略號隱藏數值，摘要也不得增加搭檔欄位。",
+  );
+  const 同場職能列起點 = profileSource.indexOf('class="歷史同場職能列"');
+  const 同場職能列終點 = profileSource.indexOf("</tr>", 同場職能列起點);
+  const 同場職能列Source = profileSource.slice(同場職能列起點, 同場職能列終點);
+  assert(
+    同場職能列起點 >= 0
+      && 同場職能列終點 > 同場職能列起點
+      && !同場職能列Source.includes("格式化紀錄時間")
+      && !同場職能列Source.includes("開啟個人成績報告彈窗")
+      && !同場職能列Source.includes("格式化通關時間")
+      && 同場職能列Source.includes('class="歷史報告欄位 歷史同場職能空白欄位"')
+      && 同場職能列Source.includes('class="數字 歷史通關時間欄位 歷史同場職能空白欄位"'),
+    "同場職能歷史列必須以紀錄時間欄呈現玩家身分，且不重複報告、紀錄時間與通關時間。",
   );
   assert(
     source.includes('欄位 === "performance" && 分位顯示模式.value !== 分位顯示模式PR')
@@ -1063,6 +1096,50 @@ async function validateUserProfileGameVersionFilter() {
       && responsiveStyles.includes(".歷史排序控制 {")
       && profileStyles.includes(".歷史排序控制 {\n  display: none;"),
     "手機版隱藏表頭時，歷史表格必須提供排序選單與方向按鈕。",
+  );
+}
+
+async function validateCompactPercentagePresentation() {
+  const [profileSource, rankingSource, reportDialogSource, compactValueSource, tableStyles] = await Promise.all([
+    readText(path.join(srcDir, "pages", "UserProfilePage.vue")),
+    readText(path.join(srcDir, "pages", "RankingPage.vue")),
+    readText(path.join(srcDir, "components", "ReportDetailDialog.vue")),
+    readText(path.join(srcDir, "components", "RankingCompactValue.vue")),
+    readText(path.join(srcDir, "styles", "tables-dialogs.css")),
+  ]);
+
+  const 個人成績百分比元件數 = profileSource.match(/\n\s+percentage\n/g)?.length || 0;
+  const 報告彈窗百分比元件數 = reportDialogSource.match(/:percentage="項目\.percentage"/g)?.length || 0;
+  const 百分比小數樣式 = tableStyles.match(/\.排行榜百分比小數\s*\{[^}]*\}/)?.[0] || "";
+
+  assert(
+    個人成績百分比元件數 >= 8
+      && profileSource.includes(':display-value="格式化Active(成績.active_percent)"')
+      && profileSource.includes(':display-value="格式化Gcd覆蓋率(成績.gcd_coverage)"')
+      && profileSource.includes(':display-value="格式化Active(取得使用者同場職能成績(成績).active_percent)"')
+      && profileSource.includes(':display-value="格式化Gcd覆蓋率(取得使用者同場職能成績(成績).gcd_coverage)"'),
+    "個人成績摘要、亮點、歷史與同場職能列的 Active／GCD 都必須沿用共用百分比片段。",
+  );
+  assert(
+    /key: "active",[\s\S]{0,160}percentage: true/.test(profileSource)
+      && /key: "gcd",[\s\S]{0,160}percentage: true/.test(profileSource)
+      && /key: "active",[\s\S]{0,160}percentage: true/.test(rankingSource)
+      && /key: "gcd",[\s\S]{0,160}percentage: true/.test(rankingSource)
+      && profileSource.includes("percentage: Boolean(欄位.percentage)")
+      && rankingSource.includes("percentage: Boolean(欄位.percentage)")
+      && reportDialogSource.includes('import RankingCompactValue from "./RankingCompactValue.vue";')
+      && 報告彈窗百分比元件數 === 2,
+    "排行榜與個人成績報告彈窗必須把 Active、GCD、OH% 與減傷覆蓋交給共用百分比元件呈現。",
+  );
+  assert(
+    compactValueSource.includes('class="排行榜百分比片段"')
+      && compactValueSource.includes('class="排行榜百分比小數"')
+      && tableStyles.includes(".排行榜百分比小數,\n.成績列數值 .排行榜百分比小數 {")
+      && 百分比小數樣式.includes("font-size: 0.84em;")
+      && 百分比小數樣式.includes("color: inherit;")
+      && tableStyles.includes(".排行榜百分比片段 {")
+      && tableStyles.includes("white-space: nowrap;"),
+    "百分比數值必須以不可斷行片段呈現，小數位維持縮小並以足夠的選擇器權重沿用原本文字顏色。",
   );
 }
 
@@ -1866,9 +1943,9 @@ async function validateMobileUserSearchFormLayout() {
 
   assert(
     mobileStyles.includes(
-      ".使用者搜尋表單,\n  .個人成績搜尋表單.個人成績搜尋表單簡表模式,\n  .個人成績搜尋表單.個人成績搜尋表單版本篩選 {\n    grid-template-columns: minmax(0, 1fr);",
+      ".使用者搜尋表單,\n  .個人成績搜尋表單.個人成績搜尋表單簡表模式,\n  .個人成績搜尋表單.個人成績搜尋表單版本篩選,\n  .個人成績搜尋表單.個人成績搜尋表單同場職能 {\n    grid-template-columns: minmax(0, 1fr);",
     ),
-    "手機版簡表與版本篩選搜尋表單必須以同等權重覆寫桌面多欄設定，改為可收縮的單欄。",
+    "手機版簡表、版本篩選與同場職能搜尋表單必須以同等權重覆寫桌面多欄設定，改為可收縮的單欄。",
   );
   assert(
     mobileStyles.includes(".個人成績搜尋表單 > * {\n    min-width: 0;")
@@ -3174,6 +3251,7 @@ async function main() {
   validateUserProfileBadges();
   await validateUserProfileBadgeDataScope();
   await validateUserProfileGameVersionFilter();
+  await validateCompactPercentagePresentation();
   await validateHelpTooltipPreference();
   validateUserProfileGameVersionFallback();
   validateUnifiedUserProfileTrend();

@@ -34,14 +34,6 @@ export default {
       return 數值 === null || 數值 === undefined || 數值 === "" ? "-" : 格式化函式(數值);
     }
 
-    function 格式化同場治療(成績) {
-      const 同場治療 = 成績?.co_healer;
-      if (!同場治療?.character_name || !同場治療?.server) {
-        return "-";
-      }
-      return `${app.顯示職業名稱(同場治療.job)} · ${同場治療.character_name} @ ${同場治療.server}`;
-    }
-
     const 個人成績數值欄位 = computed(() => {
       const rdps欄位 = {
         key: "rdps",
@@ -85,12 +77,6 @@ export default {
             tooltipKey: "OH%",
             percentage: true,
             format: (成績) => 格式化可選數值(app.格式化百分比, 成績?.healing_stats?.overheal_percent),
-          },
-          {
-            key: "coHealer",
-            label: "同場另一補",
-            companion: true,
-            format: 格式化同場治療,
           },
         ];
       }
@@ -160,6 +146,25 @@ export default {
       ];
     });
 
+    const 使用者同場職能名稱 = computed(() => (
+      取值(app.目前使用者支援職能) === "tank" ? "坦克" : "治療"
+    ));
+    const 顯示使用者同場職能控制 = computed(() => (
+      ["tank", "healer"].includes(取值(app.目前使用者支援職能))
+    ));
+
+    function 取得使用者同場職能成績(成績) {
+      return 取值(app.目前使用者支援職能) === "tank" ? 成績?.co_tank : 成績?.co_healer;
+    }
+
+    function 是否顯示使用者同場職能成績(成績) {
+      return Boolean(
+        顯示使用者同場職能控制.value
+        && 取值(app.顯示使用者同場職能職業)
+        && 取得使用者同場職能成績(成績),
+      );
+    }
+
     function 取得個人成績欄位完整值(欄位, 成績) {
       return typeof 欄位.fullFormat === "function" ? 欄位.fullFormat(成績) : "";
     }
@@ -204,6 +209,7 @@ export default {
             key: "active",
             label: "Active",
             value: app.格式化Active(成績.active_percent),
+            percentage: true,
             tooltip: app.統計說明文字("Active"),
             tooltipLabel: "Active 說明",
           },
@@ -213,6 +219,7 @@ export default {
                   key: "gcd",
                   label: "GCD",
                   value: app.格式化Gcd覆蓋率(成績.gcd_coverage),
+                  percentage: true,
                   tooltip: app.統計說明文字("GCD 覆蓋率"),
                   tooltipLabel: "GCD 覆蓋率說明",
                 },
@@ -229,6 +236,7 @@ export default {
           key: 欄位.key,
           label: 欄位.label,
           value: typeof 欄位.fullFormat === "function" ? 欄位.fullFormat(成績) : 欄位.format(成績),
+          percentage: Boolean(欄位.percentage),
           tooltip: 欄位.tooltipKey ? app.統計說明文字(欄位.tooltipKey) : "",
           tooltipLabel: 欄位.tooltipKey ? `${欄位.label} 說明` : "",
           className: 欄位.highlight ? "報告彈窗主要數值" : "",
@@ -329,6 +337,10 @@ export default {
       ...app,
       個人成績數值欄位,
       取得個人成績欄位完整值,
+      使用者同場職能名稱,
+      顯示使用者同場職能控制,
+      取得使用者同場職能成績,
+      是否顯示使用者同場職能成績,
       報告彈窗資料,
       開啟個人成績報告彈窗,
       關閉個人成績報告彈窗,
@@ -345,6 +357,7 @@ export default {
         個人成績搜尋表單簡表模式: 使用者簡表模式,
         個人成績搜尋表單簡表職業篩選: 使用者簡表模式 && 使用者有多個職業,
         個人成績搜尋表單版本篩選: !使用者簡表模式 && 顯示版本紀錄,
+        個人成績搜尋表單同場職能: !使用者簡表模式 && 顯示使用者同場職能控制,
       }"
       @submit.prevent="提交使用者搜尋"
     >
@@ -446,6 +459,17 @@ export default {
           </div>
         </div>
       </div>
+
+      <label
+        v-if="!使用者簡表模式 && 顯示使用者同場職能控制"
+        class="欄位 同場職能切換欄位 個人成績同場職能切換欄位"
+      >
+        <span>同場{{ 使用者同場職能名稱 }}職業</span>
+        <span class="核取選項">
+          <input v-model="顯示使用者同場職能職業" type="checkbox" />
+          <span>顯示另一位{{ 使用者同場職能名稱 }}職業</span>
+        </span>
+      </label>
 
       <div v-if="!使用者簡表模式 && 顯示版本紀錄" class="欄位 個人成績版本欄位">
         <label for="個人成績版本篩選">版本</label>
@@ -607,7 +631,13 @@ export default {
               <span class="說明提示內容" role="tooltip">{{ 統計說明文字("GCD 覆蓋率") }}</span>
             </span>
           </span>
-          <strong>{{ 格式化Gcd覆蓋率(使用者統計.最高Gcd成績?.gcd_coverage) }}</strong>
+          <strong>
+            <RankingCompactValue
+              :display-value="格式化Gcd覆蓋率(使用者統計.最高Gcd成績?.gcd_coverage)"
+              label="最佳 GCD"
+              percentage
+            />
+          </strong>
         </div>
         <div class="概要項 概要項時間">
           <span>最後紀錄</span>
@@ -650,7 +680,14 @@ export default {
             </span>
             <small>
               rDPS {{ 格式化傷害數值(成績.rdps) }}
-              <span v-if="顯示Gcd覆蓋率">・GCD {{ 格式化Gcd覆蓋率(成績.gcd_coverage) }}</span>
+              <span v-if="顯示Gcd覆蓋率">
+                ・GCD
+                <RankingCompactValue
+                  :display-value="格式化Gcd覆蓋率(成績.gcd_coverage)"
+                  label="GCD"
+                  percentage
+                />
+              </span>
               ・高於中位 {{ 格式化帶號整數(成績.performance?.delta_to_median) }}
             </small>
           </article>
@@ -1152,7 +1189,13 @@ export default {
                   <span class="說明提示內容" role="tooltip">{{ 統計說明文字("Active") }}</span>
                 </span>
               </small>
-              <strong>{{ 副本.best_entry ? 格式化Active(副本.best_entry.active_percent) : "-" }}</strong>
+              <strong>
+                <RankingCompactValue
+                  :display-value="副本.best_entry ? 格式化Active(副本.best_entry.active_percent) : '-'"
+                  label="Active"
+                  percentage
+                />
+              </strong>
             </span>
             <span v-if="顯示Gcd覆蓋率" class="成績列數值 成績列數值狀態">
               <small class="說明標籤">
@@ -1162,7 +1205,13 @@ export default {
                   <span class="說明提示內容" role="tooltip">{{ 統計說明文字("GCD 覆蓋率") }}</span>
                 </span>
               </small>
-              <strong>{{ 副本.best_entry ? 格式化Gcd覆蓋率(副本.best_entry.gcd_coverage) : "-" }}</strong>
+              <strong>
+                <RankingCompactValue
+                  :display-value="副本.best_entry ? 格式化Gcd覆蓋率(副本.best_entry.gcd_coverage) : '-'"
+                  label="GCD"
+                  percentage
+                />
+              </strong>
             </span>
             <span
               v-for="欄位 in 個人成績數值欄位"
@@ -1170,7 +1219,6 @@ export default {
               class="成績列數值 成績列數值輸出"
               :class="{
                 成績列數值主要: 欄位.highlight,
-                成績列數值同場治療: 欄位.companion,
               }"
             >
               <small class="說明標籤">
@@ -1180,17 +1228,7 @@ export default {
                   <span class="說明提示內容" role="tooltip">{{ 統計說明文字(欄位.tooltipKey) }}</span>
                 </span>
               </small>
-              <strong v-if="欄位.companion" class="同場治療玩家">
-                <template v-if="副本.best_entry?.co_healer">
-                  <JobIcon
-                    class="職業圖示 職業標籤圖示"
-                    :code="副本.best_entry.co_healer.job"
-                  />
-                  <span>{{ 副本.best_entry.co_healer.character_name }} <small>@ {{ 副本.best_entry.co_healer.server }}</small></span>
-                </template>
-                <template v-else>-</template>
-              </strong>
-              <strong v-else>
+              <strong>
                 <RankingCompactValue
                   :display-value="副本.best_entry ? 欄位.format(副本.best_entry) : '-'"
                   :full-value="副本.best_entry ? 取得個人成績欄位完整值(欄位, 副本.best_entry) : ''"
@@ -1258,7 +1296,7 @@ export default {
                   </th>
                   <th class="歷史職業欄位" scope="col">職業</th>
                   <th scope="col" class="歷史報告欄位">報告</th>
-                  <th scope="col" class="數字" :aria-sort="使用者歷史排序ARIA(副本.encounter_key, 'performance')">
+                  <th scope="col" class="數字 歷史同職分位欄位" :aria-sort="使用者歷史排序ARIA(副本.encounter_key, 'performance')">
                     <span class="表頭說明標籤">
                       <button
                         class="表頭排序按鈕"
@@ -1278,7 +1316,7 @@ export default {
                       </span>
                     </span>
                   </th>
-                  <th scope="col" class="數字" :aria-sort="使用者歷史排序ARIA(副本.encounter_key, 'active')">
+                  <th scope="col" class="數字 歷史Active欄位" :aria-sort="使用者歷史排序ARIA(副本.encounter_key, 'active')">
                     <span class="表頭說明標籤">
                       <button
                         class="表頭排序按鈕"
@@ -1298,7 +1336,7 @@ export default {
                       </span>
                     </span>
                   </th>
-                  <th v-show="顯示Gcd覆蓋率" scope="col" class="數字" :aria-sort="使用者歷史排序ARIA(副本.encounter_key, 'gcdCoverage')">
+                  <th v-show="顯示Gcd覆蓋率" scope="col" class="數字 歷史Gcd欄位" :aria-sort="使用者歷史排序ARIA(副本.encounter_key, 'gcdCoverage')">
                     <span class="表頭說明標籤">
                       <button
                         class="表頭排序按鈕"
@@ -1325,7 +1363,6 @@ export default {
                     class="數字 歷史數值欄位"
                     :class="{
                       歷史主要數值欄位: 欄位.highlight,
-                      歷史同場治療欄位: 欄位.companion,
                     }"
                     :aria-sort="欄位.sortKey ? 使用者歷史排序ARIA(副本.encounter_key, 欄位.sortKey) : undefined"
                   >
@@ -1385,8 +1422,13 @@ export default {
                   </th>
                 </tr>
               </thead>
-              <tbody>
-                <tr v-for="成績 in 排序使用者歷史成績(副本)" :key="成績.id" :class="{ 過版紀錄列: 成績.is_obsolete_record }">
+              <tbody
+                v-for="成績 in 排序使用者歷史成績(副本)"
+                :key="成績.id"
+                class="歷史紀錄群組"
+                :class="{ 歷史紀錄群組含同場職能: 是否顯示使用者同場職能成績(成績) }"
+              >
+                <tr class="歷史主要紀錄列" :class="{ 過版紀錄列: 成績.is_obsolete_record }">
                   <td class="歷史紀錄時間欄位">{{ 格式化紀錄時間(成績.recorded_at_iso) }}</td>
                   <td class="歷史職業欄位">
                     <span class="職業標籤" :class="職業色彩類別(職業代碼色彩(成績.job))">
@@ -1408,33 +1450,33 @@ export default {
                     </button>
                     <span v-else>-</span>
                   </td>
-                  <td class="數字" :class="成績.is_obsolete_record ? '' : 同職分位色彩類別(成績.performance)">
+                  <td class="數字 歷史同職分位欄位" :class="成績.is_obsolete_record ? '' : 同職分位色彩類別(成績.performance)">
                     {{ 成績.is_obsolete_record ? "過時紀錄" : 格式化目前同職分位(成績.performance) }}
                   </td>
-                  <td class="數字">{{ 格式化Active(成績.active_percent) }}</td>
-                  <td v-show="顯示Gcd覆蓋率" class="數字">{{ 格式化Gcd覆蓋率(成績.gcd_coverage) }}</td>
+                  <td class="數字 歷史Active欄位">
+                    <RankingCompactValue
+                      :display-value="格式化Active(成績.active_percent)"
+                      label="Active"
+                      percentage
+                    />
+                  </td>
+                  <td v-show="顯示Gcd覆蓋率" class="數字 歷史Gcd欄位">
+                    <RankingCompactValue
+                      :display-value="格式化Gcd覆蓋率(成績.gcd_coverage)"
+                      label="GCD"
+                      percentage
+                    />
+                  </td>
                   <td
                     v-for="欄位 in 個人成績數值欄位"
                     :key="欄位.key"
                     class="數字 歷史數值欄位"
                     :class="{
                       歷史主要數值欄位: 欄位.highlight,
-                      歷史同場治療欄位: 欄位.companion,
                     }"
                     :data-label="欄位.label"
                   >
-                    <span v-if="欄位.companion" class="同場治療玩家">
-                      <template v-if="成績.co_healer">
-                        <JobIcon
-                          class="職業圖示 職業標籤圖示"
-                          :code="成績.co_healer.job"
-                        />
-                        <span>{{ 成績.co_healer.character_name }} <small>@ {{ 成績.co_healer.server }}</small></span>
-                      </template>
-                      <template v-else>-</template>
-                    </span>
                     <RankingCompactValue
-                      v-else
                       :display-value="欄位.format(成績)"
                       :full-value="取得個人成績欄位完整值(欄位, 成績)"
                       :label="欄位.label"
@@ -1443,6 +1485,66 @@ export default {
                   </td>
                   <td v-if="顯示版本紀錄" class="數字 歷史版本欄位">{{ 取得個人成績紀錄版本(成績) || "—" }}</td>
                   <td class="數字 歷史通關時間欄位">{{ 格式化通關時間(成績.clear_time_seconds) }}</td>
+                </tr>
+                <tr
+                  v-if="是否顯示使用者同場職能成績(成績)"
+                  class="歷史同場職能列"
+                  :class="{ 過版紀錄列: 成績.is_obsolete_record }"
+                >
+                  <td
+                    class="歷史紀錄時間欄位 歷史同場職能玩家欄位"
+                    :aria-label="`同場${使用者同場職能名稱}玩家 ${取得使用者同場職能成績(成績).character_name} @ ${取得使用者同場職能成績(成績).server}`"
+                  >
+                    <span class="歷史同場職能玩家身份">
+                      <strong>{{ 取得使用者同場職能成績(成績).character_name }}</strong><small>@{{ 取得使用者同場職能成績(成績).server }}</small>
+                    </span>
+                  </td>
+                  <td class="歷史職業欄位">
+                    <span
+                      class="職業標籤"
+                      :class="職業色彩類別(職業代碼色彩(取得使用者同場職能成績(成績).job))"
+                    >
+                      <JobIcon
+                        class="職業圖示 職業標籤圖示"
+                        :code="取得使用者同場職能成績(成績).job"
+                      />
+                      <span>{{ 顯示職業名稱(取得使用者同場職能成績(成績).job) }}</span>
+                    </span>
+                  </td>
+                  <td class="歷史報告欄位 歷史同場職能空白欄位" aria-hidden="true"></td>
+                  <td class="數字 歷史同職分位欄位" aria-label="同職分位無資料">—</td>
+                  <td class="數字 歷史Active欄位">
+                    <RankingCompactValue
+                      :display-value="格式化Active(取得使用者同場職能成績(成績).active_percent)"
+                      label="Active"
+                      percentage
+                    />
+                  </td>
+                  <td v-show="顯示Gcd覆蓋率" class="數字 歷史Gcd欄位">
+                    <RankingCompactValue
+                      :display-value="格式化Gcd覆蓋率(取得使用者同場職能成績(成績).gcd_coverage)"
+                      label="GCD"
+                      percentage
+                    />
+                  </td>
+                  <td
+                    v-for="欄位 in 個人成績數值欄位"
+                    :key="欄位.key"
+                    class="數字 歷史數值欄位"
+                    :class="{ 歷史主要數值欄位: 欄位.highlight }"
+                    :data-label="欄位.label"
+                  >
+                    <RankingCompactValue
+                      :display-value="欄位.format(取得使用者同場職能成績(成績))"
+                      :full-value="取得個人成績欄位完整值(欄位, 取得使用者同場職能成績(成績))"
+                      :label="欄位.label"
+                      :percentage="欄位.percentage"
+                    />
+                  </td>
+                  <td v-if="顯示版本紀錄" class="數字 歷史版本欄位">
+                    {{ 取得個人成績紀錄版本(成績) || "—" }}
+                  </td>
+                  <td class="數字 歷史通關時間欄位 歷史同場職能空白欄位" aria-hidden="true"></td>
                 </tr>
               </tbody>
             </table>
