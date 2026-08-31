@@ -285,6 +285,12 @@ jobs:
         run: python scripts/fetch_fflogs.py --split-rankings
 
       - name: 產生個人成績單與排行榜薄索引資料
+        env:
+          # 全量來源分片解析成 JavaScript 物件後會明顯大於磁碟 JSON；坦補搭檔與
+          # report variant 聚合又必須在同一輪保留跨副本索引。提高 V8 heap 上限，
+          # 避免使用預設約 4 GiB 上限時在資料持續成長後中止；8 GiB 仍保留空間給
+          # ubuntu-latest runner 的作業系統、原生 Buffer 與後續建置程序。
+          NODE_OPTIONS: --max-old-space-size=8192
         run: npm run build:user-data
 
       - name: 重建 Honey B. Lovely 粉絲榜公開資料

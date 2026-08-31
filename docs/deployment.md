@@ -53,6 +53,8 @@ npm run build
 18. 上傳 `dist/` 並部署到 GitHub Pages；`syncing_files` 暫時失敗時等待 60 秒後重試一次。只有 Pages artifact 已成功上傳才匯總兩次部署結果；若 hydrate、Data publish 或建置先失敗，workflow 會保留原始錯誤，不會再以誤導的 Pages 失敗取代根因。
 19. Pages 部署成功後清除會變動的 Cloudflare CDN 快取。
 
+正式 `build:user-data` 步驟與緊急部署的 `npm run build` 都固定使用 `NODE_OPTIONS=--max-old-space-size=8192`。`build_user_data.mjs` 需要將排行榜來源分片解析為物件，並在同一輪保留跨副本的使用者、同場玩家、report variant 與全服統計索引；磁碟上的 JSON 成長到 GiB 規模後，Node.js 預設約 4 GiB 的 V8 heap 不足以完成聚合。8 GiB 上限只提高可用 heap，不會預先配置全部記憶體，且仍為 GitHub 公開 repo 的 16 GiB `ubuntu-latest` runner 保留作業系統、原生 Buffer 與 Vite 建置空間。若未來再次接近上限，應改採逐分片／分階段建置，而不是繼續無限制提高數值。
+
 ## 緊急部署
 
 `.github/workflows/emergency_deploy.yml` 是手動觸發的緊急部署通道，用於前端 hotfix、空白頁修復、SEO/OG 產物修正或 Cloudflare 快取異常。這條流程 checkout 主 repo 後先由 Data repo hydrate 最新權威快照，再執行 `npm run build`、上傳 `dist/` 並部署 GitHub Pages；它不會執行正式 FFLogs 抓取、不會推進掃描點，也不會發布新資料。
