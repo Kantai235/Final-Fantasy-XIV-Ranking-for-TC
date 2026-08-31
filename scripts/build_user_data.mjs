@@ -1244,8 +1244,9 @@ function buildAchievementStatistics(users, baselineAtMs) {
         .map((achievement) => achievement.id),
     );
 
-    // 一位玩家對同一成就最多計一次。零式首週／次週／一般雖由產品規則保證
-    // 互斥，這層去重仍可防止未來新增條件時把同一角色重複灌入全站人數。
+    // `建立個人成績徽章` 已讓同量級五階只回傳最高階，因此首月得主不會再替
+    // 一般踏破或通關增加人數。Set 另保證一位玩家對同一成就最多計一次；每次
+    // 重建都會依這批互斥 holder_count 與 totalUsers 重新計算百分比。
     for (const achievementId of earnedAchievementIds) {
       holderCountById.set(achievementId, (holderCountById.get(achievementId) || 0) + 1);
     }

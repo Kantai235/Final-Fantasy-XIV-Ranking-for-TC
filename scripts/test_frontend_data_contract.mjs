@@ -30,6 +30,7 @@ import {
   比較個人成績分位顯示排序,
 } from "../src/utils/userProfileSorting.js";
 import {
+  建立成就手冊階段狀態索引,
   建立個人成績徽章,
   六絕踏破稱號,
   建立零式量級踏破徽章,
@@ -302,7 +303,7 @@ function validateUserProfileBadges() {
   assert(
     JSON.stringify(含炒股仔的量級徽章.map((項目) => 項目.名稱))
       === JSON.stringify(["次重量級踏破", "次重量級的炒股仔", "輕量級通關", "輕量級的炒股仔"]),
-    "同量級應先顯示四階進度，再顯示可獨立取得的炒股仔，並維持次重量級優先。",
+    "同量級應先顯示五階進度，再顯示可獨立取得的炒股仔，並維持次重量級優先。",
   );
 
   const 未達顯示PR95 = 跨職炒股仔成績.map((成績) => (
@@ -332,15 +333,15 @@ function validateUserProfileBadges() {
   );
 
   assert(!徽章名稱.has("零式全通"), "零式成就應改為依量級命名，不可保留固定的「零式全通」。");
-  assert(成就目錄.length === 16 && 成就Id.size === 成就目錄.length, "成就手冊必須列出十六項具有穩定 ID 的可取得成就。");
+  assert(成就目錄.length === 18 && 成就Id.size === 成就目錄.length, "成就手冊必須列出十八項具有穩定 ID 的可取得成就。");
   const 手冊分類數量 = new Map(成就手冊分類定義.map((分類) => [
     分類.id,
     成就目錄.filter((成就) => 成就.手冊分類 === 分類.id).length,
   ]));
   assert(
     JSON.stringify(Array.from(手冊分類數量.entries()))
-      === JSON.stringify([["ultimate", 1], ["savage", 10], ["other", 5]]),
-    "成就手冊必須依絕本 1 項、零式 8 階加 2 項額外成就與其他 5 項建立固定分類。",
+      === JSON.stringify([["ultimate", 1], ["savage", 12], ["other", 5]]),
+    "成就手冊必須依絕本 1 項、零式 10 階加 2 項額外成就與其他 5 項建立固定分類。",
   );
   assert(
     成就目錄.every((成就) => (
@@ -354,15 +355,17 @@ function validateUserProfileBadges() {
   );
   assert(
     new Set(成就目錄.map((成就) => 成就.手冊進度群組)).size === 10,
-    "零式四階以每量級一項計算，兩項炒股仔則獨立計入，總進度應為十項。",
+    "零式五階以每量級一項計算，兩項炒股仔則獨立計入，總進度應為十項。",
   );
   const 量級成就Ids = new Set([
     "savage-light-heavyweight-week-one",
     "savage-light-heavyweight-week-two",
+    "savage-light-heavyweight-month-one",
     "savage-light-heavyweight-clear",
     "savage-light-heavyweight-all-floors-clear",
     "savage-cruiserweight-week-one",
     "savage-cruiserweight-week-two",
+    "savage-cruiserweight-month-one",
     "savage-cruiserweight-clear",
     "savage-cruiserweight-all-floors-clear",
   ]);
@@ -388,20 +391,81 @@ function validateUserProfileBadges() {
   ]);
   assert(
     Array.from(炒股仔成就Ids).every((成就Id值) => 當前適用成就.some((成就) => 成就.id === 成就Id值)),
-    "炒股仔是可獨立取得的額外成就，不可被四階目前目標篩選移除。",
+    "炒股仔是可獨立取得的額外成就，不可被五階目前目標篩選移除。",
   );
+
+  const 驗證階段狀態 = (時間, 預期狀態, 已獲得成就Ids = []) => {
+    const 狀態索引 = 建立成就手冊階段狀態索引(已獲得成就Ids, Date.parse(時間));
+    for (const [成就Id值, 預期標籤] of Object.entries(預期狀態)) {
+      assert(
+        狀態索引.get(成就Id值)?.標籤 === 預期標籤,
+        `${時間} 的 ${成就Id值} 應顯示「${預期標籤}」。`,
+      );
+    }
+  };
+  驗證階段狀態("2026-03-17T16:00:00.001+08:00", {
+    "savage-light-heavyweight-week-one": "已無法獲得",
+    "savage-light-heavyweight-week-two": "目前目標",
+    "savage-light-heavyweight-month-one": "其他階段",
+    "savage-light-heavyweight-clear": "其他階段",
+    "savage-light-heavyweight-all-floors-clear": "其他階段",
+  });
+  驗證階段狀態("2026-06-23T13:00:00.001+08:00", {
+    "savage-light-heavyweight-week-one": "已無法獲得",
+    "savage-light-heavyweight-week-two": "已無法獲得",
+    "savage-light-heavyweight-month-one": "已無法獲得",
+    "savage-light-heavyweight-clear": "已無法獲得",
+    "savage-light-heavyweight-all-floors-clear": "目前目標",
+  });
+  驗證階段狀態("2026-09-01T16:00:00+08:00", {
+    "savage-cruiserweight-week-one": "已無法獲得",
+    "savage-cruiserweight-week-two": "已無法獲得",
+    "savage-cruiserweight-month-one": "目前目標",
+    "savage-cruiserweight-clear": "其他階段",
+    "savage-cruiserweight-all-floors-clear": "其他階段",
+  });
+  驗證階段狀態("2026-09-01T16:00:00.001+08:00", {
+    "savage-cruiserweight-week-one": "已無法獲得",
+    "savage-cruiserweight-week-two": "已無法獲得",
+    "savage-cruiserweight-month-one": "已無法獲得",
+    "savage-cruiserweight-clear": "目前目標",
+    "savage-cruiserweight-all-floors-clear": "其他階段",
+  });
+  驗證階段狀態("2026-08-20T12:00:00+08:00", {
+    "savage-cruiserweight-week-one": "已無法獲得",
+    "savage-cruiserweight-week-two": "已無法獲得",
+    "savage-cruiserweight-month-one": "已取得",
+    "savage-cruiserweight-clear": "已無法獲得",
+    "savage-cruiserweight-all-floors-clear": "已無法獲得",
+  }, ["savage-cruiserweight-month-one"]);
+
+  for (const 首月成就Id of [
+    "savage-light-heavyweight-month-one",
+    "savage-cruiserweight-month-one",
+  ]) {
+    const 首月成就 = 成就目錄.find((成就) => 成就.id === 首月成就Id);
+    assert(首月成就?.說明 === "沒關係，次週首月通關也很厲害了", `${首月成就Id} 應保存完整純文字說明。`);
+    assert(
+      首月成就?.說明片段?.some((片段) => 片段.文字 === "次週" && 片段.刪除線 === true),
+      `${首月成就Id} 應明確標記「次週」片段套用刪除線。`,
+    );
+  }
 
   const 時間邊界案例 = [
     ["2026-03-17T16:00:00+08:00", "savage-light-heavyweight-week-one"],
     ["2026-03-17T16:00:00.001+08:00", "savage-light-heavyweight-week-two"],
     ["2026-03-24T16:00:00+08:00", "savage-light-heavyweight-week-two"],
-    ["2026-03-24T16:00:00.001+08:00", "savage-light-heavyweight-clear"],
+    ["2026-03-24T16:00:00.001+08:00", "savage-light-heavyweight-month-one"],
+    ["2026-04-07T16:00:00+08:00", "savage-light-heavyweight-month-one"],
+    ["2026-04-07T16:00:00.001+08:00", "savage-light-heavyweight-clear"],
     ["2026-06-23T13:00:00+08:00", "savage-light-heavyweight-clear"],
     ["2026-06-23T13:00:00.001+08:00", "savage-light-heavyweight-all-floors-clear"],
     ["2026-08-11T16:00:00+08:00", "savage-cruiserweight-week-one"],
     ["2026-08-11T16:00:00.001+08:00", "savage-cruiserweight-week-two"],
     ["2026-08-18T16:00:00+08:00", "savage-cruiserweight-week-two"],
-    ["2026-08-18T16:00:00.001+08:00", "savage-cruiserweight-clear"],
+    ["2026-08-18T16:00:00.001+08:00", "savage-cruiserweight-month-one"],
+    ["2026-09-01T16:00:00+08:00", "savage-cruiserweight-month-one"],
+    ["2026-09-01T16:00:00.001+08:00", "savage-cruiserweight-clear"],
   ];
   for (const [時間, 預期成就Id] of 時間邊界案例) {
     assert(
@@ -462,10 +526,12 @@ function validateUserProfileBadges() {
   const 量級徽章預期說明 = new Map([
     ["輕量級【首週】踏破", "開放首週即通關輕量級所有樓層"],
     ["輕量級【次週】踏破", "開放次週即通關輕量級所有樓層"],
+    ["輕量級【首月】踏破", "沒關係，次週首月通關也很厲害了"],
     ["輕量級踏破", "在當版本通關輕量級所有樓層"],
     ["輕量級通關", "輕量級每層皆有有效版本公開成績"],
     ["次重量級【首週】踏破", "開放首週即通關次重量級所有樓層"],
     ["次重量級【次週】踏破", "開放次週即通關次重量級所有樓層"],
+    ["次重量級【首月】踏破", "沒關係，次週首月通關也很厲害了"],
     ["次重量級踏破", "在當版本通關次重量級所有樓層"],
     ["次重量級通關", "次重量級每層皆有有效版本公開成績"],
   ]);
@@ -488,7 +554,9 @@ function validateUserProfileBadges() {
       ? "首週踏破徽章"
       : 預期名稱.includes("【次週】")
         ? "次週踏破徽章"
-        : "一般踏破徽章";
+        : 預期名稱.includes("【首月】")
+          ? "首月踏破徽章"
+          : "一般踏破徽章";
     for (const 必要樣式類別 of ["量級成就徽章", 量級樣式類別, "量級踏破徽章", 階級樣式類別]) {
       assert(
         樣式類別.has(必要樣式類別),
@@ -498,7 +566,7 @@ function validateUserProfileBadges() {
   };
 
   // 「以前」包含門檻當下；最後一層晚 1ms 就應降到下一級，明確鎖定邊界與
-  // 首週 > 次週 > 踏破 > 通關的互斥優先順序。
+  // 首週 > 次週 > 首月 > 踏破 > 通關的互斥優先順序。
   驗證量級互斥徽章(
     "輕量級",
     建立量級成績(輕量級副本鍵值, "2026-03-17T08:00:00.000Z"),
@@ -525,6 +593,16 @@ function validateUserProfileBadges() {
   驗證量級互斥徽章(
     "輕量級",
     建立量級成績(輕量級副本鍵值, "2026-03-17T08:00:00.000Z", "2026-03-24T08:00:00.001Z"),
+    "輕量級【首月】踏破",
+  );
+  驗證量級互斥徽章(
+    "輕量級",
+    建立量級成績(輕量級副本鍵值, "2026-03-17T08:00:00.000Z", "2026-04-07T08:00:00.000Z"),
+    "輕量級【首月】踏破",
+  );
+  驗證量級互斥徽章(
+    "輕量級",
+    建立量級成績(輕量級副本鍵值, "2026-03-17T08:00:00.000Z", "2026-04-07T08:00:00.001Z"),
     "輕量級踏破",
   );
   驗證量級互斥徽章(
@@ -540,10 +618,20 @@ function validateUserProfileBadges() {
   驗證量級互斥徽章(
     "次重量級",
     建立量級成績(次重量級副本鍵值, "2026-08-11T08:00:00.000Z", "2026-08-18T08:00:00.001Z"),
+    "次重量級【首月】踏破",
+  );
+  驗證量級互斥徽章(
+    "次重量級",
+    建立量級成績(次重量級副本鍵值, "2026-08-11T08:00:00.000Z", "2026-09-01T08:00:00.000Z"),
+    "次重量級【首月】踏破",
+  );
+  驗證量級互斥徽章(
+    "次重量級",
+    建立量級成績(次重量級副本鍵值, "2026-08-11T08:00:00.000Z", "2026-09-01T08:00:00.001Z"),
     "次重量級踏破",
   );
 
-  // 首週／次週只看量級末層：末層通關已代表先前樓層完成，不能因較早樓層
+  // 首週／次週／首月只看量級末層：末層通關已代表先前樓層完成，不能因較早樓層
   // 沒有公開 Log 而降級。輕量級以 M4S、次重量級以 M8S 為唯一限時依據。
   驗證量級互斥徽章(
     "輕量級",
@@ -564,6 +652,16 @@ function validateUserProfileBadges() {
     "次重量級",
     建立量級成績(["savage_m8s"], "2026-08-11T08:00:00.001Z"),
     "次重量級【次週】踏破",
+  );
+  驗證量級互斥徽章(
+    "輕量級",
+    建立量級成績(["savage_m4s"], "2026-03-24T08:00:00.001Z"),
+    "輕量級【首月】踏破",
+  );
+  驗證量級互斥徽章(
+    "次重量級",
+    建立量級成績(["savage_m8s"], "2026-08-18T08:00:00.001Z"),
+    "次重量級【首月】踏破",
   );
 
   // 輕量級在解除樓層攻略順序限制前，M4S 單層紀錄即可取得踏破；截止當下仍
@@ -590,11 +688,11 @@ function validateUserProfileBadges() {
     "輕量級通關",
   );
 
-  // 次重量級尚未解除樓層攻略順序限制，因此即使超過次週期限，只要有 M8S
+  // 次重量級尚未解除樓層攻略順序限制，因此即使超過首月期限，只要有 M8S
   // 有效公開通關就能取得一般踏破；未來只需在量級定義補入解除時間即可切換。
   驗證量級互斥徽章(
     "次重量級",
-    建立量級成績(["savage_m8s"], "2026-08-18T08:00:00.001Z"),
+    建立量級成績(["savage_m8s"], "2026-09-01T08:00:00.001Z"),
     "次重量級踏破",
   );
   驗證量級互斥徽章(
@@ -685,10 +783,11 @@ function validateUserProfileBadges() {
 }
 
 async function validateUserProfileBadgeDataScope() {
-  const [source, profileSource, handbookSource, profileStyles] = await Promise.all([
+  const [source, profileSource, handbookSource, descriptionSource, profileStyles] = await Promise.all([
     readText(path.join(srcDir, "composables", "useRankingApp.js")),
     readText(path.join(srcDir, "pages", "UserProfilePage.vue")),
     readText(path.join(srcDir, "components", "AchievementHandbook.vue")),
+    readText(path.join(srcDir, "components", "AchievementDescription.vue")),
     readText(path.join(srcDir, "styles", "pages-profile.css")),
   ]);
   assert(
@@ -719,8 +818,10 @@ async function validateUserProfileBadgeDataScope() {
       && profileStyles.includes('content: "次"')
       && profileStyles.includes(".使用者徽章.首週踏破徽章")
       && profileStyles.includes(".使用者徽章.次週踏破徽章")
+      && profileStyles.includes(".使用者徽章.首月踏破徽章")
       && profileStyles.includes(".使用者徽章.一般踏破徽章")
       && profileStyles.includes(':root[data-theme="light"] .使用者徽章.首週踏破徽章')
+      && profileStyles.includes(':root[data-theme="light"] .使用者徽章.首月踏破徽章')
       && profileStyles.includes("@keyframes 量級踏破掃光")
       && profileStyles.includes(".使用者徽章.量級成就徽章.量級踏破徽章::after")
       && profileStyles.includes(".使用者徽章.炒股仔徽章")
@@ -739,15 +840,22 @@ async function validateUserProfileBadgeDataScope() {
   assert(
     source.includes("const 使用者成就手冊 = computed(() => {")
       && source.includes("使用者索引.value?.achievements")
-      && source.includes("篩選成就手冊適用成就(")
+      && source.includes("建立成就手冊階段狀態索引(")
       && source.includes("return 個人成績成就目錄.map((定義) => {")
-      && source.includes('目前適用: 定義.手冊項目類型 === "stage" && 目前適用成就Id.has(定義.id)')
+      && source.includes('const 手冊階段狀態 = 定義.手冊項目類型 === "stage"')
+      && source.includes('目前適用: 手冊階段狀態?.id === "current"')
       && source.includes("手冊進度群組: 定義.手冊進度群組")
       && source.includes("手冊項目類型: 定義.手冊項目類型")
       && source.includes("成就手冊目前時間戳記.value")
       && source.includes("window.setInterval")
       && source.includes("window.clearInterval")
       && profileSource.includes("<AchievementHandbook")
+      && profileSource.includes("<AchievementDescription")
+      && handbookSource.includes("<AchievementDescription")
+      && descriptionSource.includes('h("s"')
+      && profileStyles.includes(".成就格式化說明 s::before")
+      && profileStyles.includes("rotate(17deg)")
+      && profileStyles.includes("rotate(-17deg)")
       && handbookSource.includes('class="成就手冊浮動按鈕"')
       && handbookSource.includes('role="dialog"')
       && handbookSource.includes('role="tablist"')
@@ -755,9 +863,10 @@ async function validateUserProfileBadgeDataScope() {
       && handbookSource.includes("處理分頁按鍵")
       && handbookSource.includes('event.key === "Escape"')
       && handbookSource.includes("分類查看成就與全站稀有度")
-      && handbookSource.includes("四階進度")
+      && handbookSource.includes("五階進度")
       && handbookSource.includes("額外成就")
-      && handbookSource.includes('成就.手冊項目類型 === \'stage\'')
+      && handbookSource.includes("已無法獲得")
+      && handbookSource.includes("成就.手冊階段狀態?.id === 'future'")
       && profileStyles.includes(".成就手冊浮動按鈕")
       && profileStyles.includes("right: calc(18px + env(safe-area-inset-right));")
       && profileStyles.includes(".報告彈窗.成就手冊彈窗")
@@ -766,8 +875,9 @@ async function validateUserProfileBadgeDataScope() {
       && profileStyles.includes(".成就手冊分頁列")
       && profileStyles.includes(".成就手冊內容區")
       && profileStyles.includes(".成就手冊量級區段-bonus")
+      && profileStyles.includes(".成就手冊項目.已無法獲得")
       && profileStyles.includes(".成就手冊清單"),
-    "個人成績單必須提供右下角書本入口、固定高度的分類分頁、零式完整階段統計與依時間更新的目前目標。",
+    "個人成績單必須提供右下角書本入口、固定高度分類分頁，以及零式目前、逾期與未來階段的清楚狀態。",
   );
 }
 

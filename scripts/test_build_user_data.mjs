@@ -146,16 +146,31 @@ async function createFixture(tempRoot) {
     enabled: true,
     data_path: "data/rankings/fixture_encounter.json",
   };
-  await writeJson(path.join(tempRoot, "public", "data", "encounters.json"), [encounter]);
-  await writeJson(path.join(tempRoot, "config", "encounters.json"), [
+  const achievementEncounters = [
     {
-      ...encounter,
-      zone_id: 999,
-      encounter_id: 888,
-      difficulty: 100,
-      scan_start_date: "2026-01-01",
+      key: "savage_m4s",
+      name: "輕量級第四層互斥測試",
+      category: "零式",
+      enabled: true,
+      data_path: "data/rankings/savage_m4s.json",
     },
-  ]);
+    {
+      key: "savage_m8s",
+      name: "次重量級第四層互斥測試",
+      category: "零式",
+      enabled: true,
+      data_path: "data/rankings/savage_m8s.json",
+    },
+  ];
+  const encounters = [encounter, ...achievementEncounters];
+  await writeJson(path.join(tempRoot, "public", "data", "encounters.json"), encounters);
+  await writeJson(path.join(tempRoot, "config", "encounters.json"), encounters.map((item, index) => ({
+    ...item,
+    zone_id: 999 + index,
+    encounter_id: 888 + index,
+    difficulty: index === 0 ? 100 : 101,
+    scan_start_date: "2026-01-01",
+  })));
   await writeJson(path.join(tempRoot, "config", "game_versions.json"), {
     schema_version: 1,
     timezone: "Asia/Taipei",
@@ -191,6 +206,45 @@ async function createFixture(tempRoot) {
     ],
     report_shards: ["data/rankings/fixture_encounter.reports/000.json"],
   });
+
+  // 兩筆末層成績都落在次週之後、首月截止以前。全站統計必須只替同一玩家
+  // 增加「首月踏破」，不可同時累加首週、次週、一般踏破或四層通關的人數。
+  for (const [index, achievementEncounter] of achievementEncounters.entries()) {
+    const recordedAtIso = achievementEncounter.key === "savage_m4s"
+      ? "2026-04-01T07:50:00.000Z"
+      : "2026-08-20T07:50:00.000Z";
+    await writeJson(path.join(tempRoot, "data", "rankings", `${achievementEncounter.key}.json`), {
+      schema_version: 1,
+      encounter: {
+        key: achievementEncounter.key,
+        name: achievementEncounter.name,
+        category: achievementEncounter.category,
+        zone_id: 1000 + index,
+        encounter_id: 889 + index,
+        difficulty: 101,
+      },
+      updated_at_iso: "2026-01-02T03:04:05.000Z",
+      ranking_entries: [
+        {
+          id: `${achievementEncounter.key}:achievement-exclusive-player`,
+          character_name: "測試角色",
+          server: "鳳凰",
+          job: "Paladin",
+          dps: 100,
+          rdps: 90,
+          adps: 95,
+          clear_time_ms: 600000,
+          clear_time_seconds: 600,
+          recorded_at_iso: recordedAtIso,
+          report_code: `ACHIEVEMENT_${achievementEncounter.key.toUpperCase()}`,
+          report_url: `https://www.fflogs.com/reports/ACHIEVEMENT${index}`,
+          fight_id: 1,
+          rank: 1,
+          is_obsolete_record: false,
+        },
+      ],
+    });
+  }
 
   await writeJson(path.join(tempRoot, "data", "rankings", "fixture_encounter.reports", "000.json"), {
     RPT1: {
@@ -854,7 +908,7 @@ async function assertFixtureOutput(tempRoot, expectedGlobalStatsText, expectedSe
   assert(usersIndex.generated_at_iso === "2026-01-02T03:04:05.000Z", "使用者索引應使用 ranking 更新時間作為 generated_at_iso。");
   assert(globalStats.generated_at_iso === "2026-01-02T03:04:05.000Z", "全服統計應使用 ranking 更新時間作為 generated_at_iso。");
   assert(usersIndex.total_users === 7, "fixture 應產生五位有公開成績的使用者與兩位空白入口。");
-  assert(usersIndex.achievements?.length === 16, "使用者索引應輸出十六項成就手冊統計。");
+  assert(usersIndex.achievements?.length === 18, "使用者索引應輸出十八項成就手冊統計。");
   const recentAchievement = usersIndex.achievements.find((achievement) => achievement.id === "recently-active");
   const highActivityAchievement = usersIndex.achievements.find((achievement) => achievement.id === "high-activity");
   const lightStockTraderAchievement = usersIndex.achievements.find(
@@ -863,6 +917,22 @@ async function assertFixtureOutput(tempRoot, expectedGlobalStatsText, expectedSe
   const cruiserStockTraderAchievement = usersIndex.achievements.find(
     (achievement) => achievement.id === "savage-cruiserweight-stock-trader",
   );
+  const lightMonthOneAchievement = usersIndex.achievements.find(
+    (achievement) => achievement.id === "savage-light-heavyweight-month-one",
+  );
+  const cruiserMonthOneAchievement = usersIndex.achievements.find(
+    (achievement) => achievement.id === "savage-cruiserweight-month-one",
+  );
+  const mutuallyExclusiveStageIds = [
+    "savage-light-heavyweight-week-one",
+    "savage-light-heavyweight-week-two",
+    "savage-light-heavyweight-clear",
+    "savage-light-heavyweight-all-floors-clear",
+    "savage-cruiserweight-week-one",
+    "savage-cruiserweight-week-two",
+    "savage-cruiserweight-clear",
+    "savage-cruiserweight-all-floors-clear",
+  ];
   assert(recentAchievement?.holder_count > 0, "fixture 的最近公開紀錄應取得近期活躍成就。");
   assert(
     recentAchievement?.holder_percentage
@@ -874,8 +944,23 @@ async function assertFixtureOutput(tempRoot, expectedGlobalStatsText, expectedSe
     lightStockTraderAchievement?.holder_count === 0 && cruiserStockTraderAchievement?.holder_count === 0,
     "fixture 沒有完整零式量級成績，兩項炒股仔仍須輸出目錄但獲得人數應為零。",
   );
+  assert(
+    lightMonthOneAchievement?.holder_count === 1 && cruiserMonthOneAchievement?.holder_count === 1,
+    "兩個量級各有一位玩家符合首月踏破，獲得人數都應為一。",
+  );
+  assert(
+    lightMonthOneAchievement?.holder_percentage === 14.29
+      && cruiserMonthOneAchievement?.holder_percentage === 14.29,
+    "首月踏破占比應以七位索引玩家為分母重新計算為 14.29%。",
+  );
+  assert(
+    mutuallyExclusiveStageIds.every((achievementId) => (
+      usersIndex.achievements.find((achievement) => achievement.id === achievementId)?.holder_count === 0
+    )),
+    "取得首月踏破時，不可再把同一玩家計入首週、次週、一般踏破或通關人數。",
+  );
   assert(globalStats.total_character_count === 5, `全服角色數應把同名跨服角色視為不同玩家，實際 ${globalStats.total_character_count}。`);
-  assert(globalStats.total_entry_count === 11, "全服 entry 數應包含六筆既有成績與 v8／v10～v13 正常成績。");
+  assert(globalStats.total_entry_count === 13, "全服 entry 數應包含既有成績、v8／v10～v13 正常成績與兩筆首月互斥測試成績。");
   const hiddenUser = usersIndex.users.find((user) => user.character_name === "隱藏角色");
   assert(hiddenUser, "預設使用者索引應保留空白成績單入口。");
   assert(hiddenUser.servers.includes("鳳凰"), "空白入口應保留伺服器，讓同名角色查詢仍可辨識。");
@@ -884,7 +969,7 @@ async function assertFixtureOutput(tempRoot, expectedGlobalStatsText, expectedSe
   assert(allUsersIndex.total_users === 7, "完整鏡像應保留所有公開索引角色。");
   assert(allUsersIndex.achievements?.length === usersIndex.achievements.length, "Hidden delta 索引也必須輸出完整成就手冊目錄。");
   assert(allGlobalStats.total_character_count === 6, "完整全服統計應納入所有 fixture 角色。");
-  assert(allGlobalStats.total_entry_count === 12, "完整全服統計應納入所有 fixture 成績。");
+  assert(allGlobalStats.total_entry_count === 14, "完整全服統計應納入所有 fixture 成績。");
   const allHiddenUser = allUsersIndex.users.find((user) => user.character_name === "隱藏角色");
   assert(allHiddenUser, "完整鏡像使用者索引應包含對應角色。");
   assert(Array.isArray(globalStats.job_profiles) && globalStats.job_profiles.length === 4, "全服統計應產生職業專頁資料。");
@@ -956,34 +1041,36 @@ async function assertFixtureOutput(tempRoot, expectedGlobalStatsText, expectedSe
   const mainUser = usersIndex.users.find((user) => user.character_name === "測試角色");
   assert(mainUser, "使用者索引應包含測試角色。");
   const mainUserData = await readJson(path.join(tempRoot, "public", mainUser.file_path));
+  const mainFixtureEncounter = mainUserData.encounters.find((item) => item.encounter_key === "fixture_encounter");
+  assert(mainFixtureEncounter, "測試角色應保留原始 fixture 副本資料。");
   assert(mainUserData.summary.best_rdps === 250, "測試角色最佳 rDPS 應正確彙整。");
-  assert(mainUserData.summary.public_entry_count === 7, "重複 report 應合併，且 v8／v10～v13 已驗證正常的戰鬥應維持公開。");
+  assert(mainUserData.summary.public_entry_count === 9, "重複 report 應合併，且既有正常戰鬥與兩筆首月互斥測試成績都應維持公開。");
   assert(
-    mainUserData.encounters[0]?.public_entries?.some((entry) => entry.report_code === "INTEGRITY_V8_VALID"),
+    mainFixtureEncounter.public_entries?.some((entry) => entry.report_code === "INTEGRITY_V8_VALID"),
     "個人成績單必須保留 v8 已驗證正常的戰鬥。",
   );
   assert(
-    mainUserData.encounters[0]?.public_entries?.some((entry) => entry.report_code === "INTEGRITY_V10_VALID"),
+    mainFixtureEncounter.public_entries?.some((entry) => entry.report_code === "INTEGRITY_V10_VALID"),
     "個人成績單必須保留 v10 已驗證正常的戰鬥。",
   );
   assert(
-    mainUserData.encounters[0]?.public_entries?.some((entry) => entry.report_code === "INTEGRITY_V11_VALID"),
+    mainFixtureEncounter.public_entries?.some((entry) => entry.report_code === "INTEGRITY_V11_VALID"),
     "個人成績單必須保留 v11 已驗證正常的戰鬥。",
   );
   assert(
-    mainUserData.encounters[0]?.public_entries?.some((entry) => entry.report_code === "INTEGRITY_V12_VALID"),
+    mainFixtureEncounter.public_entries?.some((entry) => entry.report_code === "INTEGRITY_V12_VALID"),
     "個人成績單必須保留 v12 已驗證正常的戰鬥。",
   );
   assert(
-    mainUserData.encounters[0]?.public_entries?.some((entry) => entry.report_code === "INTEGRITY_V13_VALID"),
+    mainFixtureEncounter.public_entries?.some((entry) => entry.report_code === "INTEGRITY_V13_VALID"),
     "個人成績單必須保留 v13 現行規則已驗證正常的戰鬥。",
   );
   assert(mainUserData.summary.profile_job === "Paladin", "個人成績單代表職業應優先採用同職排名最高的職業。");
   assert(mainUserData.summary.profile_job_rank === 1, "個人成績單代表職業應保留最高職業 Rank。");
-  assert(mainUserData.encounters[0]?.best_entry?.job === "Paladin", "個人成績單副本代表列應優先顯示最高排名職業。");
-  assert(mainUserData.encounters[0]?.best_entry?.fflogs_source_id === 101, "個人成績單代表列應保留 FFLogs sourceID。");
+  assert(mainFixtureEncounter.best_entry?.job === "Paladin", "個人成績單副本代表列應優先顯示最高排名職業。");
+  assert(mainFixtureEncounter.best_entry?.fflogs_source_id === 101, "個人成績單代表列應保留 FFLogs sourceID。");
   assert(
-    mainUserData.encounters[0]?.best_entry?.tank_stats?.mitigation_coverage_percent === 96.15,
+    mainFixtureEncounter.best_entry?.tank_stats?.mitigation_coverage_percent === 96.15,
     "個人成績單副本代表列應保留坦克支援統計。",
   );
   const mirroredPhysicalFightEntries = mainUserData.encounters[0]?.public_entries?.filter(
@@ -993,12 +1080,12 @@ async function assertFixtureOutput(tempRoot, expectedGlobalStatsText, expectedSe
     mirroredPhysicalFightEntries.length === 1,
     "同一物理戰鬥的時間／DPS 漂移不得增加個人成績筆數或同職 PR 樣本。",
   );
-  assert(mainUserData.encounters[0]?.best_entry?.duplicate_count === 2, "合併後的個人成績應保留來源 report 數。");
-  assert(mainUserData.encounters[0]?.best_entry?.report_detail_path?.startsWith("data/user-entry-details/"), "合併後的個人成績應保留按需載入報告細節路徑。");
-  assert(mainUserData.encounters[0]?.best_entry?.report_detail_id === mainUserData.encounters[0]?.best_entry?.id, "合併後的個人成績應保留報告細節 id。");
-  assert(!mainUserData.encounters[0]?.best_entry?.report_variants, "個人成績單主檔不應直接內嵌 report_variants。");
-  const mainUserEntryDetails = await readJson(path.join(tempRoot, "public", mainUserData.encounters[0].best_entry.report_detail_path));
-  const mainUserBestDetail = mainUserEntryDetails.entries?.[mainUserData.encounters[0].best_entry.report_detail_id];
+  assert(mainFixtureEncounter.best_entry?.duplicate_count === 2, "合併後的個人成績應保留來源 report 數。");
+  assert(mainFixtureEncounter.best_entry?.report_detail_path?.startsWith("data/user-entry-details/"), "合併後的個人成績應保留按需載入報告細節路徑。");
+  assert(mainFixtureEncounter.best_entry?.report_detail_id === mainFixtureEncounter.best_entry?.id, "合併後的個人成績應保留報告細節 id。");
+  assert(!mainFixtureEncounter.best_entry?.report_variants, "個人成績單主檔不應直接內嵌 report_variants。");
+  const mainUserEntryDetails = await readJson(path.join(tempRoot, "public", mainFixtureEncounter.best_entry.report_detail_path));
+  const mainUserBestDetail = mainUserEntryDetails.entries?.[mainFixtureEncounter.best_entry.report_detail_id];
   assert(mainUserBestDetail?.source_reports?.length === 2, "合併後的個人成績細節應保留來源 report code。");
   assert(mainUserBestDetail?.report_variants?.length === 2, "合併後的個人成績細節應輸出報告彈窗分頁資料。");
   assert(
@@ -1009,11 +1096,11 @@ async function assertFixtureOutput(tempRoot, expectedGlobalStatsText, expectedSe
     !mainUserBestDetail?.report_variants?.some((variant) => Object.hasOwn(variant.gcd_coverage || {}, "raw_graph_downtime_percent")),
     "報告分頁資料不應輸出 GCD 內部診斷欄位。",
   );
-  const mainUserBlackMageEntry = mainUserData.encounters[0]?.public_entries?.find((entry) => entry.job === "BlackMage");
+  const mainUserBlackMageEntry = mainFixtureEncounter.public_entries?.find((entry) => entry.job === "BlackMage");
   assert(mainUserBlackMageEntry?.job_rank === 2, "fixture 需保留較高 rDPS 但職業 Rank 較低的輸出紀錄。");
   assert(mainUserBlackMageEntry?.fflogs_source_id === 202, "個人成績歷史列應保留 FFLogs sourceID 供外部工具深連結使用。");
   assert(mainUserBlackMageEntry?.game_version === "7.0", "版本切點前的個人成績應保留舊版本。");
-  const mainUserEntry = mainUserData.encounters[0]?.public_entries?.find((entry) => entry.report_code === "RPT1");
+  const mainUserEntry = mainFixtureEncounter.public_entries?.find((entry) => entry.report_code === "RPT1");
   assert(mainUserEntry?.game_version === "7.05", "版本切點當下的個人成績應歸入新版本。");
   assert(mainUserEntry?.gcd_coverage?.percent === 94.43, "個人成績單應保留 GCD 覆蓋率。");
   assert(

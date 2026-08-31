@@ -1,5 +1,6 @@
 <script>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
+import AchievementDescription from "./AchievementDescription.vue";
 import { 成就手冊分類定義 } from "../utils/userProfileBadges";
 
 const 台灣整數格式 = new Intl.NumberFormat("zh-TW", { maximumFractionDigits: 0 });
@@ -7,6 +8,9 @@ const 預設手冊分類 = "savage";
 
 export default {
   name: "AchievementHandbook",
+  components: {
+    AchievementDescription,
+  },
   props: {
     achievements: {
       type: Array,
@@ -91,14 +95,14 @@ export default {
           };
         }
 
-        // 零式量級同時有互斥的四階進度與可獨立取得的分位成就。區段結構由
+        // 零式量級同時有互斥的五階進度與可獨立取得的分位成就。區段結構由
         // 工具層的穩定類型建立，避免模板依成就名稱猜測並誤標成「其他階段」。
         const 階段成就 = 群組.成就.filter((成就) => 成就?.手冊項目類型 === "stage");
         const 額外成就 = 群組.成就.filter((成就) => 成就?.手冊項目類型 === "bonus");
         return {
           ...群組,
           區段: [
-            { id: "stage", 名稱: "四階進度", 說明: "同量級只計最高階一項", 成就: 階段成就 },
+            { id: "stage", 名稱: "五階進度", 說明: "同量級只計最高階一項", 成就: 階段成就 },
             { id: "bonus", 名稱: "額外成就", 說明: "可獨立取得", 成就: 額外成就 },
           ].filter((區段) => 區段.成就.length > 0),
         };
@@ -163,20 +167,23 @@ export default {
     }
 
     function 取得成就狀態(成就) {
+      if (成就?.手冊階段狀態?.標籤) {
+        return 成就.手冊階段狀態.標籤;
+      }
       if (成就?.已獲得) {
         return "已取得";
-      }
-      if (成就?.手冊項目類型 === "stage") {
-        return 成就?.目前適用 ? "目前目標" : "其他階段";
       }
       return "未取得";
     }
 
     function 取得成就狀態圖示(成就) {
+      if (成就?.手冊階段狀態?.圖示) {
+        return 成就.手冊階段狀態.圖示;
+      }
       if (成就?.已獲得) {
         return "✓";
       }
-      return 成就?.手冊項目類型 === "stage" && 成就?.目前適用 ? "◇" : "·";
+      return "·";
     }
 
     function 格式化人數(數值) {
@@ -370,8 +377,9 @@ export default {
                     :class="{
                       已取得: 成就.已獲得,
                       尚未取得: !成就.已獲得,
-                      目前目標: !成就.已獲得 && 成就.手冊項目類型 === 'stage' && 成就.目前適用,
-                      其他階段: !成就.已獲得 && 成就.手冊項目類型 === 'stage' && !成就.目前適用,
+                      目前目標: 成就.手冊階段狀態?.id === 'current',
+                      已無法獲得: 成就.手冊階段狀態?.id === 'unavailable',
+                      其他階段: 成就.手冊階段狀態?.id === 'future',
                     }"
                   >
                     <span class="成就手冊狀態圖示" aria-hidden="true">{{ 取得成就狀態圖示(成就) }}</span>
@@ -381,7 +389,11 @@ export default {
                         <strong>{{ 成就.名稱 }}</strong>
                         <span class="成就手冊取得狀態">{{ 取得成就狀態(成就) }}</span>
                       </div>
-                      <p>{{ 成就.說明 }}</p>
+                      <AchievementDescription
+                        as="p"
+                        :text="成就.說明"
+                        :segments="成就.說明片段"
+                      />
                       <div class="成就手冊稀有度">
                         <span>
                           <strong>{{ 成就.獲得人數 === null ? "—" : 格式化人數(成就.獲得人數) }}</strong>
@@ -401,7 +413,7 @@ export default {
         </section>
 
         <p class="成就手冊資料說明">
-          成就依本站收錄的公開 FFLogs 通關紀錄判定；零式四階互斥，炒股仔則依有效版本內各層的本站同職 PR 獨立判定。未取得只代表目前沒有符合條件的公開資料。
+          成就依本站收錄的公開 FFLogs 通關紀錄判定；零式五階互斥，炒股仔則依有效版本內各層的本站同職 PR 獨立判定。未取得只代表目前沒有符合條件的公開資料。
         </p>
       </section>
     </div>

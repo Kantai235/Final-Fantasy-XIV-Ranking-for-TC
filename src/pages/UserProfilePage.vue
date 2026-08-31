@@ -1,5 +1,6 @@
 <script>
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import AchievementDescription from "../components/AchievementDescription.vue";
 import AchievementHandbook from "../components/AchievementHandbook.vue";
 import EncounterMenu from "../components/EncounterMenu.vue";
 import JobIcon from "../components/JobIcon.vue";
@@ -12,6 +13,7 @@ import { 格式化縮寫總量 } from "../utils/formatters";
 export default {
   name: "UserProfilePage",
   components: {
+    AchievementDescription,
     AchievementHandbook,
     EncounterMenu,
     JobIcon,
@@ -616,7 +618,11 @@ export default {
       <section v-if="使用者徽章.length > 0" class="使用者徽章區" aria-label="個人徽章">
         <article v-for="徽章 in 使用者徽章" :key="徽章.名稱" class="使用者徽章" :class="徽章.樣式類別">
           <strong>{{ 徽章.名稱 }}</strong>
-          <span>{{ 徽章.說明 }}</span>
+          <AchievementDescription
+            as="span"
+            :text="徽章.說明"
+            :segments="徽章.說明片段"
+          />
         </article>
       </section>
 
