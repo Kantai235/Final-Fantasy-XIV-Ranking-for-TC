@@ -57,6 +57,7 @@
 | `src/components/PlayerSearchHistoryPanel.vue` | 搜尋欄近期玩家歷程。 |
 | `src/components/PlayerSearchHistoryDialog.vue` | 搜尋歷程管理、刪除與清除。 |
 | `src/components/AchievementHandbook.vue` | 固定分類、進度與全站持有率的成就彈窗。 |
+| `src/components/AchievementDescription.vue` | 依工具層說明片段呈現成就文字與 X 樣式刪除線。 |
 | `src/components/AnnouncementCenter.vue` | 公告通知、列表、關閉狀態與焦點管理。 |
 | `src/components/AnnouncementMarkdown.vue` | 將允許的公告 Markdown token 呈現為安全元件。 |
 | `src/components/HoneyFansFloatingButton.vue` | Honey 頁面浮動入口。 |
