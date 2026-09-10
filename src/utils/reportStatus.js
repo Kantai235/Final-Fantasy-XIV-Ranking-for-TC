@@ -1,6 +1,6 @@
 const reportCodePattern = /^[A-Za-z0-9]{8,32}$/;
 const 預設排程分鐘列表 = Object.freeze([17, 47]);
-const 預設Fflogs即時狀態查詢網址 = "https://script.google.com/macros/s/AKfycbw_GPuIIrR84Bse1uCiXz1BM2CzgtzvXqhn8dmbbgIQLs-6Etjw6L2BXxerAx5vcXg-zQ/exec";
+const 預設Fflogs即時狀態查詢網址 = "https://script.google.com/macros/s/AKfycbyqjJUSiIItQ-tM15hzEHXTXY7SBPrwYq0wFy8WTY9Xg77Ed3CdHb_91W0HpPbfslgnVQ/exec";
 const AppsScriptJsonpCallbackRoot = "__ffxivTcFflogsReportStatusCallbacks";
 const AppsScriptJsonp逾時Ms = 12000;
 let AppsScriptJsonp序號 = 0;
