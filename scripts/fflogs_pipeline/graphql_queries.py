@@ -357,6 +357,17 @@ query FightIntegrityBasicAttackEvents(
 """
 
 
+M8S狼機制事件查詢 = """
+query M8SWolfMechanics($code: String!, $fightID: Int!, $startTime: Float!, $endTime: Float!) {
+  reportData { report(code: $code) {
+    fights(fightIDs: [$fightID]) { id encounterID difficulty enemyNPCs { id gameID } }
+    events(dataType: All, fightIDs: [$fightID], startTime: $startTime,
+           endTime: $endTime, limit: 10000) { data nextPageTimestamp }
+  } }
+}
+"""
+
+
 def 建立戰鬥完整性目標生命值查詢(目標_id清單: list[int]) -> str:
     # GraphQL 的 targetID 只能逐目標指定；用 alias 合併成一個 request，避免每個王／小怪
     # 都各打一次 API。targetResources.maxHitPoints 只需前幾筆傷害事件即可取得，無須保存 raw events。

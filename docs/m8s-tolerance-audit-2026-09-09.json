@@ -1,0 +1,1807 @@
+{
+  "schema_version": 1,
+  "audit_date": "2026-09-09",
+  "status": "僅調查，尚未實作機制校正或套用新的固定區間",
+  "snapshot_repository": "Kantai235/Final-Fantasy-XIV-Ranking-for-TC-Data",
+  "snapshot_sha": "7583e9586eb955a82acf89dad7814f1354ae7f03",
+  "snapshot_path": "data/rankings/savage_m8s.reports/000.json",
+  "population": {
+    "reports": 1192,
+    "report_fight_uploads": 1244,
+    "groups_under_existing_identity_contract": 645,
+    "groups_with_hidden_integrity_source": 37
+  },
+  "selection": "被隱藏群組中偏差最大的來源，加上五份未隱藏對照；以相同開戰時間與總承傷減少重複事件查詢。非隨機樣本。",
+  "event_query": {
+    "data_type": "All",
+    "relative_start_ms": 190000,
+    "relative_end_ms": 250000,
+    "included_type": "damage",
+    "pagination_complete": true,
+    "raw_events_persisted": false
+  },
+  "summary": {
+    "selected": 40,
+    "original_sources_readable": 36,
+    "alternative_sources_readable": 3,
+    "unreadable": 1,
+    "samples_with_six_mechanic_hits": 39,
+    "ordinary_positive_samples": 29,
+    "positive_wolf_residual_range": [
+      -2,
+      0
+    ],
+    "non_extreme_samples": 38,
+    "non_extreme_wolf_residual_range": [
+      -8134,
+      0
+    ],
+    "non_extreme_total_residual_range": [
+      -8183,
+      -25
+    ],
+    "largest_verified_mechanic_overkill": 252176
+  },
+  "fixed_profile_simulation": [
+    {
+      "lower_delta": -100,
+      "upper_delta": 100,
+      "passes": 1144,
+      "rejects": 100
+    },
+    {
+      "lower_delta": -10000,
+      "upper_delta": 10000,
+      "passes": 1177,
+      "rejects": 67
+    },
+    {
+      "lower_delta": -100000,
+      "upper_delta": 100000,
+      "passes": 1226,
+      "rejects": 18
+    },
+    {
+      "lower_delta": -10000,
+      "upper_delta": 300000,
+      "passes": 1242,
+      "rejects": 2
+    }
+  ],
+  "simulation_note": "僅計算單份上傳的總量、逐目標與最大 HP 門檻，不等同公開場數。仍需同場多來源異常傳播、可讀狀態及其他收錄檢查。",
+  "recommendation": {
+    "preferred_expected_wolf_damage": "max_hp - sum(verified_effective_mechanic_damage)",
+    "preferred_wolf_and_total_tolerance": 10000,
+    "boss_tolerance": 100,
+    "provisional_fixed_lower_delta": -10000,
+    "provisional_fixed_upper_delta": 300000
+  },
+  "samples": [
+    {
+      "original_report_code": "1BgMyvmPNnz3XR8A",
+      "original_fight_id": 1,
+      "stored_total_delta_from_fixed_profile": -27,
+      "queried_report_code": "1BgMyvmPNnz3XR8A",
+      "queried_fight_id": 1,
+      "used_alternative_upload": false,
+      "readable": true,
+      "targets": [
+        {
+          "guid": 18225,
+          "mechanic_hit_count": 3,
+          "mechanic_ability_ids": [
+            41965,
+            43137
+          ],
+          "mechanic_source_npc_guids": [
+            18261
+          ],
+          "effective_mechanic_damage": 6311061,
+          "mechanic_overkill": 0,
+          "expected_player_damage_from_hp": 4207377,
+          "observed_player_damage": 4207377,
+          "residual_after_mechanic_damage": 0
+        },
+        {
+          "guid": 18219,
+          "mechanic_hit_count": 3,
+          "mechanic_ability_ids": [
+            41966,
+            43138
+          ],
+          "mechanic_source_npc_guids": [
+            18262
+          ],
+          "effective_mechanic_damage": 6311061,
+          "mechanic_overkill": 0,
+          "expected_player_damage_from_hp": 4207377,
+          "observed_player_damage": 4207376,
+          "residual_after_mechanic_damage": -1
+        }
+      ],
+      "total_residual_after_mechanic_damage": -31
+    },
+    {
+      "original_report_code": "19L7qRvmGMkfTngx",
+      "original_fight_id": 7,
+      "stored_total_delta_from_fixed_profile": -31,
+      "queried_report_code": "19L7qRvmGMkfTngx",
+      "queried_fight_id": 7,
+      "used_alternative_upload": false,
+      "readable": true,
+      "targets": [
+        {
+          "guid": 18225,
+          "mechanic_hit_count": 3,
+          "mechanic_ability_ids": [
+            41965,
+            43137
+          ],
+          "mechanic_source_npc_guids": [
+            18261
+          ],
+          "effective_mechanic_damage": 6311061,
+          "mechanic_overkill": 0,
+          "expected_player_damage_from_hp": 4207377,
+          "observed_player_damage": 4207375,
+          "residual_after_mechanic_damage": -2
+        },
+        {
+          "guid": 18219,
+          "mechanic_hit_count": 3,
+          "mechanic_ability_ids": [
+            41966,
+            43138
+          ],
+          "mechanic_source_npc_guids": [
+            18262
+          ],
+          "effective_mechanic_damage": 6311061,
+          "mechanic_overkill": 0,
+          "expected_player_damage_from_hp": 4207377,
+          "observed_player_damage": 4207377,
+          "residual_after_mechanic_damage": 0
+        }
+      ],
+      "total_residual_after_mechanic_damage": -35
+    },
+    {
+      "original_report_code": "1CMvDG8HNQXRdBVY",
+      "original_fight_id": 12,
+      "stored_total_delta_from_fixed_profile": -33,
+      "queried_report_code": "1CMvDG8HNQXRdBVY",
+      "queried_fight_id": 12,
+      "used_alternative_upload": false,
+      "readable": true,
+      "targets": [
+        {
+          "guid": 18225,
+          "mechanic_hit_count": 3,
+          "mechanic_ability_ids": [
+            41965,
+            43137
+          ],
+          "mechanic_source_npc_guids": [
+            18261
+          ],
+          "effective_mechanic_damage": 6311061,
+          "mechanic_overkill": 0,
+          "expected_player_damage_from_hp": 4207377,
+          "observed_player_damage": 4207377,
+          "residual_after_mechanic_damage": 0
+        },
+        {
+          "guid": 18219,
+          "mechanic_hit_count": 3,
+          "mechanic_ability_ids": [
+            41966,
+            43520
+          ],
+          "mechanic_source_npc_guids": [
+            18262
+          ],
+          "effective_mechanic_damage": 6311061,
+          "mechanic_overkill": 0,
+          "expected_player_damage_from_hp": 4207377,
+          "observed_player_damage": 4207377,
+          "residual_after_mechanic_damage": 0
+        }
+      ],
+      "total_residual_after_mechanic_damage": -37
+    },
+    {
+      "original_report_code": "1ALKFgZHzCX43BWJ",
+      "original_fight_id": 9,
+      "stored_total_delta_from_fixed_profile": -48,
+      "queried_report_code": "1ALKFgZHzCX43BWJ",
+      "queried_fight_id": 9,
+      "used_alternative_upload": false,
+      "readable": true,
+      "targets": [
+        {
+          "guid": 18225,
+          "mechanic_hit_count": 3,
+          "mechanic_ability_ids": [
+            41965,
+            43137
+          ],
+          "mechanic_source_npc_guids": [
+            18261
+          ],
+          "effective_mechanic_damage": 6311061,
+          "mechanic_overkill": 0,
+          "expected_player_damage_from_hp": 4207377,
+          "observed_player_damage": 4207375,
+          "residual_after_mechanic_damage": -2
+        },
+        {
+          "guid": 18219,
+          "mechanic_hit_count": 3,
+          "mechanic_ability_ids": [
+            41966,
+            43520
+          ],
+          "mechanic_source_npc_guids": [
+            18262
+          ],
+          "effective_mechanic_damage": 6311061,
+          "mechanic_overkill": 0,
+          "expected_player_damage_from_hp": 4207377,
+          "observed_player_damage": 4207377,
+          "residual_after_mechanic_damage": 0
+        }
+      ],
+      "total_residual_after_mechanic_damage": -52
+    },
+    {
+      "original_report_code": "18tM6mzhr7FaHXNk",
+      "original_fight_id": 23,
+      "stored_total_delta_from_fixed_profile": -53,
+      "queried_report_code": "18tM6mzhr7FaHXNk",
+      "queried_fight_id": 23,
+      "used_alternative_upload": false,
+      "readable": true,
+      "targets": [
+        {
+          "guid": 18225,
+          "mechanic_hit_count": 3,
+          "mechanic_ability_ids": [
+            41965,
+            43137
+          ],
+          "mechanic_source_npc_guids": [
+            18261
+          ],
+          "effective_mechanic_damage": 6311061,
+          "mechanic_overkill": 0,
+          "expected_player_damage_from_hp": 4207377,
+          "observed_player_damage": 4207375,
+          "residual_after_mechanic_damage": -2
+        },
+        {
+          "guid": 18219,
+          "mechanic_hit_count": 3,
+          "mechanic_ability_ids": [
+            41966,
+            43138
+          ],
+          "mechanic_source_npc_guids": [
+            18262
+          ],
+          "effective_mechanic_damage": 6311061,
+          "mechanic_overkill": 0,
+          "expected_player_damage_from_hp": 4207377,
+          "observed_player_damage": 4207377,
+          "residual_after_mechanic_damage": 0
+        }
+      ],
+      "total_residual_after_mechanic_damage": -57
+    },
+    {
+      "original_report_code": "63G74mfZzyPN98QB",
+      "original_fight_id": 1,
+      "stored_total_delta_from_fixed_profile": 2278,
+      "queried_report_code": "63G74mfZzyPN98QB",
+      "queried_fight_id": 1,
+      "used_alternative_upload": false,
+      "readable": true,
+      "targets": [
+        {
+          "guid": 18225,
+          "mechanic_hit_count": 3,
+          "mechanic_ability_ids": [
+            41965,
+            43137
+          ],
+          "mechanic_source_npc_guids": [
+            18261
+          ],
+          "effective_mechanic_damage": 6308746,
+          "mechanic_overkill": 2315,
+          "expected_player_damage_from_hp": 4209692,
+          "observed_player_damage": 4209692,
+          "residual_after_mechanic_damage": 0
+        },
+        {
+          "guid": 18219,
+          "mechanic_hit_count": 3,
+          "mechanic_ability_ids": [
+            41966,
+            43520
+          ],
+          "mechanic_source_npc_guids": [
+            18262
+          ],
+          "effective_mechanic_damage": 6311061,
+          "mechanic_overkill": 0,
+          "expected_player_damage_from_hp": 4207377,
+          "observed_player_damage": 4207376,
+          "residual_after_mechanic_damage": -1
+        }
+      ],
+      "total_residual_after_mechanic_damage": -41
+    },
+    {
+      "original_report_code": "4LPh26aKnT8vtBb1",
+      "original_fight_id": 1,
+      "stored_total_delta_from_fixed_profile": -2362,
+      "queried_report_code": "Y1ZjFdntHvTpfgyK",
+      "queried_fight_id": 1,
+      "used_alternative_upload": true,
+      "readable": true,
+      "targets": [
+        {
+          "guid": 18225,
+          "mechanic_hit_count": 3,
+          "mechanic_ability_ids": [
+            41965,
+            43137
+          ],
+          "mechanic_source_npc_guids": [
+            18261
+          ],
+          "effective_mechanic_damage": 6311061,
+          "mechanic_overkill": 0,
+          "expected_player_damage_from_hp": 4207377,
+          "observed_player_damage": 4205021,
+          "residual_after_mechanic_damage": -2356
+        },
+        {
+          "guid": 18219,
+          "mechanic_hit_count": 3,
+          "mechanic_ability_ids": [
+            41966,
+            43138
+          ],
+          "mechanic_source_npc_guids": [
+            18262
+          ],
+          "effective_mechanic_damage": 6311061,
+          "mechanic_overkill": 0,
+          "expected_player_damage_from_hp": 4207377,
+          "observed_player_damage": 4207377,
+          "residual_after_mechanic_damage": 0
+        }
+      ],
+      "total_residual_after_mechanic_damage": -2366
+    },
+    {
+      "original_report_code": "ZBhkvV9QjwC71amb",
+      "original_fight_id": 10,
+      "stored_total_delta_from_fixed_profile": -5133,
+      "queried_report_code": "ZBhkvV9QjwC71amb",
+      "queried_fight_id": 10,
+      "used_alternative_upload": false,
+      "readable": true,
+      "targets": [
+        {
+          "guid": 18225,
+          "mechanic_hit_count": 3,
+          "mechanic_ability_ids": [
+            41965,
+            43137
+          ],
+          "mechanic_source_npc_guids": [
+            18261
+          ],
+          "effective_mechanic_damage": 6311061,
+          "mechanic_overkill": 0,
+          "expected_player_damage_from_hp": 4207377,
+          "observed_player_damage": 4207377,
+          "residual_after_mechanic_damage": 0
+        },
+        {
+          "guid": 18219,
+          "mechanic_hit_count": 3,
+          "mechanic_ability_ids": [
+            41966,
+            43138
+          ],
+          "mechanic_source_npc_guids": [
+            18262
+          ],
+          "effective_mechanic_damage": 6311061,
+          "mechanic_overkill": 0,
+          "expected_player_damage_from_hp": 4207377,
+          "observed_player_damage": 4202252,
+          "residual_after_mechanic_damage": -5125
+        }
+      ],
+      "total_residual_after_mechanic_damage": -5137
+    },
+    {
+      "original_report_code": "aMcgy1PtLVwrHxXk",
+      "original_fight_id": 43,
+      "stored_total_delta_from_fixed_profile": 5432,
+      "queried_report_code": "aMcgy1PtLVwrHxXk",
+      "queried_fight_id": 43,
+      "used_alternative_upload": false,
+      "readable": true,
+      "targets": [
+        {
+          "guid": 18225,
+          "mechanic_hit_count": 3,
+          "mechanic_ability_ids": [
+            41965,
+            43137
+          ],
+          "mechanic_source_npc_guids": [
+            18261
+          ],
+          "effective_mechanic_damage": 6305608,
+          "mechanic_overkill": 5453,
+          "expected_player_damage_from_hp": 4212830,
+          "observed_player_damage": 4212830,
+          "residual_after_mechanic_damage": 0
+        },
+        {
+          "guid": 18219,
+          "mechanic_hit_count": 3,
+          "mechanic_ability_ids": [
+            41966,
+            43520
+          ],
+          "mechanic_source_npc_guids": [
+            18262
+          ],
+          "effective_mechanic_damage": 6311061,
+          "mechanic_overkill": 0,
+          "expected_player_damage_from_hp": 4207377,
+          "observed_player_damage": 4207377,
+          "residual_after_mechanic_damage": 0
+        }
+      ],
+      "total_residual_after_mechanic_damage": -25
+    },
+    {
+      "original_report_code": "YkTWX7cqDGLNv14j",
+      "original_fight_id": 2,
+      "stored_total_delta_from_fixed_profile": 5443,
+      "queried_report_code": "YkTWX7cqDGLNv14j",
+      "queried_fight_id": 2,
+      "used_alternative_upload": false,
+      "readable": true,
+      "targets": [
+        {
+          "guid": 18225,
+          "mechanic_hit_count": 3,
+          "mechanic_ability_ids": [
+            41965,
+            43137
+          ],
+          "mechanic_source_npc_guids": [
+            18261
+          ],
+          "effective_mechanic_damage": 6305565,
+          "mechanic_overkill": 5496,
+          "expected_player_damage_from_hp": 4212873,
+          "observed_player_damage": 4212873,
+          "residual_after_mechanic_damage": 0
+        },
+        {
+          "guid": 18219,
+          "mechanic_hit_count": 3,
+          "mechanic_ability_ids": [
+            41966,
+            43520
+          ],
+          "mechanic_source_npc_guids": [
+            18262
+          ],
+          "effective_mechanic_damage": 6311061,
+          "mechanic_overkill": 0,
+          "expected_player_damage_from_hp": 4207377,
+          "observed_player_damage": 4207377,
+          "residual_after_mechanic_damage": 0
+        }
+      ],
+      "total_residual_after_mechanic_damage": -57
+    },
+    {
+      "original_report_code": "9MKXTFhcZ4NC8JRp",
+      "original_fight_id": 9,
+      "stored_total_delta_from_fixed_profile": -7328,
+      "queried_report_code": "9MKXTFhcZ4NC8JRp",
+      "queried_fight_id": 9,
+      "used_alternative_upload": false,
+      "readable": true,
+      "targets": [
+        {
+          "guid": 18225,
+          "mechanic_hit_count": 3,
+          "mechanic_ability_ids": [
+            41965,
+            43137
+          ],
+          "mechanic_source_npc_guids": [
+            18261
+          ],
+          "effective_mechanic_damage": 6311061,
+          "mechanic_overkill": 0,
+          "expected_player_damage_from_hp": 4207377,
+          "observed_player_damage": 4207377,
+          "residual_after_mechanic_damage": 0
+        },
+        {
+          "guid": 18219,
+          "mechanic_hit_count": 3,
+          "mechanic_ability_ids": [
+            41966,
+            43520
+          ],
+          "mechanic_source_npc_guids": [
+            18262
+          ],
+          "effective_mechanic_damage": 6311061,
+          "mechanic_overkill": 0,
+          "expected_player_damage_from_hp": 4207377,
+          "observed_player_damage": 4200099,
+          "residual_after_mechanic_damage": -7278
+        }
+      ],
+      "total_residual_after_mechanic_damage": -7332
+    },
+    {
+      "original_report_code": "kXbf17VpgCZLyjY8",
+      "original_fight_id": 1,
+      "stored_total_delta_from_fixed_profile": -8179,
+      "queried_report_code": "kXbf17VpgCZLyjY8",
+      "queried_fight_id": 1,
+      "used_alternative_upload": false,
+      "readable": true,
+      "targets": [
+        {
+          "guid": 18225,
+          "mechanic_hit_count": 3,
+          "mechanic_ability_ids": [
+            41965,
+            43137
+          ],
+          "mechanic_source_npc_guids": [
+            18261
+          ],
+          "effective_mechanic_damage": 6311061,
+          "mechanic_overkill": 0,
+          "expected_player_damage_from_hp": 4207377,
+          "observed_player_damage": 4207377,
+          "residual_after_mechanic_damage": 0
+        },
+        {
+          "guid": 18219,
+          "mechanic_hit_count": 3,
+          "mechanic_ability_ids": [
+            41966,
+            43138
+          ],
+          "mechanic_source_npc_guids": [
+            18262
+          ],
+          "effective_mechanic_damage": 6311061,
+          "mechanic_overkill": 0,
+          "expected_player_damage_from_hp": 4207377,
+          "observed_player_damage": 4199243,
+          "residual_after_mechanic_damage": -8134
+        }
+      ],
+      "total_residual_after_mechanic_damage": -8183
+    },
+    {
+      "original_report_code": "2KyhL1nZ73TfrakW",
+      "original_fight_id": 27,
+      "stored_total_delta_from_fixed_profile": 9761,
+      "queried_report_code": "2KyhL1nZ73TfrakW",
+      "queried_fight_id": 27,
+      "used_alternative_upload": false,
+      "readable": true,
+      "targets": [
+        {
+          "guid": 18225,
+          "mechanic_hit_count": 3,
+          "mechanic_ability_ids": [
+            41965,
+            43137
+          ],
+          "mechanic_source_npc_guids": [
+            18261
+          ],
+          "effective_mechanic_damage": 6301259,
+          "mechanic_overkill": 9802,
+          "expected_player_damage_from_hp": 4217179,
+          "observed_player_damage": 4217179,
+          "residual_after_mechanic_damage": 0
+        },
+        {
+          "guid": 18219,
+          "mechanic_hit_count": 3,
+          "mechanic_ability_ids": [
+            41966,
+            43520
+          ],
+          "mechanic_source_npc_guids": [
+            18262
+          ],
+          "effective_mechanic_damage": 6311061,
+          "mechanic_overkill": 0,
+          "expected_player_damage_from_hp": 4207377,
+          "observed_player_damage": 4207377,
+          "residual_after_mechanic_damage": 0
+        }
+      ],
+      "total_residual_after_mechanic_damage": -45
+    },
+    {
+      "original_report_code": "ZWQKMcJvXAdxjtaV",
+      "original_fight_id": 4,
+      "stored_total_delta_from_fixed_profile": 17021,
+      "queried_report_code": "ZWQKMcJvXAdxjtaV",
+      "queried_fight_id": 4,
+      "used_alternative_upload": false,
+      "readable": true,
+      "targets": [
+        {
+          "guid": 18225,
+          "mechanic_hit_count": 3,
+          "mechanic_ability_ids": [
+            41965,
+            43137
+          ],
+          "mechanic_source_npc_guids": [
+            18261
+          ],
+          "effective_mechanic_damage": 6311061,
+          "mechanic_overkill": 0,
+          "expected_player_damage_from_hp": 4207377,
+          "observed_player_damage": 4207377,
+          "residual_after_mechanic_damage": 0
+        },
+        {
+          "guid": 18219,
+          "mechanic_hit_count": 3,
+          "mechanic_ability_ids": [
+            41966,
+            43138
+          ],
+          "mechanic_source_npc_guids": [
+            18262
+          ],
+          "effective_mechanic_damage": 6294005,
+          "mechanic_overkill": 17056,
+          "expected_player_damage_from_hp": 4224433,
+          "observed_player_damage": 4224433,
+          "residual_after_mechanic_damage": 0
+        }
+      ],
+      "total_residual_after_mechanic_damage": -39
+    },
+    {
+      "original_report_code": "ChxfMWk2Atp7amjH",
+      "original_fight_id": 12,
+      "stored_total_delta_from_fixed_profile": 25496,
+      "queried_report_code": "ChxfMWk2Atp7amjH",
+      "queried_fight_id": 12,
+      "used_alternative_upload": false,
+      "readable": true,
+      "targets": [
+        {
+          "guid": 18225,
+          "mechanic_hit_count": 3,
+          "mechanic_ability_ids": [
+            41965,
+            43137
+          ],
+          "mechanic_source_npc_guids": [
+            18261
+          ],
+          "effective_mechanic_damage": 6285533,
+          "mechanic_overkill": 25528,
+          "expected_player_damage_from_hp": 4232905,
+          "observed_player_damage": 4232905,
+          "residual_after_mechanic_damage": 0
+        },
+        {
+          "guid": 18219,
+          "mechanic_hit_count": 3,
+          "mechanic_ability_ids": [
+            41966,
+            43520
+          ],
+          "mechanic_source_npc_guids": [
+            18262
+          ],
+          "effective_mechanic_damage": 6311061,
+          "mechanic_overkill": 0,
+          "expected_player_damage_from_hp": 4207377,
+          "observed_player_damage": 4207377,
+          "residual_after_mechanic_damage": 0
+        }
+      ],
+      "total_residual_after_mechanic_damage": -36
+    },
+    {
+      "original_report_code": "fKpdCT9DMBFGL8gh",
+      "original_fight_id": 18,
+      "stored_total_delta_from_fixed_profile": 25616,
+      "queried_report_code": "fKpdCT9DMBFGL8gh",
+      "queried_fight_id": 18,
+      "used_alternative_upload": false,
+      "readable": true,
+      "targets": [
+        {
+          "guid": 18225,
+          "mechanic_hit_count": 3,
+          "mechanic_ability_ids": [
+            41965,
+            43137
+          ],
+          "mechanic_source_npc_guids": [
+            18261
+          ],
+          "effective_mechanic_damage": 6285396,
+          "mechanic_overkill": 25665,
+          "expected_player_damage_from_hp": 4233042,
+          "observed_player_damage": 4233041,
+          "residual_after_mechanic_damage": -1
+        },
+        {
+          "guid": 18219,
+          "mechanic_hit_count": 3,
+          "mechanic_ability_ids": [
+            41966,
+            43520
+          ],
+          "mechanic_source_npc_guids": [
+            18262
+          ],
+          "effective_mechanic_damage": 6311061,
+          "mechanic_overkill": 0,
+          "expected_player_damage_from_hp": 4207377,
+          "observed_player_damage": 4207377,
+          "residual_after_mechanic_damage": 0
+        }
+      ],
+      "total_residual_after_mechanic_damage": -53
+    },
+    {
+      "original_report_code": "Yft9pdPrV48kjzgF",
+      "original_fight_id": 23,
+      "stored_total_delta_from_fixed_profile": 35270,
+      "queried_report_code": "Yft9pdPrV48kjzgF",
+      "queried_fight_id": 23,
+      "used_alternative_upload": false,
+      "readable": true,
+      "targets": [
+        {
+          "guid": 18225,
+          "mechanic_hit_count": 3,
+          "mechanic_ability_ids": [
+            41965,
+            43137
+          ],
+          "mechanic_source_npc_guids": [
+            18261
+          ],
+          "effective_mechanic_damage": 6275744,
+          "mechanic_overkill": 35317,
+          "expected_player_damage_from_hp": 4242694,
+          "observed_player_damage": 4242693,
+          "residual_after_mechanic_damage": -1
+        },
+        {
+          "guid": 18219,
+          "mechanic_hit_count": 3,
+          "mechanic_ability_ids": [
+            41966,
+            43520
+          ],
+          "mechanic_source_npc_guids": [
+            18262
+          ],
+          "effective_mechanic_damage": 6311061,
+          "mechanic_overkill": 0,
+          "expected_player_damage_from_hp": 4207377,
+          "observed_player_damage": 4207377,
+          "residual_after_mechanic_damage": 0
+        }
+      ],
+      "total_residual_after_mechanic_damage": -51
+    },
+    {
+      "original_report_code": "3cKwNtjMJrmH9GWz",
+      "original_fight_id": 5,
+      "stored_total_delta_from_fixed_profile": 38336,
+      "queried_report_code": "3cKwNtjMJrmH9GWz",
+      "queried_fight_id": 5,
+      "used_alternative_upload": false,
+      "readable": true,
+      "targets": [
+        {
+          "guid": 18225,
+          "mechanic_hit_count": 3,
+          "mechanic_ability_ids": [
+            41965,
+            43137
+          ],
+          "mechanic_source_npc_guids": [
+            18261
+          ],
+          "effective_mechanic_damage": 6272672,
+          "mechanic_overkill": 38389,
+          "expected_player_damage_from_hp": 4245766,
+          "observed_player_damage": 4245765,
+          "residual_after_mechanic_damage": -1
+        },
+        {
+          "guid": 18219,
+          "mechanic_hit_count": 3,
+          "mechanic_ability_ids": [
+            41966,
+            43520
+          ],
+          "mechanic_source_npc_guids": [
+            18262
+          ],
+          "effective_mechanic_damage": 6311061,
+          "mechanic_overkill": 0,
+          "expected_player_damage_from_hp": 4207377,
+          "observed_player_damage": 4207377,
+          "residual_after_mechanic_damage": 0
+        }
+      ],
+      "total_residual_after_mechanic_damage": -57
+    },
+    {
+      "original_report_code": "1LtcnNvYJZV2CwD7",
+      "original_fight_id": 6,
+      "stored_total_delta_from_fixed_profile": 38676,
+      "queried_report_code": "1LtcnNvYJZV2CwD7",
+      "queried_fight_id": 6,
+      "used_alternative_upload": false,
+      "readable": true,
+      "targets": [
+        {
+          "guid": 18225,
+          "mechanic_hit_count": 3,
+          "mechanic_ability_ids": [
+            41965,
+            43137
+          ],
+          "mechanic_source_npc_guids": [
+            18261
+          ],
+          "effective_mechanic_damage": 6272344,
+          "mechanic_overkill": 38717,
+          "expected_player_damage_from_hp": 4246094,
+          "observed_player_damage": 4246094,
+          "residual_after_mechanic_damage": 0
+        },
+        {
+          "guid": 18219,
+          "mechanic_hit_count": 3,
+          "mechanic_ability_ids": [
+            41966,
+            43520
+          ],
+          "mechanic_source_npc_guids": [
+            18262
+          ],
+          "effective_mechanic_damage": 6311061,
+          "mechanic_overkill": 0,
+          "expected_player_damage_from_hp": 4207377,
+          "observed_player_damage": 4207377,
+          "residual_after_mechanic_damage": 0
+        }
+      ],
+      "total_residual_after_mechanic_damage": -45
+    },
+    {
+      "original_report_code": "AdrBmvLJG4WwT6Cj",
+      "original_fight_id": 21,
+      "stored_total_delta_from_fixed_profile": 41808,
+      "queried_report_code": "AdrBmvLJG4WwT6Cj",
+      "queried_fight_id": 21,
+      "used_alternative_upload": false,
+      "readable": true,
+      "targets": [
+        {
+          "guid": 18225,
+          "mechanic_hit_count": 3,
+          "mechanic_ability_ids": [
+            41965,
+            43137
+          ],
+          "mechanic_source_npc_guids": [
+            18261
+          ],
+          "effective_mechanic_damage": 6311061,
+          "mechanic_overkill": 0,
+          "expected_player_damage_from_hp": 4207377,
+          "observed_player_damage": 4207377,
+          "residual_after_mechanic_damage": 0
+        },
+        {
+          "guid": 18219,
+          "mechanic_hit_count": 3,
+          "mechanic_ability_ids": [
+            41966,
+            43138
+          ],
+          "mechanic_source_npc_guids": [
+            18262
+          ],
+          "effective_mechanic_damage": 6269205,
+          "mechanic_overkill": 41856,
+          "expected_player_damage_from_hp": 4249233,
+          "observed_player_damage": 4249232,
+          "residual_after_mechanic_damage": -1
+        }
+      ],
+      "total_residual_after_mechanic_damage": -52
+    },
+    {
+      "original_report_code": "Xhn3GCkbHWzwZ9Y6",
+      "original_fight_id": 10,
+      "stored_total_delta_from_fixed_profile": 47152,
+      "queried_report_code": "Xhn3GCkbHWzwZ9Y6",
+      "queried_fight_id": 10,
+      "used_alternative_upload": false,
+      "readable": true,
+      "targets": [
+        {
+          "guid": 18225,
+          "mechanic_hit_count": 3,
+          "mechanic_ability_ids": [
+            41965,
+            43137
+          ],
+          "mechanic_source_npc_guids": [
+            18261
+          ],
+          "effective_mechanic_damage": 6311061,
+          "mechanic_overkill": 0,
+          "expected_player_damage_from_hp": 4207377,
+          "observed_player_damage": 4207377,
+          "residual_after_mechanic_damage": 0
+        },
+        {
+          "guid": 18219,
+          "mechanic_hit_count": 3,
+          "mechanic_ability_ids": [
+            41966,
+            43138
+          ],
+          "mechanic_source_npc_guids": [
+            18262
+          ],
+          "effective_mechanic_damage": 6263861,
+          "mechanic_overkill": 47200,
+          "expected_player_damage_from_hp": 4254577,
+          "observed_player_damage": 4254576,
+          "residual_after_mechanic_damage": -1
+        }
+      ],
+      "total_residual_after_mechanic_damage": -52
+    },
+    {
+      "original_report_code": "mj1JXHkYxaLqVW2R",
+      "original_fight_id": 8,
+      "stored_total_delta_from_fixed_profile": 50386,
+      "queried_report_code": "mj1JXHkYxaLqVW2R",
+      "queried_fight_id": 8,
+      "used_alternative_upload": false,
+      "readable": true,
+      "targets": [
+        {
+          "guid": 18225,
+          "mechanic_hit_count": 3,
+          "mechanic_ability_ids": [
+            41965,
+            43137
+          ],
+          "mechanic_source_npc_guids": [
+            18261
+          ],
+          "effective_mechanic_damage": 6260633,
+          "mechanic_overkill": 50428,
+          "expected_player_damage_from_hp": 4257805,
+          "observed_player_damage": 4257804,
+          "residual_after_mechanic_damage": -1
+        },
+        {
+          "guid": 18219,
+          "mechanic_hit_count": 3,
+          "mechanic_ability_ids": [
+            41966,
+            43520
+          ],
+          "mechanic_source_npc_guids": [
+            18262
+          ],
+          "effective_mechanic_damage": 6311061,
+          "mechanic_overkill": 0,
+          "expected_player_damage_from_hp": 4207377,
+          "observed_player_damage": 4207377,
+          "residual_after_mechanic_damage": 0
+        }
+      ],
+      "total_residual_after_mechanic_damage": -46
+    },
+    {
+      "original_report_code": "rLqGVDMRCtp4NK8Q",
+      "original_fight_id": 3,
+      "stored_total_delta_from_fixed_profile": 53331,
+      "queried_report_code": "rLqGVDMRCtp4NK8Q",
+      "queried_fight_id": 3,
+      "used_alternative_upload": false,
+      "readable": true,
+      "targets": [
+        {
+          "guid": 18225,
+          "mechanic_hit_count": 3,
+          "mechanic_ability_ids": [
+            41965,
+            43137
+          ],
+          "mechanic_source_npc_guids": [
+            18261
+          ],
+          "effective_mechanic_damage": 6257691,
+          "mechanic_overkill": 53370,
+          "expected_player_damage_from_hp": 4260747,
+          "observed_player_damage": 4260747,
+          "residual_after_mechanic_damage": 0
+        },
+        {
+          "guid": 18219,
+          "mechanic_hit_count": 3,
+          "mechanic_ability_ids": [
+            41966,
+            43520
+          ],
+          "mechanic_source_npc_guids": [
+            18262
+          ],
+          "effective_mechanic_damage": 6311061,
+          "mechanic_overkill": 0,
+          "expected_player_damage_from_hp": 4207377,
+          "observed_player_damage": 4207376,
+          "residual_after_mechanic_damage": -1
+        }
+      ],
+      "total_residual_after_mechanic_damage": -43
+    },
+    {
+      "original_report_code": "Ar3KWjR7anNtTHFC",
+      "original_fight_id": 3,
+      "stored_total_delta_from_fixed_profile": 56748,
+      "queried_report_code": "CP8c7NxtRJDFdfLb",
+      "queried_fight_id": 3,
+      "used_alternative_upload": true,
+      "readable": true,
+      "targets": [
+        {
+          "guid": 18225,
+          "mechanic_hit_count": 3,
+          "mechanic_ability_ids": [
+            41965,
+            43137
+          ],
+          "mechanic_source_npc_guids": [
+            18261
+          ],
+          "effective_mechanic_damage": 6311061,
+          "mechanic_overkill": 0,
+          "expected_player_damage_from_hp": 4207377,
+          "observed_player_damage": 4207377,
+          "residual_after_mechanic_damage": 0
+        },
+        {
+          "guid": 18219,
+          "mechanic_hit_count": 3,
+          "mechanic_ability_ids": [
+            41966,
+            43520
+          ],
+          "mechanic_source_npc_guids": [
+            18262
+          ],
+          "effective_mechanic_damage": 6254281,
+          "mechanic_overkill": 56780,
+          "expected_player_damage_from_hp": 4264157,
+          "observed_player_damage": 4264157,
+          "residual_after_mechanic_damage": 0
+        }
+      ],
+      "total_residual_after_mechanic_damage": -36
+    },
+    {
+      "original_report_code": "LG2ZCXdR9tKQwcMy",
+      "original_fight_id": 17,
+      "stored_total_delta_from_fixed_profile": 60333,
+      "queried_report_code": "LG2ZCXdR9tKQwcMy",
+      "queried_fight_id": 17,
+      "used_alternative_upload": false,
+      "readable": true,
+      "targets": [
+        {
+          "guid": 18225,
+          "mechanic_hit_count": 3,
+          "mechanic_ability_ids": [
+            41965,
+            43137
+          ],
+          "mechanic_source_npc_guids": [
+            18261
+          ],
+          "effective_mechanic_damage": 6250679,
+          "mechanic_overkill": 60382,
+          "expected_player_damage_from_hp": 4267759,
+          "observed_player_damage": 4267759,
+          "residual_after_mechanic_damage": 0
+        },
+        {
+          "guid": 18219,
+          "mechanic_hit_count": 3,
+          "mechanic_ability_ids": [
+            41966,
+            43520
+          ],
+          "mechanic_source_npc_guids": [
+            18262
+          ],
+          "effective_mechanic_damage": 6311061,
+          "mechanic_overkill": 0,
+          "expected_player_damage_from_hp": 4207377,
+          "observed_player_damage": 4207377,
+          "residual_after_mechanic_damage": 0
+        }
+      ],
+      "total_residual_after_mechanic_damage": -53
+    },
+    {
+      "original_report_code": "CVBXgTkD1nhW2dNF",
+      "original_fight_id": 31,
+      "stored_total_delta_from_fixed_profile": 60967,
+      "queried_report_code": "CVBXgTkD1nhW2dNF",
+      "queried_fight_id": 31,
+      "used_alternative_upload": false,
+      "readable": true,
+      "targets": [
+        {
+          "guid": 18225,
+          "mechanic_hit_count": 3,
+          "mechanic_ability_ids": [
+            41965,
+            43137
+          ],
+          "mechanic_source_npc_guids": [
+            18261
+          ],
+          "effective_mechanic_damage": 6250066,
+          "mechanic_overkill": 60995,
+          "expected_player_damage_from_hp": 4268372,
+          "observed_player_damage": 4268371,
+          "residual_after_mechanic_damage": -1
+        },
+        {
+          "guid": 18219,
+          "mechanic_hit_count": 3,
+          "mechanic_ability_ids": [
+            41966,
+            43520
+          ],
+          "mechanic_source_npc_guids": [
+            18262
+          ],
+          "effective_mechanic_damage": 6311061,
+          "mechanic_overkill": 0,
+          "expected_player_damage_from_hp": 4207377,
+          "observed_player_damage": 4207377,
+          "residual_after_mechanic_damage": 0
+        }
+      ],
+      "total_residual_after_mechanic_damage": -32
+    },
+    {
+      "original_report_code": "6q4FDmCTvcaGbZNf",
+      "original_fight_id": 40,
+      "stored_total_delta_from_fixed_profile": 65586,
+      "queried_report_code": "6q4FDmCTvcaGbZNf",
+      "queried_fight_id": 40,
+      "used_alternative_upload": false,
+      "readable": true,
+      "targets": [
+        {
+          "guid": 18225,
+          "mechanic_hit_count": 3,
+          "mechanic_ability_ids": [
+            41965,
+            43137
+          ],
+          "mechanic_source_npc_guids": [
+            18261
+          ],
+          "effective_mechanic_damage": 6245438,
+          "mechanic_overkill": 65623,
+          "expected_player_damage_from_hp": 4273000,
+          "observed_player_damage": 4272999,
+          "residual_after_mechanic_damage": -1
+        },
+        {
+          "guid": 18219,
+          "mechanic_hit_count": 3,
+          "mechanic_ability_ids": [
+            41966,
+            43520
+          ],
+          "mechanic_source_npc_guids": [
+            18262
+          ],
+          "effective_mechanic_damage": 6311061,
+          "mechanic_overkill": 0,
+          "expected_player_damage_from_hp": 4207377,
+          "observed_player_damage": 4207377,
+          "residual_after_mechanic_damage": 0
+        }
+      ],
+      "total_residual_after_mechanic_damage": -41
+    },
+    {
+      "original_report_code": "7KdLbA9RQpTmDqYy",
+      "original_fight_id": 5,
+      "stored_total_delta_from_fixed_profile": 73218,
+      "queried_report_code": "7KdLbA9RQpTmDqYy",
+      "queried_fight_id": 5,
+      "used_alternative_upload": false,
+      "readable": true,
+      "targets": [
+        {
+          "guid": 18225,
+          "mechanic_hit_count": 3,
+          "mechanic_ability_ids": [
+            41965,
+            43137
+          ],
+          "mechanic_source_npc_guids": [
+            18261
+          ],
+          "effective_mechanic_damage": 6311061,
+          "mechanic_overkill": 0,
+          "expected_player_damage_from_hp": 4207377,
+          "observed_player_damage": 4207377,
+          "residual_after_mechanic_damage": 0
+        },
+        {
+          "guid": 18219,
+          "mechanic_hit_count": 3,
+          "mechanic_ability_ids": [
+            41966,
+            43138
+          ],
+          "mechanic_source_npc_guids": [
+            18262
+          ],
+          "effective_mechanic_damage": 6237805,
+          "mechanic_overkill": 73256,
+          "expected_player_damage_from_hp": 4280633,
+          "observed_player_damage": 4280633,
+          "residual_after_mechanic_damage": 0
+        }
+      ],
+      "total_residual_after_mechanic_damage": -42
+    },
+    {
+      "original_report_code": "CHf69FqVmG8BDTY7",
+      "original_fight_id": 26,
+      "stored_total_delta_from_fixed_profile": 78398,
+      "queried_report_code": "P6Nag7Fbcv23VhRz",
+      "queried_fight_id": 1,
+      "used_alternative_upload": true,
+      "readable": true,
+      "targets": [
+        {
+          "guid": 18225,
+          "mechanic_hit_count": 3,
+          "mechanic_ability_ids": [
+            41965,
+            43137
+          ],
+          "mechanic_source_npc_guids": [
+            18261
+          ],
+          "effective_mechanic_damage": 6232601,
+          "mechanic_overkill": 78460,
+          "expected_player_damage_from_hp": 4285837,
+          "observed_player_damage": 4285835,
+          "residual_after_mechanic_damage": -2
+        },
+        {
+          "guid": 18219,
+          "mechanic_hit_count": 3,
+          "mechanic_ability_ids": [
+            41966,
+            43520
+          ],
+          "mechanic_source_npc_guids": [
+            18262
+          ],
+          "effective_mechanic_damage": 6311061,
+          "mechanic_overkill": 0,
+          "expected_player_damage_from_hp": 4207377,
+          "observed_player_damage": 4207375,
+          "residual_after_mechanic_damage": -2
+        }
+      ],
+      "total_residual_after_mechanic_damage": -66
+    },
+    {
+      "original_report_code": "BTQNjnHLx3cd1k7Y",
+      "original_fight_id": 10,
+      "stored_total_delta_from_fixed_profile": 85088,
+      "queried_report_code": "BTQNjnHLx3cd1k7Y",
+      "queried_fight_id": 10,
+      "used_alternative_upload": false,
+      "readable": true,
+      "targets": [
+        {
+          "guid": 18225,
+          "mechanic_hit_count": 3,
+          "mechanic_ability_ids": [
+            41965,
+            43137
+          ],
+          "mechanic_source_npc_guids": [
+            18261
+          ],
+          "effective_mechanic_damage": 6225924,
+          "mechanic_overkill": 85137,
+          "expected_player_damage_from_hp": 4292514,
+          "observed_player_damage": 4292514,
+          "residual_after_mechanic_damage": 0
+        },
+        {
+          "guid": 18219,
+          "mechanic_hit_count": 3,
+          "mechanic_ability_ids": [
+            41966,
+            43520
+          ],
+          "mechanic_source_npc_guids": [
+            18262
+          ],
+          "effective_mechanic_damage": 6311061,
+          "mechanic_overkill": 0,
+          "expected_player_damage_from_hp": 4207377,
+          "observed_player_damage": 4207376,
+          "residual_after_mechanic_damage": -1
+        }
+      ],
+      "total_residual_after_mechanic_damage": -53
+    },
+    {
+      "original_report_code": "zG47y1n9RbYNQMmr",
+      "original_fight_id": 5,
+      "stored_total_delta_from_fixed_profile": 93901,
+      "queried_report_code": "zG47y1n9RbYNQMmr",
+      "queried_fight_id": 5,
+      "used_alternative_upload": false,
+      "readable": true,
+      "targets": [
+        {
+          "guid": 18225,
+          "mechanic_hit_count": 3,
+          "mechanic_ability_ids": [
+            41965,
+            43137
+          ],
+          "mechanic_source_npc_guids": [
+            18261
+          ],
+          "effective_mechanic_damage": 6217121,
+          "mechanic_overkill": 93940,
+          "expected_player_damage_from_hp": 4301317,
+          "observed_player_damage": 4301317,
+          "residual_after_mechanic_damage": 0
+        },
+        {
+          "guid": 18219,
+          "mechanic_hit_count": 3,
+          "mechanic_ability_ids": [
+            41966,
+            43520
+          ],
+          "mechanic_source_npc_guids": [
+            18262
+          ],
+          "effective_mechanic_damage": 6311061,
+          "mechanic_overkill": 0,
+          "expected_player_damage_from_hp": 4207377,
+          "observed_player_damage": 4207377,
+          "residual_after_mechanic_damage": 0
+        }
+      ],
+      "total_residual_after_mechanic_damage": -43
+    },
+    {
+      "original_report_code": "G26DHJmAYhzPn8vM",
+      "original_fight_id": 5,
+      "stored_total_delta_from_fixed_profile": 99331,
+      "queried_report_code": "G26DHJmAYhzPn8vM",
+      "queried_fight_id": 5,
+      "used_alternative_upload": false,
+      "readable": true,
+      "targets": [
+        {
+          "guid": 18225,
+          "mechanic_hit_count": 3,
+          "mechanic_ability_ids": [
+            41965,
+            43137
+          ],
+          "mechanic_source_npc_guids": [
+            18261
+          ],
+          "effective_mechanic_damage": 6211696,
+          "mechanic_overkill": 99365,
+          "expected_player_damage_from_hp": 4306742,
+          "observed_player_damage": 4306741,
+          "residual_after_mechanic_damage": -1
+        },
+        {
+          "guid": 18219,
+          "mechanic_hit_count": 3,
+          "mechanic_ability_ids": [
+            41966,
+            43520
+          ],
+          "mechanic_source_npc_guids": [
+            18262
+          ],
+          "effective_mechanic_damage": 6311061,
+          "mechanic_overkill": 0,
+          "expected_player_damage_from_hp": 4207377,
+          "observed_player_damage": 4207377,
+          "residual_after_mechanic_damage": 0
+        }
+      ],
+      "total_residual_after_mechanic_damage": -38
+    },
+    {
+      "original_report_code": "Q9gJHxcF2y8XDPYV",
+      "original_fight_id": 8,
+      "stored_total_delta_from_fixed_profile": 120801,
+      "queried_report_code": "Q9gJHxcF2y8XDPYV",
+      "queried_fight_id": 8,
+      "used_alternative_upload": false,
+      "readable": true,
+      "targets": [
+        {
+          "guid": 18225,
+          "mechanic_hit_count": 3,
+          "mechanic_ability_ids": [
+            41965,
+            43137
+          ],
+          "mechanic_source_npc_guids": [
+            18261
+          ],
+          "effective_mechanic_damage": 6190224,
+          "mechanic_overkill": 120837,
+          "expected_player_damage_from_hp": 4328214,
+          "observed_player_damage": 4328212,
+          "residual_after_mechanic_damage": -2
+        },
+        {
+          "guid": 18219,
+          "mechanic_hit_count": 3,
+          "mechanic_ability_ids": [
+            41966,
+            43520
+          ],
+          "mechanic_source_npc_guids": [
+            18262
+          ],
+          "effective_mechanic_damage": 6311061,
+          "mechanic_overkill": 0,
+          "expected_player_damage_from_hp": 4207377,
+          "observed_player_damage": 4207377,
+          "residual_after_mechanic_damage": 0
+        }
+      ],
+      "total_residual_after_mechanic_damage": -40
+    },
+    {
+      "original_report_code": "38zPLaJMKtc6Aqhd",
+      "original_fight_id": 17,
+      "stored_total_delta_from_fixed_profile": 138962,
+      "queried_report_code": "38zPLaJMKtc6Aqhd",
+      "queried_fight_id": 17,
+      "used_alternative_upload": false,
+      "readable": true,
+      "targets": [
+        {
+          "guid": 18225,
+          "mechanic_hit_count": 3,
+          "mechanic_ability_ids": [
+            41965,
+            43137
+          ],
+          "mechanic_source_npc_guids": [
+            18261
+          ],
+          "effective_mechanic_damage": 6311061,
+          "mechanic_overkill": 0,
+          "expected_player_damage_from_hp": 4207377,
+          "observed_player_damage": 4207377,
+          "residual_after_mechanic_damage": 0
+        },
+        {
+          "guid": 18219,
+          "mechanic_hit_count": 3,
+          "mechanic_ability_ids": [
+            41966,
+            43138
+          ],
+          "mechanic_source_npc_guids": [
+            18262
+          ],
+          "effective_mechanic_damage": 6172063,
+          "mechanic_overkill": 138998,
+          "expected_player_damage_from_hp": 4346375,
+          "observed_player_damage": 4346373,
+          "residual_after_mechanic_damage": -2
+        }
+      ],
+      "total_residual_after_mechanic_damage": -40
+    },
+    {
+      "original_report_code": "Vx7FBwvaNZAMrmYg",
+      "original_fight_id": 11,
+      "stored_total_delta_from_fixed_profile": 146699,
+      "queried_report_code": "Vx7FBwvaNZAMrmYg",
+      "queried_fight_id": 11,
+      "used_alternative_upload": false,
+      "readable": true,
+      "targets": [
+        {
+          "guid": 18225,
+          "mechanic_hit_count": 3,
+          "mechanic_ability_ids": [
+            41965,
+            43137
+          ],
+          "mechanic_source_npc_guids": [
+            18261
+          ],
+          "effective_mechanic_damage": 6164335,
+          "mechanic_overkill": 146726,
+          "expected_player_damage_from_hp": 4354103,
+          "observed_player_damage": 4354102,
+          "residual_after_mechanic_damage": -1
+        },
+        {
+          "guid": 18219,
+          "mechanic_hit_count": 3,
+          "mechanic_ability_ids": [
+            41966,
+            43520
+          ],
+          "mechanic_source_npc_guids": [
+            18262
+          ],
+          "effective_mechanic_damage": 6311061,
+          "mechanic_overkill": 0,
+          "expected_player_damage_from_hp": 4207377,
+          "observed_player_damage": 4207376,
+          "residual_after_mechanic_damage": -1
+        }
+      ],
+      "total_residual_after_mechanic_damage": -31
+    },
+    {
+      "original_report_code": "FJZ7wBNzVbjvHAD4",
+      "original_fight_id": 36,
+      "stored_total_delta_from_fixed_profile": 149151,
+      "queried_report_code": "FJZ7wBNzVbjvHAD4",
+      "queried_fight_id": 36,
+      "used_alternative_upload": false,
+      "readable": true,
+      "targets": [
+        {
+          "guid": 18225,
+          "mechanic_hit_count": 3,
+          "mechanic_ability_ids": [
+            41965,
+            43137
+          ],
+          "mechanic_source_npc_guids": [
+            18261
+          ],
+          "effective_mechanic_damage": 6161873,
+          "mechanic_overkill": 149188,
+          "expected_player_damage_from_hp": 4356565,
+          "observed_player_damage": 4356564,
+          "residual_after_mechanic_damage": -1
+        },
+        {
+          "guid": 18219,
+          "mechanic_hit_count": 3,
+          "mechanic_ability_ids": [
+            41966,
+            43520
+          ],
+          "mechanic_source_npc_guids": [
+            18262
+          ],
+          "effective_mechanic_damage": 6311061,
+          "mechanic_overkill": 0,
+          "expected_player_damage_from_hp": 4207377,
+          "observed_player_damage": 4207376,
+          "residual_after_mechanic_damage": -1
+        }
+      ],
+      "total_residual_after_mechanic_damage": -41
+    },
+    {
+      "original_report_code": "8pXKZBjLbQmW9VYv",
+      "original_fight_id": 1,
+      "stored_total_delta_from_fixed_profile": 156146,
+      "queried_report_code": null,
+      "queried_fight_id": null,
+      "used_alternative_upload": false,
+      "readable": false,
+      "targets": []
+    },
+    {
+      "original_report_code": "1FPhn83XftH9RzAv",
+      "original_fight_id": 14,
+      "stored_total_delta_from_fixed_profile": 237057,
+      "queried_report_code": "1FPhn83XftH9RzAv",
+      "queried_fight_id": 14,
+      "used_alternative_upload": false,
+      "readable": true,
+      "targets": [
+        {
+          "guid": 18225,
+          "mechanic_hit_count": 3,
+          "mechanic_ability_ids": [
+            41965,
+            43137
+          ],
+          "mechanic_source_npc_guids": [
+            18261
+          ],
+          "effective_mechanic_damage": 6073961,
+          "mechanic_overkill": 237100,
+          "expected_player_damage_from_hp": 4444477,
+          "observed_player_damage": 4444476,
+          "residual_after_mechanic_damage": -1
+        },
+        {
+          "guid": 18219,
+          "mechanic_hit_count": 3,
+          "mechanic_ability_ids": [
+            41966,
+            43520
+          ],
+          "mechanic_source_npc_guids": [
+            18262
+          ],
+          "effective_mechanic_damage": 6311061,
+          "mechanic_overkill": 0,
+          "expected_player_damage_from_hp": 4207377,
+          "observed_player_damage": 4207377,
+          "residual_after_mechanic_damage": 0
+        }
+      ],
+      "total_residual_after_mechanic_damage": -47
+    },
+    {
+      "original_report_code": "czxDR3Cap2wYX7Td",
+      "original_fight_id": 2,
+      "stored_total_delta_from_fixed_profile": 252148,
+      "queried_report_code": "czxDR3Cap2wYX7Td",
+      "queried_fight_id": 2,
+      "used_alternative_upload": false,
+      "readable": true,
+      "targets": [
+        {
+          "guid": 18225,
+          "mechanic_hit_count": 3,
+          "mechanic_ability_ids": [
+            41965,
+            43137
+          ],
+          "mechanic_source_npc_guids": [
+            18261
+          ],
+          "effective_mechanic_damage": 6058885,
+          "mechanic_overkill": 252176,
+          "expected_player_damage_from_hp": 4459553,
+          "observed_player_damage": 4459553,
+          "residual_after_mechanic_damage": 0
+        },
+        {
+          "guid": 18219,
+          "mechanic_hit_count": 3,
+          "mechanic_ability_ids": [
+            41966,
+            43520
+          ],
+          "mechanic_source_npc_guids": [
+            18262
+          ],
+          "effective_mechanic_damage": 6311061,
+          "mechanic_overkill": 0,
+          "expected_player_damage_from_hp": 4207377,
+          "observed_player_damage": 4207377,
+          "residual_after_mechanic_damage": 0
+        }
+      ],
+      "total_residual_after_mechanic_damage": -32
+    },
+    {
+      "original_report_code": "Xzgfb8qGyP924jFM",
+      "original_fight_id": 62,
+      "stored_total_delta_from_fixed_profile": 2775315,
+      "queried_report_code": "Xzgfb8qGyP924jFM",
+      "queried_fight_id": 62,
+      "used_alternative_upload": false,
+      "readable": true,
+      "targets": [
+        {
+          "guid": 18225,
+          "mechanic_hit_count": 3,
+          "mechanic_ability_ids": [
+            41965,
+            43137
+          ],
+          "mechanic_source_npc_guids": [
+            18261
+          ],
+          "effective_mechanic_damage": 6447441,
+          "mechanic_overkill": 0,
+          "expected_player_damage_from_hp": 4070997,
+          "observed_player_damage": 4213089,
+          "residual_after_mechanic_damage": 142092
+        },
+        {
+          "guid": 18219,
+          "mechanic_hit_count": 3,
+          "mechanic_ability_ids": [
+            41966,
+            43138
+          ],
+          "mechanic_source_npc_guids": [
+            18262
+          ],
+          "effective_mechanic_damage": 6447441,
+          "mechanic_overkill": 0,
+          "expected_player_damage_from_hp": 4070997,
+          "observed_player_damage": 4403048,
+          "residual_after_mechanic_damage": 332051
+        }
+      ],
+      "total_residual_after_mechanic_damage": 3048071
+    }
+  ]
+}

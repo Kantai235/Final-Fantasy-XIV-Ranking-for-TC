@@ -4,8 +4,10 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from typing import Any
 
 import fight_integrity_known_capacity as known_capacity
+from test_fight_integrity_m8s import make_mechanic_summary
 
 
 class KnownEnemyCapacityPolicyTest(unittest.TestCase):
@@ -266,6 +268,72 @@ class KnownEnemyCapacityPolicyTest(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "fixture"):
                 known_capacity.load_known_enemy_capacity_policy(path)
 
+    @staticmethod
+    def make_m8s_measurement(deltas: dict[int, int]) -> dict[str, Any]:
+        """固定基準獨立於正式設定，避免測試跟著錯誤門檻一起改變。"""
+
+        targets = [
+            {"guid": guid, "damage": damage + deltas.get(guid, 0),
+             "max_hp": hp, "instance_count": 1}
+            for guid, damage, hp in (
+                (18215, 67_582_753, 67_582_753),
+                (18219, 4_207_377, 10_518_438),
+                (18222, 72_751_588, 72_751_588),
+                (18225, 4_207_377, 10_518_438),
+            )
+        ]
+        return {"targets": targets, "enemy_damage": sum(t["damage"] for t in targets),
+                "wolf_mechanic_damage": make_mechanic_summary()}
+
+    def test_m8s_wolf_tolerance_is_inclusive_and_checks_each_target(self) -> None:
+        policy = known_capacity.load_known_enemy_capacity_policy(
+            Path(__file__).resolve().parent.parent / "config/fight_integrity_known_enemy_hp.json"
+        )
+        for delta, expected_status in (
+            (-10_001, "suspected"), (-10_000, "valid"),
+            (10_000, "valid"), (10_001, "suspected"),
+        ):
+            with self.subTest(delta=delta):
+                # 兩隻狼的偏差互相抵銷時，仍須逐一通過各自的容許範圍。
+                measurement = self.make_m8s_measurement({18219: delta, 18225: -delta})
+                profile = policy.screen_target_damage_profile("savage_m8s", measurement)
+                self.assertTrue(profile.metrics["total_damage_check"]["matches"])
+                self.assertEqual(profile.status, expected_status)
+
+    def test_m8s_total_tolerance_does_not_accumulate_wolf_allowances(self) -> None:
+        policy = known_capacity.load_known_enemy_capacity_policy(
+            Path(__file__).resolve().parent.parent / "config/fight_integrity_known_enemy_hp.json"
+        )
+        for delta, accepted in ((-10_001, False), (-10_000, True),
+                                (10_000, True), (10_001, False)):
+            with self.subTest(total_delta=delta):
+                # 個別狼皆合格，整場仍獨立限制在 ±10,000，不能累加成 ±20,000。
+                measurement = self.make_m8s_measurement(
+                    {18219: delta // 2, 18225: delta - delta // 2}
+                )
+                profile = policy.screen_target_damage_profile("savage_m8s", measurement)
+                self.assertTrue(all(t["damage_matches"] for t in profile.metrics["target_results"]))
+                self.assertEqual(profile.status, "valid" if accepted else "suspected")
+                self.assertEqual(profile.metrics["total_damage_check"]["matches"], accepted)
+
+    def test_m8s_boss_damage_and_target_hp_remain_strict(self) -> None:
+        policy = known_capacity.load_known_enemy_capacity_policy(
+            Path(__file__).resolve().parent.parent / "config/fight_integrity_known_enemy_hp.json"
+        )
+        for guid in (18215, 18222):
+            for delta in (-101, 101):
+                with self.subTest(guid=guid, delta=delta):
+                    screen = policy.screen_target_damage_profile(
+                        "savage_m8s", self.make_m8s_measurement({guid: delta})
+                    )
+                    self.assertEqual(screen.status, "suspected")
+                    self.assertEqual(screen.metrics["mismatched_target_guids"], [guid])
+        measurement = self.make_m8s_measurement({18219: -7_276})
+        measurement["targets"][1]["max_hp"] += 1
+        screen = policy.screen_target_damage_profile("savage_m8s", measurement)
+        self.assertEqual(screen.status, "suspected")
+        self.assertEqual(screen.metrics["mismatched_target_guids"], [18219])
+
     def test_repository_policy_contains_confirmed_capacity_and_total_damage_rules(self) -> None:
         """正式設定只能收錄已有重複量測證據的固定生命池。"""
 
@@ -323,7 +391,7 @@ class KnownEnemyCapacityPolicyTest(unittest.TestCase):
         self.assertEqual(policy.rules["savage_m5s"].required_enemy_damage_min, 105_549_582)
         self.assertEqual(policy.rules["savage_m6s"].required_enemy_damage_max, 130_232_146)
         self.assertEqual(policy.rules["savage_m7s"].required_enemy_damage_min, 121_558_848)
-        self.assertEqual(policy.rules["savage_m8s"].required_enemy_damage_max, 148_749_191)
+        self.assertIsNone(policy.rules["savage_m8s"].required_enemy_damage_max)
         expected_totals = {
             "savage_m5s": 105_549_682,
             "savage_m6s": 130_232_046,
@@ -339,14 +407,24 @@ class KnownEnemyCapacityPolicyTest(unittest.TestCase):
                     sum(target.expected_damage for target in profile.targets.values()),
                     expected_total,
                 )
-                self.assertEqual(rule.required_enemy_damage_min, expected_total - 100)
-                self.assertEqual(rule.required_enemy_damage_max, expected_total + 100)
+                if encounter_key != "savage_m8s":
+                    self.assertEqual(rule.required_enemy_damage_min, expected_total - 100)
+                    self.assertEqual(rule.required_enemy_damage_max, expected_total + 100)
+                    self.assertEqual(profile.version, "7.2_cruiserweight_reviewed_2026-08-09")
+                    self.assertTrue(all(t.damage_tolerance == 100 for t in profile.targets.values()))
         m8_profile = policy.target_damage_profile("savage_m8s")
         self.assertIsNotNone(m8_profile)
         self.assertEqual(m8_profile.targets[18215].max_hp, 67_582_753)
         self.assertEqual(m8_profile.targets[18222].max_hp, 72_751_588)
         self.assertEqual(m8_profile.targets[18219].expected_damage_ratio, 0.4)
         self.assertEqual(m8_profile.targets[18225].expected_damage_ratio, 0.4)
+        self.assertEqual(m8_profile.version, "7.2_m8s_wolf_mechanics_2026-09-09")
+        self.assertEqual(m8_profile.mechanic_damage_model, "m8s_wolf_surges_v1")
+        self.assertEqual(m8_profile.total_damage_tolerance, 10_000)
+        self.assertEqual(
+            {guid: target.damage_tolerance for guid, target in m8_profile.targets.items()},
+            {18215: 100, 18219: 10_000, 18222: 100, 18225: 10_000},
+        )
 
 
 if __name__ == "__main__":

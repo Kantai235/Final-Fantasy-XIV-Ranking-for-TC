@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+from dataclasses import replace
 from pathlib import Path
 from unittest.mock import patch
 
@@ -10,6 +11,7 @@ import fight_integrity as integrity
 import fight_integrity_baselines as baselines
 import fight_integrity_cache as cache_module
 import fight_integrity_known_capacity as known_capacity
+from test_fight_integrity_m8s import make_mechanic_summary
 
 
 class FightIntegrityBackfillCacheTest(unittest.TestCase):
@@ -446,6 +448,120 @@ class FightIntegrityBackfillCacheTest(unittest.TestCase):
                 "measurement": {"enemy_damage": 120_000.0, "enemy_hp_capacity": 100_000.0, "target_count": 1},
             },
         )
+
+    def test_m8s_wolf_tolerance_rechecks_saved_report_without_target_api(self) -> None:
+        """重現 9MKXTFhcZ4NC8JRp fight 9：舊標記須能以保存量測解除。"""
+
+        self.candidate.encounter_key = "savage_m8s"
+        self.candidate.fight["encounter_id"] = 100
+        self.config.known_enemy_capacity = known_capacity.load_known_enemy_capacity_policy(
+            Path(__file__).resolve().parent.parent / "config/fight_integrity_known_enemy_hp.json"
+        )
+        current_rule = self.config.known_enemy_capacity.rules["savage_m8s"]
+        current_profile = current_rule.target_damage_profile
+        old_profile = replace(
+            current_profile,
+            version="7.2_cruiserweight_reviewed_2026-08-09",
+            mechanic_damage_model=None,
+            total_damage_tolerance=None,
+            targets={
+                guid: replace(target, damage_tolerance=100)
+                for guid, target in current_profile.targets.items()
+            },
+        )
+        old_config = replace(
+            self.config,
+            known_enemy_capacity=known_capacity.KnownEnemyCapacityPolicy(
+                enabled=True,
+                rules={"savage_m8s": replace(
+                    current_rule, required_enemy_damage_min=148_748_991,
+                    required_enemy_damage_max=148_749_191, target_damage_profile=old_profile,
+                )},
+            ),
+        )
+        # 僅保存重現門檻所需的匿名彙總；不將玩家資料或 raw events 放入 fixture。
+        measurement = {
+            "enemy_damage": 148_741_763,
+            "enemy_hp_capacity": 161_371_217,
+            "target_count": 4,
+            "targets": [
+                {"guid": guid, "damage": damage, "max_hp": hp, "instance_count": 1}
+                for guid, damage, hp in (
+                    (18215, 67_582_728, 67_582_753),
+                    (18219, 4_200_099, 10_518_438),
+                    (18222, 72_751_559, 72_751_588),
+                    (18225, 4_207_377, 10_518_438),
+                )
+            ],
+        }
+        old_result = backfill.evaluate_measurement(
+            self.candidate, old_config, "2026-09-09T03:36:29Z",
+            measurement=measurement, historical_screen=None, known_capacity_screen=None,
+        )
+        self.assertEqual(old_result["status"], "suspected")
+        self.assertTrue(old_result["hidden_from_public"])
+        self.candidate.fight["data_integrity"] = old_result
+        self.assertTrue(backfill.candidate_needs_check(self.candidate, self.config))
+        self.assertEqual(backfill.seed_measurement_cache_from_results([self.candidate], self.cache), 1)
+
+        with (
+            patch.object(backfill, "query_target_damage") as query_damage,
+            patch.object(backfill, "query_target_max_hp") as query_hp,
+            patch.object(backfill.fflogs, "查詢M8S狼機制承傷", return_value=make_mechanic_summary()) as query_mechanics,
+        ):
+            offline_result, _, offline_queried = backfill.evaluate_candidate(
+                None, None, self.candidate, self.config, "2026-09-09T09:00:00Z",
+                self.cache, refresh_cache=False, offline_only=True,
+            )
+            self.assertEqual(offline_result["status"], "unverifiable")
+            self.assertFalse(offline_queried)
+            self.candidate.fight["data_integrity"] = offline_result
+            self.assertTrue(backfill.candidate_needs_check(self.candidate, self.config))
+            query_mechanics.assert_not_called()
+            result, cache_hit, api_queried = backfill.evaluate_candidate(
+                None, None, self.candidate, self.config, "2026-09-09T09:00:00Z",
+                self.cache, refresh_cache=False,
+            )
+            query_mechanics.assert_called_once()
+        query_damage.assert_not_called()
+        query_hp.assert_not_called()
+        self.assertTrue(cache_hit)
+        self.assertTrue(api_queried)
+        self.assertEqual(result["status"], "valid")
+        self.assertFalse(result["hidden_from_public"])
+        self.assertEqual(result["metrics"]["enemy_damage"], measurement["enemy_damage"])
+        self.candidate.fight["data_integrity"] = result
+        self.assertFalse(backfill.candidate_needs_check(self.candidate, self.config))
+
+        # 換機器後可從正式結果還原機制摘要；已完成者可完整離線重判。
+        fresh_cache = cache_module.FightIntegrityMeasurementCache(self.cache.path.with_name("fresh.json"))
+        self.assertEqual(backfill.seed_measurement_cache_from_results([self.candidate], fresh_cache), 1)
+        with patch.object(backfill.fflogs, "查詢M8S狼機制承傷") as query_mechanics:
+            restored, _, queried = backfill.evaluate_candidate(
+                None, None, self.candidate, self.config, "2026-09-09T09:00:00Z",
+                fresh_cache, refresh_cache=False, offline_only=True,
+            )
+        self.assertEqual(restored["status"], "valid")
+        self.assertFalse(queried)
+        query_mechanics.assert_not_called()
+
+        fresh_cache.put(self.candidate.report_code, self.candidate.report, self.candidate.fight,
+                        measurement=measurement, cached_at_iso="2026-09-09T09:00:00Z")
+        self.assertEqual(backfill.seed_measurement_cache_from_results([self.candidate], fresh_cache), 1)
+        self.assertEqual(fresh_cache.get(self.candidate.report_code, self.candidate.report,
+                                        self.candidate.fight)["measurement"]["wolf_mechanic_damage"],
+                         make_mechanic_summary())
+
+        # 放寬狼的數值不能蓋掉獨立 Attack 證據。
+        self.candidate.fight["damage_done_summary"] = {
+            "exploitDetails": [{"abilities": [{"guid": 7}]}]
+        }
+        marked = backfill.evaluate_measurement(
+            self.candidate, self.config, "2026-09-09T09:00:00Z",
+            measurement={**measurement, "wolf_mechanic_damage": make_mechanic_summary()},
+            historical_screen=None, known_capacity_screen=None,
+        )
+        self.assertTrue(marked["hidden_from_public"])
 
     def test_existing_unverifiable_result_seeds_without_requery(self) -> None:
         self.candidate.fight["data_integrity"] = integrity.make_unverifiable_result(

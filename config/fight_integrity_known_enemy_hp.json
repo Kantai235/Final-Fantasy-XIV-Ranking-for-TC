@@ -129,10 +129,10 @@
       }
     },
     "savage_m8s": {
-      "required_enemy_damage_min": 148748991,
-      "required_enemy_damage_max": 148749191,
       "target_damage_profile": {
-        "version": "7.2_cruiserweight_reviewed_2026-08-09",
+        "version": "7.2_m8s_wolf_mechanics_2026-09-09",
+        "mechanic_damage_model": "m8s_wolf_surges_v1",
+        "total_damage_tolerance": 10000,
         "damage_tolerance": 100,
         "targets": [
           {
@@ -145,6 +145,7 @@
           {
             "guid": 18219,
             "name": "Wolf of Wind",
+            "damage_tolerance": 10000,
             "max_hp": 10518438,
             "expected_damage_instances": 1,
             "expected_damage_ratio": 0.4
@@ -159,6 +160,7 @@
           {
             "guid": 18225,
             "name": "Wolf of Stone",
+            "damage_tolerance": 10000,
             "max_hp": 10518438,
             "expected_damage_instances": 1,
             "expected_damage_ratio": 0.4

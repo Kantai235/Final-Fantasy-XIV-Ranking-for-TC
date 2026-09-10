@@ -19,6 +19,7 @@ import fight_integrity as integrity  # noqa: E402
 import fight_integrity_baselines as historical_baselines  # noqa: E402
 import fight_integrity_cache as integrity_cache  # noqa: E402
 import fight_integrity_known_capacity as known_capacity  # noqa: E402
+import fight_integrity_m8s as m8s  # noqa: E402
 from fflogs_pipeline.graphql_queries import (  # noqa: E402
     建立戰鬥完整性目標生命值查詢,
     戰鬥完整性目標傷害查詢,
@@ -266,6 +267,8 @@ def candidate_needs_check(candidate: Candidate, config: IntegrityConfig) -> bool
         if (
             not isinstance(target_metrics, dict)
             or target_metrics.get("profile_version") != target_profile.version
+            or (target_profile.mechanic_damage_model == m8s.MODEL
+                and m8s.summary_status(target_metrics.get("wolf_mechanic_damage")) == "unverifiable")
         ):
             # 逐目標證據只適用設定了固定 profile 的副本。依 profile version 而非
             # 全域 calculation version 挑選，避免其他子規則升版時重查整批零式。
@@ -384,10 +387,23 @@ def seed_measurement_cache_from_results(
         result = integrity.current_result(candidate.fight)
         if result is None:
             continue
-        if measurement_cache.get(candidate.report_code, candidate.report, candidate.fight) is not None:
-            continue
         metrics = result.get("metrics") if isinstance(result, dict) else None
         checked_at_iso = str(result.get("checked_at_iso") or "") if isinstance(result, dict) else ""
+        target_metrics = metrics.get("target_damage_profile") if isinstance(metrics, dict) else None
+        mechanic_summary = m8s.normalize_summary(
+            target_metrics.get("wolf_mechanic_damage") if isinstance(target_metrics, dict) else None
+        )
+        existing = measurement_cache.get(candidate.report_code, candidate.report, candidate.fight)
+        if existing is not None:
+            if (existing["outcome"] == "measured" and mechanic_summary is not None
+                    and "wolf_mechanic_damage" not in existing["measurement"]):
+                measurement_cache.put(
+                    candidate.report_code, candidate.report, candidate.fight,
+                    measurement={**existing["measurement"], "wolf_mechanic_damage": mechanic_summary},
+                    cached_at_iso=checked_at_iso, persist=False,
+                )
+                seeded += 1
+            continue
         try:
             if isinstance(metrics, dict) and all(
                 key in metrics for key in ("enemy_damage", "enemy_hp_capacity", "target_count")
@@ -418,6 +434,8 @@ def seed_measurement_cache_from_results(
                     ]
                     if len(target_measurements) == integrity.to_int(metrics.get("target_count")):
                         measurement["targets"] = target_measurements
+                if mechanic_summary is not None:
+                    measurement["wolf_mechanic_damage"] = mechanic_summary
                 measurement_cache.put(
                     candidate.report_code,
                     candidate.report,
@@ -692,6 +710,31 @@ def evaluate_candidate(
             basic_api_queried or api_queried,
         )
 
+    def finish_measurement(
+        measurement: dict[str, Any], *, cache_hit: bool,
+    ) -> tuple[dict[str, Any], bool, bool]:
+        # 完整舊目標快取不必重查；只補上新模型需要的敵方機制摘要。
+        if not cache_hit:
+            measurement_cache.put(
+                candidate.report_code, candidate.report, candidate.fight,
+                measurement=measurement, cached_at_iso=checked_at_iso,
+            )
+        measurement, mechanic_queried = fflogs.補齊M8S狼機制量測(
+            session, auth_pool, candidate.report_code, candidate.fight,
+            candidate.encounter_key, config.known_enemy_capacity, measurement,
+            offline_only=offline_only,
+        )
+        if mechanic_queried:
+            measurement_cache.put(
+                candidate.report_code, candidate.report, candidate.fight,
+                measurement=measurement, cached_at_iso=checked_at_iso,
+            )
+        return finish(evaluate_measurement(
+            candidate, config, checked_at_iso, measurement=measurement,
+            historical_screen=historical_screen, known_capacity_screen=known_capacity_screen,
+            basic_attack_screen=basic_attack_screen,
+        ), cache_hit=cache_hit, api_queried=not cache_hit or mechanic_queried)
+
     # 固定完整隊伍傷害落在範圍內或已高於上限時，優先於任何舊快取離線判定。
     # 低於下限時玩家合計仍可能只是漏掉 Limit Break；若有 Target Damage 固定範圍，
     # 必須繼續讀取快取或 FFLogs 精準量測，不能用傷害下限直接隱藏正常紀錄。
@@ -735,15 +778,7 @@ def evaluate_candidate(
                 historical_screen=historical_screen,
                 known_capacity_screen=known_capacity_screen,
             ), cache_hit=True)
-        return finish(evaluate_measurement(
-            candidate,
-            config,
-            checked_at_iso,
-            measurement=cached["measurement"],
-            historical_screen=historical_screen,
-            known_capacity_screen=known_capacity_screen,
-            basic_attack_screen=basic_attack_screen,
-        ), cache_hit=True)
+        return finish_measurement(cached["measurement"], cache_hit=True)
 
     # 已知固定生命池只會用完整隊伍傷害下限認定異常，不能反過來判定正常。這讓極澤蓮尼亞
     # 的誇張 log 可離線先隱藏，同時避免 Limit Break 未歸屬玩家時造成 false valid。
@@ -850,22 +885,7 @@ def evaluate_candidate(
         ]
     # 落地的是彙總值與逐目標 NPC GUID／承傷／生命值／實例數，不保存 report 內
     # actor ID、完整 Target table 或 raw events；FFLogs 修正 report 時來源指紋會失效。
-    measurement_cache.put(
-        candidate.report_code,
-        candidate.report,
-        candidate.fight,
-        measurement=measurement,
-        cached_at_iso=checked_at_iso,
-    )
-    return finish(evaluate_measurement(
-        candidate,
-        config,
-        checked_at_iso,
-        measurement=measurement,
-        historical_screen=historical_screen,
-        known_capacity_screen=known_capacity_screen,
-        basic_attack_screen=basic_attack_screen,
-    ), api_queried=True)
+    return finish_measurement(measurement, cache_hit=False)
 
 
 def main() -> int:

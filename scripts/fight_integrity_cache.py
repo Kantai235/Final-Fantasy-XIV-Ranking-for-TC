@@ -1,7 +1,8 @@
 """戰鬥完整性檢核的本機測量快取。
 
 快取只保存已彙整的敵方承傷、敵方最大生命池、目標數、逐目標 NPC GUID／生命值／
-有效承傷／實例數，以及玩家層普攻技能 ID、命中數、中位數、占比與每秒傷害，或
+有效承傷／實例數、M8S 狼的版本化機制計數／承傷／過量擊殺摘要，以及玩家層
+普攻技能 ID、命中數、中位數、占比與每秒傷害，或
 可重現的無法量測原因。它不保存 raw events、玩家名稱、report 內 actor ID 或完整
 FFLogs payload，讓門檻調整時仍能離線重新判定。這不是排行榜資料的一部分：
 預設路徑由 .gitignore 排除，GitHub Actions 只透過 Actions cache 在執行輪次之間
@@ -15,6 +16,8 @@ import json
 import os
 from pathlib import Path
 from typing import Any
+
+import fight_integrity_m8s as m8s
 
 
 CACHE_SCHEMA_VERSION = 6
@@ -129,6 +132,10 @@ def _normalize_measurement(raw: Any) -> dict[str, Any] | None:
         if targets is None or len(targets) != target_count:
             return None
         measurement["targets"] = targets
+    mechanic_summary = m8s.normalize_summary(raw.get("wolf_mechanic_damage"))
+    if mechanic_summary is not None:
+        # 只保留版本化的機制彙總；舊快取仍可重用 HP／承傷，缺少的摘要另查。
+        measurement["wolf_mechanic_damage"] = mechanic_summary
     return measurement
 
 

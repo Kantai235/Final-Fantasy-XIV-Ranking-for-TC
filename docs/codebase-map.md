@@ -159,6 +159,7 @@
 | `scripts/fight_integrity.py` | fight 層完整性結果、版本與純判定；不讀寫檔案、不直接呼叫 API。 |
 | `scripts/fight_integrity_baselines.py` | 切點前完整繁中隊伍 P99 的本地預篩；不能單獨排除 fight。 |
 | `scripts/fight_integrity_known_capacity.py` | 固定敵方承傷範圍、逐 NPC profile 與單向上限規則。 |
+| `scripts/fight_integrity_m8s.py` | M8S 狼機制的純彙總與證據驗證，校正過量擊殺造成的預期承傷差異。 |
 | `scripts/fight_integrity_cache.py` | 不進 Git 的匿名化最小量測快取與來源指紋。 |
 | `scripts/backfill_fight_integrity.py` | 選取既有候選、查 FFLogs Target Damage／HP／Attack 證據並寫回。 |
 
@@ -234,6 +235,7 @@
 | `scripts/test_fight_integrity.py` | 完整性狀態、門檻、版本與 fight-hash 傳播。 |
 | `scripts/test_fight_integrity_baselines.py` | 歷史預篩載入與判定。 |
 | `scripts/test_fight_integrity_known_capacity.py` | 固定承傷範圍、硬上限與逐目標 profile。 |
+| `scripts/test_fight_integrity_m8s.py` | 狼機制、過量擊殺、事件分頁、缺漏證據、新收錄快取與模型設定。 |
 | `scripts/test_fight_integrity_cache.py` | 最小快取 schema、指紋、原子寫入與隱私邊界。 |
 | `scripts/test_fight_integrity_backfill.py` | 完整性候選、FFLogs 查詢、離線重判與 hidden。 |
 | `scripts/test_honey_b_fans.py` | Honey 掃描、去重、7 天窗、歷史與活動榜。 |

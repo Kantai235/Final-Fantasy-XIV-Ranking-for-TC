@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import builtins
 import json
+import math
 import os
 import sys
 import time
@@ -23,6 +24,7 @@ from fflogs_pipeline.graphql_queries import (
     戰鬥清單查詢,
     戰鬥清單全部查詢,
     建立戰鬥完整性目標生命值查詢,
+    M8S狼機制事件查詢,
     淺層掃描查詢,
     戰鬥完整性普攻事件查詢,
     戰鬥完整性目標傷害查詢,
@@ -36,6 +38,7 @@ import fight_integrity as integrity
 import fight_integrity_baselines as historical_baselines
 import fight_integrity_cache as integrity_cache
 import fight_integrity_known_capacity as known_capacity
+import fight_integrity_m8s as m8s
 
 
 # 本檔是資料管線的 Data Fetching Layer。
@@ -4674,6 +4677,99 @@ def 查詢戰鬥完整性普攻事件(
     return 事件列表
 
 
+def 查詢M8S狼機制承傷(
+    session: requests.Session,
+    認證池: FFLogs認證池,
+    報告代碼: str,
+    戰鬥: dict[str, Any],
+) -> dict[str, Any]:
+    """完整讀取兩隻狼的事件，逐頁彙總後立即捨棄 raw events。
+
+    使用 All 才能取得敵方對狼的 Surge；DamageDone 的玩家表不含此傷害。
+    All 的 targetID 在實測中仍會回傳兩隻狼，因此只查一條事件流，再依 NPC GUID
+    分組。查完整 fight 避免機制時間漂移；不取 resources，HP 由既有目標量測檢查。
+    """
+    if not 戰鬥完整性查詢脈絡完整(戰鬥):
+        raise RuntimeError("M8S 狼機制查詢缺少完整 fight 脈絡")
+    if (integrity.to_int(戰鬥.get("encounter_id")) != 100
+            or integrity.to_int(戰鬥.get("difficulty")) != 101):
+        raise ValueError("狼機制承傷只適用於 M8S 零式")
+
+    def 讀取報告(payload: dict[str, Any]) -> dict[str, Any]:
+        報告 = (payload.get("reportData") or {}).get("report")
+        if not isinstance(報告, dict) or not 報告:
+            raise FFLogs報告存取錯誤([{
+                "message": f"FFLogs 無法讀取 report {報告代碼} 的 M8S 機制",
+                "path": ["reportData", "report"],
+            }])
+        return 報告
+
+    變數 = {"code": 報告代碼, "fightID": integrity.to_int(戰鬥.get("fight_id"))}
+    游標 = integrity.to_number(戰鬥.get("start_time"))
+    結束 = integrity.to_number(戰鬥.get("end_time"))
+    assert 游標 is not None and 結束 is not None
+    彙總器: m8s.MechanicAccumulator | None = None
+    for _ in range(100):
+        報告 = 讀取報告(執行_graphql(
+            session, 認證池, M8S狼機制事件查詢, {**變數, "startTime": 游標, "endTime": 結束},
+        ))
+        if 彙總器 is None:
+            場次 = 報告.get("fights")
+            if (not isinstance(場次, list) or len(場次) != 1 or not isinstance(場次[0], dict)
+                    or 場次[0].get("id") != 變數["fightID"]
+                    or 場次[0].get("encounterID") != 100 or 場次[0].get("difficulty") != 101):
+                raise RuntimeError("FFLogs 的 M8S 機制目標脈絡不符")
+            NPC列表 = 場次[0].get("enemyNPCs")
+            if not isinstance(NPC列表, list):
+                raise RuntimeError("FFLogs 缺少 M8S 敵方 NPC 清單")
+            actor_guids = {
+                actor_id: guid for npc in NPC列表 if isinstance(npc, dict)
+                if (actor_id := integrity.to_int(npc.get("id"))) is not None
+                and (guid := integrity.to_int(npc.get("gameID"))) is not None
+            }
+            for guid in m8s.WOLVES:
+                if sum(game_id == guid for game_id in actor_guids.values()) != 1:
+                    raise RuntimeError("M8S 每隻狼必須有唯一 NPC actor")
+            彙總器 = m8s.MechanicAccumulator(actor_guids)
+        頁 = 報告.get("events")
+        if (not isinstance(頁, dict) or not isinstance(頁.get("data"), list)
+                or "nextPageTimestamp" not in 頁):
+            raise RuntimeError("FFLogs 狼機制事件回應缺少 data 陣列")
+        彙總器.add(頁["data"])
+        raw_next = 頁.get("nextPageTimestamp")
+        下一頁 = integrity.to_number(raw_next)
+        if raw_next is not None and (下一頁 is None or not math.isfinite(下一頁)):
+            raise RuntimeError("FFLogs 狼機制分頁游標格式無效")
+        if 下一頁 is None or 下一頁 >= 結束:
+            return 彙總器.summary()
+        if 下一頁 <= 游標:
+            raise RuntimeError("FFLogs 狼機制分頁游標沒有前進")
+        游標 = 下一頁
+    raise RuntimeError("FFLogs 狼機制事件超過 100 頁安全上限")
+
+
+def 補齊M8S狼機制量測(
+    session: requests.Session,
+    認證池: FFLogs認證池,
+    報告代碼: str,
+    戰鬥: dict[str, Any],
+    副本鍵值: str,
+    規則: known_capacity.KnownEnemyCapacityPolicy,
+    測量值: dict[str, Any],
+    *,
+    offline_only: bool = False,
+) -> tuple[dict[str, Any], bool]:
+    """新抓取與歷史回補共用；舊 HP／承傷快取只補缺少的機制摘要。"""
+    profile = 規則.target_damage_profile(副本鍵值)
+    if profile is None or profile.mechanic_damage_model != m8s.MODEL:
+        return 測量值, False
+    if m8s.summary_status(測量值.get("wolf_mechanic_damage")) != "unverifiable" or offline_only:
+        return 測量值, False
+    return {**測量值, "wolf_mechanic_damage": 查詢M8S狼機制承傷(
+        session, 認證池, 報告代碼, 戰鬥,
+    )}, True
+
+
 def 檢核戰鬥完整性(
     session: requests.Session,
     認證池: FFLogs認證池,
@@ -4891,12 +4987,21 @@ def 檢核戰鬥完整性(
                 }
                 for 目標 in 目標列表
             ]
+    if 快取結果 is None:
+        # 機制 API 若稍後失敗，下一輪仍能重用已完成的 HP／承傷量測。
         測量快取.put(
             報告代碼,
             報告脈絡,
             戰鬥,
             measurement=測量值,
             cached_at_iso=檢核時間,
+        )
+    測量值, 已查機制 = 補齊M8S狼機制量測(
+        session, 認證池, 報告代碼, 戰鬥, 副本鍵值, 設定.known_enemy_capacity, 測量值,
+    )
+    if 已查機制:
+        測量快取.put(
+            報告代碼, 報告脈絡, 戰鬥, measurement=測量值, cached_at_iso=檢核時間,
         )
 
     # 極澤蓮尼亞等已驗證固定總傷害的副本，部分 report 可能只收錄 7/8 位繁中服

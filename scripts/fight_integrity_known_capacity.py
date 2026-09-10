@@ -16,6 +16,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import fight_integrity_m8s as m8s
+
 
 SCHEMA_VERSION = 1
 METRIC_NAME = "full_traditional_chinese_party_damage_lower_bound_vs_known_enemy_hp"
@@ -77,7 +79,7 @@ class KnownTargetDamageRule:
     M7S 的 fight metadata 會列出未實際擊殺或只在場景中生成的同 GUID actor；若直接
     乘上 instanceCount，會把未承傷的生命池誤算進上限。此欄位只描述經多份正常
     report 交叉確認、實際需要打掉的等效實例數，再由 ``expected_damage_ratio`` 表達
-    M8S 狼打至剩餘 60% 血量便轉場（因此有效承傷為 40%）之類的固定比例。
+    固定轉場比例。M8S 狼的 40% 僅是歷史參考；實際基準由機制承傷摘要校正。
     """
 
     guid: int
@@ -102,6 +104,8 @@ class KnownTargetDamageProfile:
 
     version: str
     targets: dict[int, KnownTargetDamageRule]
+    mechanic_damage_model: str | None = None
+    total_damage_tolerance: int | None = None
 
 
 @dataclass(frozen=True)
@@ -403,13 +407,23 @@ class KnownEnemyCapacityPolicy:
 
         missing_guids = sorted(set(profile.targets) - set(observed_by_guid))
         unexpected_guids = sorted(set(observed_by_guid) - set(profile.targets))
+        mechanic_summary = None
+        mechanic_status = "valid"
+        adjusted_damage: dict[int, int] = {}
+        if profile.mechanic_damage_model == m8s.MODEL:
+            mechanic_summary = m8s.normalize_summary(measurement.get("wolf_mechanic_damage"))
+            mechanic_status = m8s.summary_status(mechanic_summary)
+            adjusted_damage = m8s.expected_wolf_damage(mechanic_summary)
         target_results: list[dict[str, Any]] = []
         mismatched_guids: list[int] = []
         for guid, target_rule in sorted(profile.targets.items()):
             observed = observed_by_guid.get(guid)
-            expected_damage = target_rule.expected_damage
-            damage_min = expected_damage - target_rule.damage_tolerance
-            damage_max = expected_damage + target_rule.damage_tolerance
+            expected_damage: int | None = target_rule.expected_damage
+            if profile.mechanic_damage_model and guid in m8s.WOLVES:
+                # 缺少機制證據時不能退回固定 40%，否則原本的誤判會再出現。
+                expected_damage = adjusted_damage.get(guid)
+            damage_min = None if expected_damage is None else expected_damage - target_rule.damage_tolerance
+            damage_max = None if expected_damage is None else expected_damage + target_rule.damage_tolerance
             if observed is None:
                 target_results.append({
                     "guid": guid,
@@ -426,9 +440,11 @@ class KnownEnemyCapacityPolicy:
                 continue
 
             max_hp_matches = observed["max_hp"] == target_rule.max_hp
-            damage_matches = damage_min <= observed["damage"] <= damage_max
-            matches = max_hp_matches and damage_matches
-            if not matches:
+            damage_matches = (
+                None if damage_min is None else damage_min <= observed["damage"] <= damage_max
+            )
+            matches = max_hp_matches and damage_matches is True
+            if not max_hp_matches or damage_matches is False:
                 mismatched_guids.append(guid)
             target_results.append({
                 "guid": guid,
@@ -452,17 +468,40 @@ class KnownEnemyCapacityPolicy:
                 "matches": matches,
             })
 
-        expected_enemy_damage = sum(
-            target_rule.expected_damage for target_rule in profile.targets.values()
+        expected_enemy_damage = (
+            sum(target["expected_damage"] for target in target_results)
+            if all(target["expected_damage"] is not None for target in target_results) else None
         )
         observed_enemy_damage = sum(target["damage"] for target in observed_by_guid.values())
         has_mismatch = bool(missing_guids or unexpected_guids or mismatched_guids)
+        total_metrics: dict[str, Any] = {}
+        if profile.total_damage_tolerance is not None and expected_enemy_damage is not None:
+            total_min = expected_enemy_damage - profile.total_damage_tolerance
+            total_max = expected_enemy_damage + profile.total_damage_tolerance
+            # 總量獨立限制 ±10,000，不能將兩隻狼的容許值相加；同時比對
+            # Target table 總和，避免快取中的彙總與逐目標證據彼此矛盾。
+            measured_total = _to_number(measurement.get("enemy_damage"))
+            total_matches = (
+                measured_total is not None and round(measured_total) == observed_enemy_damage
+                and total_min <= observed_enemy_damage <= total_max
+            )
+            has_mismatch = has_mismatch or not total_matches
+            total_metrics = {"damage_min": total_min, "damage_max": total_max,
+                             "matches": total_matches}
+        status = "suspected" if has_mismatch or mechanic_status == "suspected" else mechanic_status
+        reason = "target_damage_profile_mismatch" if has_mismatch else None
+        if not has_mismatch and mechanic_status != "valid":
+            reason = ("m8s_wolf_mechanic_damage_mismatch" if mechanic_status == "suspected"
+                      else "missing_m8s_wolf_mechanic_damage")
         return KnownTargetDamageProfileScreen(
             encounter_key=encounter_key,
             profile_version=profile.version,
-            status="suspected" if has_mismatch else "valid",
-            reason="target_damage_profile_mismatch" if has_mismatch else None,
+            status=status,
+            reason=reason,
             metrics={
+                **({"wolf_mechanic_damage": mechanic_summary,
+                    "mechanic_status": mechanic_status,
+                    "total_damage_check": total_metrics} if profile.mechanic_damage_model else {}),
                 "expected_enemy_damage": expected_enemy_damage,
                 "observed_enemy_damage": observed_enemy_damage,
                 "missing_target_guids": missing_guids,
@@ -700,9 +739,22 @@ def load_known_enemy_capacity_policy(path: Path) -> KnownEnemyCapacityPolicy:
                     expected_damage_ratio=expected_ratio,
                     damage_tolerance=tolerance,
                 )
+            model = raw_target_profile.get("mechanic_damage_model")
+            total_tolerance = _to_positive_int(raw_target_profile.get("total_damage_tolerance"))
+            if model is not None and (
+                model != m8s.MODEL or encounter_key != "savage_m8s"
+                or total_tolerance is None or has_required_enemy_min
+                or any(guid not in parsed_targets or parsed_targets[guid].max_hp != m8s.MAX_HP
+                       or parsed_targets[guid].expected_damage_instances != 1 for guid in m8s.WOLVES)
+            ):
+                raise RuntimeError(f"M8S 機制模型、HP 或獨立總量容許值設定無效：{encounter_key}")
+            if "total_damage_tolerance" in raw_target_profile and total_tolerance is None:
+                raise RuntimeError(f"逐目標規則的總量容許值必須是正整數：{encounter_key}")
             target_damage_profile = KnownTargetDamageProfile(
                 version=profile_version.strip(),
                 targets=parsed_targets,
+                mechanic_damage_model=model,
+                total_damage_tolerance=total_tolerance,
             )
         if (
             not has_capacity

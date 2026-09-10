@@ -47,6 +47,7 @@ jobs:
           RULE_FILES=(
             scripts/fight_integrity.py
             scripts/fight_integrity_known_capacity.py
+            scripts/fight_integrity_m8s.py
             config/fflogs.json
             config/fight_integrity_known_enemy_hp.json
           )

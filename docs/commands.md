@@ -123,7 +123,7 @@ Users repo 正式同步沒有獨立 npm script，由 workflow 直接執行 `node
 | `npm run test:compact-state` | state 壓縮與 blob 大小保護。 |
 | `npm run test:state-store` | Python checked-report 分片讀寫。 |
 | `npm run test:gcd-coverage` | 本地 GCD 回補、缺漏 report 狀態與 xivanalysis 診斷流程。 |
-| `npm run test:fight-integrity` | 完整性純計算、歷史基準、固定容量、快取與回補。 |
+| `npm run test:fight-integrity` | 完整性純計算、歷史基準、固定容量、M8S 狼機制、快取與回補。 |
 | `npm run test:honey-fans` | Honey B. Lovely 抓取、時間窗與公開建置。 |
 | `npm run test:build-user-data` | 使用者資料、去重、版本、成就與統計聚合。 |
 | `npm run test:ranking-tables` | 排行榜薄索引、報告細節、支援統計與 hidden delta。 |

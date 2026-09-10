@@ -177,16 +177,21 @@ npm run backfill:support:history
 
 固定數字、目前副本清單與逐目標 profile 詳列於 [config/README.md](../config/README.md)。設定檔是判定資料來源；文件不得另創不同門檻。
 
+M8S 使用機制承傷校正狼的預期值，取代固定 40% 與固定整場總量。`fetch_fflogs.py` 對單場 All 事件完整分頁，只由 `fight_integrity_m8s.py` 累積兩隻狼的敵方機制摘要；`calculateddamage` 不重複計入。經確認的三次 Surge 有效傷害與過量擊殺須符合名義傷害，才能以最大 HP 減有效機制傷害推算玩家承傷；缺少證據為 `unverifiable`，來源、技能、次數或名義傷害不符為 `suspected`。狼與整場各自套用設定的容許值，本體、普攻及同場異常傳播規則保持獨立。
+
+只更新 M8S 的 profile version。舊 HP／承傷快取可重用，但沒有機制摘要時仍要呼叫 API 補齊，不能靠原始總量推算過量擊殺；缺漏摘要即使已寫入目前 profile version，也會再排入回補。有完整摘要後，可從 `data_integrity.metrics.target_damage_profile.wolf_mechanic_damage` 還原快取並離線重判。相同物理戰鬥的所有報告來源仍須完成重判，舊來源的異常標記才不會連帶隱藏已通過的新來源。
+
 ### 最小量測快取
 
 `data/local-cache/fight-integrity/measurements.json` 不進 Git，只保存：
 
 - 彙總 Target Damage、最大生命池與目標數。
 - 需要 profile 時的 NPC GUID、逐目標承傷、最大生命值與有效實例數。
+- M8S 狼機制版本、NPC GUID／技能 ID、命中與過量擊殺次數、有效傷害／過量擊殺總量、名義傷害極值及不符次數。
 - 匿名化的 ability ID、source ID、職業、事件數、中位數、占比與每秒傷害。
 - 可重現的無法量測原因與來源指紋。
 
-快取不保存玩家名稱、report 內 actor ID、OAuth、完整 Target table 或 raw events。來源指紋未變時，即使 `--force` 也優先離線重判；只有缺少必要 ability、來源改變或明確 `--refresh-cache` 才再次使用 FFLogs 額度。Actions 以 cache 接續這個本機目錄。
+快取不保存玩家名稱、report 內 actor ID、OAuth、完整 Target table 或 raw events。來源指紋未變時，即使 `--force` 也優先離線重判；只有缺少必要 ability／機制摘要、來源改變或明確 `--refresh-cache` 才再次使用 FFLogs 額度。Actions 以 cache 接續這個本機目錄。
 
 ### 操作
 
