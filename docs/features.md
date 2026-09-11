@@ -143,6 +143,8 @@
 
 選填的 Apps Script Web App 會以站務端 OAuth 即時查詢單一 report 是否公開可讀。Public 且可讀的 report 可寫入 Google Sheet 待收錄名單；已收錄但明確不可公開讀取的 report 可要求重新檢查可見度。Apps Script 不直接修改排行榜，workflow 仍須完整重掃並由 `fetch_fflogs.py` 決定收錄或 hidden 狀態。
 
+即時查詢與送單使用不夾帶 Google 登入 Cookie 的 JSON 請求，每次操作最多等待 45 秒。查詢遇到短暫連線失敗、HTTP 500／502／503／504 或 Google 轉址目的地的暫時性 404 時最多重試一次；送單不自動重試，以免回應遺失時重複申請。失敗訊息會區分連線、HTTP、回應格式與逾時，站內索引仍可用於排查。更換 report 或離開頁面會取消舊請求，舊回應不能覆蓋目前結果。
+
 ## Honey B. Lovely 粉絲榜
 
 Honey B. Lovely 是與正式排行榜分離的趣味資料：

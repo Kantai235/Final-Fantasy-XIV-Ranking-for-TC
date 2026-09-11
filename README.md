@@ -107,6 +107,7 @@ npm run validate:data
 | `npm run build:user-data` | 建置個人成績、統計、排行榜薄索引與公開狀態資料。 |
 | `npm run validate:data` | 驗證公開 JSON、分片、索引與 schema 契約。 |
 | `npm run check` | 執行 Python 與 Node.js 語法檢查。 |
+| `npm run test:report-status` | 驗證 FAQ 即時查詢逾時、取消、有限重試與送單，不讀寫正式資料。 |
 | `npm test` | 執行完整測試套件，涵蓋資料管線邏輯、建置器與前端資料契約。 |
 | `npm run build` | 完整建置靜態網站到 `dist/`。 |
 

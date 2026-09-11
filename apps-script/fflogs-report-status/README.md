@@ -95,9 +95,30 @@ curl -L "https://script.google.com/macros/s/你的部署ID/exec?report=FFLOGS_RE
 }
 ```
 
-## 前端 JSONP 測試
+## 前端 JSON 查詢
 
-如果要先從靜態前端測試跨網域讀取，可用 JSONP：
+主站以匿名 `fetch` 讀取 JSON，`credentials: "omit"` 不傳送 Google 登入 Cookie；`redirect: "follow"` 會跟隨 Content Service 到 `script.googleusercontent.com` 的轉址。部署仍須允許「所有人」存取，且以擁有者身分執行，不依賴訪客的 Google 登入狀態。
+
+```javascript
+const response = await fetch("https://script.google.com/macros/s/你的部署ID/exec?report=FFLOGS_REPORT_CODE", {
+  credentials: "omit",
+  redirect: "follow",
+  headers: { Accept: "application/json" },
+});
+const result = await response.json();
+```
+
+主站實作集中在 `src/utils/reportStatus.js`，以 45 秒作為單次操作的總時間預算，涵蓋轉址、本文下載與重試；查詢遇到連線失敗或 HTTP 500／502／503／504 時，等待 1 秒後最多重試一次。轉址目的地 `script.googleusercontent.com` 曾出現約 32 秒後回傳 404、下一次恢復的情況，因此該主機的 404 也可重試一次，且每次附上不同查詢參數以重新取得轉址；`/exec` 本身的 404、HTTP 429 與後端已回傳的錯誤不自動重試。收到 HTML、損壞的 JSON 或不相符的 report code 時立即回報回應異常，不再等到逾時。
+
+`action=enqueue` 可能已寫入 Sheet，因此不自動重試。連線失敗或逾時只代表尚未確認送達，不能宣稱申請未寫入；前端會提示不要連續送出。更換 report、清除或離開常見問題頁時會取消瀏覽器請求並隔離舊回應，但取消不能撤回已送達的申請。
+
+既有 v4 Web App 已支援 JSON，本次前端傳輸修正只需重新建置及部署主站，不必更新 Apps Script。`npm run test:report-status` 使用模擬回應驗證上述行為，不讀取正式玩家資料，也不寫入 Sheet。
+
+官方背景：[Content Service 轉址](https://developers.google.com/apps-script/guides/content#redirects)、[Apps Script 多帳號登入限制](https://developers.google.com/apps-script/guides/support/troubleshooting#issues_with_multiple_google_accounts)。這些限制是改用匿名請求的設計依據，不代表每次逾時都能歸因於 Google 登入狀態。
+
+## 舊版 JSONP 相容測試
+
+後端仍保留 JSONP，供舊版前端相容；新前端不再建立全域回呼或載入遠端 script。
 
 ```html
 <script>
@@ -108,11 +129,11 @@ curl -L "https://script.google.com/macros/s/你的部署ID/exec?report=FFLOGS_RE
 <script src="https://script.google.com/macros/s/你的部署ID/exec?report=FFLOGS_REPORT_CODE&callback=handleFflogsStatus"></script>
 ```
 
-JSONP 會用於公開狀態查詢，以及在 report 已 Public 且可讀時送出待收錄需求。若前端索引已顯示 report 收錄、但 FFLogs 明確不可公開，前端也可用 `request_type=review_existing_visibility` 送出公開狀態重新排查；Apps Script 不直接隱藏資料，只把 report code 交給 workflow 後續確認。回傳內容不能包含 FFLogs OAuth token、client secret、Apps Script 設定值或站務用內部狀態。
+公開查詢與送單共用同一 Web App。若前端索引已顯示 report 收錄、但 FFLogs 明確不可公開，前端也可用 `request_type=review_existing_visibility` 送出公開狀態重新排查；Apps Script 不直接隱藏資料，只把 report code 交給 workflow 後續確認。回傳內容不能包含 FFLogs OAuth token、client secret、Apps Script 設定值或站務用內部狀態。
 
 ## 串接主站常見問題頁
 
-主站常見問題頁的 FFLogs 檢查工具會讀取 `VITE_FFLOGS_REPORT_STATUS_WEB_APP_URL`，用 JSONP 呼叫這個 `/exec` URL。若沒有另外設定，前端會使用目前版控內的預設 Apps Script URL。
+主站常見問題頁的 FFLogs 檢查工具會讀取 `VITE_FFLOGS_REPORT_STATUS_WEB_APP_URL`，以匿名 JSON 請求呼叫這個 `/exec` URL。若沒有另外設定，前端會使用目前版控內的預設 Apps Script URL。
 
 ```env
 VITE_FFLOGS_REPORT_STATUS_WEB_APP_URL=https://script.google.com/macros/s/你的部署ID/exec

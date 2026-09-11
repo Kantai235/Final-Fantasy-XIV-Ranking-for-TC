@@ -1,9 +1,7 @@
 const reportCodePattern = /^[A-Za-z0-9]{8,32}$/;
 const 預設排程分鐘列表 = Object.freeze([17, 47]);
 const 預設Fflogs即時狀態查詢網址 = "https://script.google.com/macros/s/AKfycbyqjJUSiIItQ-tM15hzEHXTXY7SBPrwYq0wFy8WTY9Xg77Ed3CdHb_91W0HpPbfslgnVQ/exec";
-const AppsScriptJsonpCallbackRoot = "__ffxivTcFflogsReportStatusCallbacks";
-const AppsScriptJsonp逾時Ms = 12000;
-let AppsScriptJsonp序號 = 0;
+export const Fflogs即時查詢逾時Ms = 45000;
 
 function 清理ReportCode(片段) {
   const 文字 = String(片段 || "").trim().replace(/^a:/i, "");
@@ -38,26 +36,19 @@ function 讀取ImportMetaEnv值(key) {
   }
 }
 
-function 建立Jsonp網址(endpoint, params, callbackName) {
+function 建立AppsScript網址(endpoint, params) {
   const 網址 = new URL(endpoint);
+  // /exec 已支援 JSON 與跨網域讀取；清除舊設定可能帶入的 JSONP 參數，
+  // 避免把 JavaScript 當成 JSON，或等待一個永遠不會執行的全域回呼。
+  網址.searchParams.delete("callback");
+  網址.searchParams.delete("prefix");
   Object.entries(params || {}).forEach(([key, value]) => {
     const text = String(value ?? "").trim();
     if (text) {
       網址.searchParams.set(key, text);
     }
   });
-  網址.searchParams.set("callback", callbackName);
   return 網址.href;
-}
-
-function 取得全域物件() {
-  if (typeof window !== "undefined") {
-    return window;
-  }
-  if (typeof globalThis !== "undefined") {
-    return globalThis;
-  }
-  return null;
 }
 
 function 建立分鐘數列(起點, 終點, 間隔 = 1) {
@@ -316,60 +307,115 @@ export function Fflogs目前明確不可公開(payload) {
   return access === "accessible" && Boolean(visibility) && visibility !== "public";
 }
 
-function 執行FflogsAppsScriptJsonp(params, options = {}) {
+function 建立查詢錯誤(code, message) {
+  return Object.assign(new Error(message), { code });
+}
+
+function 等待查詢重試(signal) {
+  return new Promise((resolve, reject) => {
+    signal.throwIfAborted();
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(signal.reason);
+    };
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, 1000);
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+/**
+ * @param {Record<string, string>} params Apps Script 公開查詢／送單參數。
+ * @param {{endpoint?: string, timeoutMs?: number, signal?: AbortSignal}} options
+ */
+async function 執行FflogsAppsScript請求(params, options = {}) {
   const endpoint = String(options.endpoint || 取得Fflogs即時狀態查詢網址()).trim();
   if (!endpoint) {
-    return Promise.reject(new Error("尚未設定 FFLogs 即時狀態查詢 Web App URL。"));
+    throw new Error("尚未設定 FFLogs 即時狀態查詢 Web App URL。");
   }
 
-  const 全域物件 = 取得全域物件();
-  if (!全域物件 || typeof document === "undefined") {
-    return Promise.reject(new Error("即時狀態查詢只能在瀏覽器中執行。"));
-  }
+  const url = 建立AppsScript網址(endpoint, params);
+  const 是送單 = params.action === "enqueue";
+  const timeoutMs = Number.isFinite(Number(options.timeoutMs)) && Number(options.timeoutMs) > 0
+    ? Number(options.timeoutMs)
+    : Fflogs即時查詢逾時Ms;
+  const controller = new AbortController();
+  const onAbort = () => controller.abort(new DOMException("已取消 FFLogs 查詢。", "AbortError"));
+  options.signal?.addEventListener("abort", onAbort, { once: true });
+  if (options.signal?.aborted) onAbort();
+  // 同一個時間預算涵蓋轉址、本文下載與重試，避免每輪重試重新起算而無限等待。
+  const timer = setTimeout(() => controller.abort(建立查詢錯誤(
+    "timeout",
+    `查詢服務在 ${Math.ceil(timeoutMs / 1000)} 秒內未完成回應。站內收錄結果仍可參考；請開啟 FFLogs 確認報告，或稍後重新查詢。`,
+  )), timeoutMs);
 
-  return new Promise((resolve, reject) => {
-    const callbackKey = `cb${Date.now()}${AppsScriptJsonp序號++}`;
-    const callbackRoot = 全域物件[AppsScriptJsonpCallbackRoot] || {};
-    全域物件[AppsScriptJsonpCallbackRoot] = callbackRoot;
-    const callbackName = `window.${AppsScriptJsonpCallbackRoot}.${callbackKey}`;
-    const script = document.createElement("script");
-    let settled = false;
-
-    function cleanup() {
-      delete callbackRoot[callbackKey];
-      script.remove();
-    }
-
-    function settle(handler, value) {
-      if (settled) {
-        return;
+  try {
+    for (let attempt = 0; ; attempt += 1) {
+      controller.signal.throwIfAborted();
+      try {
+        // Content Service 使用一次性轉址網址。每次重試都重新取得轉址，
+        // 避免中介快取讓同一個失效網址反覆被讀取；不影響後端 report 快取。
+        const requestUrl = new URL(url);
+        requestUrl.searchParams.set("_", `${Date.now()}-${attempt}`);
+        const response = await fetch(requestUrl.href, {
+          method: "GET",
+          mode: "cors",
+          credentials: "omit",
+          redirect: "follow",
+          cache: "no-store",
+          headers: { Accept: "application/json" },
+          signal: controller.signal,
+        });
+        // Apps Script 會轉到 script.googleusercontent.com；匿名 JSON 請求不帶
+        // Google 登入 Cookie，也不依賴跨網域 script 的執行與回呼時機。
+        if (!response.ok) {
+          // 已觀察到 Google 轉址目的地等待約 32 秒後回 404，下一次即恢復。
+          // 只把 Content Service 的 404 視為暫時錯誤；/exec 本身的 404 仍
+          // 代表部署端點異常，兩者都不能推論 FFLogs report 不存在。
+          if (response.status === 404 && response.url
+            && new URL(response.url).hostname === "script.googleusercontent.com") {
+            throw 建立查詢錯誤("content_unavailable", "Google 查詢服務暫時無法提供回應（HTTP 404），請稍後重新查詢。");
+          }
+          throw 建立查詢錯誤(`http_${response.status}`, response.status === 429
+            ? "查詢服務目前回傳限流，請稍後再試。"
+            : `查詢服務回應 HTTP ${response.status}，請稍後再試。`);
+        }
+        if (!response.headers.get("content-type")?.includes("application/json")) {
+          throw 建立查詢錯誤("invalid_response", "查詢服務未回傳 JSON，可能是登入或部署頁面；請回報站務檢查服務設定。");
+        }
+        const payload = await response.json();
+        controller.signal.throwIfAborted();
+        if (!payload || typeof payload !== "object" || typeof payload.ok !== "boolean"
+          || (payload.ok && payload.report_code !== params.report)) {
+          throw 建立查詢錯誤("invalid_response", "查詢服務回傳的報告資料不完整，請稍後重新查詢或回報站務。");
+        }
+        return payload;
+      } catch (error) {
+        if (controller.signal.aborted) throw controller.signal.reason;
+        const failure = error instanceof TypeError
+          ? 建立查詢錯誤("network_error", "無法連線至查詢服務；請確認網路能連線至 Google Apps Script，再重新查詢。")
+          : error instanceof SyntaxError
+            ? 建立查詢錯誤("invalid_response", "查詢服務回傳的 JSON 不完整，請稍後重新查詢或回報站務。")
+            : error;
+        const 可重試 = failure.code === "network_error" || failure.code === "content_unavailable"
+          || /^http_(500|502|503|504)$/.test(failure.code);
+        // 查詢可因短暫斷線重試一次。送單已可能寫入 Sheet，即使回應遺失也不可
+        // 自動重送；429 與後端已回覆的錯誤也直接交給使用者判讀。
+        if (是送單 || attempt > 0 || !可重試) throw failure;
+        await 等待查詢重試(controller.signal);
       }
-      settled = true;
-      clearTimeout(timeoutId);
-      cleanup();
-      handler(value);
     }
-
-    callbackRoot[callbackKey] = (payload) => {
-      settle(resolve, payload);
-    };
-
-    const timeoutMs = Number(options.timeoutMs) > 0 ? Number(options.timeoutMs) : AppsScriptJsonp逾時Ms;
-    const timeoutId = setTimeout(() => {
-      settle(reject, new Error("FFLogs 即時查詢逾時，請稍後再試。"));
-    }, timeoutMs);
-
-    try {
-      script.async = true;
-      script.src = 建立Jsonp網址(endpoint, params, callbackName);
-      script.onerror = () => {
-        settle(reject, new Error("無法連線至 FFLogs 即時查詢服務。"));
-      };
-      (document.head || document.documentElement).appendChild(script);
-    } catch (error) {
-      settle(reject, error instanceof Error ? error : new Error("FFLogs 即時查詢失敗。"));
+  } catch (error) {
+    if (是送單 && error.name !== "AbortError") {
+      throw 建立查詢錯誤(error.code || "request_error", `${error.message} 尚未確認排查申請是否送達，請勿連續送出。`);
     }
-  });
+    throw error;
+  } finally {
+    clearTimeout(timer);
+    options.signal?.removeEventListener("abort", onAbort);
+  }
 }
 
 export function 查詢Fflogs即時狀態(reportCode, options = {}) {
@@ -377,7 +423,7 @@ export function 查詢Fflogs即時狀態(reportCode, options = {}) {
   if (!code) {
     return Promise.reject(new Error("請先輸入有效的 FFLogs report code。"));
   }
-  return 執行FflogsAppsScriptJsonp({ report: code }, options);
+  return 執行FflogsAppsScript請求({ action: "status", report: code }, options);
 }
 
 export function 送出Fflogs待收錄({ reportCode, requestType, siteStatus } = {}, options = {}) {
@@ -385,7 +431,7 @@ export function 送出Fflogs待收錄({ reportCode, requestType, siteStatus } = 
   if (!code) {
     return Promise.reject(new Error("請先輸入有效的 FFLogs report code。"));
   }
-  return 執行FflogsAppsScriptJsonp({
+  return 執行FflogsAppsScript請求({
     action: "enqueue",
     report: code,
     request_type: requestType || "queue_missing",

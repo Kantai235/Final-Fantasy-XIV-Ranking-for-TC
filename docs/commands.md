@@ -98,6 +98,7 @@ npm run python -- scripts/fetch_fflogs.py
 | `npm run read:fflogs-refresh-queue` | Google Sheets | CI 環境輸出 | 讀取 queued／pending／retry report code，合併到本輪 `FFLOGS_RETRY_REPORT_CODES`。 |
 | `npm run complete:fflogs-refresh-queue` | Google Sheets | 外部 | 依來源分片、公開／hidden 索引與 state checkpoint 回寫終止狀態。 |
 | `npm run test:fflogs-refresh-queue` | 否 | 無 | 測試佇列解析、狀態判定與欄位校正。 |
+| `npm run test:report-status` | 否 | 無 | 模擬 FAQ 查詢與送單，測試慢回應、取消、錯誤分類與有限重試。 |
 
 Google Sheet 的欄位、權限與狀態生命週期見 [Apps Script 文件](../apps-script/fflogs-report-status/README.md)。
 
@@ -130,6 +131,7 @@ Users repo 正式同步沒有獨立 npm script，由 workflow 直接執行 `node
 | `npm run test:sync-user-repo` | Users repo 單一快照同步。 |
 | `npm run test:data-repository` | Data repo snapshot 與守恆。 |
 | `npm run test:fflogs-refresh-queue` | Google Sheet 待處理佇列邏輯。 |
+| `npm run test:report-status` | FAQ 匿名 JSON 請求、45 秒總逾時與送單不重試。 |
 | `npm run test:frontend-data` | Vue 靜態資料邊界、網址、元件契約與公開資料讀取。 |
 | `npm run test:data-conservation` | 來源、薄索引、細節檔、使用者檔與 hidden delta 守恆。 |
 | `npm run test:data-contracts` | `validate:data` 的別名。 |

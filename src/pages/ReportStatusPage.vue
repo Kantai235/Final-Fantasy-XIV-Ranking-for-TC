@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { 讀取Json } from "../utils/fetchJson";
 import { 格式化整數, 格式化紀錄時間 } from "../utils/formatters";
 import { 建立公開資料網址, 報告狀態索引網址, 更新狀態網址 } from "../utils/publicData";
@@ -11,6 +11,7 @@ import {
   建立未收錄提示,
   Fflogs目前公開可讀,
   Fflogs目前明確不可公開,
+  Fflogs即時查詢逾時Ms,
   查詢Fflogs即時狀態,
   送出Fflogs待收錄,
   解析Fflogs網址,
@@ -25,7 +26,8 @@ const 錯誤訊息 = ref("");
 const 即時狀態讀取中 = ref(false);
 const 即時狀態Payload = ref(null);
 const 即時狀態錯誤 = ref("");
-const 即時狀態ReportCode = ref("");
+let 即時查詢控制器 = null;
+let 待收錄控制器 = null;
 const 待收錄送出中 = ref(false);
 const 待收錄Payload = ref(null);
 const 待收錄錯誤 = ref("");
@@ -283,7 +285,8 @@ const 狀態徽章文字 = computed(() => {
 const 可查詢即時狀態 = computed(() =>
   解析結果.value.valid
   && Boolean(解析結果.value.report_code)
-  && !即時狀態讀取中.value,
+  && !即時狀態讀取中.value
+  && !待收錄送出中.value,
 );
 
 const 即時狀態顯示 = computed(() => {
@@ -292,7 +295,7 @@ const 即時狀態顯示 = computed(() => {
       status: "loading",
       badge: "查詢中",
       title: "正在確認 FFLogs 公開狀態",
-      description: "正在透過本站伺服器查詢 FFLogs，通常幾秒內會完成。",
+      description: `正在透過本站伺服器查詢 FFLogs，最多等待 ${Fflogs即時查詢逾時Ms / 1000} 秒。短暫連線失敗會自動重試一次；站內收錄結果仍可先參考。`,
     };
   }
 
@@ -372,7 +375,7 @@ const 待收錄狀態顯示 = computed(() => {
       status: "loading",
       badge: "送出中",
       title: "正在送出待收錄需求",
-      description: "正在將這份 report 送交本站伺服器安排排查。",
+      description: `正在將這份 report 送交本站伺服器安排排查，最多等待 ${Fflogs即時查詢逾時Ms / 1000} 秒，請勿重複送出。`,
     };
   }
 
@@ -407,10 +410,15 @@ const 待收錄狀態顯示 = computed(() => {
 });
 
 function 重設即時狀態() {
+  // 輸入切換或離開頁面時終止舊請求，以控制器身分隔離每次操作。
+  // 只比 report code 無法防住 A → B → A，舊回應可能覆蓋新查詢或送單狀態。
+  即時查詢控制器?.abort();
+  待收錄控制器?.abort();
+  即時查詢控制器 = null;
+  待收錄控制器 = null;
   即時狀態讀取中.value = false;
   即時狀態Payload.value = null;
   即時狀態錯誤.value = "";
-  即時狀態ReportCode.value = "";
   待收錄送出中.value = false;
   待收錄Payload.value = null;
   待收錄錯誤.value = "";
@@ -427,25 +435,27 @@ async function 查詢即時公開狀態() {
     return;
   }
 
+  const controller = new AbortController();
+  即時查詢控制器 = controller;
   即時狀態讀取中.value = true;
   即時狀態Payload.value = null;
   即時狀態錯誤.value = "";
-  即時狀態ReportCode.value = reportCode;
   待收錄Payload.value = null;
   待收錄錯誤.value = "";
 
   try {
-    const payload = await 查詢Fflogs即時狀態(reportCode);
-    if (即時狀態ReportCode.value === reportCode) {
+    const payload = await 查詢Fflogs即時狀態(reportCode, { signal: controller.signal });
+    if (即時查詢控制器 === controller) {
       即時狀態Payload.value = payload;
     }
   } catch (error) {
-    if (即時狀態ReportCode.value === reportCode) {
+    if (即時查詢控制器 === controller) {
       即時狀態錯誤.value = error instanceof Error ? error.message : "FFLogs 即時狀態查詢失敗。";
     }
   } finally {
-    if (即時狀態ReportCode.value === reportCode) {
+    if (即時查詢控制器 === controller) {
       即時狀態讀取中.value = false;
+      即時查詢控制器 = null;
     }
   }
 }
@@ -456,20 +466,28 @@ async function 送出待收錄需求() {
     return;
   }
 
+  const controller = new AbortController();
+  待收錄控制器 = controller;
   待收錄送出中.value = true;
   待收錄Payload.value = null;
   待收錄錯誤.value = "";
 
   try {
-    待收錄Payload.value = await 送出Fflogs待收錄({
+    const payload = await 送出Fflogs待收錄({
       reportCode,
       requestType: 待收錄請求類型.value,
       siteStatus: 結果狀態.value,
-    });
+    }, { signal: controller.signal });
+    if (待收錄控制器 === controller) 待收錄Payload.value = payload;
   } catch (error) {
-    待收錄錯誤.value = error instanceof Error ? error.message : "待收錄需求送出失敗。";
+    if (待收錄控制器 === controller) {
+      待收錄錯誤.value = error instanceof Error ? error.message : "待收錄需求送出失敗。";
+    }
   } finally {
-    待收錄送出中.value = false;
+    if (待收錄控制器 === controller) {
+      待收錄送出中.value = false;
+      待收錄控制器 = null;
+    }
   }
 }
 
@@ -507,6 +525,8 @@ onMounted(() => {
   }
   載入Logs檢查資料();
 });
+
+onUnmounted(重設即時狀態);
 
 watch(
   () => 解析結果.value.report_code,

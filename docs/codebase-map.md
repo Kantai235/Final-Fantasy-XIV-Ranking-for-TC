@@ -79,7 +79,7 @@
 | `src/utils/urlState.js` | History API 乾淨路徑、query 白名單、舊網址解析與分享狀態。 |
 | `src/utils/shareMeta.js` | 動態 title、canonical、description、OG／Twitter meta 與分享網址事件。 |
 | `src/utils/reportLinks.js` | FFLogs、xivanalysis、ffreplay URL 組合。 |
-| `src/utils/reportStatus.js` | report URL 解析、索引解碼、排程提示、JSONP 查詢與送單。 |
+| `src/utils/reportStatus.js` | report URL 解析、索引解碼、排程提示、匿名 JSON 查詢／取消／有限重試與送單。 |
 | `src/utils/formatters.js` | 傷害、百分比、分位、日期、通關時間與總量格式。 |
 | `src/utils/statsDisplay.js` | 全服統計職業範圍計數與職能分組。 |
 | `src/utils/userProfileSorting.js` | 個人成績代表列與 PR／前 N% 排序。 |
@@ -248,6 +248,7 @@
 | `scripts/test_data_repository.mjs` | Data repo 單一 snapshot、manifest、hydrate 與 append-only 阻擋。 |
 | `scripts/test_sync_user_leaderboard_repo.mjs` | Users repo 空白初始化、root snapshot、收斂與 lease。 |
 | `scripts/test_fflogs_refresh_queue.mjs` | 待處理 Sheet 欄位、report code、終止狀態、fight 完整性版本相容與錯置修復。 |
+| `scripts/test_report_status.mjs` | FAQ 匿名請求、慢回應、總逾時、取消、錯誤分類與送單不重試。 |
 
 ## 變更時應同步哪份文件
 
