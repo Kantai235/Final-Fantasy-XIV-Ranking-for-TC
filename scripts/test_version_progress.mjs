@@ -5,9 +5,11 @@ import { tmpdir } from "node:os";
 import { join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
-import { createRenderer, watchSyncEffect } from "vue";
+import { createRenderer, createSSRApp, watchSyncEffect } from "vue";
+import { renderToString } from "vue/server-renderer";
+import { parse, compileScript } from "@vue/compiler-sfc";
 import { 建置版本進度, 日序, 版本進度資料插件 } from "./build_version_progress.mjs";
-import { 正規化版本進度選取, 取得台灣當日日序, 取得版本顯示時長 } from "../src/utils/versionProgress.js";
+import { 正規化版本進度選取, 取得台灣當日日序, 取得版本顯示時長, 格式化版本間隔, 取得版本日期提示, 取得版本追上提示 } from "../src/utils/versionProgress.js";
 import { useVersionProgressClock } from "../src/composables/useVersionProgressClock.js";
 
 const 設定 = JSON.parse(readFileSync(new URL("../config/version_progress.json", import.meta.url), "utf8"));
@@ -670,6 +672,8 @@ test("預告日期經過也不自動當成已上線，正式核對後才改變�
   assert.equal(待核對.views.all.rows.find((列) => 列.patch === "7.25").tc_duration, null);
   assert.equal(待核對.views.all.forecast.next.overdue, true);
   assert.equal(待核對.latest_comparable.patch, "7.2");
+  assert.equal(待核對.latest_comparable.lag_days, 490);
+  assert.equal(待核對.lag_reduction, 63);
   const 列 = 值.patches.find((項) => 項.patch === "7.25");
   列.tc = 列.tc_plan.date;
   列.tc_source = "tc_7_2";
@@ -677,6 +681,10 @@ test("預告日期經過也不自動當成已上線，正式核對後才改變�
   const 已核對 = 建置版本進度(值);
   assert.equal(已核對.current_tc, "7.25");
   assert.equal(已核對.views.all.rows.find((項) => 項.patch === "7.2").tc_duration.days, 63);
+  assert.equal(已核對.previous_comparable.patch, "7.2");
+  assert.equal(已核對.previous_comparable.lag_days, 490);
+  assert.equal(已核對.latest_comparable.lag_days, 490);
+  assert.equal(已核對.lag_reduction, 0);
 });
 
 test("預告及跳版設定拒絕無歸因、錯誤來源、倒序與互斥狀態", () => {
@@ -732,6 +740,79 @@ test("畫面時鐘依台灣午夜切日，跨年及閏日不受 UTC 日期影響
   ]) assert.equal(取得台灣當日日序(Date.parse(時間)), 日序(日期));
 });
 
+test("預告、公告與推測倒數區分日期前、當日及經過，不從核對日判斷過期", () => {
+  const 下版 = 資料.views.all.forecast.next;
+  assert.equal(下版.day, 日序("2026-09-29"));
+  assert.equal(下版.overdue, false);
+  for (const [種類, 當日, 過期] of [
+    ['planned', '預定今日更新，實際更新待核對。', '預告日期已過，待核對實際更新。'],
+    ['announced', '公告於今日更新，實際更新待核對。', '公告日期已過，待核對實際更新。'],
+    ['estimated', '推測今日更新，實際更新待核對。', '推測日期已過，待重新核對排程。'],
+  ]) {
+    assert.deepEqual(取得版本日期提示(下版.day, 日序("2026-09-13"), 種類, true), { text: '還有 16 天', overdue: false });
+    assert.equal(取得版本日期提示(下版.day, 下版.day - 1, 種類), null);
+    assert.deepEqual(取得版本日期提示(下版.day, 下版.day, 種類), { text: 當日, overdue: false });
+    assert.deepEqual(取得版本日期提示(下版.day, 下版.day + 1, 種類), { text: 過期, overdue: true });
+  }
+  for (const 日 of [null, undefined, NaN]) assert.equal(取得版本日期提示(日, 下版.day, 'estimated', true), null);
+  const 主版 = 資料.views.major.forecast.next;
+  assert.equal(主版.day, 日序(主版.date));
+  assert.equal(取得版本日期提示(主版.day, 日序("2026-09-13"), 'estimated', true).text, '還有 51 天');
+});
+
+test("月份公告等月底經過才提示，不把月中圖表錨點當確切更新日", () => {
+  const 列 = 資料.views.all.forecast.rows.find((項) => 項.patch === '8.0');
+  assert.equal(列.international_month_end_day, 日序('2027-01-31'));
+  for (const 今日 of [列.international_day, 日序('2027-01-31')]) {
+    assert.equal(取得版本日期提示(列.international_month_end_day, 今日, 'month', true), null);
+  }
+  assert.deepEqual(取得版本日期提示(列.international_month_end_day, 日序('2027-02-01'), 'month'),
+    { text: '預定月份已過，待核對實際更新。', overdue: true });
+});
+
+test("追上倒數隨今天減少，到期及過期改提示，不把預測當成已追上", () => {
+  const 修改前 = JSON.stringify(資料);
+  for (const [範圍, 天數] of [['all', 779], ['major', 639]]) {
+    const 交點 = 資料.views[範圍].forecast.catch_up;
+    assert.deepEqual(取得版本追上提示(交點, 日序('2026-09-13')), { text: `距今天約 ${天數} 天`, overdue: false });
+    assert.equal(取得版本追上提示(交點, 日序('2026-09-14')).text, `距今天約 ${天數 - 1} 天`);
+    assert.equal(取得版本追上提示(交點, 交點.day).text, '推測於今日追上，實際進度待核對。');
+    assert.deepEqual(取得版本追上提示(交點, 交點.day + 1), { text: '原推測追上日期已過 1 天，待重新核對。', overdue: true });
+    assert.equal(取得版本追上提示({ ...交點, already: true }, 交點.day + 1), null);
+  }
+  assert.equal(取得版本追上提示(null, 日序('2026-09-13')), null);
+  assert.equal(JSON.stringify(資料), 修改前);
+});
+
+test("實際摘要元件呈現動態倒數與過期提示，樣本不足分支也共用日期規則", async () => {
+  // 編譯真正的 Vue 模板做隔離渲染；不啟動服務、不讀玩家資料，也不改作業系統日期。
+  const 原始碼 = readFileSync(new URL('../src/components/VersionForecastSummary.vue', import.meta.url), 'utf8');
+  const { descriptor } = parse(原始碼);
+  const 編譯 = compileScript(descriptor, { id: 'version-forecast-summary-test', inlineTemplate: true }).content
+    .replace(/from (["'])vue\1/g, () => `from ${JSON.stringify(import.meta.resolve('vue'))}`)
+    .replace(/from (["'])\.\.\/utils\/versionProgress\1/g, () => `from ${JSON.stringify(new URL('../src/utils/versionProgress.js', import.meta.url).href)}`);
+  const { default: 元件 } = await import(`data:text/javascript;base64,${Buffer.from(編譯).toString('base64')}`);
+  const f = 資料.views.all.forecast;
+  const 修改前 = JSON.stringify(f);
+  const 畫面 = (today, forecast = f, major = false) => renderToString(createSSRApp(元件, { today: 日序(today), forecast, major }));
+  const 今日 = await 畫面('2026-09-13');
+  assert.match(今日, /距今天約 779 天/);
+  assert.match(今日, /還有 16 天/);
+  assert.doesNotMatch(今日, /日期已過|距核對日/);
+  assert.match(await 畫面('2026-09-29'), /預定今日更新/);
+  assert.match(await 畫面('2026-09-30'), /預告日期已過，待核對實際更新/);
+  assert.match(await 畫面('2028-10-31'), /推測於今日追上，實際進度待核對/);
+  const 過期 = await 畫面('2028-11-01');
+  assert.match(過期, /原推測追上日期已過 1 天，待重新核對/);
+  assert.doesNotMatch(過期, /目前已追上|距今天約 -/);
+  const 主版 = await 畫面('2026-09-13', 資料.views.major.forecast, true);
+  assert.match(主版, /距今天約 639 天/);
+  assert.match(主版, /還有 51 天/);
+  assert.match(await 畫面('2026-09-30', { status: 'insufficient', next: f.next }), /預告日期已過，待核對實際更新/);
+  assert.match(await 畫面('2026-09-13', { status: 'insufficient', next: null }), /暫時無法推算追上日期/);
+  assert.equal(JSON.stringify(f), 修改前);
+});
+
 test("當日顯示只延長實際持續中的時長，主版及小版合計一致且不改寫核對資料", () => {
   const 修改前 = JSON.stringify(資料);
   const 今日 = 日序("2026-09-13");
@@ -763,6 +844,64 @@ test("當日顯示只延長實際持續中的時長，主版及小版合計一�
   assert.equal(JSON.stringify(資料), 修改前);
 });
 
+test("版本面板的相隔天數固定，現行 7.2 與歷史版本均不累加等待", () => {
+  for (const 視圖 of Object.values(資料.views)) {
+    for (const 列表 of [視圖.rows, 視圖.forecast.rows]) {
+      const 七二 = 列表.find((列) => 列.patch === '7.2');
+      assert.equal(七二.tc_released, true);
+      assert.equal(七二.international_released, true);
+      assert.equal(格式化版本間隔(七二), '490 天');
+      for (const 列 of 列表.filter((列) => 列.tc_released && 列.international_released)) {
+        assert.equal(格式化版本間隔(列), `${列.tc_day - 列.international_day} 天`);
+      }
+      for (const 列 of 列表.filter((列) => 列.tc_version_omitted || 列.tc_forecast_skipped)) {
+        assert.equal(格式化版本間隔(列), '—');
+      }
+    }
+    const 下版 = 視圖.forecast.rows.find((列) => 列.patch === 視圖.forecast.next.patch);
+    assert.equal(格式化版本間隔(下版), `約 ${下版.tc_day - 下版.international_day} 天`);
+  }
+});
+
+test("上線間隔與縮短天數不隨核對日累加，7.2 與 7.25 的發布日差同為 490 天", () => {
+  const 修改前 = JSON.stringify(資料);
+  for (const 日期 of ['2026-09-13', '2026-09-29', '2026-10-01']) {
+    const 重建設定 = 複製設定();
+    重建設定.verified_through = 日期;
+    const 重建 = 建置版本進度(重建設定);
+    assert.equal(重建.previous_comparable.patch, '7.15');
+    assert.equal(重建.previous_comparable.lag_days, 553);
+    assert.equal(重建.latest_comparable.patch, '7.2');
+    assert.equal(重建.latest_comparable.lag_days, 490);
+    assert.equal(重建.lag_reduction, 63);
+    assert.equal(格式化版本間隔(重建.views.all.forecast.rows.find((列) => 列.patch === '7.25')), '約 490 天');
+  }
+  assert.equal(JSON.stringify(資料), 修改前);
+});
+
+test("摘要使用最近兩次獨立發布日，不受已追上或主版仍持續的狀態影響", () => {
+  const 同步設定 = 複製設定();
+  同步設定.patches = 同步設定.patches.filter((列) => 列.tc !== null);
+  const 同步 = 建置版本進度(同步設定);
+  assert.equal(同步.current_tc, 同步.current_international);
+  assert.equal(同步.latest_comparable.lag_days, 490);
+  assert.equal(同步.lag_reduction, 63);
+
+  const 小版設定 = 複製設定();
+  小版設定.verified_through = "2026-07-27";
+  for (const 列 of 小版設定.patches) {
+    if (列.merged_into === "7.2") { delete 列.merged_into; delete 列.tc_version_omitted; }
+  }
+  const 小版 = 建置版本進度(小版設定);
+  assert.equal(小版.latest_comparable.patch, "7.15");
+  assert.equal(小版.previous_comparable.patch, "7.11");
+  assert.equal(小版.latest_comparable.lag_days, 553);
+  assert.equal(小版.lag_reduction, -7);
+  const 主版 = 小版.views.major.rows.find((列) => 列.patch === "7.1");
+  assert.equal(主版.tc_duration.ongoing, true);
+  assert.equal(主版.lag_days, 525);
+});
+
 test("常駐頁面跨日自動增加，休眠返回即時刷新且離頁後移除時鐘", (t) => {
   const 原視窗 = Object.getOwnPropertyDescriptor(globalThis, "window");
   const 原文件 = Object.getOwnPropertyDescriptor(globalThis, "document");
@@ -781,27 +920,51 @@ test("常駐頁面跨日自動增加，休眠返回即時刷新且離頁後移�
   const renderer = createRenderer({ createComment: () => ({}), insert() {}, remove() {} });
   let 目前日;
   let 天數;
+  let 間隔;
+  let 縮短;
+  let 下版倒數;
+  let 追上倒數;
+  let 面板間隔;
   app = renderer.createApp({ setup() {
     目前日 = useVersionProgressClock();
-    watchSyncEffect(() => { 天數 = 取得版本顯示時長({ days: 46, ongoing: true }, 資料.end_day, 目前日.value); });
+    watchSyncEffect(() => {
+      天數 = 取得版本顯示時長({ days: 46, ongoing: true }, 資料.end_day, 目前日.value);
+      間隔 = 資料.latest_comparable.lag_days;
+      縮短 = 資料.lag_reduction;
+      下版倒數 = 取得版本日期提示(資料.views.all.forecast.next.day, 目前日.value, 'planned', true).text;
+      追上倒數 = 取得版本追上提示(資料.views.all.forecast.catch_up, 目前日.value).text;
+      面板間隔 = 格式化版本間隔(資料.latest_comparable);
+    });
     return () => null;
   } });
   app.mount({});
   assert.equal(天數, 46);
+  assert.equal(面板間隔, '490 天');
+  assert.deepEqual([間隔, 縮短], [490, 63]);
+  assert.deepEqual([下版倒數, 追上倒數], ['還有 17 天', '距今天約 780 天']);
   t.mock.timers.tick(30_000);
   assert.equal(天數, 47);
+  assert.equal(面板間隔, '490 天');
+  assert.deepEqual([間隔, 縮短], [490, 63]);
+  assert.deepEqual([下版倒數, 追上倒數], ['還有 16 天', '距今天約 779 天']);
   t.mock.timers.setTime(Date.parse("2026-09-14T00:00:00+08:00"));
   視窗.dispatchEvent(new Event("focus"));
   assert.equal(天數, 48);
+  assert.equal(面板間隔, '490 天');
+  assert.deepEqual([間隔, 縮短], [490, 63]);
+  assert.deepEqual([下版倒數, 追上倒數], ['還有 15 天', '距今天約 778 天']);
   t.mock.timers.setTime(Date.parse("2026-09-15T00:00:00+08:00"));
   文件.dispatchEvent(new Event("visibilitychange"));
   assert.equal(天數, 49);
+  assert.equal(面板間隔, '490 天');
+  assert.deepEqual([間隔, 縮短], [490, 63]);
   app.unmount(); app = null;
   t.mock.timers.setTime(Date.parse("2026-09-16T00:00:00+08:00"));
   視窗.dispatchEvent(new Event("focus"));
   文件.dispatchEvent(new Event("visibilitychange"));
   t.mock.timers.tick(30_000);
   assert.equal(目前日.value, 日序("2026-09-15"));
+  assert.deepEqual([間隔, 縮短], [490, 63]);
 });
 
 test("版本時長依各服獨立更新日計算，合併版本與未公告版本不虛構時長", () => {

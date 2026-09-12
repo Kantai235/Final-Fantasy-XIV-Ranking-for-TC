@@ -1,6 +1,11 @@
 <script setup>
-import { 格式化版本日期 as 日期, 格式化版本星期 as 星期, 僅顯示版本同步 } from '../utils/versionProgress';
-const props = defineProps({ forecast: { type: Object, required: true }, major: { type: Boolean, default: false } });
+import { computed } from 'vue';
+import { 格式化版本日期 as 日期, 格式化版本星期 as 星期, 僅顯示版本同步, 取得版本日期提示, 取得版本追上提示 } from '../utils/versionProgress';
+// 兩處摘要共用頁面的台灣時鐘，避免各自建立計時器、跨日時顯示不同天數。
+const props = defineProps({ forecast: { type: Object, required: true }, major: { type: Boolean, default: false }, today: { type: Number, required: true } });
+const 追上提示 = computed(() => 取得版本追上提示(props.forecast.catch_up, props.today));
+const 下版提示 = computed(() => props.forecast.next ? 取得版本日期提示(props.forecast.next.day, props.today,
+  props.forecast.next.planned ? 'planned' : props.forecast.next.announced ? 'announced' : 'estimated', true) : null);
 function 節奏結果(結果) {
   if (!結果) return `${props.forecast.horizon_years} 年內未交會`;
   return 僅顯示版本同步(props.forecast.rows?.find((列) => 列.patch === 結果.patch))
@@ -11,12 +16,12 @@ function 節奏結果(結果) {
 <template>
   <div class="版本推測摘要" aria-live="polite">
     <template v-if="forecast.rows">
-      <p v-if="forecast.catch_up" class="版本推測結論"><span class="版本推測標籤">推測</span><span>{{ forecast.catch_up.already ? '目前已追上' : '約 ' + 日期(forecast.catch_up.date) + ' 追上' }}{{ major ? '主版進度' : '含小版本進度' }}</span><strong>{{ forecast.catch_up.patch }}</strong></p>
+      <p v-if="forecast.catch_up" class="版本推測結論"><span class="版本推測標籤">推測</span><span>{{ forecast.catch_up.already ? '核對時已追上' : (追上提示?.overdue ? '原推測約 ' : '約 ') + 日期(forecast.catch_up.date) + ' 追上' }}{{ major ? '主版進度' : '含小版本進度' }}</span><strong>{{ forecast.catch_up.patch }}</strong></p>
       <p v-else class="版本推測結論">依目前節奏，在 {{ forecast.horizon_years }} 年推算範圍內尚未交會。</p>
-      <p v-if="forecast.catch_up">距核對日約 {{ forecast.days_to_catch_up }} 天・開服至追上約 {{ forecast.elapsed_to_catch_up }} 天。{{ major ? '主版相同時即視為追上，小版本可能仍有差距。' : '繁中服抵達當時國際服最新的小版本時，才視為追上。' }}</p>
+      <p v-if="forecast.catch_up"><span v-if="追上提示" :class="{ '版本推測過期': 追上提示.overdue }">{{ 追上提示.text }}・</span>開服至追上約 {{ forecast.elapsed_to_catch_up }} 天。{{ major ? '主版相同時即視為追上，小版本可能仍有差距。' : '繁中服抵達當時國際服最新的小版本時，才視為追上。' }}</p>
       <p v-if="forecast.continuation_major">延伸至下一主版 <strong>{{ forecast.continuation_major.patch }}</strong> 及所屬小版本（至 {{ forecast.continuation_major.end_patch }}）：該主版國際服約 <strong>{{ 日期(forecast.continuation_major.international_date) }}</strong>、繁中服約 <strong>{{ 日期(forecast.continuation_major.tc_date) }}</strong>。繁中服 {{ forecast.continuation_major.previous_major }} 主版總時長約 {{ forecast.continuation_major.tc_cycle_days }} 天。</p>
       <p v-if="forecast.synchronization_start"><strong>{{ forecast.synchronization_start.patch }}：可能與國際服同步</strong></p>
-      <p v-if="forecast.next">下一個{{ major ? '主版本' : '更新節點' }}・繁中服 <strong>{{ forecast.next.patch }}</strong> {{ forecast.next.planned ? '預定' : forecast.next.announced ? '已公告' : '推測約' }} {{ 日期(forecast.next.date) }}<span v-if="forecast.next.planned">・{{ forecast.next.attribution }}</span><span v-if="forecast.next.overdue" class="版本推測過期">・{{ forecast.next.planned ? '預告' : '估算' }}日期已過核對日，仍待確認</span></p>
+      <p v-if="forecast.next">下一個{{ major ? '主版本' : '更新節點' }}・繁中服 <strong>{{ forecast.next.patch }}</strong> {{ forecast.next.planned ? '預定' : forecast.next.announced ? '已公告' : '推測約' }} {{ 日期(forecast.next.date) }}<span v-if="forecast.next.planned">・{{ forecast.next.attribution }}</span><span v-if="下版提示" :class="{ '版本推測過期': 下版提示.overdue }">・{{ 下版提示.text }}</span></p>
       <p v-if="forecast.skipped_patches?.length">跳版假設：繁中服略過 {{ forecast.skipped_patches.join('、') }}，待官方確認。</p>
       <p v-if="forecast.tc_cycle_source === 'scenario'">繁中服主版以約 {{ forecast.tc_cycle_days }} 天為目標，推測更新固定{{ 星期(forecast.tc_update_weekday) }}，一般週期為 {{ forecast.tc_typical_cycle_days }} 天；已公告與活動預告日期優先。</p>
       <details>
@@ -41,6 +46,6 @@ function 節奏結果(結果) {
       </details>
       <p class="版本推測聲明">依更新節奏與排程假設推測，非官方公告；後續版本與合併排程尚未確定。</p>
     </template>
-    <template v-else><p v-if="forecast.next">繁中服 {{ forecast.next.patch }} {{ forecast.next.planned ? '預定' : '已公告於' }} {{ 日期(forecast.next.date) }} 更新。{{ forecast.next.attribution }}</p><p>目前完整主版週期的紀錄不足，暫時無法推算追上日期。</p></template>
+    <template v-else><p v-if="forecast.next">繁中服 {{ forecast.next.patch }} {{ forecast.next.planned ? '預定' : '已公告於' }} {{ 日期(forecast.next.date) }} 更新。{{ forecast.next.attribution }}<span v-if="下版提示" :class="{ '版本推測過期': 下版提示.overdue }">・{{ 下版提示.text }}</span></p><p>目前完整主版週期的紀錄不足，暫時無法推算追上日期。</p></template>
   </div>
 </template>

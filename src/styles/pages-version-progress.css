@@ -54,6 +54,11 @@
 .版本推測折線 { fill: none; stroke: currentColor; stroke-width: 2; stroke-dasharray: 6 5; vector-effect: non-scaling-stroke; }
 .版本推測核對線 { stroke: var(--次要文字); opacity: .45; stroke-dasharray: 3 4; }
 .版本推測核對字 { fill: var(--次要文字); }
+.版本今日標記 { pointer-events: none; }
+.版本今日線 { stroke: var(--主要文字); stroke-width: 1; stroke-opacity: .65; vector-effect: non-scaling-stroke; shape-rendering: crispEdges; }
+.版本今日字 { fill: var(--主要文字); font-weight: 600; }
+.版本今日圖例 { color: var(--主要文字); font-size: .76rem; font-weight: 500; }
+.版本日期提示 { display: block; margin-top: 6px; font-size: .75rem; line-height: 1.7; }
 .版本推測端點 { fill: currentColor; font-weight: 700; }
 .版本推測節點 { cursor: pointer; outline: none; }
 .版本推測節點 path { fill: var(--表面背景); stroke: currentColor; stroke-width: 2; }
@@ -118,6 +123,7 @@
 .版本對照表 th button strong { min-width: 38px; font-size: .98rem; }
 .版本對照表 th button[aria-pressed="true"] { color: var(--重點色); }
 .版本對照表 small { display: block; color: var(--次要文字); font-size: .7rem; margin-top: 3px; }
+.版本對照表 .版本推測過期 { color: var(--錯誤文字); }
 .版本對照表 .版本間隔欄 { font-weight: 600; white-space: nowrap; }
 .版本對照表 .版本單版時長 { margin-top: 6px; line-height: 1.6; }
 .版本對照表 .版本同步合併 { padding: 24px 14px; text-align: center; white-space: normal; color: var(--主要文字); }

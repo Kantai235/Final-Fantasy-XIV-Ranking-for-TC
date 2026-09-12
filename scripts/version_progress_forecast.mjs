@@ -96,6 +96,7 @@ export function 建置追趕推測(原始列, 預定, 開服日, 截止日, 規�
       const 目前 = 原始列.findLast((列) => 列.tc_released);
       const 下一版 = 原始列.find((列) => 列.order > 目前.order && !列.tc_version_omitted && !跳版.has(列.patch) && (範圍 === 'all' || 列.major));
       return [範圍, { status: 'insufficient', next: 下一版?.tc || 下一版?.tc_plan ? { patch: 下一版.patch, date: 下一版.tc || 下一版.tc_plan.date,
+        day: 下一版.tc_day ?? 下一版.tc_plan_day,
         announced: Boolean(下一版.tc), planned: Boolean(下一版.tc_plan), attribution: 下一版.tc_plan?.attribution } : null }];
     }));
   }
@@ -145,7 +146,7 @@ export function 建置追趕推測(原始列, 預定, 開服日, 截止日, 規�
       const 國際日 = 計畫 ? 月日(計畫) : 國際週二(前版.international_day + 間距, 最後已知日 + 1);
       if (國際日 <= 前版.international_day) throw new Error('預定月份與推測版本順序衝突');
       前版 = { patch, title: 計畫?.title || '後續版本（推測）', major: true, international: null, tc: null,
-        international_day: 國際日, tc_day: null, international_month: 計畫?.month,
+        international_day: 國際日, tc_day: null, international_month: 計畫?.month, international_month_end_day: 計畫?.end_day,
         international_estimated: true, tc_estimated: false, international_released: false,
         tc_released: false, international_url: 計畫?.url || null, note_links: [], lag_days: null };
       列表.push(前版);
@@ -271,7 +272,7 @@ export function 建置追趕推測(原始列, 預定, 開服日, 截止日, 規�
     const 列表 = 中央列.filter((列) => (範圍 === 'all' || 列.major) && 列.international_day <= 終點)
       .map((列) => {
         // 情境間隔使用同一列的雙服日期；合併版缺少獨立日期時不能補成 0 天。
-        // 只更新情境副本，已上線摘要與一般模式仍使用原始列的實際間隔。
+        // 只更新情境副本；已上線版本保持原始發布日差，不因仍是繁中現行版本而累加。
         const 可比較 = Number.isFinite(列.tc_day) && Number.isFinite(列.international_day);
         return { ...列, tc_sync_candidate: 列.patch === 同步起點?.patch,
           lag_days: 可比較 ? 列.tc_day - 列.international_day : null,
@@ -327,7 +328,7 @@ export function 建置追趕推測(原始列, 預定, 開服日, 截止日, 規�
       tc_typical_cycle_days: 規則 ? Math.round(繁中週期 / 7) * 7 : 繁中週期,
       fast_tc_cycle_days: 快速週期, slow_tc_cycle_days: 緩慢週期,
       skipped_patches: [...跳版],
-      next: 下一版 ? { patch: 下一版.patch, date: 日期(下一版.tc_day), announced: Boolean(下一版.tc), overdue: 下一版.tc_day <= 截止日,
+      next: 下一版 ? { patch: 下一版.patch, date: 日期(下一版.tc_day), day: 下一版.tc_day, announced: Boolean(下一版.tc), overdue: 下一版.tc_day <= 截止日,
         planned: Boolean(下一版.tc_planned), attribution: 下一版.tc_plan?.attribution,
         merged_into: 下一版.merged_into || null } : null,
     }];

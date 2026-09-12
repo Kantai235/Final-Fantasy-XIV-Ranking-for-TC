@@ -37,6 +37,48 @@ export function 取得版本顯示時長(時長, 核對日, 目前日) {
 }
 
 /**
+ * 版本列比較固定的兩服發布日；繁中仍在遊玩此版本，不代表發布間隔仍在增加。
+ * 推測列同樣沿用模型日期差，只補「約」字；無獨立日期時不虛構間隔。
+ * @param {{lag_days:number|null, lag_estimated?:boolean}} 列
+ * @returns {string}
+ */
+export function 格式化版本間隔(列) {
+  return 列.lag_days !== null ? `${列.lag_estimated ? '約 ' : ''}${列.lag_days} 天` : '—';
+}
+
+/**
+ * 只描述今天相對於既有日期的位置，不把預告或推測自動升格成實際上線。
+ * 月份公告使用建置層提供的月底；不能拿月中錨點當確切更新日。
+ * @param {number|null|undefined} 目標日
+ * @param {number} 目前日
+ * @param {'planned'|'announced'|'estimated'|'month'} 種類
+ * @param {boolean} 倒數 未來倒數只放在下一版，避免每個遙遠版本都重複增加提示。
+ * @returns {{text:string, overdue:boolean}|null}
+ */
+export function 取得版本日期提示(目標日, 目前日, 種類, 倒數 = false) {
+  if (!Number.isFinite(目標日)) return null;
+  const 天數 = 目標日 - 目前日;
+  if (種類 === 'month') return 天數 < 0 ? { text: '預定月份已過，待核對實際更新。', overdue: true } : null;
+  if (天數 > 0) return 倒數 ? { text: `還有 ${天數} 天`, overdue: false } : null;
+  if (天數 === 0) return { text: `${種類 === 'planned' ? '預定' : 種類 === 'announced' ? '公告於' : '推測'}今日更新，實際更新待核對。`, overdue: false };
+  return { text: `${種類 === 'planned' ? '預告' : 種類 === 'announced' ? '公告' : '推測'}日期已過，${種類 === 'estimated' ? '待重新核對排程。' : '待核對實際更新。'}`, overdue: true };
+}
+
+/**
+ * 追上日期由模型固定，只有剩餘天數隨今天減少；超過日期時提示過期，不宣稱已追上。
+ * @param {{day:number, already?:boolean}|null|undefined} 交點
+ * @param {number} 目前日
+ * @returns {{text:string, overdue:boolean}|null}
+ */
+export function 取得版本追上提示(交點, 目前日) {
+  if (!交點 || 交點.already || !Number.isFinite(交點.day)) return null;
+  const 天數 = 交點.day - 目前日;
+  return { text: 天數 > 0 ? `距今天約 ${天數} 天`
+    : 天數 === 0 ? '推測於今日追上，實際進度待核對。'
+      : `原推測追上日期已過 ${-天數} 天，待重新核對。`, overdue: 天數 < 0 };
+}
+
+/**
  * 遙遠的同步候選只呈現可能性，模型日期仍供座標及前版時長計算。
  * 後續若已有正式日期或活動預告，必須回到一般日期顯示。
  * @param {{tc_sync_candidate?: boolean, international?: string|null, tc?: string|null, tc_plan?: object|null}|undefined} 列
