@@ -74,7 +74,7 @@ onUnmounted(() => {
 
     <AppFooter />
     <PlayerSearchHistoryDialog />
-    <HoneyFansFloatingButton v-if="顯示Honey粉絲榜 && view.頁面模式 !== 'version-progress'" />
+    <HoneyFansFloatingButton v-if="顯示Honey粉絲榜" />
   </main>
 </template>
 
