@@ -9,6 +9,7 @@
     "npm": ">=10.0.0"
   },
   "scripts": {
+    "test:version-progress": "node --test scripts/test_version_progress.mjs",
     "python": "node scripts/run_python.mjs",
     "python:venv": "node scripts/run_python.mjs -m venv .venv",
     "python:install": "node scripts/run_python.mjs -m pip install -r requirements.txt",

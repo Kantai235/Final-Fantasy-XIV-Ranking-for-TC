@@ -18,6 +18,7 @@ import {
 } from "../domain/jobs";
 import { 建立副本選單分組 } from "../domain/encounters";
 import { activityLogTimelineAnnotations } from "../utils/activityTimelineAnnotations";
+import 版本進度資料 from "virtual:version-progress";
 import { 讀取Json } from "../utils/fetchJson";
 import {
   解析紀錄日期,
@@ -626,6 +627,7 @@ function 目前職業主色() {
 }
 
 function 目前頁面主色() {
+  if (頁面模式.value === "version-progress") return "default";
   if (頁面模式.value === "stats") {
     return 主色由職業範圍(統計職業範圍.value);
   }
@@ -3203,6 +3205,7 @@ const 零式進度漏斗 = computed(() => {
 });
 
 const 更新時間文字 = computed(() => {
+  if (頁面模式.value === "version-progress") return `資料核對 ${版本進度資料.verified_through.replaceAll("-", "/")}`;
   if (頁面模式.value === "user") {
     const 更新時間 = 使用者索引.value?.rankings_updated_at_iso || 使用者資料.value?.generated_at_iso;
     return 更新時間 ? `資料更新時間 ${格式化紀錄時間(更新時間)}` : "個人成績單資料";
@@ -3252,6 +3255,7 @@ const 更新時間文字 = computed(() => {
 });
 
 const 頁面副標 = computed(() => {
+  if (頁面模式.value === "version-progress") return "Final Fantasy XIV 繁中服・版本進度";
   if (頁面模式.value === "user") {
     return "Final Fantasy XIV 繁中服・個人成績單";
   }
@@ -3292,6 +3296,7 @@ const 頁面副標 = computed(() => {
 });
 
 const 頁面標題 = computed(() => {
+  if (頁面模式.value === "version-progress") return "版本進度";
   if (頁面模式.value === "user") {
     return 使用者資料.value?.character_name ? `${使用者資料.value.character_name} 個人成績單` : "個人成績單";
   }
@@ -3459,6 +3464,7 @@ const 分享標題 = computed(() => {
 });
 
 const 分享描述 = computed(() => {
+  if (頁面模式.value === "version-progress") return `繁中服 ${版本進度資料.current_tc} 與國際服 ${版本進度資料.current_international} 的版本進度，包含小版本時間軸、上線日期與間隔比較。資料核對至 ${版本進度資料.verified_through}。`;
   if (頁面模式.value === "stats") {
     return 全服統計分享描述();
   }
@@ -5497,6 +5503,12 @@ function 切換到常見問題() {
   更新分享網址("faq", {});
 }
 
+function 切換到版本進度() {
+  if (頁面模式.value === "version-progress") return;
+  頁面模式.value = "version-progress";
+  更新分享網址("version-progress", {});
+}
+
 function 切換到Logs檢查() {
   切換到常見問題();
 }
@@ -5687,6 +5699,8 @@ async function 套用網址狀態(網址狀態 = 讀取目前網址狀態()) {
       await 套用隊伍榜網址狀態(網址狀態);
     } else if (網址狀態.page === "servers") {
       await 套用伺服器對比網址狀態(網址狀態);
+    } else if (網址狀態.page === "version-progress") {
+      頁面模式.value = "version-progress";
     } else if (網址狀態.page === "faq" || 網址狀態.page === "logs") {
       頁面模式.value = "faq";
     } else if (網址狀態.page === "honey-fans" && 啟用Honey粉絲榜.value) {
@@ -6560,6 +6574,7 @@ onUnmounted(() => {
     切換到隊伍榜,
     切換到伺服器對比,
     切換到常見問題,
+    切換到版本進度,
     切換到Logs檢查,
     切換到蜂蜂粉絲榜,
     切換隊伍榜副本選單,

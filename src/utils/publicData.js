@@ -5,7 +5,7 @@
 // 這裡集中處理兩種資料 URL，避免頁面或 composable 各自拼接路徑時漏掉 base path 或外部 repo 基底。
 const Vite公開基底路徑 = import.meta.env?.BASE_URL ?? "/";
 
-const 乾淨路由片段 = new Set(["stats", "user", "compare", "jobs", "activity", "teams", "servers", "faq", "logs", "honey-fans"]);
+const 乾淨路由片段 = new Set(["stats", "user", "compare", "jobs", "activity", "teams", "servers", "faq", "logs", "honey-fans", "version-progress"]);
 
 const DEFAULT_USER_DATA_BASE_URL =
   "https://raw.githubusercontent.com/Kantai235/Final-Fantasy-XIV-Ranking-for-TC-Users/refs/heads/main/";

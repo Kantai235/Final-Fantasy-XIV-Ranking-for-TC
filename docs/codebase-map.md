@@ -37,6 +37,9 @@
 | `src/pages/ServerComparePage.vue` | 兩個伺服器的收錄、職能、職業與副本比較。 |
 | `src/pages/JobAnalysisPage.vue` | 職能／職業分位、分布、代表紀錄與分析。 |
 | `src/pages/ActivityPage.vue` | 最新紀錄、活躍度、每日 Logs／通關趨勢與版本事件。 |
+| `src/pages/VersionProgressPage.vue` | 兩服版本摘要、主要／小版本階梯時間軸與日期對照表。 |
+| `src/components/VersionTrendHint.vue` | 版本摘要的紅綠趨勢符號，支援滑鼠、觸控及鍵盤開關提示，並避開畫面邊界。 |
+| `src/components/VersionForecastSummary.vue` | 兩區塊共用的追上日期、下一個更新、歷史取樣依據與敏感度情境。 |
 | `src/pages/ReportStatusPage.vue` | 常見問題、report 靜態索引比對、Apps Script 即時查詢與送單。 |
 | `src/pages/HoneyFansPage.vue` | Honey B. Lovely 近 7 天粉絲榜、歷史統計與活動隊伍榜。 |
 
@@ -87,6 +90,7 @@
 | `src/utils/userProfileBadges.js` | 固定成就 ID、條件、優先順序、目錄分類與進度群組。 |
 | `src/utils/userProfileTrend.js` | 個人成績趨勢條件、時間範圍、資料點與版本線。 |
 | `src/utils/activityTimelineAnnotations.js` | 近期動態與個人成績趨勢共用的台／國際服版本事件。 |
+| `src/utils/versionProgress.js` | 版本進度頁的 URL 選取正規化與日期顯示。 |
 | `src/utils/announcements.js` | 公告 schema 正規化、狀態、localStorage 與受限 Markdown 解析。 |
 | `src/utils/siteFeatures.js` | 作者、社群、Telegram、GCD 與 Honey UI 暫時性旗標。 |
 | `src/utils/viewHelpers.js` | 排名色彩、比例條、熱力格、趨勢點與圖片 fallback。 |
@@ -105,6 +109,7 @@
 | `src/styles/pages-profile.css` | 個人成績、簡表、趨勢、徽章與成就手冊。 |
 | `src/styles/pages-report-status.css` | 常見問題與 FFLogs 檢查工具。 |
 | `src/styles/pages-honey-fans.css` | Honey 頁面、背景、動畫與活動榜。 |
+| `src/styles/pages-version-progress.css` | 版本摘要、SVG 時間軸、對照表與本頁手機重排。 |
 | `src/styles/responsive.css` | 跨頁手機／窄螢幕覆寫。 |
 
 ## 正式資料抓取層
@@ -179,6 +184,9 @@
 | `scripts/complete_fflogs_refresh_queue.mjs` | 依公開／hidden／來源／state 與 fight 完整性相容證據回寫 Google Sheet 終止狀態。 |
 | `scripts/google_sheets_service_account.mjs` | Google service-account JWT、token 與 Sheets 讀寫共用函式。 |
 | `scripts/build_spa_fallback.mjs` | route fallback、SEO／OG PNG、sitemap、robots 與選填玩家頁。 |
+| `scripts/build_version_progress.mjs` | Node 端驗證發布日期及預先計算版本間隔，透過 Vite 輸出靜態 JSON 模組。 |
+| `scripts/version_progress_forecast.mjs` | 依雙服更新週期推算至移動中的國際進度，提供獨立情境時長、首次交會、後續排程、可能開始同步的主版本與敏感度結果。 |
+| `scripts/test_version_progress.mjs` | 隔離測試版本計算、來源、URL 與靜態分享頁；不讀正式玩家資料。 |
 | `scripts/prune_pages_user_data.mjs` | 從 Pages artifact 移除高基數玩家 JSON／頁面／OG。 |
 | `scripts/generate_site_icons.mjs` | 由 SVG 唯一來源產生 favicon 與 PWA icon。 |
 | `scripts/setup_og_fonts.sh` | 在 Actions 下載／抽取／註冊 OG 所需 Noto CJK 字型。 |
@@ -195,6 +203,7 @@
 | --- | --- |
 | `config/encounters.json` | 副本穩定 key、FFLogs ID、掃描時窗、版本切點與簡表領域設定。 |
 | `config/game_versions.json` | 繁中服競技版本順序與開放時間。 |
+| `config/version_progress.json` | 獨立維護兩服主要／小版本日期、核對日、官方來源及合併內容。 |
 | `config/fflogs.json` | 非敏感的掃描、限流、回補、排除與完整性設定。 |
 | `config/fight_integrity_baselines.json` | 歷史完整隊伍 P99 預篩設定。 |
 | `config/fight_integrity_known_enemy_hp.json` | 已知承傷範圍、硬上限與逐目標 profile。 |

@@ -6,6 +6,7 @@
 
 - `encounters.json`：副本名稱、FFLogs ID、啟用狀態、目前高難標記、個人成績簡表版本與起掃日期。
 - `game_versions.json`：繁中服競技版本的更新切點；資料建置層依通關紀錄時間寫入個人成績單與排行榜薄索引的 `game_version`，供使用者選擇顯示或隱藏。
+- `version_progress.json`：版本進度頁的兩服發布日期、主要／小版本分類、合併說明與官方來源；`note_sources` 另記錄內容對照的雙方筆記，`international_plans` 保存只公告月份的未來資料片，`tc_plan` 保存有歸因的繁中活動預告，`tc_forecast_skip` 保存可能跳過的小版假設。`forecast_policy` 保存繁中主版目標週期與更新星期，目前為約 100 天、星期二，選填的 `tc_skipped_patches` 以完整版本號列出未來小版的合併假設，`shared_minor_intervals` 指定兩服從 8.0 起的前期小版固定間隔（14／14／14／21 天）；`international_history` 保存有來源的舊資料片日期樣本，供國際服同編號小版間隔及資料片前空窗推測使用，不加入開服後的版本表。這些資訊均與已上線日期及競技版本切點分開維護，詳見 [版本進度維護](../docs/version-progress.md)。
 - `fflogs.json`：FFLogs 爬蟲的掃描、限流、重試與手動補抓參數。
 - `site.json`：正式站台網址、Vite base path 與本機開發/預覽允許的 host。Cloudflare 規則腳本也會以 `site_url` 推導預設 hostname。
 

@@ -12,6 +12,7 @@ const RankingPage = defineAsyncComponent(() => import("./pages/RankingPage.vue")
 const GlobalStatsPage = defineAsyncComponent(() => import("./pages/GlobalStatsPage.vue"));
 const JobAnalysisPage = defineAsyncComponent(() => import("./pages/JobAnalysisPage.vue"));
 const ActivityPage = defineAsyncComponent(() => import("./pages/ActivityPage.vue"));
+const VersionProgressPage = defineAsyncComponent(() => import("./pages/VersionProgressPage.vue"));
 const UserProfilePage = defineAsyncComponent(() => import("./pages/UserProfilePage.vue"));
 const ComparePage = defineAsyncComponent(() => import("./pages/ComparePage.vue"));
 const TeamRankingsPage = defineAsyncComponent(() => import("./pages/TeamRankingsPage.vue"));
@@ -37,7 +38,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <main class="頁面" :data-accent="view.主色模式">
+  <main class="頁面" :class="{ '版本進度頁面': view.頁面模式 === 'version-progress' }" :data-accent="view.主色模式">
     <div
       v-if="顯示Honey粉絲榜 && view.頁面模式 === 'honey-fans' && view.蜂蜂觀眾粉絲列表.length"
       class="粉絲榜全頁背景觀眾席"
@@ -63,6 +64,7 @@ onUnmounted(() => {
     <GlobalStatsPage v-else-if="view.頁面模式 === 'stats'" />
     <JobAnalysisPage v-else-if="view.頁面模式 === 'jobs'" />
     <ActivityPage v-else-if="view.頁面模式 === 'activity'" />
+    <VersionProgressPage v-else-if="view.頁面模式 === 'version-progress'" />
     <UserProfilePage v-else-if="view.頁面模式 === 'user'" />
     <ComparePage v-else-if="view.頁面模式 === 'compare'" />
     <TeamRankingsPage v-else-if="view.頁面模式 === 'teams'" />
@@ -72,7 +74,7 @@ onUnmounted(() => {
 
     <AppFooter />
     <PlayerSearchHistoryDialog />
-    <HoneyFansFloatingButton v-if="顯示Honey粉絲榜" />
+    <HoneyFansFloatingButton v-if="顯示Honey粉絲榜 && view.頁面模式 !== 'version-progress'" />
   </main>
 </template>
 

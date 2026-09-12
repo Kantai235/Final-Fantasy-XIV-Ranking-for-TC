@@ -19,6 +19,7 @@
 | [getting-started.md](getting-started.md) | 新協作者 | 安裝、環境變數、Data repo hydrate 與驗證選擇。 |
 | [commands.md](commands.md) | 開發者／維運者 | `package.json` 全部指令、外部存取與寫入風險。 |
 | [features.md](features.md) | 產品、前端與資料開發者 | 使用者可見頁面、偏好、版本、支援統計與成就行為。 |
+| [version-progress.md](version-progress.md) | 前端開發者／版本資料維護者 | 兩服主要／小版本比較定義、官方日期來源與更新驗證。 |
 | [architecture.md](architecture.md) | 全體開發者 | 三層責任邊界、repo 分工、資料流與前端讀取邊界。 |
 | [codebase-map.md](codebase-map.md) | 接手與審查者 | 每個程式碼、設定、workflow 與測試檔案的責任。 |
 | [data-pipeline.md](data-pipeline.md) | 資料維護者 | FFLogs 掃描、支援統計、GCD、完整性檢核與回補。 |

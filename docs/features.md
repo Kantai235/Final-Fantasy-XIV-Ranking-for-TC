@@ -14,10 +14,13 @@
 | 伺服器對比 | `/servers/{左}/vs/{右}` | `data/server_compare.json` | `src/pages/ServerComparePage.vue` |
 | 職業分析 | `/jobs`、`/jobs/{職業}` | `data/global_stats.json` | `src/pages/JobAnalysisPage.vue` |
 | 近期動態 | `/activity` | `data/activity.json` | `src/pages/ActivityPage.vue` |
+| 版本進度 | `/version-progress` | `config/version_progress.json` 經 Node 建置的靜態 JSON 模組 | `src/pages/VersionProgressPage.vue` |
 | 常見問題／Logs 檢查 | `/faq`；舊 `/logs` 相容 | report 狀態索引、更新狀態、選填 Apps Script | `src/pages/ReportStatusPage.vue` |
 | Honey B. Lovely 粉絲榜 | `/honey-fans` | `data/fun/honey_b_fans.json` | `src/pages/HoneyFansPage.vue` |
 
 `src/App.vue` 依 `src/utils/urlState.js` 解析出的頁面模式切換非同步頁面元件；專案沒有額外的 Vue Router 依賴。所有頁面共用 `src/composables/useRankingApp.js` 的狀態與載入流程，排行榜列的正規化、排序與報告細節按需載入則拆在 `src/composables/rankingApp/useRankingData.js`。
+
+版本進度頁提供兩區塊同步的猜測模式，依目前主版／小版篩選呈現首次交會，並續列後續小版及可能開始同步的主版本，同步更新各版與主版總時長，另以月份區間呈現國際服官方預定時程。現行情境保留繁中 8.51、8.56 的獨立更新日期；9.0 因過於遙遠，將兩服日期、總時長及相隔天數五欄合併，只顯示粗體「繁中服可能於此版本開始與國際服同步更新。」，摘要及圖表也隱藏該版推測日期。獨立日期來源、估算方法、比較方式與維護步驟見 [版本進度](version-progress.md)。
 
 ## 排行榜
 

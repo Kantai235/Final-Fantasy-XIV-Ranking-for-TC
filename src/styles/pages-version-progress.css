@@ -1,0 +1,206 @@
+/* 版本頁沿用站台主題；金色代表繁中服，藍色代表國際服，文字與圖例提供非色彩辨識。 */
+.版本進度內容 { display: grid; gap: 20px; font-variant-numeric: tabular-nums; }
+.版本繁中 { color: var(--重點色); }
+.版本國際 { color: var(--公告色); }
+.版本摘要, .版本面板 { border: 1px solid var(--邊框色); border-radius: 8px; background: var(--表面背景); overflow: hidden; }
+.版本摘要 { display: grid; grid-template-columns: 1.1fr 1fr 1fr; padding: 26px 26px 12px; column-gap: 28px; overflow: visible; }
+.版本雙服 { display: flex; gap: 36px; }
+.版本雙服 > div { display: flex; flex-direction: column; gap: 4px; }
+.版本雙服 span { font-weight: 700; }
+.版本雙服 strong { font-size: clamp(2.7rem, 5vw, 4.1rem); line-height: 1.2; letter-spacing: -.04em; }
+.版本節點差, .版本天數差 { border-left: 1px solid var(--邊框色); padding-left: 28px; }
+.版本節點差 > span, .版本天數差 > span { color: var(--次要文字); font-size: .9rem; }
+.版本節點差 p, .版本天數差 p { margin: 6px 0; }
+.版本節點差 p { display: flex; align-items: baseline; gap: 10px; }
+.版本節點差 strong { font-size: 3rem; line-height: 1.1; }
+.版本天數差 strong { font-size: clamp(1.5rem, 2.5vw, 2rem); white-space: nowrap; }
+.版本天數差 strong span { color: var(--次要文字); font-weight: 400; }
+.版本摘要 small { color: var(--次要文字); font-size: .78rem; line-height: 1.6; }
+.版本間隔數值, .版本間隔變化 { display: flex; align-items: center; gap: 4px; }
+.版本間隔數值 { white-space: nowrap; }
+.版本趨勢提示 { display: inline-flex; position: relative; flex: 0 0 auto; vertical-align: middle; }
+.版本趨勢-up { --趨勢色: var(--錯誤文字); }
+.版本趨勢-down { --趨勢色: var(--公告更新色); }
+.版本趨勢按鈕 { display: inline-flex; align-items: center; justify-content: center; width: 28px; min-width: 28px; height: 28px; min-height: 28px; padding: 4px; border: 0; border-radius: 4px; background: transparent; color: var(--趨勢色); cursor: pointer; }
+.版本趨勢按鈕:hover:not(:disabled), .版本趨勢按鈕[aria-expanded="true"] { color: var(--趨勢色); background: color-mix(in srgb, var(--趨勢色) 12%, transparent); }
+.版本趨勢按鈕 svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+.版本趨勢提示內容 { position: absolute; z-index: 40; top: 100%; padding: 10px 12px; border: 1px solid var(--邊框色); border-radius: 6px; color: var(--主要文字); background: var(--表面背景); box-shadow: 0 8px 24px rgb(0 0 0 / .24); font-size: .78rem; font-weight: 500; line-height: 1.6; white-space: normal; text-align: left; }
+.版本摘要註記 { grid-column: 1 / -1; color: var(--次要文字); margin: 20px 0 0; font-size: .78rem; text-align: center; line-height: 1.7; }
+.版本面板標題 { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 22px 24px 14px; }
+.版本面板 h2 { margin: 0; font-size: 1.35rem; line-height: 1.45; }
+.版本面板標題 p { margin: 6px 0 0; color: var(--次要文字); font-size: .82rem; }
+.版本面板標題 .版本開服天數 { white-space: nowrap; margin: 0; }
+.版本開服天數 strong { color: var(--主要文字); font-size: 1.7rem; }
+.版本工具列 { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin: 0 24px 14px; }
+.版本圖例 { display: flex; flex-wrap: wrap; gap: 10px 20px; font-size: .84rem; font-weight: 600; }
+.版本面板操作 { display: flex; align-items: flex-end; flex-direction: column; gap: 12px; }
+.版本猜測開關 { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 7px 10px; border: 1px solid var(--輸入邊框); border-radius: 6px; background: transparent; color: var(--次要文字); font: inherit; font-size: .78rem; cursor: pointer; white-space: nowrap; }
+.版本猜測開關:hover:not(:disabled) { color: var(--主要文字); background: var(--表面背景柔和); }
+.版本猜測開關[aria-checked="true"] { border-color: var(--公告警示色); color: var(--公告警示色); }
+.版本開關軌道 { position: relative; width: 30px; height: 18px; border-radius: 12px; background: var(--輸入邊框); }
+.版本開關軌道::after { content: ""; position: absolute; top: 3px; left: 3px; width: 12px; height: 12px; border-radius: 50%; background: var(--主要文字); }
+.版本猜測開關[aria-checked="true"] .版本開關軌道 { background: var(--公告警示色); }
+.版本猜測開關[aria-checked="true"] .版本開關軌道::after { left: 15px; background: var(--表面背景); }
+.版本推測摘要 { margin: 0 24px 18px; padding: 14px 16px; border: 1px dashed var(--公告警示色); border-radius: 6px; font-size: .78rem; color: var(--次要文字); line-height: 1.7; }
+.版本推測摘要 p { margin: 4px 0; }
+.版本推測摘要 .版本推測結論 { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; color: var(--主要文字); font-size: .88rem; margin-bottom: 8px; }
+.版本推測標籤 { display: inline-block; padding: 1px 5px; border: 1px dashed currentColor; border-radius: 3px; color: var(--公告警示色); font-size: .72rem; white-space: nowrap; }
+.版本推測摘要 summary { cursor: pointer; width: fit-content; color: var(--主要文字); margin-top: 8px; }
+.版本推測摘要 ul { padding-left: 20px; margin: 8px 0; }
+.版本推測摘要 .版本推測聲明 { margin-top: 8px; color: var(--公告警示色); }
+.版本推測過期 { color: var(--錯誤文字); }
+.版本推測圖例 { color: var(--公告警示色); font-size: .76rem; font-weight: 500; }
+.版本推測圖層 { color: var(--公告警示色); }
+.版本推測折線 { fill: none; stroke: currentColor; stroke-width: 2; stroke-dasharray: 6 5; vector-effect: non-scaling-stroke; }
+.版本推測核對線 { stroke: var(--次要文字); opacity: .45; stroke-dasharray: 3 4; }
+.版本推測核對字 { fill: var(--次要文字); }
+.版本推測端點 { fill: currentColor; font-weight: 700; }
+.版本推測節點 { cursor: pointer; outline: none; }
+.版本推測節點 path { fill: var(--表面背景); stroke: currentColor; stroke-width: 2; }
+.版本推測觸控 { fill: transparent; }
+.版本推測節點:hover .版本推測觸控 { fill: currentColor; fill-opacity: .16; }
+.版本推測節點:focus-visible .版本推測觸控 { stroke: currentColor; stroke-width: 2; }
+.版本選取詳情 .版本選取推測, .版本對照表 .版本表推測 { color: var(--公告警示色); }
+.版本表推測 .版本推測標籤 { margin-right: 5px; }
+.版本國際預定說明 { margin: 0 24px 16px; font-size: .78rem; color: var(--公告色); line-height: 1.7; }
+.版本國際預定說明 a { color: inherit; margin-left: 8px; text-underline-offset: 3px; }
+.版本預定圖層 rect { fill: color-mix(in srgb, var(--公告色) 12%, transparent); stroke: var(--公告色); stroke-dasharray: 3 3; }
+.版本預定圖層 text { fill: var(--公告色); font-size: 10px; }
+.版本對照表 .版本預定列 > th { color: var(--公告色); }
+.版本範圍切換 { display: flex; padding: 3px; border: 1px solid var(--輸入邊框); border-radius: 6px; }
+.版本範圍切換 button { background: transparent; color: var(--次要文字); border: 0; border-radius: 4px; padding: 9px 14px; font: inherit; font-size: .85rem; cursor: pointer; }
+.版本範圍切換 button[aria-pressed="true"] { background: var(--重點色); color: var(--重點文字); font-weight: 700; }
+.版本進度內容 button:focus-visible, .版本進度內容 a:focus-visible, .版本進度內容 select:focus-visible, .版本進度內容 summary:focus-visible, .版本圖表捲動:focus-visible { outline: 2px solid var(--重點色); outline-offset: 3px; }
+/* 高度隨版本數完整展開，避免預測模式出現內部垂直捲軸；窄螢幕仍可橫向查看日期。 */
+.版本圖表捲動 { margin: 0 20px; overflow-x: auto; overscroll-behavior-x: contain; }
+.版本時間軸 { display: block; max-width: none; }
+.版本時間軸 text { font-family: inherit; font-size: 11px; }
+.版本格線 line, .版本日期軸 line { stroke: var(--邊框柔和色); stroke-width: 1; shape-rendering: crispEdges; }
+.版本格線 text, .版本日期軸 text { fill: var(--次要文字); }
+.版本格線選取 text { fill: var(--重點色); font-weight: 700; }
+.版本格線選取 line { stroke: var(--重點色); stroke-opacity: .3; }
+.版本線-international { color: var(--公告色); }
+.版本線-tc { color: var(--重點色); }
+.版本折線 { stroke: currentColor; stroke-width: 2.5; fill: none; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.版本節點 { cursor: pointer; outline: none; }
+.版本節點觸控 { fill: transparent; }
+.版本節點圓 { fill: currentColor; stroke: var(--表面背景); stroke-width: 1.5; }
+.版本節點:hover .版本節點觸控, .版本節點選取 .版本節點觸控 { fill: currentColor; fill-opacity: .16; }
+.版本節點:focus-visible .版本節點觸控 { stroke: currentColor; stroke-width: 2; }
+.版本線端點 { fill: currentColor; font-weight: 700; }
+.版本選取詳情 { display: flex; flex-wrap: wrap; align-items: center; gap: 14px 24px; padding: 18px 20px; margin: 6px 24px 0; background: var(--表面背景柔和); border-left: 3px solid var(--重點色); border-radius: 4px; font-size: .86rem; }
+.版本選取詳情 label { display: grid; gap: 6px; color: var(--次要文字); font-size: .75rem; }
+.版本選取詳情 select { max-width: 100%; padding: 8px 30px 8px 10px; background: var(--輸入背景); color: var(--主要文字); border: 1px solid var(--輸入邊框); border-radius: 4px; font: inherit; font-size: .88rem; }
+.版本詳情日期 { display: grid; gap: 8px; }
+.版本繁中狀態 { display: inline-block; white-space: pre-line; vertical-align: top; }
+.版本繁中狀態.版本合併狀態 { color: var(--次要文字); }
+.版本選取詳情 > strong { margin-left: auto; }
+.版本選取詳情 p { margin: 0; flex-basis: 100%; color: var(--次要文字); font-size: .8rem; line-height: 1.7; }
+.版本內容註記 { white-space: pre-line; }
+.版本註記來源 { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; flex-basis: 100%; font-size: .76rem; }
+.版本註記來源 span { color: var(--次要文字); }
+.版本註記來源 a { padding: 6px 0; color: var(--公告色); text-underline-offset: 3px; }
+.版本面板註記 { margin: 14px 24px 20px; color: var(--次要文字); font-size: .75rem; line-height: 1.8; }
+.版本核對標籤 { color: var(--次要文字); font-size: .78rem; white-space: nowrap; }
+.版本時長說明 { margin: 0 24px 14px; color: var(--次要文字); font-size: .75rem; line-height: 1.7; }
+.版本對照表 { width: 100%; min-width: 0; border-collapse: collapse; font-size: .86rem; }
+.版本對照表 th, .版本對照表 td { padding: 13px 14px; border-top: 1px solid var(--邊框柔和色); text-align: left; }
+.版本對照表 thead th { color: var(--次要文字); background: var(--表頭背景); font-weight: 500; font-size: .78rem; }
+.版本對照表 time { white-space: nowrap; }
+.版本對照表 tbody th { font-weight: 400; background: transparent; color: var(--主要文字); }
+.版本對照表 tbody tr:hover { background: var(--列hover背景); }
+.版本對照表 tbody tr.版本列選取 { background: color-mix(in srgb, var(--重點色) 12%, var(--表面背景)); }
+.版本列選取 th { box-shadow: inset 3px 0 var(--重點色); }
+.版本對照表 th button { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; background: transparent; color: inherit; padding: 4px 0; border: 0; text-align: left; font: inherit; cursor: pointer; }
+.版本對照表 th button:hover:not(:disabled) { background: transparent; color: var(--重點色); }
+.版本範圍切換 button:hover:not(:disabled) { background: var(--表面背景柔和); color: var(--主要文字); }
+.版本範圍切換 button[aria-pressed="true"]:hover:not(:disabled) { background: var(--重點色); color: var(--重點文字); }
+.版本對照表 th button strong { min-width: 38px; font-size: .98rem; }
+.版本對照表 th button[aria-pressed="true"] { color: var(--重點色); }
+.版本對照表 small { display: block; color: var(--次要文字); font-size: .7rem; margin-top: 3px; }
+.版本對照表 .版本間隔欄 { font-weight: 600; white-space: nowrap; }
+.版本對照表 .版本單版時長 { margin-top: 6px; line-height: 1.6; }
+.版本對照表 .版本同步合併 { padding: 24px 14px; text-align: center; white-space: normal; color: var(--主要文字); }
+.版本選取詳情 > .版本同步提示 { flex: 1; margin: 0; text-align: center; }
+/* 跨列總時長屬於整個 tbody，不繼承第一個版本列的反白或選取底色。 */
+.版本對照表 .版本主版時長 { text-align: center; vertical-align: middle; border-inline: 1px solid var(--邊框柔和色); background: var(--表面背景); }
+.版本對照表 tbody:has(:focus-visible) .版本主版時長, .版本對照表 tbody:has(:focus-visible) .版本群組摘要 { background: var(--列hover背景); }
+@media (hover: hover) {
+  .版本對照表 tbody:hover .版本主版時長, .版本對照表 tbody:hover .版本群組摘要 { background: var(--列hover背景); }
+}
+.版本主版時長 > span { display: block; color: var(--次要文字); font-size: .76rem; margin-bottom: 6px; }
+.版本主版時長 > strong { display: block; color: var(--主要文字); font-size: 1.08rem; white-space: nowrap; }
+.版本主版時長 > .版本主版提示 { max-width: 8em; margin-inline: auto; font-size: .86rem; line-height: 1.7; white-space: normal; }
+.版本對照表 tbody + tbody { border-top: 2px solid var(--邊框色); }
+.版本群組摘要 { display: none; }
+.版本列尚待 td:not(.版本來源欄) { color: var(--次要文字); }
+.版本來源欄 a { display: inline-block; margin-right: 10px; padding: 4px 0; color: var(--公告色); font-size: .76rem; text-underline-offset: 3px; }
+.版本資料說明 { display: grid; gap: 10px; color: var(--次要文字); font-size: .78rem; line-height: 1.9; }
+.版本資料說明 p { margin: 0; }
+.版本資料說明 summary { cursor: pointer; width: fit-content; color: var(--主要文字); }
+.版本資料說明 details p { margin: 12px 0; }
+.版本資料說明 a { color: var(--公告色); text-underline-offset: 3px; }
+.版本手機圖提示 { display: none; }
+.版本輔助文字 { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+@media (max-width: 900px) {
+  .版本摘要 { grid-template-columns: 1fr 1fr; padding: 22px 20px 12px; gap: 20px; }
+  .版本天數差 { grid-column: 1 / -1; border-left: 0; border-top: 1px solid var(--邊框色); padding: 16px 0 0; display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px 20px; }
+  .版本天數差 p { margin: 0; }
+  .版本摘要註記 { margin-top: 0; text-align: left; }
+}
+@media (max-width: 960px) {
+  /* 小螢幕無法維持跨列儲存格，將每個主版本的總時長移至群組開頭，只顯示一次。 */
+  .版本對照表, .版本對照表 tbody { display: block; }
+  .版本對照表 thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .版本對照表 tr { display: grid; grid-template-columns: 1fr 1fr; padding: 12px 16px; gap: 10px 12px; border-top: 1px solid var(--邊框色); }
+  .版本對照表 th, .版本對照表 td { display: block; padding: 0; border: 0; }
+  .版本對照表 tbody th { grid-column: 1 / -1; }
+  .版本對照表 th button { min-height: 36px; width: 100%; }
+  .版本對照表 td[data-label]::before { content: attr(data-label); display: block; font-size: .7rem; color: var(--次要文字); margin-bottom: 5px; }
+  .版本對照表 .版本主版時長 { display: none; }
+  .版本對照表 .版本同步合併 { grid-column: 1 / -1; padding: 14px 0; }
+  .版本同步合併 + .版本來源欄 { grid-column: 2; }
+  .版本對照表 .版本群組摘要 { display: block; padding: 16px; }
+  .版本群組摘要 > th > strong { display: block; margin-bottom: 12px; font-size: .9rem; }
+  .版本群組雙服 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; font-size: .75rem; color: var(--次要文字); }
+  .版本群組雙服 strong { display: block; margin-top: 4px; color: var(--主要文字); font-size: .9rem; }
+  .版本列選取 th { box-shadow: none; }
+  .版本對照表 .版本列選取 { box-shadow: inset 3px 0 var(--重點色); }
+  .版本來源欄 { align-self: end; }
+  .版本來源欄 a { min-height: 36px; padding: 8px 0; }
+}
+@media (max-width: 640px) {
+  .版本進度內容 { gap: 16px; }
+  .版本摘要 { padding: 20px 16px 12px; column-gap: 16px; }
+  .版本雙服 { gap: 20px; }
+  .版本雙服 strong { font-size: 2.4rem; }
+  .版本雙服 span { font-size: .8rem; }
+  .版本節點差 { padding-left: 16px; }
+  .版本節點差 strong { font-size: 2.4rem; }
+  .版本節點差 p { gap: 5px; flex-wrap: wrap; }
+  .版本節點差 p span { font-size: .8rem; }
+  .版本摘要 small { font-size: .73rem; }
+  .版本面板標題 { align-items: flex-start; flex-direction: column; gap: 8px; padding: 18px 16px 12px; }
+  .版本面板操作 { width: 100%; flex-direction: row; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+  .版本推測摘要 { margin-inline: 16px; padding: 12px; }
+  .版本國際預定說明 { margin-inline: 16px; }
+  .版本面板 h2 { font-size: 1.15rem; }
+  .版本工具列 { flex-wrap: wrap; gap: 12px; margin: 0 16px 12px; }
+  .版本範圍切換 { margin-left: auto; }
+  .版本範圍切換 button { padding: 10px; font-size: .78rem; min-height: 40px; }
+  .版本手機圖提示 { display: block; margin: 0 16px 10px; font-size: .72rem; color: var(--次要文字); }
+  .版本圖表捲動 { margin: 0 8px; }
+  .版本選取詳情 { margin: 8px 16px 0; padding: 14px; gap: 14px; }
+  .版本選取詳情 label { width: 100%; }
+  .版本選取詳情 select { font-size: 1rem; min-height: 44px; }
+  .版本詳情日期 { font-size: .8rem; }
+  .版本選取詳情 > strong { margin-left: 0; font-size: .82rem; }
+  .版本面板註記 { margin: 14px 16px 18px; }
+  .版本時長說明 { margin: 0 16px 12px; }
+}
+@media (max-width: 380px) {
+  .版本摘要 { grid-template-columns: 1fr; }
+  .版本雙服 { gap: 36px; }
+  .版本節點差 { padding: 14px 0 0; border-left: 0; border-top: 1px solid var(--邊框色); }
+  .版本節點差 p { gap: 10px; }
+}

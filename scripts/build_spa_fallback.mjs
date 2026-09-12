@@ -70,6 +70,14 @@ const routePages = [
     imageHighlights: ["排行榜與全服統計", "玩家比較與隊伍榜", "FFLogs 公開報告整理"],
   },
   {
+    path: "version-progress",
+    title: `版本進度 | ${siteName}`,
+    description: "比較 FFXIV 繁中服與國際服的版本進度，包含主要版本、小版本上線日期、同版本間隔與開服以來的時間軸。",
+    imageTitle: "版本進度",
+    imageSubtitle: "從開服到今天，我們離國際服還有多遠？",
+    imageHighlights: ["包含小版本", "兩服上線日期", "追趕歷程"],
+  },
+  {
     path: "stats",
     title: `全服統計 | ${siteName}`,
     description: "查看 FFXIV 繁中服公開紀錄中的伺服器分布、職業分布、零式進度概覽、傷害分位數與資料狀態。",

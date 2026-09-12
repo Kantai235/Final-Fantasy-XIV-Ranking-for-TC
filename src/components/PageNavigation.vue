@@ -14,6 +14,7 @@ const 頁面切換項目 = [
   { 模式: "servers", 名稱: "伺服器對比", 動作: "切換到伺服器對比" },
   { 模式: "jobs", 名稱: "職業分析", 動作: "切換到職業分析" },
   { 模式: "activity", 名稱: "近期動態", 動作: "切換到近期動態" },
+  { 模式: "version-progress", 名稱: "版本進度", 動作: "切換到版本進度" },
   { 模式: "faq", 名稱: "常見問題", 動作: "切換到常見問題" },
 ];
 
@@ -112,6 +113,7 @@ export default {
       class="頁面選單開關"
       type="button"
       aria-controls="page-navigation-drawer"
+      :aria-label="`開啟頁面選單，目前為${頁面選單按鈕文字}`"
       :aria-expanded="手機選單開啟"
       @click="開啟頁面選單"
     >

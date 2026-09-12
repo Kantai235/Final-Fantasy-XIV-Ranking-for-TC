@@ -14,6 +14,7 @@
 | 伺服器對比 | `./servers/陸行鳥/vs/莫古力` |
 | 職業分析 | `./jobs?jobScope=role:tank`、`./jobs/Paladin` |
 | 近期動態 | `./activity` |
+| 版本進度 | `./version-progress`、`./version-progress?patchScope=all&patch=7.11`；`guess=1` 開啟兩區塊同步的猜測模式 |
 | 常見問題 | `./faq`、`./faq?report=https%3A%2F%2Fwww.fflogs.com%2Freports%2F...`；舊 `./logs` 保留相容 |
 | Honey B. Lovely 粉絲榜 | `./honey-fans` |
 
@@ -44,6 +45,7 @@
 `npm run build` 後會由 `scripts/build_spa_fallback.mjs` 產生：
 
 - `/stats/`
+- `/version-progress/`
 - `/user/`
 - `/compare/`
 - `/teams/`

@@ -1,7 +1,7 @@
 import { 分享網址變更事件 } from "./shareMeta";
 import { 顯示Honey粉絲榜 } from "./siteFeatures";
 
-const 可分享頁面清單 = ["ranking", "stats", "user", "compare", "jobs", "activity", "teams", "servers", "faq"];
+const 可分享頁面清單 = ["ranking", "stats", "user", "compare", "jobs", "activity", "teams", "servers", "faq", "version-progress"];
 if (顯示Honey粉絲榜) {
   可分享頁面清單.push("honey-fans");
 }
@@ -16,6 +16,7 @@ const 頁面路徑片段 = {
   compare: "compare",
   jobs: "jobs",
   activity: "activity",
+  "version-progress": "version-progress",
   teams: "teams",
   servers: "servers",
   faq: "faq",
@@ -52,6 +53,9 @@ const 可分享參數 = [
   "version",
   "gameVersion",
   "report",
+  "patchScope",
+  "patch",
+  "guess",
 ];
 
 function 讀取瀏覽器網址() {
@@ -213,6 +217,9 @@ export function 讀取目前網址狀態() {
     metric: 讀取參數文字(參數, "metric"),
     version: 讀取參數文字(參數, "version"),
     gameVersion: 讀取參數文字(參數, "gameVersion"),
+    patchScope: 讀取參數文字(參數, "patchScope"),
+    patch: 讀取參數文字(參數, "patch"),
+    guess: 讀取參數文字(參數, "guess"),
   };
 }
 
@@ -224,6 +231,12 @@ function 寫入參數(參數, 名稱, 值) {
 }
 
 function 寫入頁面專屬參數(參數, 狀態) {
+  if (狀態.page === "version-progress") {
+    寫入參數(參數, "patchScope", 狀態.patchScope);
+    寫入參數(參數, "patch", 狀態.patch);
+    if (狀態.guess === true || 狀態.guess === "1") 寫入參數(參數, "guess", "1");
+    return;
+  }
   if (狀態.page === "ranking") {
     寫入參數(參數, "encounter", 狀態.encounter);
     寫入參數(參數, "server", 狀態.server);
