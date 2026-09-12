@@ -5,8 +5,10 @@ import { tmpdir } from "node:os";
 import { join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
+import { createRenderer, watchSyncEffect } from "vue";
 import { 建置版本進度, 日序, 版本進度資料插件 } from "./build_version_progress.mjs";
-import { 正規化版本進度選取 } from "../src/utils/versionProgress.js";
+import { 正規化版本進度選取, 取得台灣當日日序, 取得版本顯示時長 } from "../src/utils/versionProgress.js";
+import { useVersionProgressClock } from "../src/composables/useVersionProgressClock.js";
 
 const 設定 = JSON.parse(readFileSync(new URL("../config/version_progress.json", import.meta.url), "utf8"));
 const 資料 = 建置版本進度(設定);
@@ -718,6 +720,88 @@ test("日期驗證拒絕不存在日期；閏年與跨年依日曆日計算", ()
   assert.equal(日序("2024-03-01") - 日序("2024-02-28"), 2);
   assert.equal(日序("2026-01-01") - 日序("2025-12-31"), 1);
   for (const 日期 of ["2025-02-29", "2026-13-01", "2026-2-01", null]) assert.throws(() => 日序(日期));
+});
+
+test("畫面時鐘依台灣午夜切日，跨年及閏日不受 UTC 日期影響", () => {
+  for (const [時間, 日期] of [
+    ["2026-09-12T15:59:59.999Z", "2026-09-12"],
+    ["2026-09-12T16:00:00.000Z", "2026-09-13"],
+    ["2026-12-31T16:00:00.000Z", "2027-01-01"],
+    ["2028-02-28T16:00:00.000Z", "2028-02-29"],
+    ["2028-02-29T16:00:00.000Z", "2028-03-01"],
+  ]) assert.equal(取得台灣當日日序(Date.parse(時間)), 日序(日期));
+});
+
+test("當日顯示只延長實際持續中的時長，主版及小版合計一致且不改寫核對資料", () => {
+  const 修改前 = JSON.stringify(資料);
+  const 今日 = 日序("2026-09-13");
+  const 顯示時長 = (時長) => 取得版本顯示時長(時長, 資料.end_day, 今日);
+  assert.equal(顯示時長(資料.views.all.rows.find((列) => 列.patch === "7.2").tc_duration), 47);
+  assert.equal(顯示時長(資料.views.all.rows.find((列) => 列.patch === "7.56").international_duration), 5);
+  assert.equal(今日 - 資料.start_day, 277);
+  for (const 視圖 of Object.values(資料.views)) {
+    for (const 地區 of ["international", "tc"]) {
+      for (const 列 of 視圖.rows) {
+        const 時長 = 列[`${地區}_duration`];
+        assert.equal(顯示時長(時長), 時長 ? 時長.days + (時長.ongoing ? 1 : 0) : null);
+      }
+      for (const 群組 of 視圖.groups) {
+        assert.equal(顯示時長(群組[`${地區}_duration`]) ?? 0,
+          群組.rows.reduce((總和, 列) => 總和 + (顯示時長(列[`${地區}_duration`]) ?? 0), 0));
+      }
+      for (const 列 of [...視圖.forecast.rows, ...視圖.forecast.groups]) {
+        const 時長 = 列[`${地區}_duration`];
+        assert.equal(顯示時長(時長), 時長?.days ?? null);
+      }
+    }
+  }
+  // 即使已經過活動預告日，仍只能延長最後已核對版本，不能宣稱預告已實際上線。
+  const 七二 = 資料.views.all.rows.find((列) => 列.patch === "7.2");
+  assert.equal(取得版本顯示時長(七二.tc_duration, 資料.end_day, 日序("2026-10-01")), 65);
+  assert.equal(資料.views.all.rows.find((列) => 列.patch === "7.25").tc_released, false);
+  assert.equal(取得版本顯示時長(七二.tc_duration, 資料.end_day, 七二.tc_day - 1), 0);
+  assert.equal(JSON.stringify(資料), 修改前);
+});
+
+test("常駐頁面跨日自動增加，休眠返回即時刷新且離頁後移除時鐘", (t) => {
+  const 原視窗 = Object.getOwnPropertyDescriptor(globalThis, "window");
+  const 原文件 = Object.getOwnPropertyDescriptor(globalThis, "document");
+  const 視窗 = new EventTarget();
+  const 文件 = new EventTarget();
+  Object.defineProperty(globalThis, "window", { configurable: true, value: 視窗 });
+  Object.defineProperty(globalThis, "document", { configurable: true, value: 文件 });
+  t.mock.timers.enable({ apis: ["Date", "setInterval"], now: new Date("2026-09-12T15:59:45Z") });
+  let app;
+  t.after(() => {
+    app?.unmount();
+    if (原視窗) Object.defineProperty(globalThis, "window", 原視窗); else delete globalThis.window;
+    if (原文件) Object.defineProperty(globalThis, "document", 原文件); else delete globalThis.document;
+  });
+  // 不啟動瀏覽器也不載入玩家資料，只用 Vue 生命週期驗證實際的時鐘與響應性。
+  const renderer = createRenderer({ createComment: () => ({}), insert() {}, remove() {} });
+  let 目前日;
+  let 天數;
+  app = renderer.createApp({ setup() {
+    目前日 = useVersionProgressClock();
+    watchSyncEffect(() => { 天數 = 取得版本顯示時長({ days: 46, ongoing: true }, 資料.end_day, 目前日.value); });
+    return () => null;
+  } });
+  app.mount({});
+  assert.equal(天數, 46);
+  t.mock.timers.tick(30_000);
+  assert.equal(天數, 47);
+  t.mock.timers.setTime(Date.parse("2026-09-14T00:00:00+08:00"));
+  視窗.dispatchEvent(new Event("focus"));
+  assert.equal(天數, 48);
+  t.mock.timers.setTime(Date.parse("2026-09-15T00:00:00+08:00"));
+  文件.dispatchEvent(new Event("visibilitychange"));
+  assert.equal(天數, 49);
+  app.unmount(); app = null;
+  t.mock.timers.setTime(Date.parse("2026-09-16T00:00:00+08:00"));
+  視窗.dispatchEvent(new Event("focus"));
+  文件.dispatchEvent(new Event("visibilitychange"));
+  t.mock.timers.tick(30_000);
+  assert.equal(目前日.value, 日序("2026-09-15"));
 });
 
 test("版本時長依各服獨立更新日計算，合併版本與未公告版本不虛構時長", () => {

@@ -3,16 +3,22 @@ import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import 版本資料 from "virtual:version-progress";
 import VersionTrendHint from "../components/VersionTrendHint.vue";
 import VersionForecastSummary from "../components/VersionForecastSummary.vue";
+import { useVersionProgressClock } from "../composables/useVersionProgressClock.js";
 import { 寫入網址狀態, 讀取目前網址狀態 } from "../utils/urlState";
-import { 格式化版本日期 as 日期, 正規化版本進度選取, 僅顯示版本同步 } from "../utils/versionProgress";
+import { 格式化版本日期 as 日期, 正規化版本進度選取, 僅顯示版本同步, 取得版本顯示時長 } from "../utils/versionProgress";
 
+const 目前日 = useVersionProgressClock();
+const 開服天數 = computed(() => Math.max(0, 目前日.value - 版本資料.start_day));
+const 今日日期 = computed(() => new Date(目前日.value * 86400000).toISOString().slice(0, 10));
 const 選取 = ref(正規化版本進度選取(版本資料, 讀取目前網址狀態()));
 const 實際視圖 = computed(() => 版本資料.views[選取.value.patchScope]);
 const 推測 = computed(() => 實際視圖.value.forecast);
 const 顯示推測 = computed(() => 選取.value.guess && Boolean(推測.value.rows));
 const 視圖 = computed(() => 顯示推測.value ? 推測.value : 實際視圖.value);
 const 國際預定 = computed(() => 顯示推測.value ? 版本資料.international_plans.filter((計畫) => 視圖.value.stages.includes(計畫.patch)) : []);
-const 圖表截止日 = computed(() => 顯示推測.value ? 推測.value.plot_end_day : 版本資料.end_day);
+// 一般圖表將最後已核對版本延伸至今天；推測圖仍保留核對日作為模型起點。
+const 實際線截止日 = computed(() => 顯示推測.value ? 版本資料.end_day : Math.max(版本資料.end_day, 目前日.value));
+const 圖表截止日 = computed(() => 顯示推測.value ? 推測.value.plot_end_day : 實際線截止日.value);
 const 圖表階段 = computed(() => 視圖.value.stages);
 const 選取列 = computed(() => 視圖.value.rows.find((列) => 列.patch === 選取.value.patch));
 const 同步提示版本 = computed(() => new Set(視圖.value.rows.filter(僅顯示版本同步).map((列) => 列.patch)));
@@ -38,8 +44,8 @@ const 線條 = computed(() => [
   { key: "international", name: "國際服", points: 實際視圖.value.international },
   { key: "tc", name: "繁中服", points: 實際視圖.value.tc },
 ]);
-// 只有隨容器尺寸變化的座標投影留在 Vue；日期差與階段順序由建置層提供。
-function 階梯路徑(點列, 終點 = 版本資料.end_day) {
+// 歷史日期與階段順序由建置層提供，Vue 依容器尺寸及畫面截止日投影座標。
+function 階梯路徑(點列, 終點 = 實際線截止日.value) {
   return 點列.map((點, i) => i === 0
     ? `M${x(點.day)},${y(點.stage)}` : `H${x(點.day)}V${y(點.stage)}`).join("") + `H${x(終點)}`;
 }
@@ -81,8 +87,9 @@ function 時長備註(時長) {
   return 時長?.ongoing ? '持續增加中' : '';
 }
 /** @param {{days: number, ongoing: boolean, estimated?:boolean, through_horizon?:boolean}|null} 時長 */
+const 時長天數 = (時長) => 取得版本顯示時長(時長, 版本資料.end_day, 目前日.value);
 function 時長文字(時長) {
-  return 時長 ? `${時長.estimated ? '約 ' : ''}${時長.days} 天${時長備註(時長) ? `・${時長備註(時長)}` : ''}` : '—';
+  return 時長 ? `${時長.estimated ? '約 ' : ''}${時長天數(時長)} 天${時長備註(時長) ? `・${時長備註(時長)}` : ''}` : '—';
 }
 function 顯示單版時長(列, 地區) {
   const 時長 = 列[`${地區}_duration`];
@@ -137,7 +144,7 @@ onBeforeUnmount(() => {
     <section class="版本面板" aria-labelledby="版本歷程標題">
       <div class="版本面板標題">
         <div><h2 id="版本歷程標題">開服以來的追趕歷程</h2><p>橫軸是日期，縱軸是{{ 選取.patchScope === 'all' ? '包含小版本的' : '主要' }}版本階段。</p></div>
-        <div class="版本面板操作"><p class="版本開服天數">開服至核對日 <strong>{{ 版本資料.elapsed_days }}</strong> 天</p><button class="版本猜測開關" type="button" role="switch" :aria-checked="選取.guess" aria-label="追趕歷程猜測模式" @click="更新選取({ guess: !選取.guess })"><span>猜測模式</span><span class="版本開關軌道" aria-hidden="true"></span><span aria-hidden="true">{{ 選取.guess ? '開啟' : '關閉' }}</span></button></div>
+        <div class="版本面板操作"><p class="版本開服天數">開服至今 <strong>{{ 開服天數 }}</strong> 天</p><button class="版本猜測開關" type="button" role="switch" :aria-checked="選取.guess" aria-label="追趕歷程猜測模式" @click="更新選取({ guess: !選取.guess })"><span>猜測模式</span><span class="版本開關軌道" aria-hidden="true"></span><span aria-hidden="true">{{ 選取.guess ? '開啟' : '關閉' }}</span></button></div>
       </div>
       <div class="版本工具列">
         <div class="版本圖例"><span class="版本繁中">● 繁中服</span><span class="版本國際">● 國際服</span><span v-if="顯示推測" class="版本推測圖例">┄◇ 推測・{{ 推測.continuation_major ? '延伸至後續版本' : '虛線延伸至進度交會' }}</span></div>
@@ -170,7 +177,7 @@ onBeforeUnmount(() => {
               <circle class="版本節點觸控" :cx="x(點.day)" :cy="y(點.stage)" r="13" />
               <circle class="版本節點圓" :cx="x(點.day)" :cy="y(點.stage)" r="4" />
             </g>
-            <text class="版本線端點" :x="x(版本資料.end_day) + 10" :y="y(線.points.at(-1).stage) + 4">{{ 線.name }} {{ 線.points.at(-1).patch }}</text>
+            <text class="版本線端點" :x="x(實際線截止日) + 10" :y="y(線.points.at(-1).stage) + 4">{{ 線.name }} {{ 線.points.at(-1).patch }}</text>
           </g>
           <g v-if="顯示推測" class="版本推測圖層">
             <line class="版本推測核對線" :x1="x(版本資料.end_day)" :x2="x(版本資料.end_day)" y1="20" :y2="底界 + 8" />
@@ -214,7 +221,7 @@ onBeforeUnmount(() => {
 
     <section class="版本面板" aria-labelledby="版本表標題">
       <div class="版本面板標題"><div><h2 id="版本表標題">每一版，走了多久</h2><p>{{ 選取.patchScope === 'all' ? '主要版本與小版本完整對照' : '目前僅顯示主要版本' }}・{{ 視圖.rows.length }} 個{{ 顯示推測 ? '實際與推測節點' : '已收錄節點' }}</p></div><div class="版本面板操作"><span class="版本核對標籤">核對至 {{ 日期(版本資料.verified_through) }}</span><button class="版本猜測開關" type="button" role="switch" :aria-checked="選取.guess" aria-label="版本面板猜測模式" @click="更新選取({ guess: !選取.guess })"><span>猜測模式</span><span class="版本開關軌道" aria-hidden="true"></span><span aria-hidden="true">{{ 選取.guess ? '開啟' : '關閉' }}</span></button></div></div>
-      <p class="版本時長說明">日期下方為該版時長；主版本總時長包含所屬小版本。{{ 顯示推測 ? '推測時長會算至下一版；最後一版僅計至推測終點，並非完整週期。' : '標示「持續增加中」的時長計至核對日。' }}</p>
+      <p class="版本時長說明">日期下方為該版時長；主版本總時長包含所屬小版本。{{ 顯示推測 ? '推測時長會算至下一版；最後一版僅計至推測終點，並非完整週期。' : `標示「持續增加中」的時長計至台灣今日（${日期(今日日期)}），每日自動更新。` }}</p>
       <VersionForecastSummary v-if="選取.guess" :forecast="推測" :major="選取.patchScope === 'major'" />
       <table class="版本對照表">
         <caption class="版本輔助文字">兩服版本上線日期、各版時長、跨列的主版本總時長與同版本間隔；點選版本可同步查看圖表詳情。</caption>
@@ -235,9 +242,9 @@ onBeforeUnmount(() => {
           <tr v-for="(列, i) in 群組.rows" :key="列.patch" :class="{ '版本列選取': 選取.patch === 列.patch, '版本列尚待': !列.tc_released }">
             <th scope="row"><button type="button" :aria-pressed="選取.patch === 列.patch" @click="更新選取({ patch: 列.patch })"><strong>{{ 列.patch }}</strong><span>{{ 列.title }}</span><small v-if="列.patch === 版本資料.current_tc">繁中現行</small></button></th>
             <td data-label="國際服上線"><span :class="{ '版本表推測': 列.international_estimated }">{{ 上線文字(列, 'international') }}</span><small v-if="顯示單版時長(列, 'international')" class="版本單版時長">時長 {{ 時長文字(列.international_duration) }}</small><small v-if="列.international_month">確切日期待公告</small><small v-else-if="列.international && !列.international_released">已公告・尚未上線</small></td>
-            <td v-if="i === 0" :rowspan="群組.rows.length" class="版本主版時長" :aria-label="`${群組.patch} 國際服主版本總時長：${主版時長提示(群組, 'international') ?? 時長文字(群組.international_duration)}`"><span>{{ 群組.patch }}</span><strong v-if="主版時長提示(群組, 'international')" class="版本主版提示">{{ 主版時長提示(群組, 'international') }}</strong><template v-else><strong>{{ 群組.international_duration ? `${群組.international_duration.estimated ? '約 ' : ''}${群組.international_duration.days} 天` : '—' }}</strong><small v-if="時長備註(群組.international_duration)">{{ 時長備註(群組.international_duration) }}</small></template></td>
+            <td v-if="i === 0" :rowspan="群組.rows.length" class="版本主版時長" :aria-label="`${群組.patch} 國際服主版本總時長：${主版時長提示(群組, 'international') ?? 時長文字(群組.international_duration)}`"><span>{{ 群組.patch }}</span><strong v-if="主版時長提示(群組, 'international')" class="版本主版提示">{{ 主版時長提示(群組, 'international') }}</strong><template v-else><strong>{{ 群組.international_duration ? `${群組.international_duration.estimated ? '約 ' : ''}${時長天數(群組.international_duration)} 天` : '—' }}</strong><small v-if="時長備註(群組.international_duration)">{{ 時長備註(群組.international_duration) }}</small></template></td>
             <td data-label="繁中服上線"><span class="版本繁中狀態" :class="{ '版本表推測': !列.tc_forecast_skipped && (列.tc_estimated || 列.tc_plan), '版本合併狀態': 列.tc_forecast_skipped }">{{ 上線文字(列, 'tc') }}</span><small v-if="列.tc_plan">{{ 列.tc_plan.attribution }}</small><small v-if="顯示單版時長(列, 'tc')" class="版本單版時長">時長 {{ 時長文字(列.tc_duration) }}</small><small v-if="列.tc && !列.tc_released">已公告・尚未上線</small></td>
-            <td v-if="i === 0" :rowspan="群組.rows.length" class="版本主版時長" :aria-label="`${群組.patch} 繁中服主版本總時長：${主版時長提示(群組, 'tc') ?? 時長文字(群組.tc_duration)}`"><span>{{ 群組.patch }}</span><strong v-if="主版時長提示(群組, 'tc')" class="版本主版提示">{{ 主版時長提示(群組, 'tc') }}</strong><template v-else><strong>{{ 群組.tc_duration ? `${群組.tc_duration.estimated ? '約 ' : ''}${群組.tc_duration.days} 天` : '—' }}</strong><small v-if="時長備註(群組.tc_duration)">{{ 時長備註(群組.tc_duration) }}</small></template></td>
+            <td v-if="i === 0" :rowspan="群組.rows.length" class="版本主版時長" :aria-label="`${群組.patch} 繁中服主版本總時長：${主版時長提示(群組, 'tc') ?? 時長文字(群組.tc_duration)}`"><span>{{ 群組.patch }}</span><strong v-if="主版時長提示(群組, 'tc')" class="版本主版提示">{{ 主版時長提示(群組, 'tc') }}</strong><template v-else><strong>{{ 群組.tc_duration ? `${群組.tc_duration.estimated ? '約 ' : ''}${時長天數(群組.tc_duration)} 天` : '—' }}</strong><small v-if="時長備註(群組.tc_duration)">{{ 時長備註(群組.tc_duration) }}</small></template></td>
             <td data-label="同版本間隔" class="版本間隔欄">{{ 相隔文字(列) }}</td>
             <td class="版本來源欄"><a v-if="列.international_url" :href="列.international_url" target="_blank" rel="noopener noreferrer" :aria-label="`${列.patch} 國際服官方來源（另開分頁）`">國際服 ↗</a><a v-if="列.tc_url && (列.tc || 列.tc_version_omitted)" :href="列.tc_url" target="_blank" rel="noopener noreferrer" :aria-label="`${列.patch} 繁中服官方來源（另開分頁）`">繁中服 ↗</a><a v-if="列.tc_plan_url" :href="列.tc_plan_url" target="_blank" rel="noopener noreferrer" :aria-label="`${列.patch} 繁中服預告來源（另開分頁）`">預告 ↗</a><span v-if="!列.international_url && !列.tc_url && !列.tc_plan_url">情境推測</span></td>
           </tr>

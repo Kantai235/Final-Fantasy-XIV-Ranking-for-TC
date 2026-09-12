@@ -17,6 +17,25 @@ export function 格式化版本日期(日期) {
   return 日期 ? 日期.replaceAll("-", "/") : "—";
 }
 
+/** 使用台灣日曆日對齊建置層的 UTC 日序，不受瀏覽者所在地時區影響。 */
+export function 取得台灣當日日序(目前時間 = Date.now()) {
+  return Math.floor((目前時間 + 8 * 60 * 60 * 1000) / 86400000);
+}
+
+/**
+ * 建置層提供核對日當下的時長與是否持續中；畫面只補經過的日曆天數。
+ * 不重新判定版序或發布狀態，也不把推測週期改成已經過的時間。
+ * @param {{days:number, ongoing:boolean, estimated?:boolean, through_horizon?:boolean}|null} 時長
+ * @param {number} 核對日
+ * @param {number} 目前日
+ * @returns {number|null}
+ */
+export function 取得版本顯示時長(時長, 核對日, 目前日) {
+  if (!時長) return null;
+  return 時長.ongoing && !時長.estimated && !時長.through_horizon
+    ? Math.max(0, 時長.days + 目前日 - 核對日) : 時長.days;
+}
+
 /**
  * 遙遠的同步候選只呈現可能性，模型日期仍供座標及前版時長計算。
  * 後續若已有正式日期或活動預告，必須回到一般日期顯示。
