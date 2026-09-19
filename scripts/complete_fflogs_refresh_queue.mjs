@@ -334,6 +334,27 @@ export function isRowIndexed(row, indexedReportCodes) {
   return REPORT_CODE_PATTERN.test(reportCode) && indexedReportCodes.has(reportCode);
 }
 
+function timestampMs(value) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === "string" && value.trim()) {
+    const numericValue = Number(value);
+    if (Number.isFinite(numericValue)) {
+      return numericValue;
+    }
+    const parsedValue = Date.parse(value);
+    if (Number.isFinite(parsedValue)) {
+      return parsedValue;
+    }
+  }
+  return null;
+}
+
+function checkpointProcessedAtMs(checkpoint) {
+  return timestampMs(checkpoint?.processed_at) ?? timestampMs(checkpoint?.processed_at_iso);
+}
+
 export function buildReportStatusesByCode(state, reportCodes) {
   const requestedCodes = new Set(
     Array.from(reportCodes || [], normalizeReportCode)
@@ -356,17 +377,44 @@ export function buildReportStatusesByCode(state, reportCodes) {
         continue;
       }
       for (const reportCode of requestedCodes) {
-        const status = normalizeHeader(checkpoints[reportCode]?.status);
+        const checkpoint = checkpoints[reportCode];
+        const status = normalizeHeader(checkpoint?.status);
         if (!status) {
           continue;
         }
-        const statuses = statusesByCode.get(reportCode) || new Set();
-        statuses.add(status);
+        const statuses = statusesByCode.get(reportCode) || new Map();
+        const processedAtMs = checkpointProcessedAtMs(checkpoint);
+        const previousProcessedAtMs = statuses.get(status);
+        if (
+          !statuses.has(status)
+          || (Number.isFinite(processedAtMs)
+            && (!Number.isFinite(previousProcessedAtMs) || processedAtMs > previousProcessedAtMs))
+        ) {
+          statuses.set(status, processedAtMs);
+        }
         statusesByCode.set(reportCode, statuses);
       }
     }
   }
   return statusesByCode;
+}
+
+function hasFreshReportStatus(row, statuses, status) {
+  if (!statuses.has(status)) {
+    return false;
+  }
+
+  const requestedAtMs = timestampMs(row?.updated_at_iso) ?? timestampMs(row?.submitted_at_iso);
+  if (!Number.isFinite(requestedAtMs)) {
+    // 舊版或人工匯入列可能沒有可解析的送出時間；維持既有終止行為，避免這些列
+    // 永遠卡在 queue。現行 Apps Script 一定會寫入 updated_at_iso。
+    return true;
+  }
+
+  const processedAtMs = statuses.get(status);
+  // 使用者可能在一輪長時間 workflow 執行途中重新送單。只有本次送單後產生的
+  // checkpoint 才能結束申請，否則舊的 no-clear 結論會在下一輪真正重掃前誤關新申請。
+  return Number.isFinite(processedAtMs) && processedAtMs >= requestedAtMs;
 }
 
 function isVisibilityReviewRequest(row) {
@@ -393,12 +441,12 @@ export function resolveQueueOutcome(
   }
 
   const reportCode = normalizeReportCode(row.report_code);
-  const statuses = statusesByCode.get(reportCode) || new Set();
+  const statuses = statusesByCode.get(reportCode) || new Map();
   // 是否含有繁中服玩家是整份 report 層級的結論，優先於各 encounter 的 no-clear checkpoint。
-  if (statuses.has(STATE_STATUS_NO_TRADITIONAL_CHINESE_PLAYERS)) {
+  if (hasFreshReportStatus(row, statuses, STATE_STATUS_NO_TRADITIONAL_CHINESE_PLAYERS)) {
     return QUEUE_OUTCOME.NO_TRADITIONAL_CHINESE_PLAYERS;
   }
-  if (statuses.has(STATE_STATUS_NO_CLEAR)) {
+  if (hasFreshReportStatus(row, statuses, STATE_STATUS_NO_CLEAR)) {
     return QUEUE_OUTCOME.NO_CLEAR;
   }
   return null;

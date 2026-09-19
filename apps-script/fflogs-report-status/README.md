@@ -158,7 +158,7 @@ VITE_FFLOGS_REPORT_STATUS_WEB_APP_URL=https://script.google.com/macros/s/你的�
 
 ## Workflow 讀取待收錄名單
 
-GitHub Actions 使用 `scripts/read_fflogs_refresh_queue.mjs` 透過 Google Sheets API 讀取 `pending` 工作表，將符合條件的 report code 寫入 `FFLOGS_RETRY_REPORT_CODES`。workflow 收尾時會掃描公開／hidden 狀態索引、排行榜 `source_reports`、公開 report 分片、fight 完整性結果與 state checkpoint：已公開收錄會標記為 `done`；`review_existing_visibility` 只有在 hidden delta 索引確實命中時才標記為 `hidden`；report 雖已抓取但所有 fight 都被目前完整性規則隱藏時標記為 `review_required_data_integrity`；已確認沒有支援副本通關會標記為 `not_eligible_no_clear`；未發現繁中服玩家會標記為 `not_eligible_no_traditional_chinese_players`。後兩者會保留原因文字且不會再次送入強制重掃；資料管線既有的近期 no-clear 重試規則不受影響。需要設定：
+GitHub Actions 使用 `scripts/read_fflogs_refresh_queue.mjs` 透過 Google Sheets API 讀取 `pending` 工作表，將符合條件的 report code 寫入 `FFLOGS_RETRY_REPORT_CODES`。workflow 收尾時會掃描公開／hidden 狀態索引、排行榜 `source_reports`、公開 report 分片、fight 完整性結果與 state checkpoint：已公開收錄會標記為 `done`；`review_existing_visibility` 只有在 hidden delta 索引確實命中時才標記為 `hidden`；report 雖已抓取但所有 fight 都被目前完整性規則隱藏時標記為 `review_required_data_integrity`；已確認沒有支援副本通關會標記為 `not_eligible_no_clear`；未發現繁中服玩家會標記為 `not_eligible_no_traditional_chinese_players`。後兩者只有在 checkpoint 的處理時間不早於本次送單時間時才會結束申請，避免執行中的 workflow 用舊結論提前關閉剛重新送出的排查；資料管線既有的近期 no-clear 重試規則不受影響。需要設定：
 
 - Repository Variable `FFLOGS_REFRESH_QUEUE_SPREADSHEET_ID`
 - Repository Variable `FFLOGS_REFRESH_QUEUE_SHEET_NAME`，預設 `pending`

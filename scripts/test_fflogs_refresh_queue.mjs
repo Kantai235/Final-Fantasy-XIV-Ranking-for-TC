@@ -15,6 +15,9 @@ import {
 const TEMP_PREFIX = "fflogs-refresh-queue-";
 const SHEET_NAME = "pending";
 const NOW_ISO = "2026-07-16T10:00:00.000Z";
+const REQUESTED_AT_ISO = "2026-07-16T09:00:00.000Z";
+const FRESH_PROCESSED_AT = Date.parse("2026-07-16T09:30:00.000Z");
+const STALE_PROCESSED_AT = Date.parse("2026-07-16T08:30:00.000Z");
 
 async function writeJson(filePath, value) {
   await mkdir(path.dirname(filePath), { recursive: true });
@@ -196,24 +199,36 @@ async function main() {
       encounters: {
         savage_m1s: {
           checked_reports: {
-            NoClear123: { status: "skipped_no_clear" },
-            NoTcOnly123: { status: "skipped_no_traditional_chinese_players" },
+            NoClear123: { status: "skipped_no_clear", processed_at: FRESH_PROCESSED_AT },
+            NoTcOnly123: { status: "skipped_no_traditional_chinese_players", processed_at: FRESH_PROCESSED_AT },
+            StaleNoClear123: { status: "skipped_no_clear", processed_at: STALE_PROCESSED_AT },
+            MissingProcessedAt123: { status: "skipped_no_clear" },
           },
           processed_reports: {
-            NoTcOnly123: { status: "skipped_no_clear" },
+            NoTcOnly123: { status: "skipped_no_clear", processed_at_iso: "2026-07-16T09:30:00.000Z" },
           },
         },
       },
-    }, ["ShardOnly123", "IntegrityBlocked123", "NoClear123", "NoTcOnly123", "Waiting123"]);
+    }, [
+      "ShardOnly123",
+      "IntegrityBlocked123",
+      "NoClear123",
+      "NoTcOnly123",
+      "Waiting123",
+      "StaleNoClear123",
+      "MissingProcessedAt123",
+    ]);
 
     const updates = buildUpdateRanges({
       headers: ["report_code", "request_type", "status", "updated_at_iso", "last_message"],
       rows: [
-        { _row_number: 2, report_code: "ShardOnly123", request_type: "retry_existing" },
-        { _row_number: 3, report_code: "IntegrityBlocked123", request_type: "retry_existing" },
-        { _row_number: 4, report_code: "NoClear123", request_type: "new" },
-        { _row_number: 5, report_code: "NoTcOnly123", request_type: "new" },
-        { _row_number: 6, report_code: "Waiting123", request_type: "new" },
+        { _row_number: 2, report_code: "ShardOnly123", request_type: "retry_existing", updated_at_iso: REQUESTED_AT_ISO },
+        { _row_number: 3, report_code: "IntegrityBlocked123", request_type: "retry_existing", updated_at_iso: REQUESTED_AT_ISO },
+        { _row_number: 4, report_code: "NoClear123", request_type: "new", updated_at_iso: REQUESTED_AT_ISO },
+        { _row_number: 5, report_code: "NoTcOnly123", request_type: "new", updated_at_iso: REQUESTED_AT_ISO },
+        { _row_number: 6, report_code: "Waiting123", request_type: "new", updated_at_iso: REQUESTED_AT_ISO },
+        { _row_number: 7, report_code: "StaleNoClear123", request_type: "new", updated_at_iso: REQUESTED_AT_ISO },
+        { _row_number: 8, report_code: "MissingProcessedAt123", request_type: "new", updated_at_iso: REQUESTED_AT_ISO },
       ],
       sheetName: SHEET_NAME,
       nowIso: NOW_ISO,
@@ -232,6 +247,8 @@ async function main() {
     assert.equal(updateValue(updates, "C5"), "not_eligible_no_traditional_chinese_players");
     assert.match(updateValue(updates, "E5"), /未發現繁中服玩家/);
     assert.equal(updateValue(updates, "C6"), undefined, "尚無終局結果的列必須保留 queued/pending/retry");
+    assert.equal(updateValue(updates, "C7"), undefined, "早於本次送單的 no-clear checkpoint 不得結束新申請");
+    assert.equal(updateValue(updates, "C8"), undefined, "無處理時間的舊 checkpoint 不得結束有送單時間的新申請");
     assert.equal(updates.length, 12, "四筆終局結果各應更新 status、時間與訊息");
 
     const visibilityReviewUpdates = buildUpdateRanges({
