@@ -106,6 +106,13 @@ export const activityLogTimelineAnnotations = Object.freeze([
     detail: "天際的行路",
     importance: "secondary",
   },
+  {
+    date: "2026-09-29",
+    region: "tc",
+    patch: "7.25",
+    title: "繁中服 7.25",
+    detail: "新月島",
+  },
 ]);
 
 /**

@@ -12,7 +12,15 @@ import { 建置版本進度, 日序, 版本進度資料插件 } from "./build_ve
 import { 正規化版本進度選取, 取得台灣當日日序, 取得版本顯示時長, 格式化版本間隔, 取得版本日期提示, 取得版本追上提示 } from "../src/utils/versionProgress.js";
 import { useVersionProgressClock } from "../src/composables/useVersionProgressClock.js";
 
-const 設定 = JSON.parse(readFileSync(new URL("../config/version_progress.json", import.meta.url), "utf8"));
+const 正式設定 = JSON.parse(readFileSync(new URL("../config/version_progress.json", import.meta.url), "utf8"));
+// 倒數、跨日及「預告不能自動升格為上線」案例固定使用 9/12 的歷史情境，
+// 避免每次核對新版本就失去預告狀態的覆蓋；Vite 測試仍直接驗證最新正式設定。
+const 設定 = structuredClone(正式設定);
+設定.verified_through = "2026-09-12";
+const 歷史七二五 = 設定.patches.find((列) => 列.patch === "7.25");
+歷史七二五.tc = null;
+delete 歷史七二五.tc_source;
+歷史七二五.tc_plan = { date: "2026-09-29", attribution: "記者會暨玩家見面會預告" };
 const 資料 = 建置版本進度(設定);
 const 複製設定 = () => structuredClone(設定);
 // 假設 7.21 有獨立更新且沒有人工預告，隔離驗證更新頻率對模型的影響。
@@ -30,7 +38,32 @@ test("Vite 靜態模組與 Windows 路徑正規化後的設定更新", () => {
   const 監看檔案 = [];
   const 名稱 = 插件.resolveId("virtual:version-progress");
   const 模組內容 = 插件.load.call({ addWatchFile: (檔案) => 監看檔案.push(檔案) }, 名稱);
-  assert.match(模組內容, /"current_tc":"7.2"/);
+  const 正式資料 = JSON.parse(模組內容.slice("export default ".length, -1));
+  assert.equal(正式資料.verified_through, "2026-09-29");
+  assert.equal(正式資料.current_tc, "7.25");
+  assert.equal(正式資料.current_international, "7.56");
+  assert.equal(正式資料.elapsed_days, 293);
+  assert.equal(正式資料.previous_comparable.patch, "7.2");
+  assert.equal(正式資料.previous_comparable.lag_days, 490);
+  assert.equal(正式資料.latest_comparable.patch, "7.25");
+  assert.equal(正式資料.latest_comparable.lag_days, 490);
+  assert.equal(正式資料.lag_reduction, 0);
+  assert.equal(正式資料.views.all.gap_count, 11);
+  assert.equal(正式資料.views.major.gap_count, 3);
+  assert.equal(正式資料.views.all.tc.at(-1).patch, "7.25");
+  assert.equal(正規化版本進度選取(正式資料).patch, "7.25");
+  const 七二五 = 正式資料.latest_comparable;
+  assert.equal(七二五.tc_plan, undefined);
+  assert.equal(七二五.tc_url, 正式設定.sources.tc_7_25);
+  assert.equal(七二五.note_links.some((來源) => 來源.url === 正式設定.sources.international_7_3_notes), true);
+  assert.deepEqual(正式資料.views.all.rows.find((列) => 列.patch === "7.2").tc_duration, { days: 63, ongoing: false });
+  assert.deepEqual(正式資料.views.all.rows.find((列) => 列.patch === "7.25").tc_duration, { days: 0, ongoing: true });
+  for (const 視圖 of Object.values(正式資料.views)) {
+    assert.equal(視圖.rows.find((列) => 列.patch === "7.3").tc_released, false);
+    assert.equal(視圖.forecast.next.patch, "7.3");
+    assert.equal(視圖.forecast.next.date, "2026-11-03");
+    assert.equal(視圖.groups.find((組) => 組.patch === "7.2").tc_duration.days, 63);
+  }
   assert.equal(監看檔案.length, 1);
   let 已失效 = false;
   let 訊息;
