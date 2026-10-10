@@ -280,8 +280,9 @@ def 讀取戰鬥完整性檢核設定() -> 戰鬥完整性檢核設定:
     basic_attack_distribution = integrity.BasicAttackDistributionPolicy.from_mapping(
         設定.get("basic_attack_distribution")
     )
-    enabled = 解析布林設定值(設定.get("enabled"), True)
-    enabled = 解析布林設定值(os.getenv("FFLOGS_FIGHT_INTEGRITY_ENABLED"), enabled)
+    # 戰鬥完整性防護已退役。保留設定物件只是為了讀取舊來源資料；新 report
+    # 不再執行任何完整性查詢或判定，避免過期規則阻擋正常通關紀錄。
+    enabled = False
     return 戰鬥完整性檢核設定(
         enabled=enabled,
         cutoff_ms=cutoff_ms,
@@ -3863,9 +3864,12 @@ def 報告已標記隱藏(報告: Any) -> bool:
 
 
 def 戰鬥已標記資料完整性隱藏(戰鬥: Any) -> bool:
-    # 暫時性的普攻資料異常檢核只在 fight 層隱藏，不能升級成整份 report 隱藏：
-    # 同一 report 可同時有正常與異常 pull，保留原始 report 才能在工具修正後追溯／復原。
-    return integrity.is_hidden_from_public(戰鬥)
+    # 戰鬥完整性規則已退役。既有來源若明確保存 hidden_from_public，仍保留該歷史
+    # 結果的可追溯語意；沒有這個明確旗標的新 fight 一律直接進入公開建置。
+    if not isinstance(戰鬥, dict):
+        return False
+    結果 = 戰鬥.get(integrity.DATA_INTEGRITY_KEY)
+    return isinstance(結果, dict) and bool(結果.get("hidden_from_public"))
 
 
 def 戰鬥已確認資料完整性異常(戰鬥: Any) -> bool:

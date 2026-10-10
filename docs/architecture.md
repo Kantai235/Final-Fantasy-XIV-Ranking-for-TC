@@ -50,7 +50,7 @@ Data repo 的 report／fight／player／checkpoint 是 append-only 歷史資產�
 
 - `backfill_missing_fflogs_data.py`：既有必要欄位與支援統計。
 - `backfill_gcd_coverage.py`：既有 GCD。
-- `backfill_fight_integrity.py`：既有 fight 完整性證據。
+- `backfill_fight_integrity.py`：已退役的既有 fight 完整性證據工具，僅保留歷史研究用途。
 
 `fetch_honey_b_fans.py` 是獨立趣味資料管線，只能寫 `data/fun/` 與 `public/data/fun/`，不得混入正式排行榜。Apps Script 只查單一 report 的即時可讀狀態並寫待處理 Sheet，也不是排行榜來源。
 

@@ -23,7 +23,7 @@
   "fetch_gcd_coverage_enabled": false,
   "fetch_gcd_coverage_max_fights_per_run": 0,
   "fight_integrity_check": {
-    "enabled": true,
+    "enabled": false,
     "cutoff_iso": "2026-07-28T18:00:00+08:00",
     "hp_ratio_threshold": 1.15,
     "suspected_hp_ratio_threshold": 1.14,

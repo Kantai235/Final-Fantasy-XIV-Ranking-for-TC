@@ -46,8 +46,8 @@ npm run sync:data -- --dry-run
 | `npm run backfill:gcd:reports -- --dry-run` | 否 | 無 | 預覽以 report 為單位的 stateful GCD 回補。 |
 | `npm run backfill:gcd:reports` | FFLogs、XIVAPI datamining | 來源 | 由固定 cutoff 往舊，以 report 為單位補齊 GCD。 |
 | `npm run backfill:gcd:all` | FFLogs、XIVAPI datamining | 來源 | 以目前演算法重算所有可處理的 GCD；屬高成本維護指令。 |
-| `npm run backfill:fight-integrity -- --dry-run` | 否 | 無 | 預覽需要戰鬥完整性檢核的 report。 |
-| `npm run backfill:fight-integrity` | FFLogs | 來源 | 以 25 份 report 為預設批次回補 fight 層完整性證據。 |
+| `npm run backfill:fight-integrity -- --dry-run` | 否 | 無 | （已退役）預覽歷史戰鬥完整性候選，不屬於正式收錄流程。 |
+| `npm run backfill:fight-integrity` | FFLogs | 來源 | （已退役）人工回補歷史完整性證據；不影響新 report 收錄。 |
 | `npm run check:gcd-missing-report-status -- --dry-run` | 否 | 無 | 預覽缺少 GCD 且需要確認 report 可見度的候選。 |
 | `npm run check:gcd-missing-report-status` | FFLogs | 來源 | 查候選 report 狀態；永久不可讀時標記 hidden，不補算 GCD。 |
 | `npm run fetch:honey-fans` | FFLogs | 來源、產物 | 抓取並重建 Honey B. Lovely 趣味資料；不寫正式排行榜。 |

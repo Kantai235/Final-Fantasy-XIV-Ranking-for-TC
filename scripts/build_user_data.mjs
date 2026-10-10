@@ -448,36 +448,13 @@ function isHiddenEntry(entry) {
   return Boolean(entry?.report_hidden || entry?.hidden_report);
 }
 
-const fightIntegrityCutoffMs = Date.parse("2026-07-28T18:00:00+08:00");
-// 必須與 scripts/fight_integrity.py 同步。v13 只強制幻朱雀補齊全職業 ability 7／8
-// 普攻證據；其他副本已確認正常的 v8～v12 fight 繼續公開，避免全域版號升級時把個人成績、
-// 隊伍榜與統計整批撤下。副本專用重驗候選由 Python 資料管線負責，建置層只消費
-// 已寫入來源分片的最終狀態，不能自行推測哪些舊版 fight 需要重判。
-const currentFightIntegrityCalculationVersion = 13;
-const legacyPublicCompatibleFightIntegrityVersions = new Set([8, 9, 10, 11, 12]);
-const publicFightIntegrityStatuses = new Set(["valid", "not_applicable"]);
 const confirmedFightIntegrityAnomalyStatuses = new Set(["excluded", "suspected"]);
 
-function isPublicCompatibleIntegrityResult(integrity) {
-  const version = Number(integrity?.calculation_version);
-  const versionIsSupported = version === currentFightIntegrityCalculationVersion
-    || legacyPublicCompatibleFightIntegrityVersions.has(version);
-  return versionIsSupported
-    && publicFightIntegrityStatuses.has(String(integrity?.status || ""))
-    && !Boolean(integrity?.hidden_from_public);
-}
-
-function isIntegrityHiddenFight(fight, report = {}) {
-  // 普攻異常檢核是 fight 層而不是 report 層：保留 report 原始資料以供日後追溯，
-  // 但無論是否建置 hidden report delta，都不能讓異常或尚未驗證的 pull 回流到公開衍生資料。
+function isIntegrityHiddenFight(fight) {
+  // 戰鬥完整性規則已退役。新 report 不再保存此欄位，因此不能把「缺少結果」
+  // 解讀為驗證失敗；只有歷史資料明確寫入 hidden_from_public 時才維持原本隱藏。
   const integrity = fight?.data_integrity;
-  if (integrity && typeof integrity === "object") {
-    return !isPublicCompatibleIntegrityResult(integrity);
-  }
-  // 回補尚未完成或 API 暫時失敗時，切點後沒有完整性結果的 fight 必須 fail-closed。
-  // 來源層仍保存 report/fight，待離線回補後只有明確 valid 的資料才會公開。
-  const recordedAt = fightRecordedAtMs(fight, report);
-  return Number.isFinite(recordedAt) && recordedAt >= fightIntegrityCutoffMs;
+  return Boolean(integrity && typeof integrity === "object" && integrity.hidden_from_public);
 }
 
 function isConfirmedFightIntegrityAnomaly(fight) {
@@ -516,7 +493,7 @@ function collectConfirmedAnomalousFightHashes(ranking, encounter) {
 
 function isIntegrityHiddenFightOrDuplicate(fight, report, encounter, confirmedAnomalousFightHashes) {
   const fightHash = resolvePhysicalFightHash(fight, encounter);
-  return isIntegrityHiddenFight(fight, report)
+  return isIntegrityHiddenFight(fight)
     || Boolean(fightHash && confirmedAnomalousFightHashes.has(fightHash));
 }
 

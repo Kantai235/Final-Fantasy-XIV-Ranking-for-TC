@@ -40,33 +40,6 @@ jobs:
           git fetch --depth=1 origin "${{ github.ref_name }}:refs/remotes/origin/${{ github.ref_name }}"
           git reset --hard "origin/${{ github.ref_name }}"
 
-      - name: 記錄戰鬥完整性規則版本
-        run: |
-          # 排程工作可能在規則更新前啟動、卻在更新後才準備推送資料。記住起始
-          # revision，發布 Data snapshot 前再和遠端比對，避免舊 runner 把過期 valid 結論回寫。
-          RULE_FILES=(
-            scripts/fight_integrity.py
-            scripts/fight_integrity_known_capacity.py
-            scripts/fight_integrity_m8s.py
-            config/fflogs.json
-            config/fight_integrity_known_enemy_hp.json
-          )
-          : > "$RUNNER_TEMP/fight-integrity-rule-revisions.txt"
-          for file in "${RULE_FILES[@]}"; do
-            printf '%s %s\n' "$file" "$(git rev-parse "HEAD:$file")" >> "$RUNNER_TEMP/fight-integrity-rule-revisions.txt"
-          done
-
-      # 此快取只含彙總敵方承傷、生命池與目標數，不含 raw events 或排行榜來源資料。
-      # 每輪使用新 key 保存，並以前綴取回最近快取，讓中斷的檢核不會浪費已用的 FFLogs 額度。
-      - name: 還原戰鬥完整性最小測量快取
-        id: fight-integrity-cache
-        uses: actions/cache/restore@v5
-        with:
-          path: data/local-cache/fight-integrity
-          key: fflogs-fight-integrity-v1-${{ github.run_id }}-${{ github.run_attempt }}
-          restore-keys: |
-            fflogs-fight-integrity-v1-
-
       - name: 設定 Python 環境
         uses: actions/setup-python@v6
         with:
@@ -249,39 +222,6 @@ jobs:
             --stateful-report-backfill \
             --report-limit "${FFLOGS_GCD_BACKFILL_REPORT_LIMIT:-50}"
 
-      - name: 分批檢核 7.28 後戰鬥的傷害完整性
-        env:
-          FFLOGS_CLIENT_ID: ${{ secrets.FFLOGS_CLIENT_ID }}
-          FFLOGS_CLIENT_SECRET: ${{ secrets.FFLOGS_CLIENT_SECRET }}
-          FFLOGS_CLIENT_IDS: ${{ secrets.FFLOGS_CLIENT_IDS }}
-          FFLOGS_CLIENT_SECRETS: ${{ secrets.FFLOGS_CLIENT_SECRETS }}
-          FFLOGS_CLIENT_CREDENTIALS_JSON: ${{ secrets.FFLOGS_CLIENT_CREDENTIALS_JSON }}
-          # 這是可撤除的暫時性防護：停用後不再新增檢核，但既有 data_integrity 標記仍會由建置層隱藏。
-          FFLOGS_FIGHT_INTEGRITY_ENABLED: ${{ vars.FFLOGS_FIGHT_INTEGRITY_ENABLED || 'true' }}
-          FFLOGS_FIGHT_INTEGRITY_REPORT_LIMIT: ${{ vars.FFLOGS_FIGHT_INTEGRITY_REPORT_LIMIT || '25' }}
-        run: |
-          INTEGRITY_REPORT_LIMIT="${FFLOGS_FIGHT_INTEGRITY_REPORT_LIMIT:-25}"
-          if [ "$INTEGRITY_REPORT_LIMIT" = "0" ]; then
-            echo "FFLOGS_FIGHT_INTEGRITY_REPORT_LIMIT=0，略過本輪傷害完整性檢核。"
-            exit 0
-          fi
-          python scripts/backfill_fight_integrity.py --report-limit "$INTEGRITY_REPORT_LIMIT"
-
-      - name: 確認戰鬥完整性測量快取可保存
-        if: always()
-        id: fight-integrity-cache-state
-        run: |
-          if [ -s data/local-cache/fight-integrity/measurements.json ]; then
-            echo "exists=true" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: 保存戰鬥完整性最小測量快取
-        if: always() && steps.fight-integrity-cache-state.outputs.exists == 'true'
-        uses: actions/cache/save@v5
-        with:
-          path: data/local-cache/fight-integrity
-          key: fflogs-fight-integrity-v1-${{ github.run_id }}-${{ github.run_attempt }}
-
       - name: 分割完整排行榜資料供 Git 追蹤
         run: python scripts/fetch_fflogs.py --split-rankings
 
@@ -346,14 +286,6 @@ jobs:
             echo "::error::主專案在本輪執行期間已有新 commit；拒絕讓舊 runner 發布資料。"
             exit 1
           fi
-          while IFS=' ' read -r file expected_revision; do
-            remote_revision="$(git rev-parse "origin/${{ github.ref_name }}:$file")"
-            if [ "$remote_revision" != "$expected_revision" ]; then
-              echo "::error::戰鬥完整性規則在本輪執行期間已更新；拒絕回寫過期完整性結果。"
-              exit 1
-            fi
-          done < "$RUNNER_TEMP/fight-integrity-rule-revisions.txt"
-
       # 權威資料先發布，讓後續 Users 或 Pages 建置暫時失敗時仍不會遺失本輪 FFLogs 成果。
       # Data repo 工具會驗證 manifest、append-only report/fight/player/checkpoint，並以
       # 無 parent 的 root commit 搭配 force-with-lease 更新 main。

@@ -166,7 +166,7 @@
 | `scripts/fight_integrity_known_capacity.py` | 固定敵方承傷範圍、逐 NPC profile 與單向上限規則。 |
 | `scripts/fight_integrity_m8s.py` | M8S 狼機制的純彙總與證據驗證，校正過量擊殺造成的預期承傷差異。 |
 | `scripts/fight_integrity_cache.py` | 不進 Git 的匿名化最小量測快取與來源指紋。 |
-| `scripts/backfill_fight_integrity.py` | 選取既有候選、查 FFLogs Target Damage／HP／Attack 證據並寫回。 |
+| `scripts/backfill_fight_integrity.py` | 已退役的歷史完整性回補工具；不再由正式 workflow 執行。 |
 
 設定來源為 `config/fflogs.json`、`config/fight_integrity_baselines.json` 與 `config/fight_integrity_known_enemy_hp.json`；業務規則見 [data-pipeline.md](data-pipeline.md) 與 [data-contracts.md](data-contracts.md)。
 

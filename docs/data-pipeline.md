@@ -147,75 +147,19 @@ npm run backfill:support:history
 
 正式 workflow 的 `--stateful-support-metrics-backfill` 使用 `data/state.json.support_metrics_report_backfill` 保存固定切點、`cursor_sort_time`／`cursor_report_code`、失敗重試清單、支援統計版本與減傷規則版本。每輪預設處理 25 份切點以前的 report 並由新往舊推進；`FFLOGS_SUPPORT_METRICS_BACKFILL_REPORT_LIMIT=0` 可暫停，`FFLOGS_SUPPORT_METRICS_BACKFILL_CUTOFF_ISO` 可明確覆寫切點。計算或規則版本提升時會保留固定切點、清除舊 cursor，從 7.2 切點重新檢查。這個 state 不會改動一般增量／延遲／歷史 report 掃描游標。
 
-## 戰鬥完整性檢核
+## 戰鬥完整性檢核（已退役）
 
-這是針對台灣時間 `2026-07-28T18:00:00+08:00` 後特定 FFLogs 普攻解析異常的可撤除防護。純規則集中在 `scripts/fight_integrity.py`；新收錄 fight 由 `fetch_fflogs.py` 在建立排行來源前立即檢查，歷史資料由 `scripts/backfill_fight_integrity.py` 小批量回補。兩條路徑共用相同設定、純判定與最小量測快取。
+7.2 以前為處理 FFLogs 普攻資料異常而加入的戰鬥完整性防護已停止使用。現行
+`fetch_fflogs.py` 不再查詢 Target Damage、最大生命值、Attack 事件或 M8S 機制事件；新
+report 只要通過既有的公開可讀、繁中服玩家、副本與通關條件，就直接寫入排行榜來源。
 
-### 資料狀態
+`fights[].data_integrity` 仍作為舊資料的向後相容欄位保留。建置層只會尊重歷史資料中
+明確存在的 `hidden_from_public=true`，不會把新 fight 缺少完整性欄位解讀為驗證失敗，也不
+會因缺少舊版計算版本而阻擋新收錄。既有 hidden 結果與量測快取不主動刪除，保留追溯能力。
 
-結果寫在 `fights[].data_integrity`，不轉為整份 `report_hidden`：
-
-- `valid`：目前規則確認可公開。
-- `not_applicable`：明確不適用一般生命池語意的副本。
-- `suspected`／`excluded`：從公開衍生資料隱藏，但保留 report、fight、players 與證據。
-- `unverifiable`：可重現地缺少必要證據，採 fail-closed 隱藏。
-- `integrity_measurement_failed`：執行期例外，後續批次必須重試。
-
-同一物理戰鬥若有多份上傳，任一來源明確為 `suspected` 或 `excluded` 時，相同 `fight_hash` 的變體都不得進入排行榜、個人成績、隊伍榜或近期動態；暫時性的 `unverifiable` 不跨 report 傳播，避免壓過另一份已驗證來源。
-
-目前純判定版本是 v13。公開建置與待收錄收尾的相容清單允許 v8～v12 的 `valid`／`not_applicable` 繼續公開；Python 回補候選器則另外把 M5S～M8S 缺少 v11 `target_damage_profile`，以及幻朱雀缺少 v13 副本／職業普攻 reference 或 ability 7／8 證據的場次排入精準重驗。建置層只消費回補後寫入來源分片的最終狀態，不自行把「尚待補證據」推論成 hidden，避免全域版本提升時讓其它正常資料整批下架。
-
-### 判定層次
-
-規則與數值來源是 `config/fflogs.json.fight_integrity_check`、`config/fight_integrity_baselines.json` 與 `config/fight_integrity_known_enemy_hp.json`。處理順序的重要語意為：
-
-1. 已明示的固定敵方承傷範圍、完整隊伍單向硬上限與逐 NPC GUID profile 優先。玩家列合計可能漏掉 Limit Break，因此低於下限不能直接判定異常，需改查 FFLogs Target Damage；高於明示上限才是足夠的異常證據。
-2. 舊副本可用切點前、`fight_hash` 去重且完整繁中隊伍的 `players[].total_damage` P99 做本地預篩。低於保守上緣可減少 API；超過上緣不是排除證據，仍需查 Target Damage／生命池。
-3. 一般生命池規則比較敵方承傷與敵方最大生命池總和；嚴格超過 1.15 倍為 `excluded`，1.14～1.15 或 FFLogs `guid=7`／`Attack` 證據為 `suspected`。
-4. M5S～M8S 的逐目標 profile 以 NPC GUID、最大生命值、有效承傷實例數與轉場比例交叉驗證；總量正確但傷害在目標間錯誤轉移仍不得通過。
-5. 幻朱雀的副本／職業普攻規則涵蓋全部 21 個戰鬥職業。單一玩家必須同時跨過每擊中位數、普攻占比與普攻 DPS 三項門檻才標為 `suspected`，避免正常 1 點 packet 或單一尖峰誤判。
-
-固定數字、目前副本清單與逐目標 profile 詳列於 [config/README.md](../config/README.md)。設定檔是判定資料來源；文件不得另創不同門檻。
-
-M8S 使用機制承傷校正狼的預期值，取代固定 40% 與固定整場總量。`fetch_fflogs.py` 對單場 All 事件完整分頁，只由 `fight_integrity_m8s.py` 累積兩隻狼的敵方機制摘要；`calculateddamage` 不重複計入。經確認的三次 Surge 有效傷害與過量擊殺須符合名義傷害，才能以最大 HP 減有效機制傷害推算玩家承傷；缺少證據為 `unverifiable`，來源、技能、次數或名義傷害不符為 `suspected`。狼與整場各自套用設定的容許值，本體、普攻及同場異常傳播規則保持獨立。
-
-只更新 M8S 的 profile version。舊 HP／承傷快取可重用，但沒有機制摘要時仍要呼叫 API 補齊，不能靠原始總量推算過量擊殺；缺漏摘要即使已寫入目前 profile version，也會再排入回補。有完整摘要後，可從 `data_integrity.metrics.target_damage_profile.wolf_mechanic_damage` 還原快取並離線重判。相同物理戰鬥的所有報告來源仍須完成重判，舊來源的異常標記才不會連帶隱藏已通過的新來源。
-
-### 最小量測快取
-
-`data/local-cache/fight-integrity/measurements.json` 不進 Git，只保存：
-
-- 彙總 Target Damage、最大生命池與目標數。
-- 需要 profile 時的 NPC GUID、逐目標承傷、最大生命值與有效實例數。
-- M8S 狼機制版本、NPC GUID／技能 ID、命中與過量擊殺次數、有效傷害／過量擊殺總量、名義傷害極值及不符次數。
-- 匿名化的 ability ID、source ID、職業、事件數、中位數、占比與每秒傷害。
-- 可重現的無法量測原因與來源指紋。
-
-快取不保存玩家名稱、report 內 actor ID、OAuth、完整 Target table 或 raw events。來源指紋未變時，即使 `--force` 也優先離線重判；只有缺少必要 ability／機制摘要、來源改變或明確 `--refresh-cache` 才再次使用 FFLogs 額度。Actions 以 cache 接續這個本機目錄。
-
-### 操作
-
-預覽本輪候選：
-
-```bash
-npm run backfill:fight-integrity -- --dry-run
-```
-
-一般小批次：
-
-```bash
-npm run backfill:fight-integrity
-```
-
-只用既有快取、固定規則與歷史基準離線重判：
-
-```bash
-npm run backfill:fight-integrity -- --force --offline-only --report-limit 999999
-```
-
-可用可重複 `--report-code`、`--encounter-key` 與含時區的 `--recorded-at-or-after` 限縮人工稽核。FFLogs GraphQL 回傳 `reportData.report=null` 時，來源 report 視為已無法讀取並標記 hidden；暫時性 HTTP／連線錯誤不得誤判為永久 hidden。
-
-workflow 以 `FFLOGS_FIGHT_INTEGRITY_ENABLED` 控制是否新增檢核，以 `FFLOGS_FIGHT_INTEGRITY_REPORT_LIMIT` 控制歷史批次；停用不會移除既有結果。runner 啟動時記錄完整性規則檔 Git revision，Data publish 前再次比對遠端；執行期間規則變更時必須停止舊 runner，不能回寫過期結論。
+`scripts/fight_integrity.py`、`scripts/backfill_fight_integrity.py` 及相關測試仍可供歷史
+資料研究與交接參考，但不再由正式 GitHub Actions workflow 執行，也不再影響新 report 的
+公開資格。
 
 ## GCD 覆蓋率
 

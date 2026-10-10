@@ -136,7 +136,7 @@ JSON 陣列適合 GitHub Secret：
 FFLOGS_CLIENT_CREDENTIALS_JSON=[{"client_id":"client_id_1","client_secret":"client_secret_1"}]
 ```
 
-`config/fflogs.json` 的頂層純量與清單設定可用同名大寫 `FFLOGS_*` 暫時覆寫；巢狀的 `fight_integrity_check` 不接受整個物件覆寫，目前只有 `enabled` 另支援 `FFLOGS_FIGHT_INTEGRITY_ENABLED`。完整欄位與 workflow 預設見 [data-pipeline.md](data-pipeline.md) 及 [deployment.md](deployment.md)。
+`config/fflogs.json` 的頂層純量與清單設定可用同名大寫 `FFLOGS_*` 暫時覆寫；已退役的 `fight_integrity_check` 僅為舊資料相容設定，不再控制新 report 收錄。完整欄位與 workflow 預設見 [data-pipeline.md](data-pipeline.md) 及 [deployment.md](deployment.md)。
 
 ### 前端
 

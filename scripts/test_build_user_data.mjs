@@ -13,6 +13,7 @@ import {
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const buildScriptPath = path.join(repoRoot, "scripts", "build_user_data.mjs");
 const fightIntegrityScriptPath = path.join(repoRoot, "scripts", "fight_integrity.py");
+const fetchScriptPath = path.join(repoRoot, "scripts", "fetch_fflogs.py");
 
 function assert(condition, message) {
   if (!condition) {
@@ -81,45 +82,16 @@ async function readJson(filePath) {
 }
 
 async function assertFightIntegrityVersionContract() {
-  // 戰鬥完整性判定由 Python 寫入、Node.js 消費；兩邊版號若不同步，valid fight 會只出現在
-  // 排行榜，卻被個人成績、隊伍榜與統計誤當成未知版本排除。直接比對兩個執行入口的常數，
-  // 讓下一次規則升版時必須在同一筆變更中更新資料建置層，而不是等部署後才由玩家回報。
-  const [pythonSource, nodeSource] = await Promise.all([
+  // 完整性規則已退役；測試改確認新資料管線不再要求版本契約，且歷史明確
+  // hidden_from_public 標記仍由建置層保留。
+  const [pythonSource, nodeSource, fetchSource] = await Promise.all([
     readFile(fightIntegrityScriptPath, "utf8"),
     readFile(buildScriptPath, "utf8"),
+    readFile(fetchScriptPath, "utf8"),
   ]);
-  const pythonCurrentMatch = pythonSource.match(/^CALCULATION_VERSION\s*=\s*(\d+)/m);
-  const pythonLegacyMatch = pythonSource.match(
-    /^LEGACY_PUBLIC_COMPATIBLE_VERSIONS\s*=\s*frozenset\(\{([^}]*)\}\)/m,
-  );
-  const nodeCurrentMatch = nodeSource.match(
-    /^const currentFightIntegrityCalculationVersion\s*=\s*(\d+);/m,
-  );
-  const nodeLegacyMatch = nodeSource.match(
-    /^const legacyPublicCompatibleFightIntegrityVersions\s*=\s*new Set\(\[([^\]]*)\]\);/m,
-  );
-
-  assert(pythonCurrentMatch && pythonLegacyMatch, "無法解析 Python 戰鬥完整性版本契約。");
-  assert(nodeCurrentMatch && nodeLegacyMatch, "無法解析 Node.js 戰鬥完整性版本契約。");
-
-  const parseVersionList = (rawVersions) => rawVersions
-    .split(",")
-    .map((value) => Number(value.trim()))
-    .filter(Number.isFinite)
-    .sort((left, right) => left - right);
-  const pythonCurrentVersion = Number(pythonCurrentMatch[1]);
-  const nodeCurrentVersion = Number(nodeCurrentMatch[1]);
-  const pythonLegacyVersions = parseVersionList(pythonLegacyMatch[1]);
-  const nodeLegacyVersions = parseVersionList(nodeLegacyMatch[1]);
-
-  assert(
-    nodeCurrentVersion === pythonCurrentVersion,
-    `Node.js 現行完整性版號 v${nodeCurrentVersion} 未與 Python v${pythonCurrentVersion} 同步。`,
-  );
-  assert(
-    JSON.stringify(nodeLegacyVersions) === JSON.stringify(pythonLegacyVersions),
-    `Node.js 舊版相容清單 ${JSON.stringify(nodeLegacyVersions)} 未與 Python ${JSON.stringify(pythonLegacyVersions)} 同步。`,
-  );
+  assert(!nodeSource.includes("currentFightIntegrityCalculationVersion"), "建置層不應再要求完整性版號契約。");
+  assert(nodeSource.includes("hidden_from_public"), "建置層仍須保留歷史 hidden_from_public 語意。");
+  assert(fetchSource.includes("enabled = False"), "抓取層必須停用新 report 戰鬥完整性檢核。");
 }
 
 function runBuild(tempRoot) {
@@ -974,13 +946,13 @@ async function assertFixtureOutput(tempRoot, expectedGlobalStatsText, expectedSe
   const serverCompare = JSON.parse(serverCompareText);
 
   assert(
-    !usersIndex.users.some((user) => user.character_name === "舊版檢核角色"),
-    "舊版完整性 valid 結果不得重新進入公開使用者索引。",
+    usersIndex.users.some((user) => user.character_name === "舊版檢核角色"),
+    "已退役的完整性版本不應阻擋新制公開使用者索引。",
   );
 
   assert(usersIndex.generated_at_iso === "2026-01-02T03:04:05.000Z", "使用者索引應使用 ranking 更新時間作為 generated_at_iso。");
   assert(globalStats.generated_at_iso === "2026-01-02T03:04:05.000Z", "全服統計應使用 ranking 更新時間作為 generated_at_iso。");
-  assert(usersIndex.total_users === 7, "fixture 應產生五位有公開成績的使用者與兩位空白入口。");
+  assert(usersIndex.total_users === 8, "fixture 應產生六位有公開成績的使用者與兩位空白入口。");
   assert(usersIndex.achievements?.length === 18, "使用者索引應輸出十八項成就手冊統計。");
   const recentAchievement = usersIndex.achievements.find((achievement) => achievement.id === "recently-active");
   const highActivityAchievement = usersIndex.achievements.find((achievement) => achievement.id === "high-activity");
@@ -1022,9 +994,9 @@ async function assertFixtureOutput(tempRoot, expectedGlobalStatsText, expectedSe
     "兩個量級各有一位玩家符合首月踏破，獲得人數都應為一。",
   );
   assert(
-    lightMonthOneAchievement?.holder_percentage === 14.29
-      && cruiserMonthOneAchievement?.holder_percentage === 14.29,
-    "首月踏破占比應以七位索引玩家為分母重新計算為 14.29%。",
+    lightMonthOneAchievement?.holder_percentage === 12.5
+      && cruiserMonthOneAchievement?.holder_percentage === 12.5,
+    "首月踏破占比應以八位索引玩家為分母重新計算為 12.5%。",
   );
   assert(
     mutuallyExclusiveStageIds.every((achievementId) => (
@@ -1032,21 +1004,21 @@ async function assertFixtureOutput(tempRoot, expectedGlobalStatsText, expectedSe
     )),
     "取得首月踏破時，不可再把同一玩家計入首週、次週、一般踏破或通關人數。",
   );
-  assert(globalStats.total_character_count === 5, `全服角色數應把同名跨服角色視為不同玩家，實際 ${globalStats.total_character_count}。`);
-  assert(globalStats.total_entry_count === 13, "全服 entry 數應包含既有成績、v8／v10～v13 正常成績與兩筆首月互斥測試成績。");
+  assert(globalStats.total_character_count === 6, `全服角色數應把同名跨服角色視為不同玩家，實際 ${globalStats.total_character_count}。`);
+  assert(globalStats.total_entry_count === 14, "全服 entry 數應包含既有成績、歷史完整性結果與兩筆首月互斥測試成績。");
   const hiddenUser = usersIndex.users.find((user) => user.character_name === "隱藏角色");
   assert(hiddenUser, "預設使用者索引應保留空白成績單入口。");
   assert(hiddenUser.servers.includes("鳳凰"), "空白入口應保留伺服器，讓同名角色查詢仍可辨識。");
   assert(hiddenUser.best_rdps === null, "空白入口不可帶入最佳 rDPS。");
   assert(hiddenUser.last_recorded_at_iso === null, "空白入口不可帶入最後紀錄時間。");
-  assert(allUsersIndex.total_users === 7, "完整鏡像應保留所有公開索引角色。");
+  assert(allUsersIndex.total_users === 8, "完整鏡像應保留所有公開索引角色。");
   assert(allUsersIndex.achievements?.length === usersIndex.achievements.length, "Hidden delta 索引也必須輸出完整成就手冊目錄。");
-  assert(allGlobalStats.total_character_count === 6, "完整全服統計應納入所有 fixture 角色。");
-  assert(allGlobalStats.total_entry_count === 14, "完整全服統計應納入所有 fixture 成績。");
+  assert(allGlobalStats.total_character_count === 8, `完整全服統計應納入所有 fixture 角色，實際 ${allGlobalStats.total_character_count}。`);
+  assert(allGlobalStats.total_entry_count === 16, `完整全服統計應納入所有 fixture 成績，實際 ${allGlobalStats.total_entry_count}。`);
   const allHiddenUser = allUsersIndex.users.find((user) => user.character_name === "隱藏角色");
   assert(allHiddenUser, "完整鏡像使用者索引應包含對應角色。");
-  assert(Array.isArray(globalStats.job_profiles) && globalStats.job_profiles.length === 4, "全服統計應產生職業專頁資料。");
-  assert(serverCompare.summary.server_count === 4, "伺服器對比應分別納入同名角色所在的伺服器。");
+  assert(Array.isArray(globalStats.job_profiles) && globalStats.job_profiles.length === 5, `全服統計應產生職業專頁資料，實際 ${globalStats.job_profiles?.length ?? 0}。`);
+  assert(serverCompare.summary.server_count === 5, "伺服器對比應分別納入同名角色所在的伺服器。");
   assert(serverCompare.servers.some((server) => server.server === "鳳凰"), "伺服器對比應包含鳳凰。");
   assert(serverCompare.servers.some((server) => server.server === "巴哈姆特"), "伺服器對比應包含同名角色所在的巴哈姆特。");
   assert(serverCompare.servers.some((server) => server.server === "泰坦"), "伺服器對比應包含同名角色所在的泰坦。");
@@ -1074,8 +1046,8 @@ async function assertFixtureOutput(tempRoot, expectedGlobalStatsText, expectedSe
   assert(allPendingIntegrityUser, "完整鏡像索引不得遺漏公開空白使用者入口。");
   assert(pendingIntegrityUser.public_entry_count === 0, "未檢核戰鬥不可成為公開成績。");
   assert(
-    allPendingIntegrityUser.file_path === pendingIntegrityUser.file_path,
-    "完整鏡像沒有可補資料時應直接回退公開空白成績單，而非產生不完整 delta。",
+    allPendingIntegrityUser.file_path.startsWith("data/all/users/"),
+    "完整鏡像應保留歷史 hidden report 的管理檢視資料。",
   );
 
   const allHiddenUserData = await readJson(

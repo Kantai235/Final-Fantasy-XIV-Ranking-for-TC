@@ -180,13 +180,13 @@ async function main() {
     assert(!integrityBlockedReportCodes.has("IntegrityV12Valid123"), "相容的 v12 not_applicable report 不得誤列為站務複核");
     assert(indexedReportCodes.has("IntegrityV13Valid123"), "目前 v13 正常 report 應維持公開收錄");
     assert(!integrityBlockedReportCodes.has("IntegrityV13Valid123"), "目前 v13 正常 report 不得誤列為站務複核");
-    assert(!indexedReportCodes.has("IntegrityV7Valid123"), "早於相容清單的 v7 report 不得回覆為公開收錄");
-    assert(integrityBlockedReportCodes.has("IntegrityV7Valid123"), "早於相容清單的 v7 report 必須等待站務複核");
-    assert(!indexedReportCodes.has("IntegrityV14Valid123"), "尚未明示相容的未知新版 report 不得回覆為公開收錄");
-    assert(integrityBlockedReportCodes.has("IntegrityV14Valid123"), "尚未明示相容的未知新版 report 必須等待站務複核");
-    assert(!indexedReportCodes.has("MissingIntegrity123"), "新制切點後缺少完整性結果的 report 不得回覆為公開收錄");
-    assert(integrityBlockedReportCodes.has("MissingIntegrity123"), "新制切點後缺少完整性結果的 report 必須進入站務複核集合");
-    assert(indexedReportCodes.has("LegacyNoIntegrity123"), "新制切點前缺少完整性結果的 report 應維持向後相容");
+    assert(indexedReportCodes.has("IntegrityV7Valid123"), "歷史完整性版本不應阻擋新制公開建置");
+    assert(!integrityBlockedReportCodes.has("IntegrityV7Valid123"), "未明確標記隱藏的歷史結果不應進入站務複核");
+    assert(indexedReportCodes.has("IntegrityV14Valid123"), "未知完整性版本不應阻擋新制公開建置");
+    assert(!integrityBlockedReportCodes.has("IntegrityV14Valid123"), "未知版本但未明確隱藏的結果不應進入站務複核");
+    assert(indexedReportCodes.has("MissingIntegrity123"), "新 report 缺少完整性結果時應直接視為可收錄");
+    assert(!integrityBlockedReportCodes.has("MissingIntegrity123"), "缺少完整性結果不應進入站務複核集合");
+    assert(indexedReportCodes.has("LegacyNoIntegrity123"), "缺少完整性結果的歷史 report 仍應可公開建置");
 
     const hiddenStatusIndexPath = path.join(repositoryRoot, "public", "data", "all", "report_status_index.json");
     await writeJson(hiddenStatusIndexPath, {

@@ -37,7 +37,7 @@ npm run build
 2. 設定 Python 3.11、Node.js 24 並安裝依賴。
 3. 執行 `npm run data:hydrate`，從 `Final-Fantasy-XIV-Ranking-for-TC-Data` 驗證 manifest 與檔案 SHA-256 後，還原 `data/` 及主站共用 `public/data/`。
 4. 若有 Cloudflare secrets，先同步 Cache Rules、Facebook 分享爬蟲例外與 Rate Limiting Rules。
-5. 讀取 Google Sheet 待收錄名單，再用 FFLogs 憑證執行近期、延遲與歷史掃描；新落地 fight 同時計算 GCD，並小批量回補坦補支援統計、既有 GCD 與戰鬥完整性。
+5. 讀取 Google Sheet 待收錄名單，再用 FFLogs 憑證執行近期、延遲與歷史掃描；新落地 fight 同時計算 GCD，並小批量回補坦補支援統計與既有 GCD。戰鬥完整性驗證已退役，新 report 不再進行該項檢查。
 6. 抓取 Honey B. Lovely 趣味榜資料，並執行 `python scripts/fetch_fflogs.py --split-rankings` 整理排行榜來源分片。
 7. 執行 `npm run build:user-data`、`npm run build:honey-fans` 與 `npm run validate:data`，產生並驗證個人成績、全服統計、排行榜薄索引、Logs 狀態索引及公開資料。
 8. 寫入 `data/update_status.json` 並重建 `public/data/update_status.json`。
@@ -122,8 +122,6 @@ npm run build
 - `FFLOGS_GCD_BACKFILL_CUTOFF_ISO`
 - `FFLOGS_SUPPORT_METRICS_BACKFILL_REPORT_LIMIT`
 - `FFLOGS_SUPPORT_METRICS_BACKFILL_CUTOFF_ISO`
-- `FFLOGS_FIGHT_INTEGRITY_ENABLED`
-- `FFLOGS_FIGHT_INTEGRITY_REPORT_LIMIT`
 - `FFLOGS_REFRESH_QUEUE_SPREADSHEET_ID`
 - `FFLOGS_REFRESH_QUEUE_SHEET_NAME`
 - `FFLOGS_REFRESH_QUEUE_MAX_CODES`
@@ -148,9 +146,9 @@ npm run build
 
 workflow 預設掃全部地區候選 report，近期 24 小時完整重查，24-72 小時一般只選未知 report；UCoB 通關規則重判是例外，尚未寫入目前 `clear_rule_revision` 的既有 report 仍會重新深查。歷史補查則以每輪 1 個 168 小時視窗、最多 600 份深層候選且同一 zone/difficulty 群組最多 150 份的設定檢查更舊時間窗是否有新的公開 logs 可抓取，同時對新落地 fight 即時計算 GCD 覆蓋率。主排行榜更新的時間目標是落在 GitHub-hosted runner 6 小時硬上限內；正式排程預設 `FFLOGS_MAX_RUNTIME_SECONDS=6000` 與 `FFLOGS_RUNTIME_GRACE_SECONDS=900`，遇到長冷卻時會保留 `active_scan` 續跑位置，讓後續資料建置與 Data snapshot 發布仍能在同一輪完成。Honey B. Lovely 粉絲榜另以 `HONEY_FANS_*` variables 控制近期掃描天數、每輪歷史檢查上限與查詢切窗，預設為近 3 天、每輪 200 場、24 小時切窗。
 
-坦補支援統計的 stateful 歷史回補預設每輪 25 份，固定切點為 `2026-07-28T05:00:00Z`；設 `FFLOGS_SUPPORT_METRICS_BACKFILL_REPORT_LIMIT=0` 可暫停。戰鬥完整性歷史回補同樣預設每輪 25 份；`FFLOGS_FIGHT_INTEGRITY_ENABLED=false` 停止新增檢核，`FFLOGS_FIGHT_INTEGRITY_REPORT_LIMIT=0` 略過該輪歷史批次，但既有 `hidden_from_public` 結果仍持續生效。
+坦補支援統計的 stateful 歷史回補預設每輪 25 份，固定切點為 `2026-07-28T05:00:00Z`；設 `FFLOGS_SUPPORT_METRICS_BACKFILL_REPORT_LIMIT=0` 可暫停。戰鬥完整性歷史回補已從正式 workflow 移除；既有來源中的 `hidden_from_public` 結果仍依歷史相容規則保留。
 
-FFLogs 待收錄名單需要額外設定 Google Sheet 與 service account。Apps Script 會寫入 `FFLOGS_REFRESH_QUEUE_SPREADSHEET_ID` 指定的 Sheet；workflow 會用 `GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON` secret，或 `GOOGLE_SHEETS_CLIENT_EMAIL` + `GOOGLE_SHEETS_PRIVATE_KEY` secrets，透過 Google Sheets API 讀取 `status=queued|pending|retry` 的 report code。Data snapshot 發布成功後，workflow 會再依公開／hidden 狀態索引、`data/rankings/*.json` 的 `source_reports`、公開 report 分片、fight 完整性結果與 state checkpoint，回寫 `done`、`hidden`、`review_required_data_integrity`、無通關或無繁中服玩家的終止狀態，因此 service account 必須被分享為該 Sheet 的編輯者；Apps Script 執行者帳號也需要可編輯該 Sheet。
+FFLogs 待收錄名單需要額外設定 Google Sheet 與 service account。Apps Script 會寫入 `FFLOGS_REFRESH_QUEUE_SPREADSHEET_ID` 指定的 Sheet；workflow 會用 `GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON` secret，或 `GOOGLE_SHEETS_CLIENT_EMAIL` + `GOOGLE_SHEETS_PRIVATE_KEY` secrets，透過 Google Sheets API 讀取 `status=queued|pending|retry` 的 report code。Data snapshot 發布成功後，workflow 會依公開／hidden 狀態索引、`data/rankings/*.json` 的 `source_reports` 與 state checkpoint 回寫 `done`、`hidden`、無通關或無繁中服玩家的終止狀態；新 report 不再產生 `review_required_data_integrity`。
 
 ## 暫停的維護步驟
 

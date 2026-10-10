@@ -25,15 +25,6 @@ const REPORT_CODE_PATTERN = /^[A-Za-z0-9]{8,32}$/;
 const QUEUED_STATUSES = new Set(["queued", "pending", "retry"]);
 const STATE_STATUS_NO_CLEAR = "skipped_no_clear";
 const STATE_STATUS_NO_TRADITIONAL_CHINESE_PLAYERS = "skipped_no_traditional_chinese_players";
-// 必須與 scripts/fight_integrity.py 及 build_user_data.mjs 同步。v13 只強制幻朱雀
-// 補齊副本／職業普攻證據；其它副本已確認正常的 v8～v12 fight 仍維持公開。
-// hidden、缺少判定、過舊或未知版本才交由站務複核，避免待收錄收尾把已公開的
-// 合法 report 誤標成 integrity_review。
-const FIGHT_INTEGRITY_CUTOFF_MS = Date.parse("2026-07-28T18:00:00+08:00");
-const CURRENT_FIGHT_INTEGRITY_CALCULATION_VERSION = 13;
-const LEGACY_PUBLIC_COMPATIBLE_FIGHT_INTEGRITY_VERSIONS = new Set([8, 9, 10, 11, 12]);
-const PUBLIC_FIGHT_INTEGRITY_STATUSES = new Set(["valid", "not_applicable"]);
-
 // Apps Script 與 workflow 都以這組欄位順序存取同一份 Sheet。工作表可能曾被
 // 手動編修；若標題被覆蓋為重複欄位，依欄位名稱組裝的資料會把值寫進錯誤語意。
 // 因此 workflow 收尾時也會校正 A:N 的既有 schema，但不碰任何歷史資料列。
@@ -162,47 +153,19 @@ export function isHiddenEntry(entry) {
   return Boolean(entry?.report_hidden || entry?.hidden_report);
 }
 
-function fightRecordedAtMs(fight, report) {
-  for (const value of [
-    fight?.recorded_at,
-    fight?.recordedAt,
-    report?.report_end_time,
-    report?.endTime,
-  ]) {
-    const numericValue = Number(value);
-    if (Number.isFinite(numericValue) && numericValue >= 946684800000) {
-      return numericValue;
-    }
-  }
-
-  for (const value of [fight?.recorded_at_iso, report?.report_end_time_iso]) {
-    const parsedValue = Date.parse(String(value || ""));
-    if (Number.isFinite(parsedValue)) {
-      return parsedValue;
-    }
-  }
-  return null;
-}
-
-function isIntegrityHiddenFight(fight, report) {
+function isIntegrityHiddenFight(fight) {
   const integrity = fight?.data_integrity;
   if (!integrity || typeof integrity !== "object") {
-    // 與公開資料建置層一致：新制切點後缺少完整性結果本身就是待複核狀態，不能因
-    // report 已寫入來源分片便向申請者回覆「已收錄」。舊紀錄仍維持向後相容。
-    const recordedAtMs = fightRecordedAtMs(fight, report);
-    return Number.isFinite(recordedAtMs) && recordedAtMs >= FIGHT_INTEGRITY_CUTOFF_MS;
+    // 戰鬥完整性規則已退役。新 report 不再需要完整性欄位，缺少結果不應阻擋
+    // 待收錄申請；只有歷史資料明確保存 hidden_from_public 時才維持複核狀態。
+    return false;
   }
-  const version = Number(integrity.calculation_version);
-  const versionIsSupported = version === CURRENT_FIGHT_INTEGRITY_CALCULATION_VERSION
-    || LEGACY_PUBLIC_COMPATIBLE_FIGHT_INTEGRITY_VERSIONS.has(version);
-  return Boolean(integrity.hidden_from_public)
-    || !versionIsSupported
-    || !PUBLIC_FIGHT_INTEGRITY_STATUSES.has(String(integrity.status || ""));
+  return Boolean(integrity.hidden_from_public);
 }
 
 function reportOnlyHasIntegrityHiddenFights(report) {
   const fights = Array.isArray(report?.fights) ? report.fights.filter(Boolean) : [];
-  return fights.length > 0 && fights.every((fight) => isIntegrityHiddenFight(fight, report));
+  return fights.length > 0 && fights.every((fight) => isIntegrityHiddenFight(fight));
 }
 
 export function rankingEntryGroups(ranking) {
