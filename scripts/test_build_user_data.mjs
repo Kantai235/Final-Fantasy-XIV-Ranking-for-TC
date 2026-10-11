@@ -1053,10 +1053,13 @@ async function assertFixtureOutput(tempRoot, expectedGlobalStatsText, expectedSe
   const allHiddenUserData = await readJson(
     path.join(tempRoot, "public", "data", "all", allHiddenUser.file_path.replace(/^data\//, "")),
   );
+  const hiddenPublicBaseData = await readJson(path.join(tempRoot, "public", hiddenUser.file_path));
   const allHiddenEntry = allHiddenUserData.encounters[0]?.public_entries?.[0];
   assert(allHiddenUser.file_path.startsWith("data/users/"), "含 hidden 成績的完整鏡像索引應使用共用使用者相對路徑。");
   assert(allHiddenUserData.format === "user_profile_hidden_delta_v1", "完整鏡像成績單應以 hidden delta 格式輸出。");
   assert(allHiddenUserData.base_path === hiddenUser.file_path, "hidden delta 應指回公開空白成績單底稿。");
+  assert(hiddenPublicBaseData.summary.public_entry_count === 0, "只有 hidden 成績的角色仍須建立公開空白底稿。");
+  assert(hiddenPublicBaseData.encounters.length === 0, "公開空白底稿不可包含 hidden 成績。");
   assert(allHiddenUserData.summary.public_entry_count === 1, "完整鏡像成績單應包含對應成績。");
   assert(allHiddenEntry?.report_hidden === true, "完整鏡像成績單應保留來源狀態欄位。");
   assert(allHiddenEntry?.rdps === 999, "完整鏡像成績單應保留實際 rDPS。");

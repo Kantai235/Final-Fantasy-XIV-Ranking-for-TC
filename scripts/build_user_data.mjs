@@ -2486,6 +2486,26 @@ function buildUserHiddenDeltaPayload(payload, basePath, basePayload = null) {
   };
 }
 
+function buildEmptyPublicUserPayload(payload) {
+  return {
+    ...payload,
+    summary: {
+      ...payload.summary,
+      encounter_count: 0,
+      public_entry_count: 0,
+      teammate_count: 0,
+      best_rdps: null,
+      best_encounter_key: null,
+      profile_job: null,
+      profile_encounter_key: null,
+      profile_job_rank: null,
+      last_recorded_at_iso: null,
+    },
+    frequent_teammates: [],
+    encounters: [],
+  };
+}
+
 function buildRecentEntries(entries, sinceMs) {
   return entries
     .filter((entry) => entryRecordedAtMs(entry) >= sinceMs)
@@ -3411,7 +3431,14 @@ async function buildDataset({
     let indexFilePathText = publicFilePathText;
 
     if (userProfileMode === "hidden-delta") {
-      const basePayload = await readJson(path.join(basePublicDataDir, "users", fileName), null);
+      let basePayload = await readJson(path.join(basePublicDataDir, "users", fileName), null);
+      if (!basePayload) {
+        // 整份 Report 被歷史完整性規則排除時，角色可能只剩 hidden delta，公開底稿
+        // 原本不存在。仍建立空白公開檔，讓 hidden index 的 data/users 相對路徑可被
+        // validator 與前端共同解析，且合併後不會把失準成績誤當成公開成績。
+        basePayload = buildEmptyPublicUserPayload(payload);
+        await writeJson(path.join(basePublicDataDir, "users", fileName), basePayload);
+      }
       const deltaPayload = buildUserHiddenDeltaPayload(payload, publicFilePathText, basePayload);
       if (deltaPayload) {
         // public/data/all/users 只保存 hidden report 差量；沒有 hidden 成績的使用者直接指回公開成績單。
