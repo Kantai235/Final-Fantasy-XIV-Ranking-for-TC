@@ -160,7 +160,8 @@ function isIntegrityHiddenFight(fight) {
 
 function reportOnlyHasIntegrityHiddenFights(report) {
   const fights = Array.isArray(report?.fights) ? report.fights.filter(Boolean) : [];
-  return fights.length > 0 && fights.every((fight) => isIntegrityHiddenFight(fight));
+  // Report 內只要有一場歷史失準 fight，就不能因另一場未標記的 fight 而回覆 done。
+  return fights.length > 0 && fights.some((fight) => isIntegrityHiddenFight(fight));
 }
 
 export function rankingEntryGroups(ranking) {

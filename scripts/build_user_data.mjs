@@ -457,6 +457,10 @@ function isConfirmedFightIntegrityAnomaly(fight) {
   return isHistoricalIntegrityAnomaly(fight);
 }
 
+function reportHasHistoricalIntegrityHiddenFight(report) {
+  return (report?.fights || []).some((fight) => isIntegrityHiddenFight(fight));
+}
+
 function buildFightIdentityEncounter(ranking, encounter) {
   // public/data/encounters.json 為了前端精簡化，舊快照可能沒有 encounter_id／difficulty；
   // reports 所在的 ranking 主檔仍保留這些 FFLogs 身分欄位。建置 v2 指紋時必須合併
@@ -485,9 +489,16 @@ function collectConfirmedAnomalousFightHashes(ranking, encounter) {
   return fightHashes;
 }
 
-function isIntegrityHiddenFightOrDuplicate(fight, report, encounter, confirmedAnomalousFightHashes) {
+function isIntegrityHiddenFightOrDuplicate(
+  fight,
+  report,
+  encounter,
+  confirmedAnomalousFightHashes,
+  includeHiddenReports = false,
+) {
   const fightHash = resolvePhysicalFightHash(fight, encounter);
-  return isIntegrityHiddenFight(fight)
+  return (!includeHiddenReports && reportHasHistoricalIntegrityHiddenFight(report))
+    || isIntegrityHiddenFight(fight)
     || Boolean(fightHash && confirmedAnomalousFightHashes.has(fightHash));
 }
 
@@ -1664,7 +1675,13 @@ function collectEntriesFromReports({ ranking, encounter, includeHiddenReports = 
       if (!fight || typeof fight !== "object") {
         continue;
       }
-      if (isIntegrityHiddenFightOrDuplicate(fight, report, fightIdentityEncounter, confirmedAnomalousFightHashes)) {
+      if (isIntegrityHiddenFightOrDuplicate(
+        fight,
+        report,
+        fightIdentityEncounter,
+        confirmedAnomalousFightHashes,
+        includeHiddenReports,
+      )) {
         continue;
       }
 
@@ -1972,7 +1989,13 @@ function collectTeamRecordsFromReports({ ranking, encounter, includeHiddenReport
       if (!fight || typeof fight !== "object") {
         continue;
       }
-      if (isIntegrityHiddenFightOrDuplicate(fight, report, fightIdentityEncounter, confirmedAnomalousFightHashes)) {
+      if (isIntegrityHiddenFightOrDuplicate(
+        fight,
+        report,
+        fightIdentityEncounter,
+        confirmedAnomalousFightHashes,
+        includeHiddenReports,
+      )) {
         continue;
       }
 
@@ -2734,7 +2757,13 @@ function addActivityLogsFromReports(
       if (!fight || typeof fight !== "object") {
         continue;
       }
-      if (isIntegrityHiddenFightOrDuplicate(fight, report, fightIdentityEncounter, confirmedAnomalousFightHashes)) {
+      if (isIntegrityHiddenFightOrDuplicate(
+        fight,
+        report,
+        fightIdentityEncounter,
+        confirmedAnomalousFightHashes,
+        includeHiddenReports,
+      )) {
         continue;
       }
 

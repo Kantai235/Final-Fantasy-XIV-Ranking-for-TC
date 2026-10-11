@@ -3886,6 +3886,15 @@ def 戰鬥已確認資料完整性異常(戰鬥: Any) -> bool:
     )
 
 
+def 報告含歷史完整性隱藏戰鬥(報告: Any) -> bool:
+    if not isinstance(報告, dict):
+        return False
+    return any(
+        isinstance(戰鬥, dict) and 戰鬥已標記資料完整性隱藏(戰鬥)
+        for 戰鬥 in 報告.get("fights") or []
+    )
+
+
 def 標記排行榜報告隱藏(
     排行榜: dict[str, Any],
     報告代碼: str,
@@ -4177,6 +4186,10 @@ def 建立排行榜條目(
         if not isinstance(報告, dict):
             continue
         if 報告已標記隱藏(報告) and not 包含隱藏報告:
+            continue
+        # 使用者要求「以前判斷失準的 report 不得回榜」：Report 內只要有一場
+        # 歷史完整性結果不相容，就不能用同一份 Report 的其它 fight 繞過排除。
+        if 報告含歷史完整性隱藏戰鬥(報告) and not 包含隱藏報告:
             continue
 
         報告隱藏 = 報告已標記隱藏(報告)

@@ -2220,6 +2220,24 @@ class FetchFFLogsBatchTest(unittest.TestCase):
         self.assertIn("data_integrity", ranking["reports"]["INTEGRITY"]["fights"][0])
         self.assertFalse(ranking["reports"]["INTEGRITY"].get("report_hidden", False))
 
+    def test_report_with_historical_integrity_failure_excludes_other_fights(self) -> None:
+        report = 建立測試排行榜報告("INTEGRITY-MIXED")
+        valid_fight = dict(report["fights"][0])
+        valid_fight["fight_id"] = 5
+        report["fights"][0]["data_integrity"] = {
+            "calculation_version": 13,
+            "status": "suspected",
+            "hidden_from_public": True,
+            "reasons": ["historical_damage_screen"],
+        }
+        report["fights"].append(valid_fight)
+        ranking = {
+            "encounter": {"key": "fixture_encounter", "name": "測試副本", "category": "零式"},
+            "reports": {"INTEGRITY-MIXED": report},
+        }
+
+        self.assertEqual(fflogs.建立排行榜條目(ranking), [])
+
     def test_new_fight_without_integrity_result_is_directly_ranked(self) -> None:
         report = 建立測試排行榜報告("INTEGRITY-PENDING")
         report["fights"][0]["recorded_at"] = fflogs.integrity.parse_iso_to_epoch_ms(

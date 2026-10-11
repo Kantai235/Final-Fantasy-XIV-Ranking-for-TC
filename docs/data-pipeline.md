@@ -156,7 +156,9 @@ report 只要通過既有的公開可讀、繁中服玩家、副本與通關條�
 `fights[].data_integrity` 仍作為歷史判定保留。免驗證只適用於沒有此欄位的新來源；已有欄位者
 必須維持退役前公開資格：版本 8～13、`valid`／`not_applicable` 且未標記隱藏才可公開。
 過舊／未知版本、空值、`excluded`／`suspected`／`unverifiable` 不因退役而重新公開。
-其中 `excluded`／`suspected` 即使缺少 hidden 旗標，也會排除相同物理戰鬥的其他上傳。
+其中 `excluded`／`suspected` 即使缺少 hidden 旗標，也會排除相同物理戰鬥的其他上傳；若同一
+Report 內任一 fight 有歷史不相容判定，公開衍生資料會整份略過該 Report，避免用同一 Report
+內其它未標記 fight 繞過排除。原始 report/fight 仍保留，不會改寫成 `report_hidden`。
 Python 排行榜、Node 個人成績／統計與待收錄收尾共用此語意；Node 規則集中於
 `scripts/historical_fight_integrity.mjs`，跨層測試使用 `node scripts/test_historical_fight_integrity.mjs`。
 既有判定與量測快取不刪除；重建公開資料不會重新呼叫傷害驗證 API。
