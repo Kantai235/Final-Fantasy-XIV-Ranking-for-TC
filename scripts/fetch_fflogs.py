@@ -3864,12 +3864,14 @@ def 報告已標記隱藏(報告: Any) -> bool:
 
 
 def 戰鬥已標記資料完整性隱藏(戰鬥: Any) -> bool:
-    # 戰鬥完整性規則已退役。既有來源若明確保存 hidden_from_public，仍保留該歷史
-    # 結果的可追溯語意；沒有這個明確旗標的新 fight 一律直接進入公開建置。
+    # 免驗證僅適用於沒有歷史判定的來源。舊版 valid、失準或無法驗證的結論
+    # 仍須遵守退役前公開資格，不能因缺少 hidden 旗標就重新公開。
     if not isinstance(戰鬥, dict):
         return False
+    if integrity.DATA_INTEGRITY_KEY not in 戰鬥:
+        return False
     結果 = 戰鬥.get(integrity.DATA_INTEGRITY_KEY)
-    return isinstance(結果, dict) and bool(結果.get("hidden_from_public"))
+    return not integrity.is_public_compatible_result(結果)
 
 
 def 戰鬥已確認資料完整性異常(戰鬥: Any) -> bool:
@@ -3881,7 +3883,6 @@ def 戰鬥已確認資料完整性異常(戰鬥: Any) -> bool:
     return (
         isinstance(結果, dict)
         and 結果.get("status") in {"excluded", "suspected"}
-        and bool(結果.get("hidden_from_public"))
     )
 
 

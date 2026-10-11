@@ -2220,7 +2220,7 @@ class FetchFFLogsBatchTest(unittest.TestCase):
         self.assertIn("data_integrity", ranking["reports"]["INTEGRITY"]["fights"][0])
         self.assertFalse(ranking["reports"]["INTEGRITY"].get("report_hidden", False))
 
-    def test_unchecked_post_cutoff_fight_is_fail_closed_from_ranking(self) -> None:
+    def test_new_fight_without_integrity_result_is_directly_ranked(self) -> None:
         report = 建立測試排行榜報告("INTEGRITY-PENDING")
         report["fights"][0]["recorded_at"] = fflogs.integrity.parse_iso_to_epoch_ms(
             "2026-07-28T18:00:00+08:00"
@@ -2230,7 +2230,7 @@ class FetchFFLogsBatchTest(unittest.TestCase):
             "reports": {"INTEGRITY-PENDING": report},
         }
 
-        self.assertEqual(fflogs.建立排行榜條目(ranking), [])
+        self.assertEqual(len(fflogs.建立排行榜條目(ranking)), 1)
         self.assertNotIn("data_integrity", ranking["reports"]["INTEGRITY-PENDING"]["fights"][0])
 
     def test_new_fight_integrity_check_hides_abnormal_rdps_before_ranking(self) -> None:

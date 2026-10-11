@@ -180,10 +180,10 @@ async function main() {
     assert(!integrityBlockedReportCodes.has("IntegrityV12Valid123"), "相容的 v12 not_applicable report 不得誤列為站務複核");
     assert(indexedReportCodes.has("IntegrityV13Valid123"), "目前 v13 正常 report 應維持公開收錄");
     assert(!integrityBlockedReportCodes.has("IntegrityV13Valid123"), "目前 v13 正常 report 不得誤列為站務複核");
-    assert(indexedReportCodes.has("IntegrityV7Valid123"), "歷史完整性版本不應阻擋新制公開建置");
-    assert(!integrityBlockedReportCodes.has("IntegrityV7Valid123"), "未明確標記隱藏的歷史結果不應進入站務複核");
-    assert(indexedReportCodes.has("IntegrityV14Valid123"), "未知完整性版本不應阻擋新制公開建置");
-    assert(!integrityBlockedReportCodes.has("IntegrityV14Valid123"), "未知版本但未明確隱藏的結果不應進入站務複核");
+    assert(!indexedReportCodes.has("IntegrityV7Valid123"), "歷史過舊判定不得因退役重新公開");
+    assert(integrityBlockedReportCodes.has("IntegrityV7Valid123"), "歷史過舊判定仍須複核");
+    assert(!indexedReportCodes.has("IntegrityV14Valid123"), "未知歷史版本不得因退役重新公開");
+    assert(integrityBlockedReportCodes.has("IntegrityV14Valid123"), "未知歷史版本仍須複核");
     assert(indexedReportCodes.has("MissingIntegrity123"), "新 report 缺少完整性結果時應直接視為可收錄");
     assert(!integrityBlockedReportCodes.has("MissingIntegrity123"), "缺少完整性結果不應進入站務複核集合");
     assert(indexedReportCodes.has("LegacyNoIntegrity123"), "缺少完整性結果的歷史 report 仍應可公開建置");

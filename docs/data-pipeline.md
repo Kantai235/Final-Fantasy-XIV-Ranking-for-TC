@@ -153,9 +153,13 @@ npm run backfill:support:history
 `fetch_fflogs.py` 不再查詢 Target Damage、最大生命值、Attack 事件或 M8S 機制事件；新
 report 只要通過既有的公開可讀、繁中服玩家、副本與通關條件，就直接寫入排行榜來源。
 
-`fights[].data_integrity` 仍作為舊資料的向後相容欄位保留。建置層只會尊重歷史資料中
-明確存在的 `hidden_from_public=true`，不會把新 fight 缺少完整性欄位解讀為驗證失敗，也不
-會因缺少舊版計算版本而阻擋新收錄。既有 hidden 結果與量測快取不主動刪除，保留追溯能力。
+`fights[].data_integrity` 仍作為歷史判定保留。免驗證只適用於沒有此欄位的新來源；已有欄位者
+必須維持退役前公開資格：版本 8～13、`valid`／`not_applicable` 且未標記隱藏才可公開。
+過舊／未知版本、空值、`excluded`／`suspected`／`unverifiable` 不因退役而重新公開。
+其中 `excluded`／`suspected` 即使缺少 hidden 旗標，也會排除相同物理戰鬥的其他上傳。
+Python 排行榜、Node 個人成績／統計與待收錄收尾共用此語意；Node 規則集中於
+`scripts/historical_fight_integrity.mjs`，跨層測試使用 `node scripts/test_historical_fight_integrity.mjs`。
+既有判定與量測快取不刪除；重建公開資料不會重新呼叫傷害驗證 API。
 
 `scripts/fight_integrity.py`、`scripts/backfill_fight_integrity.py` 及相關測試仍可供歷史
 資料研究與交接參考，但不再由正式 GitHub Actions workflow 執行，也不再影響新 report 的

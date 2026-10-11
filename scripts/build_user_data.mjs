@@ -6,6 +6,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { 建立個人成績徽章, 取得個人成績成就目錄 } from "../src/utils/userProfileBadges.js";
 import { resolvePhysicalFightHash } from "./fight_identity.mjs";
+import { isHistoricalIntegrityHidden, isHistoricalIntegrityAnomaly } from "./historical_fight_integrity.mjs";
 
 // 本檔是資料管線的 Data Building Layer。
 // 它讀取 data/rankings 的可追溯原始資料與 ranking_entries，聚合成前端可直接讀取的靜態 JSON。
@@ -448,19 +449,12 @@ function isHiddenEntry(entry) {
   return Boolean(entry?.report_hidden || entry?.hidden_report);
 }
 
-const confirmedFightIntegrityAnomalyStatuses = new Set(["excluded", "suspected"]);
-
 function isIntegrityHiddenFight(fight) {
-  // 戰鬥完整性規則已退役。新 report 不再保存此欄位，因此不能把「缺少結果」
-  // 解讀為驗證失敗；只有歷史資料明確寫入 hidden_from_public 時才維持原本隱藏。
-  const integrity = fight?.data_integrity;
-  return Boolean(integrity && typeof integrity === "object" && integrity.hidden_from_public);
+  return isHistoricalIntegrityHidden(fight);
 }
 
 function isConfirmedFightIntegrityAnomaly(fight) {
-  const integrity = fight?.data_integrity;
-  return Boolean(integrity?.hidden_from_public)
-    && confirmedFightIntegrityAnomalyStatuses.has(String(integrity?.status || ""));
+  return isHistoricalIntegrityAnomaly(fight);
 }
 
 function buildFightIdentityEncounter(ranking, encounter) {

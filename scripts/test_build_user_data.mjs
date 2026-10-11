@@ -90,7 +90,7 @@ async function assertFightIntegrityVersionContract() {
     readFile(fetchScriptPath, "utf8"),
   ]);
   assert(!nodeSource.includes("currentFightIntegrityCalculationVersion"), "建置層不應再要求完整性版號契約。");
-  assert(nodeSource.includes("hidden_from_public"), "建置層仍須保留歷史 hidden_from_public 語意。");
+  assert(nodeSource.includes("historical_fight_integrity.mjs"), "建置層仍須載入歷史完整性相容規則。");
   assert(fetchSource.includes("enabled = False"), "抓取層必須停用新 report 戰鬥完整性檢核。");
 }
 
@@ -946,13 +946,13 @@ async function assertFixtureOutput(tempRoot, expectedGlobalStatsText, expectedSe
   const serverCompare = JSON.parse(serverCompareText);
 
   assert(
-    usersIndex.users.some((user) => user.character_name === "舊版檢核角色"),
-    "已退役的完整性版本不應阻擋新制公開使用者索引。",
+    !usersIndex.users.some((user) => user.character_name === "舊版檢核角色"),
+    "退役不得讓原本不相容的歷史判定重新公開。",
   );
 
   assert(usersIndex.generated_at_iso === "2026-01-02T03:04:05.000Z", "使用者索引應使用 ranking 更新時間作為 generated_at_iso。");
   assert(globalStats.generated_at_iso === "2026-01-02T03:04:05.000Z", "全服統計應使用 ranking 更新時間作為 generated_at_iso。");
-  assert(usersIndex.total_users === 8, "fixture 應產生六位有公開成績的使用者與兩位空白入口。");
+  assert(usersIndex.total_users === 7, "fixture 應產生五位有公開成績的使用者與兩位空白入口。");
   assert(usersIndex.achievements?.length === 18, "使用者索引應輸出十八項成就手冊統計。");
   const recentAchievement = usersIndex.achievements.find((achievement) => achievement.id === "recently-active");
   const highActivityAchievement = usersIndex.achievements.find((achievement) => achievement.id === "high-activity");
@@ -994,9 +994,9 @@ async function assertFixtureOutput(tempRoot, expectedGlobalStatsText, expectedSe
     "兩個量級各有一位玩家符合首月踏破，獲得人數都應為一。",
   );
   assert(
-    lightMonthOneAchievement?.holder_percentage === 12.5
-      && cruiserMonthOneAchievement?.holder_percentage === 12.5,
-    "首月踏破占比應以八位索引玩家為分母重新計算為 12.5%。",
+    lightMonthOneAchievement?.holder_percentage === 14.29
+      && cruiserMonthOneAchievement?.holder_percentage === 14.29,
+    "首月踏破占比應以七位索引玩家為分母計算為 14.29%。",
   );
   assert(
     mutuallyExclusiveStageIds.every((achievementId) => (
@@ -1004,21 +1004,21 @@ async function assertFixtureOutput(tempRoot, expectedGlobalStatsText, expectedSe
     )),
     "取得首月踏破時，不可再把同一玩家計入首週、次週、一般踏破或通關人數。",
   );
-  assert(globalStats.total_character_count === 6, `全服角色數應把同名跨服角色視為不同玩家，實際 ${globalStats.total_character_count}。`);
-  assert(globalStats.total_entry_count === 14, "全服 entry 數應包含既有成績、歷史完整性結果與兩筆首月互斥測試成績。");
+  assert(globalStats.total_character_count === 5, `全服角色數應把同名跨服角色視為不同玩家，實際 ${globalStats.total_character_count}。`);
+  assert(globalStats.total_entry_count === 13, "全服 entry 數不得包含不相容歷史判定。");
   const hiddenUser = usersIndex.users.find((user) => user.character_name === "隱藏角色");
   assert(hiddenUser, "預設使用者索引應保留空白成績單入口。");
   assert(hiddenUser.servers.includes("鳳凰"), "空白入口應保留伺服器，讓同名角色查詢仍可辨識。");
   assert(hiddenUser.best_rdps === null, "空白入口不可帶入最佳 rDPS。");
   assert(hiddenUser.last_recorded_at_iso === null, "空白入口不可帶入最後紀錄時間。");
-  assert(allUsersIndex.total_users === 8, "完整鏡像應保留所有公開索引角色。");
+  assert(allUsersIndex.total_users === 7, "完整鏡像應保留所有公開索引角色。");
   assert(allUsersIndex.achievements?.length === usersIndex.achievements.length, "Hidden delta 索引也必須輸出完整成就手冊目錄。");
-  assert(allGlobalStats.total_character_count === 8, `完整全服統計應納入所有 fixture 角色，實際 ${allGlobalStats.total_character_count}。`);
-  assert(allGlobalStats.total_entry_count === 16, `完整全服統計應納入所有 fixture 成績，實際 ${allGlobalStats.total_entry_count}。`);
+  assert(allGlobalStats.total_character_count === 7, `完整全服統計應排除歷史失準角色，實際 ${allGlobalStats.total_character_count}。`);
+  assert(allGlobalStats.total_entry_count === 15, `完整全服統計應排除歷史失準成績，實際 ${allGlobalStats.total_entry_count}。`);
   const allHiddenUser = allUsersIndex.users.find((user) => user.character_name === "隱藏角色");
   assert(allHiddenUser, "完整鏡像使用者索引應包含對應角色。");
-  assert(Array.isArray(globalStats.job_profiles) && globalStats.job_profiles.length === 5, `全服統計應產生職業專頁資料，實際 ${globalStats.job_profiles?.length ?? 0}。`);
-  assert(serverCompare.summary.server_count === 5, "伺服器對比應分別納入同名角色所在的伺服器。");
+  assert(Array.isArray(globalStats.job_profiles) && globalStats.job_profiles.length === 4, `全服統計應產生職業專頁資料，實際 ${globalStats.job_profiles?.length ?? 0}。`);
+  assert(serverCompare.summary.server_count === 4, "伺服器對比應排除只有歷史失準成績的伺服器。");
   assert(serverCompare.servers.some((server) => server.server === "鳳凰"), "伺服器對比應包含鳳凰。");
   assert(serverCompare.servers.some((server) => server.server === "巴哈姆特"), "伺服器對比應包含同名角色所在的巴哈姆特。");
   assert(serverCompare.servers.some((server) => server.server === "泰坦"), "伺服器對比應包含同名角色所在的泰坦。");

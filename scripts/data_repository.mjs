@@ -140,12 +140,16 @@ function 遞迴收集檔案(directory) {
     return [];
   }
   const files = [];
-  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
-    const fullPath = path.join(directory, entry.name);
-    if (entry.isDirectory()) {
-      files.push(...遞迴收集檔案(fullPath));
-    } else if (entry.isFile()) {
-      files.push(fullPath);
+  const pendingDirectories = [directory];
+  while (pendingDirectories.length > 0) {
+    const currentDirectory = pendingDirectories.pop();
+    for (const entry of fs.readdirSync(currentDirectory, { withFileTypes: true })) {
+      const fullPath = path.join(currentDirectory, entry.name);
+      if (entry.isDirectory()) {
+        pendingDirectories.push(fullPath);
+      } else if (entry.isFile()) {
+        files.push(fullPath);
+      }
     }
   }
   return files;

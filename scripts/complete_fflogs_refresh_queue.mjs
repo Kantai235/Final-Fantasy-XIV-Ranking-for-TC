@@ -1,4 +1,5 @@
 import { appendFileSync, existsSync } from "node:fs";
+import { isHistoricalIntegrityHidden } from "./historical_fight_integrity.mjs";
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -154,13 +155,7 @@ export function isHiddenEntry(entry) {
 }
 
 function isIntegrityHiddenFight(fight) {
-  const integrity = fight?.data_integrity;
-  if (!integrity || typeof integrity !== "object") {
-    // 戰鬥完整性規則已退役。新 report 不再需要完整性欄位，缺少結果不應阻擋
-    // 待收錄申請；只有歷史資料明確保存 hidden_from_public 時才維持複核狀態。
-    return false;
-  }
-  return Boolean(integrity.hidden_from_public);
+  return isHistoricalIntegrityHidden(fight);
 }
 
 function reportOnlyHasIntegrityHiddenFights(report) {
