@@ -2238,6 +2238,18 @@ class FetchFFLogsBatchTest(unittest.TestCase):
 
         self.assertEqual(fflogs.建立排行榜條目(ranking), [])
 
+    def test_report_marked_bad_in_another_encounter_is_excluded_globally(self) -> None:
+        report = 建立測試排行榜報告("GLOBAL-INTEGRITY")
+        ranking = {
+            "encounter": {"key": "fixture_encounter", "name": "測試副本", "category": "零式"},
+            "reports": {"GLOBAL-INTEGRITY": report},
+        }
+        fflogs.全域歷史失準報告代碼.add("GLOBAL-INTEGRITY")
+        try:
+            self.assertEqual(fflogs.建立排行榜條目(ranking), [])
+        finally:
+            fflogs.全域歷史失準報告代碼.discard("GLOBAL-INTEGRITY")
+
     def test_new_fight_without_integrity_result_is_directly_ranked(self) -> None:
         report = 建立測試排行榜報告("INTEGRITY-PENDING")
         report["fights"][0]["recorded_at"] = fflogs.integrity.parse_iso_to_epoch_ms(

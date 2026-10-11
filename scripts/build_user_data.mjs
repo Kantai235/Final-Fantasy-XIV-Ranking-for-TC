@@ -495,9 +495,11 @@ function isIntegrityHiddenFightOrDuplicate(
   encounter,
   confirmedAnomalousFightHashes,
   includeHiddenReports = false,
+  historicalBadReportCodes = new Set(),
 ) {
   const fightHash = resolvePhysicalFightHash(fight, encounter);
-  return (!includeHiddenReports && reportHasHistoricalIntegrityHiddenFight(report))
+  return (!includeHiddenReports && (reportHasHistoricalIntegrityHiddenFight(report)
+    || historicalBadReportCodes.has(report?.report_code)))
     || isIntegrityHiddenFight(fight)
     || Boolean(fightHash && confirmedAnomalousFightHashes.has(fightHash));
 }
@@ -1653,7 +1655,7 @@ function makePublicEntry({ encounter, report, reportCode, fight, fightHash, play
   return attachVersionState(entry, encounter);
 }
 
-function collectEntriesFromReports({ ranking, encounter, includeHiddenReports = false }) {
+function collectEntriesFromReports({ ranking, encounter, includeHiddenReports = false, historicalBadReportCodes }) {
   // 完整 reports 是最可信來源：它能辨識同場玩家、重複上傳與物理戰鬥。
   // 歷史 v1 fight_hash 會在記憶體重算為 v2；v2 不含輸出／通關時間，因此不同
   // 上傳者的 table 毫秒或小數漂移不會再把同一場拆成多筆個人成績。
@@ -1681,6 +1683,7 @@ function collectEntriesFromReports({ ranking, encounter, includeHiddenReports = 
         fightIdentityEncounter,
         confirmedAnomalousFightHashes,
         includeHiddenReports,
+        historicalBadReportCodes,
       )) {
         continue;
       }
@@ -1743,11 +1746,12 @@ function collectEntriesFromReports({ ranking, encounter, includeHiddenReports = 
   return entries;
 }
 
-function collectEntriesFromRankingEntries({ ranking, encounter, includeHiddenReports = false }) {
+function collectEntriesFromRankingEntries({ ranking, encounter, includeHiddenReports = false, historicalBadReportCodes = new Set() }) {
   const rankIndex = buildJobRankIndex(ranking.ranking_entries || []);
 
   return (ranking.ranking_entries || [])
-    .filter((entry) => includeHiddenReports || !isHiddenEntry(entry))
+    .filter((entry) => includeHiddenReports
+      || (!isHiddenEntry(entry) && !historicalBadReportCodes.has(entry?.report_code)))
     .map((entry) => {
       const ranks = rankIndex.get(characterJobKey(entry)) || {};
       const fflogsSourceId = toFflogsSourceId(entry.fflogs_source_id ?? entry.fflogs_id ?? entry.source_id);
@@ -1969,7 +1973,7 @@ function buildTeamRecord({ encounter, report, reportCode, fight, fightHash }) {
   return attachVersionState(record, encounter);
 }
 
-function collectTeamRecordsFromReports({ ranking, encounter, includeHiddenReports = false }) {
+function collectTeamRecordsFromReports({ ranking, encounter, includeHiddenReports = false, historicalBadReportCodes }) {
   // 隊伍榜以 fight 為單位，和個人榜不同：同一場戰鬥若被不同隊員上傳，只保留一筆並累計 duplicate_count。
   // v2 fight_hash 是最佳識別來源；欄位不足時才退回 report/fight 身分，避免用相近輸出誤合併不同 pull。
   const recordsByFight = new Map();
@@ -1995,6 +1999,7 @@ function collectTeamRecordsFromReports({ ranking, encounter, includeHiddenReport
         fightIdentityEncounter,
         confirmedAnomalousFightHashes,
         includeHiddenReports,
+        historicalBadReportCodes,
       )) {
         continue;
       }
@@ -2757,7 +2762,7 @@ function addActivityLogObservation(accumulator, encounter, dateKey, recordedAtMs
 
 function addActivityLogsFromReports(
   accumulator,
-  { ranking, encounter, includeHiddenReports = false },
+  { ranking, encounter, includeHiddenReports = false, historicalBadReportCodes },
 ) {
   // 近期動態的 Logs 曲線以 reports/fights/players 權威來源建立：
   // report_code 回答「有多少份 FFLogs 日誌」，v2 fight_hash 回答「去重後有多少場通關」。
@@ -2783,6 +2788,7 @@ function addActivityLogsFromReports(
         fightIdentityEncounter,
         confirmedAnomalousFightHashes,
         includeHiddenReports,
+        historicalBadReportCodes,
       )) {
         continue;
       }
@@ -3321,28 +3327,43 @@ async function buildDataset({
   const teamRecordsByEncounter = new Map();
   const pendingEncounterData = [];
   const hiddenUserStubs = [];
+  const rankingsByEncounter = new Map();
+  const historicalBadReportCodes = new Set();
 
   for (const encounter of encounters) {
     const ranking = await loadRankingForEncounter(encounter);
     if (!ranking) {
       continue;
     }
+    rankingsByEncounter.set(encounter.key, { encounter, ranking });
+    for (const report of Object.values(ranking.reports || {})) {
+      if (reportHasHistoricalIntegrityHiddenFight(report)) {
+        const reportCode = report?.report_code;
+        if (reportCode) {
+          historicalBadReportCodes.add(reportCode);
+        }
+      }
+    }
+  }
+
+  for (const { encounter, ranking } of rankingsByEncounter.values()) {
 
     if (ranking.updated_at_iso) {
       updatedAtIsoByEncounter.set(encounter.key, ranking.updated_at_iso);
     }
 
     const entries = ranking.reports
-      ? collectEntriesFromReports({ ranking, encounter, includeHiddenReports })
-      : collectEntriesFromRankingEntries({ ranking, encounter, includeHiddenReports });
+      ? collectEntriesFromReports({ ranking, encounter, includeHiddenReports, historicalBadReportCodes })
+      : collectEntriesFromRankingEntries({ ranking, encounter, includeHiddenReports, historicalBadReportCodes });
     const teamRecords = ranking.reports
-      ? collectTeamRecordsFromReports({ ranking, encounter, includeHiddenReports })
+      ? collectTeamRecordsFromReports({ ranking, encounter, includeHiddenReports, historicalBadReportCodes })
       : [];
     if (ranking.reports) {
       addActivityLogsFromReports(activityLogAccumulator, {
         ranking,
         encounter,
         includeHiddenReports,
+        historicalBadReportCodes,
       });
     } else {
       addActivityLogsFromEntries(activityLogAccumulator, { entries, encounter });

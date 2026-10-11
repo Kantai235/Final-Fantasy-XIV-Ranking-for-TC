@@ -3895,6 +3895,13 @@ def 報告含歷史完整性隱藏戰鬥(報告: Any) -> bool:
     )
 
 
+全域歷史失準報告代碼: set[str] = set()
+
+
+def 報告代碼屬於全域歷史失準(報告代碼: Any) -> bool:
+    return bool(報告代碼 and str(報告代碼) in 全域歷史失準報告代碼)
+
+
 def 標記排行榜報告隱藏(
     排行榜: dict[str, Any],
     報告代碼: str,
@@ -4162,6 +4169,12 @@ def 建立排行榜條目(
         for 條目 in 排行榜.get("ranking_entries") or []:
             if not 包含隱藏報告 and isinstance(條目, dict) and 條目.get("report_hidden"):
                 continue
+            if (
+                not 包含隱藏報告
+                and isinstance(條目, dict)
+                and 報告代碼屬於全域歷史失準(條目.get("report_code"))
+            ):
+                continue
             if isinstance(條目, dict):
                 登記排行榜條目(條目, 精確成績索引)
 
@@ -4184,6 +4197,8 @@ def 建立排行榜條目(
         if 報告代碼已排除(報告代碼):
             continue
         if not isinstance(報告, dict):
+            continue
+        if 報告代碼屬於全域歷史失準(報告代碼) and not 包含隱藏報告:
             continue
         if 報告已標記隱藏(報告) and not 包含隱藏報告:
             continue
@@ -5361,6 +5376,7 @@ def 重建公開排行榜檔案() -> None:
     ]
     寫入公開副本清單(啟用副本清單)
     排行榜索引: dict[str, dict[str, Any]] = {}
+    全域歷史失準報告代碼.clear()
 
     for 副本設定 in 全部副本清單:
         已有排行榜檔案 = 排行榜檔案路徑(副本設定).exists() or 排行榜檔案路徑(副本設定, public=True).exists()
@@ -5371,6 +5387,11 @@ def 重建公開排行榜檔案() -> None:
         排行榜.setdefault("schema_version", 1)
         排行榜.setdefault("encounter", 建立副本摘要(副本設定))
         排行榜索引[副本設定["key"]] = 排行榜
+        for 報告 in (排行榜.get("reports") or {}).values():
+            if isinstance(報告, dict) and 報告含歷史完整性隱藏戰鬥(報告):
+                報告代碼 = 報告.get("report_code")
+                if 報告代碼:
+                    全域歷史失準報告代碼.add(str(報告代碼))
 
     for 副本設定 in 全部副本清單:
         排行榜 = 排行榜索引.get(副本設定["key"])
@@ -5394,7 +5415,21 @@ def 分割排行榜儲存檔案() -> None:
     啟用副本清單 = 讀取副本設定清單()
     寫入公開副本清單(啟用副本清單)
 
-    for 副本設定 in 讀取全部有效副本設定清單():
+    全部副本清單 = 讀取全部有效副本設定清單()
+    全域歷史失準報告代碼.clear()
+    排行榜索引: dict[str, dict[str, Any]] = {}
+    for 副本設定 in 全部副本清單:
+        路徑 = 排行榜檔案路徑(副本設定)
+        if not 路徑.exists():
+            continue
+        排行榜索引[副本設定["key"]] = 讀取排行榜檔案(副本設定)
+        for 報告 in (排行榜索引[副本設定["key"]].get("reports") or {}).values():
+            if isinstance(報告, dict) and 報告含歷史完整性隱藏戰鬥(報告):
+                報告代碼 = 報告.get("report_code")
+                if 報告代碼:
+                    全域歷史失準報告代碼.add(str(報告代碼))
+
+    for 副本設定 in 全部副本清單:
         路徑 = 排行榜檔案路徑(副本設定)
         if not 路徑.exists():
             continue
