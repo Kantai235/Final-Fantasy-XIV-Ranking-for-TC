@@ -1046,15 +1046,15 @@ async function assertFixtureOutput(tempRoot, expectedGlobalStatsText, expectedSe
   assert(allPendingIntegrityUser, "完整鏡像索引不得遺漏公開空白使用者入口。");
   assert(pendingIntegrityUser.public_entry_count === 0, "未檢核戰鬥不可成為公開成績。");
   assert(
-    allPendingIntegrityUser.file_path.startsWith("data/all/users/"),
+    allPendingIntegrityUser.file_path.startsWith("data/users/"),
     "完整鏡像應保留歷史 hidden report 的管理檢視資料。",
   );
 
   const allHiddenUserData = await readJson(
-    path.join(tempRoot, "public", allHiddenUser.file_path),
+    path.join(tempRoot, "public", "data", "all", allHiddenUser.file_path.replace(/^data\//, "")),
   );
   const allHiddenEntry = allHiddenUserData.encounters[0]?.public_entries?.[0];
-  assert(allHiddenUser.file_path.startsWith("data/all/users/"), "含 hidden 成績的完整鏡像索引應指向 hidden delta 檔。");
+  assert(allHiddenUser.file_path.startsWith("data/users/"), "含 hidden 成績的完整鏡像索引應使用共用使用者相對路徑。");
   assert(allHiddenUserData.format === "user_profile_hidden_delta_v1", "完整鏡像成績單應以 hidden delta 格式輸出。");
   assert(allHiddenUserData.base_path === hiddenUser.file_path, "hidden delta 應指回公開空白成績單底稿。");
   assert(allHiddenUserData.summary.public_entry_count === 1, "完整鏡像成績單應包含對應成績。");

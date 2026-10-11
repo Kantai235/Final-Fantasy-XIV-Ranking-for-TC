@@ -3418,7 +3418,10 @@ async function buildDataset({
         // 這能避免完整鏡像把數千份公開個人成績單再複製一份，同時保留額外檢視需要的 hidden 來源。
         await writeJson(filePath, deltaPayload);
         writtenUserFileCount += 1;
-        indexFilePathText = `data/all/users/${fileName}`;
+        // file_path 會交給前端依公開與 hidden base URL 各嘗試一次；必須維持
+        // data/users/... 相對路徑，不能把 data/all 再嵌入路徑，否則 hidden
+        // index 會解析成 /data/data/all/users/...。
+        indexFilePathText = publicFilePathText;
         const deltaDetailIds = collectUserEntryDetailIds(deltaPayload);
         const deltaReportDetails = filterUserEntryDetailsPayload(reportDetails, deltaDetailIds);
         if (deltaReportDetails) {
