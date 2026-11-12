@@ -1,19 +1,25 @@
 import { 計算PR值 } from "./formatters.js";
+import 競技版本設定 from "../../config/game_versions.json" with { type: "json" };
 
 // 簡表版本是「當時可看到什麼」的歷史快照，不等同排行榜的 valid/obsolete 分類。
-// cutoff 採下一個版本開放的瞬間，避免剛改版後上傳的戰鬥被錯放回舊版。已知開放時間的
-// 未來版本會保留在選單中，但瀏覽器時間到達前仍不可選取，讓部署可提早完成而不污染歷史快照。
+// 已確立的歷史 cutoff 保持不變；7.25 起以維護開始時間結束前一版快照，避免提早開機
+// 後的新戰鬥混入舊版。選項則以公告預定維護結束時間開放，未到時間仍顯示待開放。
+// 來源：繁中服 09/29 維護公告（id=mWNzX8RAV4）與 11/17 維護公告（id=45jDyN1q5m）。
 export const 個人成績簡表版本選項 = Object.freeze([
   { value: "7.0", label: "7.0", record_cutoff_iso: "2026-03-10T10:00:00.000Z" },
   { value: "7.05", label: "7.05", record_cutoff_iso: "2026-04-21T10:00:00.000Z" },
   { value: "7.1", label: "7.1", record_cutoff_iso: "2026-06-23T10:00:00.000Z" },
   { value: "7.15", label: "7.15", record_cutoff_iso: "2026-07-28T05:00:00.000Z" },
-  { value: "7.2", label: "7.2", record_cutoff_iso: null, available_from_iso: "2026-07-28T05:00:00.000Z" },
+  { value: "7.2", label: "7.2", record_cutoff_iso: "2026-09-29T05:00:00.000Z", available_from_iso: "2026-07-28T05:00:00.000Z" },
+  { value: "7.25", label: "7.25", record_cutoff_iso: "2026-11-17T05:00:00.000Z", available_from_iso: "2026-09-29T10:00:00.000Z" },
+  { value: "7.3", label: "7.3", record_cutoff_iso: null, available_from_iso: "2026-11-17T10:00:00.000Z" },
 ]);
 
 // 個別玩家成績由專用資料來源提供，部署新版欄位與舊有 JSON 的更新時間不一定同步。
 // 因此明確寫入的 game_version 優先；缺欄位的既有紀錄則固定依繁中服改版切點回推，
 // 讓版本欄位與篩選選單在資料逐步重建前仍能維持可用，且不影響建置層的資料權威性。
+// 回推來源必須與 Node.js 建置層共用競技版本設定；簡表增加小版本快照時，不應改寫
+// 缺少 game_version 的舊資料分類，否則同一場戰鬥會因 JSON 是否已更新而顯示不同版本。
 export function 取得個人成績紀錄版本(成績) {
   const 明確版本 = String(成績?.game_version || "").trim();
   if (明確版本) {
@@ -25,15 +31,18 @@ export function 取得個人成績紀錄版本(成績) {
     return "";
   }
 
-  const 對應版本 = 個人成績簡表版本選項.find((版本) => {
-    const 截止時間 = new Date(版本.record_cutoff_iso || "").getTime();
-    return Number.isFinite(截止時間) && 紀錄時間 < 截止時間;
+  const 對應版本 = 競技版本設定.versions.findLast((版本) => {
+    return 版本.starts_at_iso === null || 紀錄時間 >= Date.parse(版本.starts_at_iso);
   });
 
-  return 對應版本?.value || 個人成績簡表版本選項.at(-1)?.value || "";
+  return 對應版本?.label || 對應版本?.patch || "";
 }
 
-export const 預設個人成績簡表版本 = "7.2";
+export function 取得預設個人成績簡表版本(目前時間戳記 = Date.now()) {
+  // 初始化與無效選項回退都取當下最新已開放版本，避免改版後仍停在舊快照。
+  // 手動選取的歷史版本仍交由正規化函式保留，不會被最新版本覆蓋。
+  return 個人成績簡表版本選項.findLast((版本) => 個人成績簡表版本已開放(版本, 目前時間戳記))?.value || "";
+}
 
 const 個人成績簡表版本索引 = new Map(個人成績簡表版本選項.map((版本, index) => [版本.value, { ...版本, index }]));
 
@@ -63,11 +72,11 @@ export function 建立個人成績簡表可選版本(目前時間戳記 = Date.n
 
 export function 正規化個人成績簡表版本(版本) {
   const 選項 = 個人成績簡表版本索引.get(版本);
-  return 個人成績簡表版本已開放(選項) ? 選項.value : 預設個人成績簡表版本;
+  return 個人成績簡表版本已開放(選項) ? 選項.value : 取得預設個人成績簡表版本();
 }
 
 export function 取得個人成績簡表版本選項(版本) {
-  return 個人成績簡表版本索引.get(正規化個人成績簡表版本(版本)) || 個人成績簡表版本索引.get(預設個人成績簡表版本);
+  return 個人成績簡表版本索引.get(正規化個人成績簡表版本(版本));
 }
 
 export function 副本符合個人成績簡表版本(副本, 版本) {
@@ -297,7 +306,7 @@ function 取得已選擇零式量級(量級列表, 選擇量級鍵值) {
 export function 建立個人成績簡表群組(
   副本清單,
   副本成績,
-  版本 = 預設個人成績簡表版本,
+  版本 = 取得預設個人成績簡表版本(),
   選擇零式量級鍵值 = "",
 ) {
   const 成績索引 = new Map(

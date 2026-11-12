@@ -113,6 +113,29 @@ export const activityLogTimelineAnnotations = Object.freeze([
     title: "繁中服 7.25",
     detail: "新月島",
   },
+  {
+    date: "2026-10-13",
+    region: "international",
+    patch: "7.57",
+    title: "國際服 7.57",
+    detail: "天際的行路",
+    importance: "secondary",
+  },
+  {
+    date: "2026-11-10",
+    region: "international",
+    patch: "7.58",
+    title: "國際服 7.58",
+    detail: "天際的行路",
+    importance: "secondary",
+  },
+  {
+    date: "2026-11-17",
+    region: "tc",
+    patch: "7.3",
+    title: "繁中服 7.3",
+    detail: "全新極討伐殲滅戰、幻 青龍",
+  },
 ]);
 
 /**

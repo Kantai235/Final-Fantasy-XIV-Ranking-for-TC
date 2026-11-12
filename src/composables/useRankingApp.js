@@ -89,7 +89,7 @@ import {
   建立個人成績簡表可選版本,
   建立個人成績簡表群組,
   成績符合個人成績簡表版本,
-  預設個人成績簡表版本,
+  取得預設個人成績簡表版本,
   取得個人成績紀錄版本,
   正規化個人成績簡表版本,
 } from "../utils/userProfileClearSummary";
@@ -278,7 +278,7 @@ const 使用者趨勢自訂結束日期 = ref("");
 const 使用者趨勢顯示指標 = ref(個人成績趨勢預設指標);
 const 使用者趨勢選取點 = ref(null);
 const 使用者簡表模式 = ref(false);
-const 使用者簡表版本 = ref(預設個人成績簡表版本);
+const 使用者簡表版本 = ref(取得預設個人成績簡表版本());
 const 使用者簡表零式量級 = ref("");
 const 個人成績簡表版本選項 = computed(() => 建立個人成績簡表可選版本());
 const 使用者讀取中 = ref(false);

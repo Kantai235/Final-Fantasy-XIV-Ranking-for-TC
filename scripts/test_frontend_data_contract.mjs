@@ -2,6 +2,8 @@ import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { createSSRApp } from "vue";
+import { renderToString } from "vue/server-renderer";
 import { 可快取職業Icon路徑清單, 職業Icon路徑, 職業類型Icon路徑 } from "../src/domain/jobs.js";
 import {
   取得主動公告列表,
@@ -45,12 +47,13 @@ import {
   成績符合個人成績簡表版本,
   個人成績簡表版本已開放,
   個人成績簡表版本選項,
-  預設個人成績簡表版本,
+  取得預設個人成績簡表版本,
+  正規化個人成績簡表版本,
   取得個人成績紀錄版本,
   副本符合個人成績簡表版本,
   是個人成績簡表目標副本,
 } from "../src/utils/userProfileClearSummary.js";
-import { 建立繁中服版本更新切點 } from "../src/utils/activityTimelineAnnotations.js";
+import { activityLogTimelineAnnotations, 建立繁中服版本更新切點 } from "../src/utils/activityTimelineAnnotations.js";
 import {
   個人成績趨勢時間範圍選項,
   個人成績趨勢預設時間範圍,
@@ -1184,6 +1187,12 @@ function validateUserProfileGameVersionFallback() {
       && 取得個人成績紀錄版本({ recorded_at_iso: "not-a-date" }) === "",
     "明確寫入的 game_version 必須優先，無法判讀時間的資料則不可臆測版本。",
   );
+  assert(
+    取得個人成績紀錄版本({ recorded_at_iso: "2026-09-29T10:00:00.000Z" }) === "7.2"
+      && 取得個人成績紀錄版本({ recorded_at_iso: "2026-11-17T10:00:00.000Z" }) === "7.2"
+      && 取得個人成績紀錄版本({ game_version: "7.3", recorded_at_iso: "2026-11-17T10:00:00.000Z" }) === "7.3",
+    "新增簡表快照不可改寫競技版本分類；缺欄位紀錄仍依 game_versions.json 回推，明確版本仍須優先。",
+  );
 
   const 趨勢切點 = 建立繁中服版本更新切點(
     Date.parse("2026-03-01T00:00:00.000Z"),
@@ -1198,6 +1207,31 @@ function validateUserProfileGameVersionFallback() {
   assert(
     建立繁中服版本更新切點(NaN, Date.parse("2026-07-01T00:00:00.000Z")).length === 0,
     "無法解析成績時間時，不可顯示可能錯位的版本切點。",
+  );
+  for (const [region, patch, date] of [
+    ["international", "7.57", "2026-10-13"],
+    ["international", "7.58", "2026-11-10"],
+    ["tc", "7.3", "2026-11-17"],
+  ]) {
+    const 標記 = activityLogTimelineAnnotations.filter((事件) => 事件.region === region && 事件.patch === patch);
+    assert(標記.length === 1 && 標記[0].date === date, `${region} ${patch} 必須只有一筆正確日期的近期動態標記。`);
+    assert(region !== "international" || 標記[0]?.importance === "secondary", `國際服 ${patch} 必須沿用次要標記。`);
+  }
+  const 秋季趨勢切點 = 建立繁中服版本更新切點(
+    Date.parse("2026-09-01T00:00:00+08:00"),
+    Date.parse("2026-11-18T00:00:00+08:00"),
+  );
+  assert(
+    秋季趨勢切點.map((切點) => 切點.patch).join(",") === "7.25,7.3"
+      && 秋季趨勢切點[1]?.starts_at_iso === "2026-11-16T16:00:00.000Z",
+    "成績趨勢應以台灣日曆日呈現 7.3，且不能混入國際服 7.57／7.58。",
+  );
+  assert(
+    建立繁中服版本更新切點(
+      Date.parse("2026-11-01T00:00:00+08:00"),
+      Date.parse("2026-11-17T00:00:00+08:00"),
+    ).length === 0,
+    "時間範圍尚未涵蓋 7.3 時，不應提早顯示未來或位於結束邊界上的事件。",
   );
 }
 
@@ -1607,7 +1641,7 @@ function validateUserProfileClearSummary() {
   const lightHeavyweight = { key: "light-heavyweight", label: "輕量級", order: 1 };
   const cruiserweight = { key: "cruiserweight", label: "次重量級", order: 2 };
   const version72OpenedAt = Date.parse("2026-07-28T05:00:00.000Z");
-  assert(預設個人成績簡表版本 === "7.2", "個人成績簡表目前必須預設顯示 7.2。");
+  assert(取得預設個人成績簡表版本(version72OpenedAt) === "7.2", "7.2 開放當下的個人成績簡表必須預設顯示 7.2。");
   const encounters = [
     {
       key: "savage_m1s",
@@ -1793,6 +1827,15 @@ function validateUserProfileClearSummary() {
       ),
     "幻白虎應保留至 7.2 快照，7.2 必須同時呈現幻白虎與幻朱雀。",
   );
+  暫時固定現在時間(Date.parse("2026-11-17T10:00:00.000Z"), () => {
+    for (const [版本, 預期幻本] of [["7.2", "白虎,朱雀"], ["7.25", "朱雀"], ["7.3", "朱雀"]]) {
+      const 幻本群組 = 建立個人成績簡表群組(encounters, [], 版本).find((群組) => 群組.key === "unreal");
+      assert(
+        幻本群組?.encounters.map((副本) => 副本.name).join(",") === 預期幻本,
+        `${版本} 幻本應依既有可見版本範圍顯示 ${預期幻本}，不可因新增選項而延長白虎的可見期間。`,
+      );
+    }
+  });
   assert(成績符合個人成績簡表版本({ recorded_at_iso: "2026-07-28T04:59:59.000Z" }, "7.15"), "7.15 應保留 7.2 開放前的戰鬥。");
   assert(!成績符合個人成績簡表版本({ recorded_at_iso: "2026-07-28T05:00:00.000Z" }, "7.15"), "7.15 不可混入 7.2 開放後的戰鬥。");
   const version72 = 個人成績簡表版本選項.find((版本) => 版本.value === "7.2");
@@ -1804,6 +1847,84 @@ function validateUserProfileClearSummary() {
       && 建立個人成績簡表可選版本(version72OpenedAt).find((版本) => 版本.value === "7.2")?.available === true,
     "簡表選單必須依 7.2 開放時間自動切換待開放與可選狀態。",
   );
+
+  // 維護開始即停止舊版快照收錄；選項則等預定維護結束才開放。
+  // 兩個時間刻意分開，確保提早開機的新版通關不會污染前一版歷史。
+  for (const [舊版本, 新版本, 維護開始Iso, 預定開放Iso] of [
+    ["7.2", "7.25", "2026-09-29T05:00:00.000Z", "2026-09-29T10:00:00.000Z"],
+    ["7.25", "7.3", "2026-11-17T05:00:00.000Z", "2026-11-17T10:00:00.000Z"],
+  ]) {
+    const 維護開始 = Date.parse(維護開始Iso);
+    const 預定開放 = Date.parse(預定開放Iso);
+    assert(
+      !個人成績簡表版本已開放(新版本, 預定開放 - 1)
+        && 個人成績簡表版本已開放(新版本, 預定開放)
+        && 建立個人成績簡表可選版本(預定開放 - 1).find((版本) => 版本.value === 新版本)?.available === false
+        && 建立個人成績簡表可選版本(預定開放).find((版本) => 版本.value === 新版本)?.available === true,
+      `${新版本} 選項應在預定維護結束當下由待開放轉為可選。`,
+    );
+    assert(
+      取得預設個人成績簡表版本(預定開放 - 1) === 舊版本
+        && 取得預設個人成績簡表版本(預定開放) === 新版本,
+      `${新版本} 開放前應預設 ${舊版本}，開放後才預設 ${新版本}。`,
+    );
+    暫時固定現在時間(預定開放 - 1, () => {
+      assert(
+        正規化個人成績簡表版本(新版本) === 舊版本
+          && 正規化個人成績簡表版本("未知版本") === 舊版本,
+        "未開放或未知的簡表版本應回到最新已開放版本。",
+      );
+    });
+    暫時固定現在時間(預定開放, () => {
+      assert(
+        正規化個人成績簡表版本(新版本) === 新版本
+          && 正規化個人成績簡表版本(舊版本) === 舊版本
+          && 正規化個人成績簡表版本("未知版本") === 新版本,
+        "新版開放後應接受新版、保留手動選取的舊版，並讓未知選項回到新版。",
+      );
+      assert(
+        成績符合個人成績簡表版本({ recorded_at_iso: "2026-03-01T00:00:00.000Z" }, 舊版本)
+          && 成績符合個人成績簡表版本({ recorded_at_iso: new Date(維護開始 - 1).toISOString() }, 舊版本)
+          && !成績符合個人成績簡表版本({ recorded_at_iso: 維護開始Iso }, 舊版本)
+          && !成績符合個人成績簡表版本({ recorded_at_iso: new Date(維護開始 + 1).toISOString() }, 舊版本)
+          && !成績符合個人成績簡表版本({ recorded_at_iso: "not-a-date" }, 舊版本),
+        `${舊版本} 快照須累積保留較早成績，排除維護開始當下以後及缺少可靠時間的紀錄。`,
+      );
+      assert(
+        成績符合個人成績簡表版本({ recorded_at_iso: new Date(維護開始 + 1).toISOString() }, 新版本)
+          && 成績符合個人成績簡表版本({ recorded_at_iso: 預定開放Iso }, 新版本),
+        `${新版本} 快照必須收錄提早開機與預定開放當下的新版成績。`,
+      );
+    });
+  }
+}
+
+async function validateUserProfileSummaryVersionSelect() {
+  const source = await readText(path.join(srcDir, "pages", "UserProfilePage.vue"));
+  const template = source.match(/<select\s+id="個人成績簡表版本"[\s\S]*?<\/select>/)?.[0];
+  assert(Boolean(template), "個人成績頁必須提供簡表遊戲版本選單。");
+  if (!template) return;
+
+  // 直接渲染頁面正在使用的選單模板，避免只驗證資料函式卻漏掉待開放文字或 disabled 綁定。
+  for (const [目前時間, 預設版本, 待開放] of [
+    [Date.parse("2026-11-17T09:59:59.999Z"), "7.25", true],
+    [Date.parse("2026-11-17T10:00:00.000Z"), "7.3", false],
+  ]) {
+    const html = await renderToString(createSSRApp({
+      template,
+      setup: () => ({
+        使用者簡表版本: 取得預設個人成績簡表版本(目前時間),
+        個人成績簡表版本選項: 建立個人成績簡表可選版本(目前時間),
+        設定使用者簡表版本: () => {},
+      }),
+    }));
+    assert(html.includes(`<select id="個人成績簡表版本" value="${預設版本}">`), `簡表選單必須綁定預設版本 ${預設版本}。`);
+    assert(html.includes('<option value="7.25">7.25</option>'), "簡表選單的 7.25 必須維持可選。");
+    assert(
+      html.includes(待開放 ? '<option value="7.3" disabled>7.3（待開放）</option>' : '<option value="7.3">7.3</option>'),
+      "7.3 選項的待開放文字與停用狀態必須一起在開放時間切換。",
+    );
+  }
 }
 
 async function validateSavageProfileSummaryPresentation() {
@@ -3256,6 +3377,7 @@ async function main() {
   validateUserProfileGameVersionFallback();
   validateUnifiedUserProfileTrend();
   validateUserProfileClearSummary();
+  await validateUserProfileSummaryVersionSelect();
   await validateSavageProfileSummaryPresentation();
   await validateUserProfileSummaryJobFilter();
   await validateMobileProfileSummaryLayout();
