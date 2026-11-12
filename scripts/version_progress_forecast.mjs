@@ -155,22 +155,53 @@ export function 建置追趕推測(原始列, 預定, 開服日, 截止日, 規�
     for (let i = 0; i < 全部主版.length - 1; i++) {
       const 主版 = 全部主版[i];
       const 下一版 = 全部主版[i + 1];
-      if (!主版.international_estimated) continue;
-      const 模板 = 主要列.findLast((列) => 列.patch.split('.')[1] === 主版.patch.split('.')[1]);
-      if (!模板) continue;
-      const 模板末 = 全部主版[全部主版.findIndex((列) => 列.patch === 模板.patch) + 1].international_day;
-      const 模板小版 = 原始列.filter((列) => !列.major && 列.order > 模板.order && 列.international_day < 模板末);
+      // 資料片正式日期先公告時，所屬小版通常尚未公告；8.0 有日期不代表
+      // 8.01／8.05 不存在。只補未發布主版的情境，不回填已發布週期的歷史。
+      if (主版.international_released) continue;
+      const 同編號模板 = 主要列.flatMap((列, j) => {
+        if (!列.international_released || 列.patch.split('.')[1] !== 主版.patch.split('.')[1]) return [];
+        const 後版 = 主要列[j + 1];
+        const 小版 = 原始列.filter((項) => !項.major && 項.international_released
+          && 項.order > 列.order && 項.order < (後版?.order ?? Infinity));
+        return 小版.length ? [{ 主版: 列, 小版, 已完成: Boolean(後版?.international_released) }] : [];
+      });
+      // 未走完的新資料片不可因只公告 .01，就讓後續資料片漏掉 .05。
+      // 優先採最近完整週期；尚無完整同編號週期時，才沿用已有發布小版的週期。
+      const 參考 = 同編號模板.findLast((項) => 項.已完成) ?? 同編號模板.at(-1);
+      if (!參考) continue;
+      const 模板 = 參考.主版;
+      const 已知小版 = 原始列.filter((列) => !列.major
+        && 列.patch.split('.')[0] === 主版.patch.split('.')[0]
+        && 列.patch.split('.')[1][0] === 主版.patch.split('.')[1]);
+      const 小版安排 = new Map(參考.小版.map((列) => {
+        const patch = `${主版.patch}${列.patch.slice(模板.patch.length)}`;
+        return [patch, { patch, 模板: 列, 已知: null }];
+      }));
+      for (const 列 of 已知小版) {
+        小版安排.set(列.patch, { ...小版安排.get(列.patch), patch: 列.patch, 已知: 列 });
+      }
+      // 版本字串不是小數；同一主版的小版後綴等長，依字串順序保留公告與模板位置。
+      const 待排小版 = [...小版安排.values()].sort((a, b) => a.patch.localeCompare(b.patch));
       let 前小版日 = 主版.international_day;
-      for (const [j, 小版] of 模板小版.entries()) {
+      for (const [j, 安排] of 待排小版.entries()) {
+        if (安排.已知) {
+          前小版日 = 安排.已知.international_day;
+          continue;
+        }
+        const 小版 = 安排.模板;
         const 後綴 = 小版.patch.split('.')[1];
         const 歷史規律 = 國際規律.minor_offsets.find((項) => 項.suffix === 後綴);
         const 延後 = 歷史規律?.days ?? 整週(小版.international_day - 模板.international_day);
         // 相同編號的中位數偶爾可能重疊；保留獨立週二並預留其後小版位置。
         // 國際 .01／.05 固定天數也因此不會被 133 天主版或 .5 空窗按比例壓縮。
-        const patch = `${主版.patch}${小版.patch.slice(模板.patch.length)}`;
+        // 已公告小版也是固定邊界，不可重複生成、覆寫日期或將缺漏小版排在它之後。
+        const 後續公告位置 = 待排小版.findIndex((項, k) => k > j && 項.已知);
+        const 邊界位置 = 後續公告位置 < 0 ? 待排小版.length : 後續公告位置;
+        const 邊界日 = 後續公告位置 < 0 ? 下一版.international_day : 待排小版[後續公告位置].已知.international_day;
+        const patch = 安排.patch;
         const 固定日 = 固定小版日(patch, 'international', 列表);
         const 小版日 = 國際週二(固定日 ?? 主版.international_day + 延後, 前小版日 + 1,
-          下一版.international_day - (模板小版.length - j) * 7);
+          邊界日 - (邊界位置 - j) * 7);
         if (固定日 !== null && 小版日 !== 固定日) throw new Error(`固定小版間隔與國際排程衝突：${patch}`);
         列表.push({ patch, title: '後續小版本（推測）', major: false,
           international: null, tc: null, international_day: 小版日,
@@ -313,7 +344,7 @@ export function 建置追趕推測(原始列, 預定, 開服日, 截止日, 規�
       }));
     };
     const 下一版 = 列表.find((列) => 列.order > 現行順序 && !列.tc_version_omitted && !列.tc_forecast_skipped && 列.tc_day !== null);
-    return [範圍, { status: 交點 ? 'estimated' : 'no_catch_up', method: 'moving-release-cadence-v9',
+    return [範圍, { status: 交點 ? 'estimated' : 'no_catch_up', method: 'moving-release-cadence-v10',
       rows: 列表, groups: 群組, stages: 階段.map((列) => 列.patch), tc: 時間線('tc'), international: 時間線('international'),
       catch_up: 交點, fast_catch_up: 交會(快速列, 範圍), slow_catch_up: 交會(緩慢列, 範圍), horizon_years: 20,
       continuation_major: 延伸主版,

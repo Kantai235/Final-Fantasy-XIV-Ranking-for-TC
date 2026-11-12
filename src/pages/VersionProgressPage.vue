@@ -33,8 +33,10 @@ const 同步提示群組 = (群組) => 群組.rows.length === 1 && 僅顯示版�
 // 主要版本的末期週期涵蓋尚未確定的 9.0，只調整呈現，不改動模型日期與計算。
 /** @param {{patch:string}} 項 */
 const 隱藏末期主版時長 = (項) => 顯示推測.value && 選取.value.patchScope === 'major' && 項.patch === '8.5';
-// 未上線版本只提示公告狀態；提前收錄內容留在已上線版本的說明中。
-const 顯示內容對照 = computed(() => 選取列.value.tc_released || 選取列.value.tc_version_omitted);
+// 已有確切日期的未來公告也提供更新說明，讓玩家能查閱維護與搶先體驗資訊。
+// 繁中尚未公告的舊國際版仍收起對照；顯示說明不會改變已上線旗標或歷史間隔。
+const 顯示內容對照 = computed(() => 選取列.value.tc_released || 選取列.value.tc_version_omitted
+  || Boolean(選取列.value.tc) || Boolean(選取列.value.international && !選取列.value.international_released));
 const 圖表容器 = ref(null);
 const 容器寬度 = ref(1000);
 let 尺寸觀察器;
@@ -113,7 +115,9 @@ function 更新提示(列, 地區) {
 }
 function 顯示單版時長(列, 地區) {
   const 時長 = 列[`${地區}_duration`];
-  return Boolean(時長) && !隱藏末期主版時長(列) && !(列.patch === '8.56' && 時長.estimated);
+  // 最後小版仍接到未定的下一資料片；公告增加小版時，跟隨建置結果而非固定版號。
+  const 末期小版 = !列.major && 列.patch === 推測.value.continuation_major?.end_patch;
+  return Boolean(時長) && !隱藏末期主版時長(列) && !(末期小版 && 時長.estimated);
 }
 function 推測節點標籤(點, 服名) {
   return 同步提示版本.value.has(點.patch) ? `${服名} ${點.patch}，可能與國際服同步，查看版本詳情`
@@ -176,7 +180,7 @@ onBeforeUnmount(() => {
       <div ref="圖表容器" class="版本圖表捲動" tabindex="0" role="region" aria-label="兩服版本時間軸，可左右捲動">
         <svg :width="圖寬" :height="圖高" :viewBox="`0 0 ${圖寬} ${圖高}`" class="版本時間軸" role="group" aria-labelledby="版本圖標題 版本圖說明">
           <title id="版本圖標題">繁中服與國際服版本階梯時間軸</title>
-          <desc id="版本圖說明">版本階段等距排列，不代表內容量。點選節點可查看日期；完整資料也列於下方對照表。{{ 顯示推測 ? '虛線與菱形為兩服後續更新情境，並非已發布或官方公告。' : '' }}{{ 顯示推測 && 推測.synchronization_start ? '圖表包含繁中服可能開始與國際服同步更新的主版本。' : 顯示推測 && 推測.continuation_major ? '圖表延伸至首次追上後的下一個主版及所屬小版本。' : '' }}</desc>
+          <desc id="版本圖說明">版本階段等距排列，不代表內容量。點選節點可查看日期；完整資料也列於下方對照表。{{ 顯示推測 ? '虛線與菱形包含已公告及推測的後續更新，均尚未核對上線；各節點標示日期依據。' : '' }}{{ 顯示推測 && 推測.synchronization_start ? '圖表包含繁中服可能開始與國際服同步更新的主版本。' : 顯示推測 && 推測.continuation_major ? '圖表延伸至首次追上後的下一個主版及所屬小版本。' : '' }}</desc>
           <g v-for="(版本, i) in 圖表階段" :key="版本" class="版本格線" :class="{ '版本格線選取': 選取.patch === 版本 }">
             <line :x1="左界" :x2="右界" :y1="y(i)" :y2="y(i)" />
             <text :x="左界 - 12" :y="y(i) + 4" text-anchor="end">{{ 版本 }}</text>
@@ -231,7 +235,7 @@ onBeforeUnmount(() => {
         <p v-if="選取列.tc_plan" class="版本選取推測">{{ 選取列.tc_plan.attribution }}；實際更新仍以後續公告為準。</p>
         <p v-if="選取列.tc_forecast_skipped" class="版本選取推測">本次情境假設繁中服略過 {{ 選取列.patch }}，尚未正式確認。</p>
         <p v-if="!僅顯示版本同步(選取列) && (選取列.tc_estimated || 選取列.international_estimated)" class="版本選取推測">推測日期依更新節奏與排程假設計算，非官方公告。{{ 選取列.merged_into ? `部分內容已隨 ${選取列.merged_into} 推出，此處假設仍有獨立更新。` : '' }}</p>
-        <strong v-if="顯示內容對照 || (顯示推測 && 選取列.lag_days !== null && !僅顯示版本同步(選取列))">{{ 選取列.lag_days !== null ? `相隔 ${相隔文字(選取列)}` : '尚無同版本間隔' }}</strong>
+        <strong v-if="選取列.tc_released || 選取列.tc_version_omitted || (顯示推測 && 選取列.lag_days !== null && !僅顯示版本同步(選取列))">{{ 選取列.lag_days !== null ? `相隔 ${相隔文字(選取列)}` : '尚無同版本間隔' }}</strong>
         <p v-if="顯示內容對照 && 選取列.note" class="版本內容註記">{{ 選取列.note }}</p>
         <nav v-if="顯示內容對照 && 選取列.note_links.length" class="版本註記來源" :aria-label="`${選取列.patch} 內容對照來源`">
           <span>內容對照來源</span>
