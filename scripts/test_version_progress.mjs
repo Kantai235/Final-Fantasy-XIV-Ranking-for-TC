@@ -17,6 +17,9 @@ const 正式設定 = JSON.parse(readFileSync(new URL("../config/version_progress
 // 避免每次核對新版本就失去預告狀態的覆蓋；Vite 測試仍直接驗證最新正式設定。
 const 設定 = structuredClone(正式設定);
 設定.verified_through = "2026-09-12";
+// 正式模型已改採 7.3 上線後的 112 天中位數；歷史案例仍驗證當時的百天情境。
+設定.forecast_policy.tc_main_cycle_days = 100;
+delete 設定.patches.find((列) => 列.patch === "7.35").tc_plan;
 // 後來公布的 7.3 日期與 8.0 正式上市日不能倒灌到舊情境，否則月份預告、
 // 合併內容與固定歷史推測的回歸檢查會隨正式設定更新而失去原本的業務前提。
 設定.patches = 設定.patches.filter((列) => 列.patch.startsWith("7.") && !["7.57", "7.58"].includes(列.patch));
@@ -48,36 +51,42 @@ test("Vite 靜態模組與 Windows 路徑正規化後的設定更新", () => {
   const 名稱 = 插件.resolveId("virtual:version-progress");
   const 模組內容 = 插件.load.call({ addWatchFile: (檔案) => 監看檔案.push(檔案) }, 名稱);
   const 正式資料 = JSON.parse(模組內容.slice("export default ".length, -1));
-  assert.equal(正式資料.verified_through, "2026-11-12");
-  assert.equal(正式資料.current_tc, "7.25");
+  assert.equal(正式資料.verified_through, "2026-11-18");
+  assert.equal(正式資料.current_tc, "7.3");
   assert.equal(正式資料.current_international, "7.58");
-  assert.equal(正式資料.elapsed_days, 337);
-  assert.equal(正式資料.previous_comparable.patch, "7.2");
+  assert.equal(正式資料.elapsed_days, 343);
+  assert.equal(正式資料.previous_comparable.patch, "7.25");
   assert.equal(正式資料.previous_comparable.lag_days, 490);
-  assert.equal(正式資料.latest_comparable.patch, "7.25");
-  assert.equal(正式資料.latest_comparable.lag_days, 490);
-  assert.equal(正式資料.lag_reduction, 0);
-  assert.equal(正式資料.views.all.gap_count, 13);
+  assert.equal(正式資料.latest_comparable.patch, "7.3");
+  assert.equal(正式資料.latest_comparable.lag_days, 469);
+  assert.equal(正式資料.lag_reduction, 21);
+  assert.equal(正式資料.views.all.gap_count, 12);
   assert.equal(正式資料.views.all.rows.length, 25);
   assert.equal(正式資料.views.all.stages.length, 21);
   assert.equal(正式資料.views.all.international.at(-1).patch, "7.58");
-  assert.equal(正式資料.views.major.gap_count, 3);
-  assert.equal(正式資料.views.all.tc.at(-1).patch, "7.25");
-  assert.equal(正規化版本進度選取(正式資料).patch, "7.25");
-  const 七二五 = 正式資料.latest_comparable;
+  assert.equal(正式資料.views.major.gap_count, 2);
+  assert.equal(正式資料.views.all.tc.at(-1).patch, "7.3");
+  assert.equal(正規化版本進度選取(正式資料).patch, "7.3");
+  const 七二五 = 正式資料.previous_comparable;
   assert.equal(七二五.tc_plan, undefined);
   assert.equal(七二五.tc_url, 正式設定.sources.tc_7_25);
   assert.equal(七二五.note_links.some((來源) => 來源.url === 正式設定.sources.international_7_3_notes), true);
   assert.deepEqual(正式資料.views.all.rows.find((列) => 列.patch === "7.2").tc_duration, { days: 63, ongoing: false });
-  assert.deepEqual(正式資料.views.all.rows.find((列) => 列.patch === "7.25").tc_duration, { days: 44, ongoing: true });
+  assert.deepEqual(正式資料.views.all.rows.find((列) => 列.patch === "7.25").tc_duration, { days: 49, ongoing: false });
+  assert.deepEqual(正式資料.views.all.rows.find((列) => 列.patch === "7.3").tc_duration, { days: 1, ongoing: true });
   for (const 視圖 of Object.values(正式資料.views)) {
-    assert.equal(視圖.rows.find((列) => 列.patch === "7.3").tc_released, false);
-    assert.equal(視圖.forecast.next.patch, "7.3");
-    assert.equal(視圖.forecast.next.date, "2026-11-17");
-    assert.equal(視圖.forecast.next.announced, true);
-    assert.equal(視圖.forecast.next.planned, false);
-    assert.equal(視圖.groups.find((組) => 組.patch === "7.2").tc_duration.days, 107);
+    assert.equal(視圖.rows.find((列) => 列.patch === "7.3").tc_released, true);
+    assert.deepEqual(視圖.groups.find((組) => 組.patch === "7.2").tc_duration, { days: 112, ongoing: false });
+    assert.equal(視圖.forecast.tc_cycle_days, 112);
+    assert.equal(視圖.forecast.tc_historical_cycle_days, 112);
+    assert.deepEqual(視圖.forecast.tc_samples.map((項) => 項.days), [132, 98, 112]);
   }
+  assert.equal(正式資料.views.all.forecast.next.patch, "7.35");
+  assert.equal(正式資料.views.all.forecast.next.date, "2027-01-05");
+  assert.equal(正式資料.views.all.forecast.next.planned, true);
+  assert.equal(正式資料.views.all.forecast.next.announced, false);
+  assert.equal(正式資料.views.major.forecast.next.patch, "7.4");
+  assert.equal(正式資料.views.major.forecast.next.date, "2027-03-09");
   assert.equal(監看檔案.length, 1);
   let 已失效 = false;
   let 訊息;
@@ -93,7 +102,7 @@ test("Vite 靜態模組與 Windows 路徑正規化後的設定更新", () => {
   assert.deepEqual(訊息, { type: "full-reload" });
 });
 
-test("已公告的繁中 7.3 與國際 8.0 保留正式日期，尚未上線也不改寫歷史統計", () => {
+test("繁中 7.3 納入歷史，7.35 固定預定日與國際 8.0 公告不提前算入已上線統計", () => {
   const 修改前 = JSON.stringify(正式設定);
   // 7.57／7.58 是本次核對後合法增加的歷史樣本；只排除尚未上市的 8.0，
   // 避免把新歷史樣本造成的規律變化誤判為未來公告污染。
@@ -102,18 +111,18 @@ test("已公告的繁中 7.3 與國際 8.0 保留正式日期，尚未上線也�
   const 僅歷史規律 = 建置版本進度(僅歷史設定).views.all.forecast.international_cadence;
   const 正式資料 = 建置版本進度(正式設定);
   assert.deepEqual(正式資料.international_plans, []);
-  assert.equal(正式資料.current_tc, "7.25");
+  assert.equal(正式資料.current_tc, "7.3");
   assert.equal(正式資料.current_international, "7.58");
-  assert.equal(正式資料.latest_comparable.patch, "7.25");
+  assert.equal(正式資料.latest_comparable.patch, "7.3");
   for (const 視圖 of Object.values(正式資料.views)) {
     const 七三 = 視圖.rows.find((列) => 列.patch === "7.3");
     const 八零 = 視圖.rows.find((列) => 列.patch === "8.0");
     assert.equal(七三.tc, "2026-11-17");
     assert.equal(七三.tc_url, 正式設定.sources.tc_7_3);
-    assert.equal(七三.tc_released, false);
+    assert.equal(七三.tc_released, true);
     assert.equal(七三.merged_into, undefined);
-    assert.equal(七三.lag_days, null);
-    assert.equal(七三.tc_duration, null);
+    assert.equal(七三.lag_days, 469);
+    assert.deepEqual(七三.tc_duration, { days: 1, ongoing: true });
     assert.equal(八零.international, "2027-02-23");
     assert.equal(八零.international_url, 正式設定.sources.international_8_0_release);
     assert.equal(八零.international_released, false);
@@ -122,13 +131,13 @@ test("已公告的繁中 7.3 與國際 8.0 保留正式日期，尚未上線也�
     assert.equal(八零.tc_released, false);
     assert.equal(八零.lag_days, null);
     assert.equal(視圖.stages.includes("8.0"), false);
-    assert.equal(視圖.tc.some((列) => 列.patch === "7.3"), false);
+    assert.equal(視圖.tc.some((列) => 列.patch === "7.3"), true);
     assert.equal(視圖.international.some((列) => 列.patch === "8.0"), false);
     const 預測八零 = 視圖.forecast.rows.find((列) => 列.patch === "8.0");
     assert.equal(預測八零.international_day, 日序("2027-02-23"));
     assert.equal(預測八零.international_estimated, false);
     assert.equal(預測八零.international_month, undefined);
-    assert.equal(視圖.forecast.tc_samples.some((項) => 項.to_patch === "7.3"), false);
+    assert.equal(視圖.forecast.tc_samples.some((項) => 項.to_patch === "7.3"), true);
     assert.deepEqual(視圖.forecast.international_cadence, 僅歷史規律);
   }
   const 預測 = 正式資料.views.all.forecast;
@@ -139,13 +148,22 @@ test("已公告的繁中 7.3 與國際 8.0 保留正式日期，尚未上線也�
     assert.equal(列.international_released, false);
     assert.equal(正式資料.views.all.rows.some((項) => 項.patch === patch), false);
   }
-  assert.deepEqual(取得版本日期提示(日序("2026-11-17"), 正式資料.end_day, "announced", true),
-    { text: "還有 5 天", overdue: false });
+  const 七三五 = 正式資料.views.all.rows.find((列) => 列.patch === "7.35");
+  assert.equal(七三五.tc, null);
+  assert.equal(七三五.tc_plan.date, "2027-01-05");
+  assert.match(七三五.tc_plan.attribution, /站務提供的官方時程/);
+  assert.equal(七三五.tc_plan_url, null);
+  assert.equal(七三五.tc_released, false);
+  assert.equal(七三五.lag_days, null);
+  assert.equal(七三五.tc_duration, null);
+  assert.equal(預測.rows.find((列) => 列.patch === "7.35").tc_day, 日序("2027-01-05"));
+  assert.deepEqual(取得版本日期提示(日序("2027-01-05"), 正式資料.end_day, "planned", true),
+    { text: "還有 48 天", overdue: false });
   // 今天經過公告日僅更新提示；唯有維護者調整核對日，才可重新判定已發布。
-  assert.match(取得版本日期提示(日序("2026-11-17"), 日序("2026-11-18"), "announced", true).text, /待核對實際更新/);
-  assert.equal(正式資料.current_tc, "7.25");
+  assert.match(取得版本日期提示(日序("2027-01-05"), 日序("2027-01-06"), "planned", true).text, /待核對實際更新/);
+  assert.equal(正式資料.current_tc, "7.3");
   const 維護後設定 = structuredClone(正式設定);
-  維護後設定.verified_through = "2026-11-17";
+  維護後設定.verified_through = "2027-01-06";
   const 維護後 = 建置版本進度(維護後設定);
   assert.equal(維護後.current_tc, "7.3");
   assert.equal(維護後.latest_comparable.patch, "7.3");
@@ -207,7 +225,8 @@ test("版本頁呈現未來公告的更新內容與來源，未公告版本仍�
     const 七三 = await 畫面("7.3", guess);
     assert.match(七三, /class="版本內容註記"/);
     assert.match(七三, /幻 青龍征魂戰/);
-    assert.match(七三, /還有 5 天/);
+    assert.match(七三, /已開機/);
+    assert.doesNotMatch(七三, /還有 5 天/);
     assert.ok(七三.includes(正式設定.sources.tc_7_3_notes));
     assert.ok(七三.includes(正式設定.sources.tc_7_3));
     assert.doesNotMatch(七三, /尚無同版本間隔/);
@@ -220,10 +239,10 @@ test("版本頁呈現未來公告的更新內容與來源，未公告版本仍�
     assert.ok(八零.includes(正式設定.sources.international_8_0_square_enix));
     assert.doesNotMatch(八零, /確切日期待公告|尚無同版本間隔/);
     if (guess) {
-      // 末小版銜接未定的新資料片時不顯示單版推測時長；新版補入後，
-      // 8.58 成為末列，8.56 則恢復顯示至 8.57 的兩服時長。
+      // 112 天情境的延伸主版已到 9.0，末小版 9.05 的未定時長需隱藏；
+      // 8.58 已有下一版排程，應恢復顯示兩服時長。
       const 表格列 = [...八零.matchAll(/<tr\b[^>]*>[\s\S]*?<\/tr>/g)].map((項) => 項[0]);
-      for (const [patch, 顯示時長] of [["8.58", false], ["8.56", true]]) {
+      for (const [patch, 顯示時長] of [["9.05", false], ["8.58", true]]) {
         const 列 = 表格列.find((項) => 項.includes(`<strong>${patch}</strong>`));
         assert.ok(列, `必須呈現 ${patch} 表格列`);
         const 兩服日期格 = [...列.matchAll(/<td data-label="(國際服上線|繁中服上線)">([\s\S]*?)<\/td>/g)];
@@ -234,10 +253,14 @@ test("版本頁呈現未來公告的更新內容與來源，未公告版本仍�
       }
     }
   }
-  const 未公告 = await 畫面("7.35");
+  const 預定 = await 畫面("7.35");
+  assert.match(預定, /2027\/01\/05/);
+  assert.match(預定, /還有 48 天/);
+  assert.match(預定, /站務提供的官方時程資訊/);
+  const 未公告 = await 畫面("7.4");
   assert.match(未公告, /尚未公告改版日期/);
   assert.doesNotMatch(未公告, /class="版本內容註記"/);
-  assert.match(未公告, /<span>繁中服<\/span><strong>7\.25<\/strong>/);
+  assert.match(未公告, /<span>繁中服<\/span><strong>7\.3<\/strong>/);
 });
 
 test("正式開服基準、同版本間隔與小版本節點各自計算", () => {
