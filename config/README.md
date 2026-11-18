@@ -25,6 +25,10 @@
 - `chaotic_cloud_of_darkness` 對應繁中服 2026-06-23 18:00 維護後開放的 7.15「滅 黑暗之雲」；FFLogs 排行榜頁顯示 Alliance Raids (Chaotic) 的 `zone_id=66`、Cloud of Darkness 的 `encounter_id=2061`，本專案沿用非零式高難度的 `difficulty=100`。`scan_start_date` 使用 `2026-06-23T18:00:00+08:00`，避免維護前候選 report 進入新分類掃描窗。
 - 7.2 確定於繁中服 2026-07-28 13:00 開放。`extreme_zelenia` 對應 FFLogs Trials II (Extreme) 的 `zone_id=67`、Zelenia `encounter_id=1080`、`difficulty=100`，其 `scan_start_date` 使用 `2026-07-28T13:00:00+08:00`；`savage_m5s` 至 `savage_m8s` 對應 AAC Cruiserweight 的 `zone_id=68`、`encounter_id=97` 至 `100`、`difficulty=101`，並以 `profile_summary_savage_tier.key="cruiserweight"`、`label="次重量級"`、`order=2`、`floor=1` 至 `4` 表示。次重量級因資料收錄排程調整，四層的 `scan_start_date` 統一延至 `2026-08-04T13:00:00+08:00`；這不影響 7.2 的遊戲版本切點或個人成績簡表的量級定義。同一時間 `savage_m1s` 至 `savage_m4s`、`extreme_queen_eternal` 與 `chaotic_cloud_of_darkness` 套用 `version_cutoff` 成為過版資料；`unreal_byakko` 以 `scan_end_date` 停止掃描，但以 `profile_summary_available_until="7.2"` 保留至 7.2 簡表，新增的 `unreal_suzaku` 則使用 Trials (Unreal) `zone_id=64`、`encounter_id=3010`、`difficulty=100` 與 7.2 起掃時間。7.2 簡表的幻本固定同時列出白虎與朱雀，不會因個別玩家缺少白虎成績而移除白虎列。
 
+### 7.3 幻本輪替設定
+
+`unreal_suzaku` 的 `scan_end_date="2026-11-17T13:00:00+08:00"` 會停止後續新增掃描，`profile_summary_available_until="7.25"` 保留歷史簡表。`unreal_seiryu` 使用 FFLogs [Trials (Unreal)／Seiryu](https://www.fflogs.com/server/rankings/18/64?boss=3011) 的 `zone_id=64`、`encounter_id=3011`、`difficulty=100`，從 `2026-11-17T13:00:00+08:00` 起掃，簡表首次可見版本為 `7.3`。掃描下限採 11/17 維護開始時間以涵蓋可能提早開機的報告，不宣稱 13:00 為實際開機時間。既有副本 key、report 與掃描狀態均保留；新副本有排行榜檔案後才進入公開清單。
+
 ## `game_versions.json` 的判讀重點
 
 - `versions` 必須依 `starts_at_iso` 由舊到新排序；第一筆以 `null` 表示最早已收錄的版本，讓更早的公開戰鬥仍有可追溯標籤。

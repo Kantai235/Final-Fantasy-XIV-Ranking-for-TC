@@ -200,3 +200,8 @@
 2. 簡表的舊版戰鬥截止與新選項開放排程分開維護。依官方 [9/29 維護公告](https://www.ffxiv.com.tw/web/news/news_content.aspx?id=mWNzX8RAV4)與 [11/17 維護公告](https://www.ffxiv.com.tw/web/news/news_content.aspx?id=45jDyN1q5m)，7.2 的快照截止為台灣時間 2026-09-29 13:00，7.25 的快照截止為 2026-11-17 13:00；7.25 與 7.3 選項分別於 2026-09-29、2026-11-17 的公告預定維護結束時間 18:00 開放。9/29 已提早開機但未公布確切時刻，因此以維護開始截斷舊版，避免提早開機後的新戰鬥混入；18:00 只代表選項排程，不宣稱實際開機時刻。7.3 尚無下一次改版切點，快照截止保持 `null`。
 3. `src/utils/userProfileClearSummary.js` 的 `取得個人成績紀錄版本()` 直接讀取 `config/game_versions.json` 回推缺少 `game_version` 的舊紀錄，不再借用簡表選項。明確欄位仍優先，無法解析時間時不猜測；本次簡表選項更新未改變競技版本、`version_cutoff`、副本掃描或歷史資料。幻白虎依既有 `profile_summary_available_until="7.2"` 保留至 7.2，7.25 起不再列入。
 4. `src/utils/activityTimelineAnnotations.js` 共用事件表已補上繁中服 7.3（2026-11-17）、國際服 7.57（2026-10-13）與 7.58（2026-11-10）。近期動態依既有圖表時間範圍顯示標記，不延長資料曲線、不參與統計；個人成績趨勢仍只取繁中服事件。
+
+### K. 2026-11-19 幻本輪替
+
+1. `unreal_suzaku` 以 `scan_end_date="2026-11-17T13:00:00+08:00"` 停止新增掃描，並以 `profile_summary_available_until="7.25"` 保留歷史簡表；歷史排行榜、report、key 與 checkpoint 不刪除。
+2. `unreal_seiryu`（幻青龍）使用 FFLogs Trials (Unreal) `zone_id=64`、`encounter_id=3011`、`difficulty=100`，`scan_start_date="2026-11-17T13:00:00+08:00"`，`profile_summary_available_from="7.3"`。起掃下限採維護開始時間以涵蓋可能提早開機的報告，不代表實際開機時間；公開清單仍須等排行榜檔案建立後才列入。

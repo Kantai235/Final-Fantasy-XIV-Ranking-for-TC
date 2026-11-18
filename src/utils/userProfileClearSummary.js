@@ -141,6 +141,7 @@ const 簡表副本顯示名稱 = {
   extreme_queen_eternal: "永恆女王",
   unreal_byakko: "白虎",
   unreal_suzaku: "朱雀",
+  unreal_seiryu: "青龍",
   chaotic_cloud_of_darkness: "黑暗之雲",
 };
 
