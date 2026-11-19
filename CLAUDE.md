@@ -209,4 +209,4 @@
 
 ### L. 2026-11-20 新增 7.3 極本
 
-1. `extreme_necron` 的站內顯示名稱為「極 永遠之闇」，對應 FFLogs Trials II (Extreme) 的 Necron：`zone_id=67`、`encounter_id=1081`、`difficulty=100`。`scan_start_date="2026-11-17T13:00:00+08:00"` 沿用改版維護開始時間以涵蓋可能提早開機的報告，`profile_summary_available_from="7.3"`；公開選單仍須等待排行榜檔案建立。此新增不改動既有副本 key、掃描狀態與歷史資料。
+1. `extreme_necron` 的站內顯示名稱為「極 永恆黑暗」，對應 FFLogs Trials II (Extreme) 的 Necron：`zone_id=67`、`encounter_id=1081`、`difficulty=100`。`scan_start_date="2026-11-17T13:00:00+08:00"` 沿用改版維護開始時間以涵蓋可能提早開機的報告，`profile_summary_available_from="7.3"`；公開選單仍須等待排行榜檔案建立。此新增不改動既有副本 key、掃描狀態與歷史資料。
