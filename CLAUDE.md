@@ -206,3 +206,7 @@
 1. `unreal_suzaku` 以 `scan_end_date="2026-11-17T13:00:00+08:00"` 停止新增掃描，並以 `profile_summary_available_until="7.25"` 保留歷史簡表；歷史排行榜、report、key 與 checkpoint 不刪除。
 2. `unreal_seiryu`（幻青龍）使用 FFLogs Trials (Unreal) `zone_id=64`、`encounter_id=3011`、`difficulty=100`，`scan_start_date="2026-11-17T13:00:00+08:00"`，`profile_summary_available_from="7.3"`。起掃下限採維護開始時間以涵蓋可能提早開機的報告，不代表實際開機時間；公開清單仍須等排行榜檔案建立後才列入。
 3. `scripts/validate_data.mjs` 的簡表版本集合與順序直接取自 `src/utils/userProfileClearSummary.js` 的 `個人成績簡表版本選項`，不得另寫固定版本清單或改用競技版本設定，避免前端新增快照後部署驗證仍拒絕新版副本。
+
+### L. 2026-11-20 新增 7.3 極本
+
+1. `extreme_necron` 的站內顯示名稱為「極 永遠之闇」，對應 FFLogs Trials II (Extreme) 的 Necron：`zone_id=67`、`encounter_id=1081`、`difficulty=100`。`scan_start_date="2026-11-17T13:00:00+08:00"` 沿用改版維護開始時間以涵蓋可能提早開機的報告，`profile_summary_available_from="7.3"`；公開選單仍須等待排行榜檔案建立。此新增不改動既有副本 key、掃描狀態與歷史資料。

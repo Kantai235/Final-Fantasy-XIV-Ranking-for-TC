@@ -29,6 +29,10 @@
 
 `unreal_suzaku` 的 `scan_end_date="2026-11-17T13:00:00+08:00"` 會停止後續新增掃描，`profile_summary_available_until="7.25"` 保留歷史簡表。`unreal_seiryu` 使用 FFLogs [Trials (Unreal)／Seiryu](https://www.fflogs.com/server/rankings/18/64?boss=3011) 的 `zone_id=64`、`encounter_id=3011`、`difficulty=100`，從 `2026-11-17T13:00:00+08:00` 起掃，簡表首次可見版本為 `7.3`。掃描下限採 11/17 維護開始時間以涵蓋可能提早開機的報告，不宣稱 13:00 為實際開機時間。既有副本 key、report 與掃描狀態均保留；新副本有排行榜檔案後才進入公開清單。
 
+### 7.3 新極本設定
+
+`extreme_necron`（極 永遠之闇）使用 FFLogs [Trials II (Extreme)／Necron](https://www.fflogs.com/zone/rankings/67?boss=1081) 的 `zone_id=67`、`encounter_id=1081`、`difficulty=100`，從 `2026-11-17T13:00:00+08:00` 起掃，簡表首次可見版本為 `7.3`。[繁中服 7.3 更新筆記](https://www.ffxiv.com.tw/web/special/patchnote_log/patch_7.3_notes.html)確認新增極難度殲滅戰，但官方筆記仍以問號遮蔽名稱；本站以「極 永遠之闇」作為顯示名稱，以 Necron 與 FFLogs ID 識別副本。掃描下限沿用本次改版維護開始時間，涵蓋可能提早開機的報告；既有副本設定與歷史資料保留，新副本有排行榜檔案後才加入公開清單。
+
 ## `game_versions.json` 的判讀重點
 
 - `versions` 必須依 `starts_at_iso` 由舊到新排序；第一筆以 `null` 表示最早已收錄的版本，讓更早的公開戰鬥仍有可追溯標籤。

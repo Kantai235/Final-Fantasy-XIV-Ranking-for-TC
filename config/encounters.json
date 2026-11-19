@@ -246,6 +246,18 @@
     "scan_start_date": "2026-07-28T13:00:00+08:00"
   },
   {
+    "key": "extreme_necron",
+    "name": "極 永遠之闇",
+    "category": "極",
+    "zone_id": 67,
+    "encounter_id": 1081,
+    "difficulty": 100,
+    "enabled": true,
+    "current_high_end": true,
+    "profile_summary_available_from": "7.3",
+    "scan_start_date": "2026-11-17T13:00:00+08:00"
+  },
+  {
     "key": "unreal_byakko",
     "name": "幻 白虎",
     "category": "幻",
