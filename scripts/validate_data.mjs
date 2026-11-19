@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { publicDataContracts, validateSchemaContract } from "../schemas/public_data_contracts.mjs";
+import { 個人成績簡表版本選項 } from "../src/utils/userProfileClearSummary.js";
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const publicDataDir = path.join(rootDir, "public", "data");
@@ -18,7 +19,8 @@ const publicAllRankingDetailsDir = path.join(publicAllDataDir, "ranking-details"
 const publicAllUserEntryDetailsDir = path.join(publicAllDataDir, "user-entry-details");
 const rawFieldNames = new Set(["fflogs_raw", "master_data", "matched_players"]);
 const rawFieldPattern = new RegExp(`"(${[...rawFieldNames].join("|")})"\\s*:`);
-const 個人成績簡表遊戲版本順序 = ["7.0", "7.05", "7.1", "7.15", "7.2"];
+// 簡表快照與競技版本不同；共用前端選項，避免新版本已可顯示卻被部署驗證擋下。
+const 個人成績簡表遊戲版本順序 = 個人成績簡表版本選項.map((version) => version.value);
 const 個人成績簡表遊戲版本 = new Set(個人成績簡表遊戲版本順序);
 const 個人成績簡表遊戲版本索引 = new Map(個人成績簡表遊戲版本順序.map((version, index) => [version, index]));
 
