@@ -112,6 +112,15 @@ class FetchFFLogsBatchTest(unittest.TestCase):
         設定清單 = json.loads(設定路徑.read_text(encoding="utf-8"))
         副本 = next(項目 for 項目 in 設定清單 if 項目["key"] == "chaotic_cloud_of_darkness")
         self.assertIsNone(fflogs.取得副本版本截止設定(副本))
+        舊排行榜 = {
+            "encounter": {**副本, "version_cutoff": {"obsolete_after_iso": "2026-07-28T05:00:00Z"}},
+            "ranking_entries": [],
+            "reports": {},
+        }
+        正規化結果 = fflogs.正規化排行榜(舊排行榜, 副本)
+        self.assertNotIn("version_cutoff", 正規化結果["encounter"])
+        self.assertNotIn("version_cutoff", fflogs.建立公開排行榜(正規化結果))
+        self.assertIn("version_cutoff", 舊排行榜["encounter"])
         for 時間 in [
             "2026-06-23T10:00:00Z", "2026-07-28T05:00:00Z",
             "2026-09-29T10:00:00Z", "2026-11-17T10:00:00Z",

@@ -5308,6 +5308,10 @@ def 正規化排行榜(原始內容: Any, 副本設定: dict[str, Any]) -> dict[
             排行榜.setdefault("schema_version", 1)
             既有副本摘要 = 排行榜.get("encounter") if isinstance(排行榜.get("encounter"), dict) else {}
             排行榜["encounter"] = {**既有副本摘要, **建立副本摘要(副本設定)}
+            # 合併只會覆蓋存在的欄位；撤除 cutoff 時需明確移除舊摘要的規則，
+            # 否則沒有新增 report 的副本在 --rebuild-public 時仍會被判為過版。
+            if not isinstance(副本設定.get("version_cutoff"), dict):
+                排行榜["encounter"].pop("version_cutoff", None)
             return 排行榜
 
     報告索引: dict[str, Any] = {}
