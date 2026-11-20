@@ -842,6 +842,11 @@ function isObsoleteRecord(entry, encounter) {
 function attachVersionState(entry, encounter) {
   const cutoff = getEncounterVersionCutoff(encounter);
   if (!cutoff) {
+    // 無截止設定即持續有效；撤除錯誤規則時也必須清掉舊索引殘留，
+    // 才能讓歷史成績重新參與有效分位、最佳成績與統計。
+    delete entry.is_obsolete_record;
+    delete entry.version_status;
+    delete entry.version_cutoff_iso;
     return entry;
   }
 

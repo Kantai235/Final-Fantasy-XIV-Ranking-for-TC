@@ -210,3 +210,7 @@
 ### L. 2026-11-20 新增 7.3 極本
 
 1. `extreme_necron` 的站內顯示名稱為「極 永恆黑暗」，對應 FFLogs Trials II (Extreme) 的 Necron：`zone_id=67`、`encounter_id=1081`、`difficulty=100`。`scan_start_date="2026-11-17T13:00:00+08:00"` 沿用改版維護開始時間以涵蓋可能提早開機的報告，`profile_summary_available_from="7.3"`；公開選單仍須等待排行榜檔案建立。此新增不改動既有副本 key、掃描狀態與歷史資料。
+
+### M. 2026-11-20 黑暗之雲有效紀錄更正
+
+1. B.6 與 F.1 將 `chaotic_cloud_of_darkness` 列為 7.2 過版是舊設定錯誤，現以本項更正：滅黑暗之雲自 7.15 開放至目前 7.3 持續有效，不設 `version_cutoff`。Python 與 Node.js 重建在無截止設定時必須清除來源索引殘留的過版欄位；正式更新需重新計算有效分位、最佳成績與統計，並同步 Pages 與 Users repo。歷史 report、fight、player 與 checkpoint 均保留。

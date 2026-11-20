@@ -212,7 +212,10 @@ async function createFixture(tempRoot) {
           report_url: `https://www.fflogs.com/reports/ACHIEVEMENT${index}`,
           fight_id: 1,
           rank: 1,
-          is_obsolete_record: false,
+          // 模擬撤除截止設定後，來源扁平索引仍殘留舊過版標記。
+          is_obsolete_record: true,
+          version_status: "obsolete",
+          version_cutoff_iso: "2026-01-01T00:00:00.000Z",
         },
       ],
     });
@@ -1089,6 +1092,11 @@ async function assertFixtureOutput(tempRoot, expectedGlobalStatsText, expectedSe
   const mainUser = usersIndex.users.find((user) => user.character_name === "測試角色");
   assert(mainUser, "使用者索引應包含測試角色。");
   const mainUserData = await readJson(path.join(tempRoot, "public", mainUser.file_path));
+  for (const key of ["savage_m4s", "savage_m8s"]) {
+    const records = mainUserData.encounters.find((item) => item.encounter_key === key)?.public_entries;
+    assert(records?.length === 1, "撤除截止設定後必須保留原有紀錄。");
+    assert(records.every((entry) => !entry.is_obsolete_record && entry.version_status !== "obsolete" && !entry.version_cutoff_iso), "無截止設定不得沿用來源的舊過版標記。");
+  }
   const mainFixtureEncounter = mainUserData.encounters.find((item) => item.encounter_key === "fixture_encounter");
   assert(mainFixtureEncounter, "測試角色應保留原始 fixture 副本資料。");
   assert(mainUserData.summary.best_rdps === 250, "測試角色最佳 rDPS 應正確彙整。");

@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import contextlib
 import io
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -106,6 +107,34 @@ def 建立測試排行榜報告(報告代碼: str, *, 有GCD: bool = False) -> d
 
 
 class FetchFFLogsBatchTest(unittest.TestCase):
+    def test_黑暗之雲持續有效且清除撤除規則的舊標記(self) -> None:
+        設定路徑 = Path(__file__).resolve().parents[1] / "config/encounters.json"
+        設定清單 = json.loads(設定路徑.read_text(encoding="utf-8"))
+        副本 = next(項目 for 項目 in 設定清單 if 項目["key"] == "chaotic_cloud_of_darkness")
+        self.assertIsNone(fflogs.取得副本版本截止設定(副本))
+        for 時間 in [
+            "2026-06-23T10:00:00Z", "2026-07-28T05:00:00Z",
+            "2026-09-29T10:00:00Z", "2026-11-17T10:00:00Z",
+        ]:
+            with self.subTest(時間=時間):
+                成績 = {
+                    "recorded_at_iso": 時間,
+                    "is_obsolete_record": True,
+                    "version_status": "obsolete",
+                    "version_cutoff_iso": "2026-07-28T05:00:00Z",
+                }
+                結果 = fflogs.標記成績版本狀態(成績, None)
+                self.assertFalse(結果.get("is_obsolete_record"))
+                self.assertNotIn("version_status", 結果)
+                self.assertNotIn("version_cutoff_iso", 結果)
+        # 其他副本仍按各自截止時間判定，避免修正擴及真正過版的內容。
+        女王 = next(項目 for 項目 in 設定清單 if 項目["key"] == "extreme_queen_eternal")
+        結果 = fflogs.標記成績版本狀態(
+            {"recorded_at_iso": "2026-11-17T10:00:00Z"},
+            fflogs.取得副本版本截止設定(女王),
+        )
+        self.assertTrue(結果["is_obsolete_record"])
+
     def test_physical_fight_hash_ignores_fflogs_metric_drift(self) -> None:
         原始戰鬥 = 建立測試排行榜戰鬥()
         漂移戰鬥 = copy.deepcopy(原始戰鬥)

@@ -3734,6 +3734,11 @@ def 取得副本版本截止設定(副本資料: dict[str, Any] | None) -> dict[
 
 def 標記成績版本狀態(成績: dict[str, Any], 版本設定: dict[str, Any] | None) -> dict[str, Any]:
     if not 版本設定:
+        # 截止設定撤除後，舊扁平索引可能仍帶有過版旗標；以目前設定重新判定，
+        # 避免黑暗之雲等持續有效的副本在重建後仍沿用錯誤歷史標記。
+        成績.pop("is_obsolete_record", None)
+        成績.pop("version_status", None)
+        成績.pop("version_cutoff_iso", None)
         return 成績
 
     紀錄毫秒 = 解析_iso_時間毫秒(成績.get("recorded_at_iso") or 成績.get("report_start_time_iso"))
